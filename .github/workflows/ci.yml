@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "true"
+  NUGET_XMLDOC_MODE: skip
+
+jobs:
+  validate:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Restore .NET dependencies
+        run: dotnet restore AetherSDR-Web.slnx
+
+      - name: Build solution
+        run: dotnet build AetherSDR-Web.slnx --configuration Release --no-restore
+
+      - name: Run web server tests
+        run: >-
+          dotnet test
+          prototypes/web-client/tests/AetherSDR.Web.Tests.csproj
+          --configuration Release
+          --no-build
+
+      - name: Run TX-HIL unit tests (no live RF)
+        run: >-
+          dotnet test
+          prototypes/web-client/tx-hil-tests/AetherSDR.TxHil.Tests.csproj
+          --configuration Release
+          --no-build
+
+      - name: Run AetherRemote tests
+        run: >-
+          dotnet test
+          AetherRemote/tests/AetherRemote.Tests/AetherRemote.Tests.csproj
+          --configuration Release
+          --no-build
+
+      - name: Run browser tests
+        run: node --test prototypes/web-client/tests-ui/*.test.mjs
