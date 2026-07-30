@@ -29,6 +29,7 @@ internal static class HilSafetyFaultMatrix
         results.Add(await HeartbeatExpiryProtectedTxAsync(cancellationToken));
         results.Add(await BrowserLossAsync(cancellationToken));
         results.Add(await AuthenticationLossAsync(cancellationToken));
+        results.Add(await GatewayProcessLossAsync(cancellationToken));
         results.Add(await ExternalOwnerProtectionAsync(cancellationToken));
         results.Add(await UnknownUnkeyOutcomeAsync(cancellationToken));
         results.Add(await TransportOutageRecoveryAsync(cancellationToken));
@@ -157,6 +158,49 @@ internal static class HilSafetyFaultMatrix
             result,
             fixture,
             "Only an exact authenticated-to-unauthenticated transition may invoke the ownership-safe observer unkey path.");
+    }
+
+    private static async Task<HilSafetyFaultScenario> GatewayProcessLossAsync(
+        CancellationToken cancellationToken)
+    {
+        MatrixFixture fixture = NewFixture();
+        await using StationTxSafetySupervisor supervisor = fixture.Supervisor;
+        await using StationTxGatewayConnectionMonitor monitor = new(supervisor);
+        ObserveIdle(fixture, ProtectedHandle);
+        await RequireAsync(
+            supervisor.ArmAsync(Arm(), cancellationToken),
+            "arm");
+        StationTxGatewayConnectionResult connected =
+            await monitor.EvaluateAsync(
+                GatewayObservation(isConnected: true),
+                cancellationToken);
+        if (!connected.Success || connected.Code != "gateway_connected")
+        {
+            throw new InvalidOperationException(
+                $"Fault matrix gateway establishment failed: {connected.Code}: {connected.Message}");
+        }
+        ObserveProtectedTx(fixture);
+        StationTxGatewayConnectionResult lost =
+            await monitor.EvaluateAsync(
+                GatewayObservation(isConnected: false),
+                cancellationToken);
+        StationTxSafetyResult result = new(
+            lost.Success,
+            lost.Code,
+            lost.Message,
+            lost.SafetySnapshot);
+        bool passed =
+            result.Success &&
+            result.Code == "unkey_pending" &&
+            lost.SawConnected &&
+            lost.LossSignaled &&
+            fixture.Transport.CommandCount == 1;
+        return Scenario(
+            "gateway-process-loss",
+            passed,
+            result,
+            fixture,
+            "Only the exact observed gateway process transition may invoke the ownership-safe observer unkey path.");
     }
 
     private static async Task<HilSafetyFaultScenario>
@@ -381,6 +425,17 @@ internal static class HilSafetyFaultMatrix
             BrowserClientId,
             ProtectedHandle,
             isAuthenticated);
+
+    private static StationTxGatewayConnectionObservation GatewayObservation(
+        bool isConnected) =>
+        new(
+            "simulated-gateway-process",
+            EngineInstanceId,
+            LeaseId,
+            SessionId,
+            BrowserClientId,
+            ProtectedHandle,
+            isConnected);
 
     private static void ObserveIdle(
         MatrixFixture fixture,

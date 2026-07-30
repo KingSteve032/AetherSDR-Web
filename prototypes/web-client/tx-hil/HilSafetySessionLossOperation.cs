@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Reflection;
 using System.Text.Json;
 using AetherSDR.Web.Radio;
 using Microsoft.Extensions.Logging;
@@ -7,7 +9,8 @@ namespace AetherSDR.TxHil;
 internal enum HilSafetyOwnerLossKind
 {
     BrowserSession,
-    Authentication
+    Authentication,
+    GatewayProcess
 }
 
 internal sealed record HilSafetyOwnerLossProfile(
@@ -57,6 +60,20 @@ internal sealed record HilSafetyOwnerLossProfile(
                 "tx-hil-authentication-owner",
                 "tx-hil-authentication-loss-engine-instance",
                 "PSOC2 Authentication Loss"),
+            HilSafetyOwnerLossKind.GatewayProcess => new(
+                kind,
+                HilArmManifest.SafetyGatewayProcessLossPurpose,
+                "gateway-process-lost",
+                "gateway-process-loss",
+                "independent-gateway-process-loss-no-rf-preflight",
+                "independent-gateway-process-loss-unkey",
+                "tx-hil-gateway-process-loss-preflight",
+                "tx-hil-gateway-process-loss-browser",
+                "tx-hil-gateway-process-loss-preflight-engine",
+                "tx-hil-gateway-process-loss",
+                "tx-hil-gateway-process-owner",
+                "tx-hil-gateway-process-loss-engine-instance",
+                "PSOC2 Gateway Process Loss"),
             _ => throw new ArgumentOutOfRangeException(nameof(kind))
         };
 }
@@ -103,6 +120,11 @@ internal sealed class HilSafetySessionLossOperation(
         HilOwnedRadioResources? resources = null;
         StationTxSafetySupervisor? supervisor = null;
         StationTxAuthenticationMonitor? authenticationMonitor = null;
+        StationTxGatewayConnectionMonitor? gatewayMonitor = null;
+        Process? gatewayProcess = null;
+        Task<string>? gatewayErrors = null;
+        HilGatewayAuthorityReady? gatewayReady = null;
+        DateTimeOffset? gatewayExitedAt = null;
         CountingEmergencyUnkeyTransport? safetyTransport = null;
         TxLeaseManager? leases = null;
         TxLease? lease = null;
@@ -175,7 +197,32 @@ internal sealed class HilSafetySessionLossOperation(
                         "The preflight did not establish the exact authenticated authority before loss injection.");
                 }
             }
+            else if (m_profile.Kind == HilSafetyOwnerLossKind.GatewayProcess)
+            {
+                (gatewayProcess, gatewayErrors) = StartGatewayChild();
+                gatewayReady = await ReadGatewayReadyAsync(
+                    gatewayProcess,
+                    gatewayErrors,
+                    cancellationToken);
+                gatewayMonitor = new StationTxGatewayConnectionMonitor(
+                    supervisor);
+                StationTxGatewayConnectionResult connected =
+                    await gatewayMonitor.EvaluateAsync(
+                        GatewayObservation(gatewayReady, safetyArm, true),
+                        cancellationToken);
+                if (!connected.Success || connected.Code != "gateway_connected")
+                {
+                    throw new InvalidOperationException(
+                        "The preflight did not establish the exact gateway process before loss injection.");
+                }
+            }
 
+            if (gatewayProcess is not null)
+            {
+                gatewayExitedAt = await KillGatewayChildAsync(
+                    gatewayProcess,
+                    cancellationToken);
+            }
             int released = leases.ReleaseSession(
                 sessionId,
                 m_profile.SignalReason);
@@ -189,6 +236,8 @@ internal sealed class HilSafetySessionLossOperation(
                 await SignalOwnerLossAsync(
                     supervisor,
                     authenticationMonitor,
+                    gatewayMonitor,
+                    gatewayReady,
                     safetyArm,
                     cancellationToken);
             if (!abort.Success ||
@@ -226,7 +275,21 @@ internal sealed class HilSafetySessionLossOperation(
                     exactBrowserClient = browserClientId,
                     supervisorSignal = m_profile.SignalReason,
                     authenticatedTransitionObserved =
-                        authenticationMonitor is not null
+                        authenticationMonitor is not null,
+                    gatewayProcessLossObserved = gatewayReady is not null,
+                    gatewayProcess = gatewayReady is null
+                        ? null
+                        : new
+                        {
+                            gatewayReady.ProcessId,
+                            gatewayReady.ProcessStartTime,
+                            gatewayReady.GatewayInstanceId,
+                            ExitedAt = gatewayExitedAt,
+                            ExitCode = gatewayProcess?.ExitCode,
+                            gatewayReady.RadioConnectionCreated,
+                            gatewayReady.KeyCapability,
+                            gatewayReady.UnkeyCapability
+                        }
                 },
                 safety = new
                 {
@@ -247,6 +310,11 @@ internal sealed class HilSafetySessionLossOperation(
             {
                 await authenticationMonitor.DisposeAsync();
             }
+            if (gatewayMonitor is not null)
+            {
+                await gatewayMonitor.DisposeAsync();
+            }
+            await StopGatewayChildAsync(gatewayProcess, gatewayErrors);
             bool supervisorIdle = true;
             if (supervisor is not null)
             {
@@ -313,16 +381,23 @@ internal sealed class HilSafetySessionLossOperation(
             m_profile.ManifestPurpose,
             m_timeProvider,
             cancellationToken);
-        HilOptions options = m_profile.Kind ==
-            HilSafetyOwnerLossKind.Authentication
-                ? HilArmManifest.ToSafetyAuthenticationLossOptions(
+        HilOptions options = m_profile.Kind switch
+        {
+            HilSafetyOwnerLossKind.Authentication =>
+                HilArmManifest.ToSafetyAuthenticationLossOptions(
                     manifest,
                     commandLine.ArmFile,
-                    commandLine.Token)
-                : HilArmManifest.ToSafetySessionLossOptions(
+                    commandLine.Token),
+            HilSafetyOwnerLossKind.GatewayProcess =>
+                HilArmManifest.ToSafetyGatewayProcessLossOptions(
                     manifest,
                     commandLine.ArmFile,
-                    commandLine.Token);
+                    commandLine.Token),
+            _ => HilArmManifest.ToSafetySessionLossOptions(
+                manifest,
+                commandLine.ArmFile,
+                commandLine.Token)
+        };
 
         await using HilFlexSession observer = NewSession(options.RadioId);
         await observer.ConnectAsync(
@@ -347,6 +422,11 @@ internal sealed class HilSafetySessionLossOperation(
         TxLease? lease = null;
         StationTxSafetySupervisor? supervisor = null;
         StationTxAuthenticationMonitor? authenticationMonitor = null;
+        StationTxGatewayConnectionMonitor? gatewayMonitor = null;
+        Process? gatewayProcess = null;
+        Task<string>? gatewayErrors = null;
+        HilGatewayAuthorityReady? gatewayReady = null;
+        DateTimeOffset? gatewayExitedAt = null;
         CountingTxCommandTransport? engineTransport = null;
         CountingEmergencyUnkeyTransport? safetyTransport = null;
         DateTimeOffset? keyedAt = null;
@@ -423,6 +503,25 @@ internal sealed class HilSafetySessionLossOperation(
                         "The live test did not establish the exact authenticated authority before keying.");
                 }
             }
+            else if (m_profile.Kind == HilSafetyOwnerLossKind.GatewayProcess)
+            {
+                (gatewayProcess, gatewayErrors) = StartGatewayChild();
+                gatewayReady = await ReadGatewayReadyAsync(
+                    gatewayProcess,
+                    gatewayErrors,
+                    cancellationToken);
+                gatewayMonitor = new StationTxGatewayConnectionMonitor(
+                    supervisor);
+                StationTxGatewayConnectionResult connected =
+                    await gatewayMonitor.EvaluateAsync(
+                        GatewayObservation(gatewayReady, safetyArm, true),
+                        cancellationToken);
+                if (!connected.Success || connected.Code != "gateway_connected")
+                {
+                    throw new InvalidOperationException(
+                        "The live test did not establish the exact gateway process before keying.");
+                }
+            }
 
             engineTransport = new CountingTxCommandTransport(
                 resources.Transport);
@@ -463,10 +562,16 @@ internal sealed class HilSafetySessionLossOperation(
                 protectedTx,
                 "confirm exact protected transmit ownership");
 
+            if (gatewayProcess is not null)
+            {
+                gatewayExitedAt = await KillGatewayChildAsync(
+                    gatewayProcess,
+                    cancellationToken);
+            }
             int released = leases.ReleaseSession(
                 sessionId,
                 m_profile.SignalReason);
-            sessionLostAt = m_timeProvider.GetUtcNow();
+            sessionLostAt = gatewayExitedAt ?? m_timeProvider.GetUtcNow();
             if (released != 1 || leases.GetCurrent(options.RadioId) is not null)
             {
                 throw new InvalidOperationException(
@@ -477,6 +582,8 @@ internal sealed class HilSafetySessionLossOperation(
                 await SignalOwnerLossAsync(
                     supervisor,
                     authenticationMonitor,
+                    gatewayMonitor,
+                    gatewayReady,
                     safetyArm,
                     cancellationToken);
             if (!abort.Success ||
@@ -540,7 +647,21 @@ internal sealed class HilSafetySessionLossOperation(
                     releasedLeases = 1,
                     signaledReason = m_profile.SignalReason,
                     authenticatedTransitionObserved =
-                        authenticationMonitor is not null
+                        authenticationMonitor is not null,
+                    gatewayProcessLossObserved = gatewayReady is not null,
+                    gatewayProcess = gatewayReady is null
+                        ? null
+                        : new
+                        {
+                            gatewayReady.ProcessId,
+                            gatewayReady.ProcessStartTime,
+                            gatewayReady.GatewayInstanceId,
+                            ExitedAt = gatewayExitedAt,
+                            ExitCode = gatewayProcess?.ExitCode,
+                            gatewayReady.RadioConnectionCreated,
+                            gatewayReady.KeyCapability,
+                            gatewayReady.UnkeyCapability
+                        }
                 },
                 engineCommands = new
                 {
@@ -594,6 +715,11 @@ internal sealed class HilSafetySessionLossOperation(
             {
                 await authenticationMonitor.DisposeAsync();
             }
+            if (gatewayMonitor is not null)
+            {
+                await gatewayMonitor.DisposeAsync();
+            }
+            await StopGatewayChildAsync(gatewayProcess, gatewayErrors);
             bool supervisorIdle = true;
             if (supervisor is not null)
             {
@@ -708,9 +834,150 @@ internal sealed class HilSafetySessionLossOperation(
             arm.ProtectedClientHandle,
             isAuthenticated);
 
+    private static StationTxGatewayConnectionObservation GatewayObservation(
+        HilGatewayAuthorityReady gateway,
+        StationTxSafetyArm arm,
+        bool isConnected) =>
+        new(
+            gateway.GatewayInstanceId,
+            arm.EngineInstanceId,
+            arm.LeaseId,
+            arm.SessionId,
+            arm.BrowserClientId,
+            arm.ProtectedClientHandle,
+            isConnected);
+
+    private static (Process Child, Task<string> Errors) StartGatewayChild()
+    {
+        string entryAssembly =
+            Assembly.GetEntryAssembly()?.Location ??
+            throw new InvalidOperationException(
+                "The HIL entry assembly path is unavailable.");
+        string processPath =
+            Environment.ProcessPath ??
+            throw new InvalidOperationException(
+                "The HIL process executable path is unavailable.");
+        ProcessStartInfo start = new()
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+            FileName = processPath
+        };
+        bool dotnetHost = string.Equals(
+            Path.GetFileNameWithoutExtension(processPath),
+            "dotnet",
+            StringComparison.OrdinalIgnoreCase);
+        if (dotnetHost)
+        {
+            start.ArgumentList.Add(entryAssembly);
+        }
+        start.ArgumentList.Add("internal-gateway-authority-child");
+        Process child = Process.Start(start) ??
+            throw new InvalidOperationException(
+                "The HIL gateway-authority child process could not be started.");
+        return (child, child.StandardError.ReadToEndAsync());
+    }
+
+    private static async Task<HilGatewayAuthorityReady> ReadGatewayReadyAsync(
+        Process child,
+        Task<string> errors,
+        CancellationToken cancellationToken)
+    {
+        using CancellationTokenSource deadline =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(5));
+        string? line;
+        try
+        {
+            line = await child.StandardOutput.ReadLineAsync(deadline.Token);
+        }
+        catch (OperationCanceledException) when (
+            !cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                "Timed out waiting for the gateway-authority child process.");
+        }
+        if (line is null)
+        {
+            string stderr = await errors;
+            throw new InvalidOperationException(
+                $"The gateway-authority child exited before ready. Exit={child.ExitCode}; stderr={stderr}");
+        }
+        HilGatewayAuthorityReady ready =
+            JsonSerializer.Deserialize<HilGatewayAuthorityReady>(line) ??
+            throw new InvalidOperationException(
+                "The gateway-authority child returned invalid readiness evidence.");
+        if (!string.Equals(
+                ready.Event,
+                "gateway-authority-ready",
+                StringComparison.Ordinal) ||
+            ready.ProcessId != child.Id ||
+            ready.RadioConnectionCreated ||
+            ready.KeyCapability ||
+            ready.UnkeyCapability ||
+            string.IsNullOrWhiteSpace(ready.GatewayInstanceId))
+        {
+            throw new InvalidOperationException(
+                "The gateway-authority child readiness evidence failed closed.");
+        }
+        return ready;
+    }
+
+    private async Task<DateTimeOffset> KillGatewayChildAsync(
+        Process child,
+        CancellationToken cancellationToken)
+    {
+        if (child.HasExited)
+        {
+            throw new InvalidOperationException(
+                "The gateway-authority child exited before loss injection.");
+        }
+        child.Kill(entireProcessTree: true);
+        await child.WaitForExitAsync(cancellationToken);
+        if (child.ExitCode == 0)
+        {
+            throw new InvalidOperationException(
+                "The gateway-authority child exited gracefully instead of being force-killed.");
+        }
+        return m_timeProvider.GetUtcNow();
+    }
+
+    private static async Task StopGatewayChildAsync(
+        Process? child,
+        Task<string>? errors)
+    {
+        if (child is null)
+        {
+            return;
+        }
+        try
+        {
+            if (!child.HasExited)
+            {
+                child.Kill(entireProcessTree: true);
+                await child.WaitForExitAsync();
+            }
+            if (errors is not null)
+            {
+                _ = await errors;
+            }
+        }
+        catch
+        {
+        }
+        finally
+        {
+            child.Dispose();
+        }
+    }
+
     private async Task<StationTxSafetyResult> SignalOwnerLossAsync(
         StationTxSafetySupervisor supervisor,
         StationTxAuthenticationMonitor? authenticationMonitor,
+        StationTxGatewayConnectionMonitor? gatewayMonitor,
+        HilGatewayAuthorityReady? gatewayReady,
         StationTxSafetyArm arm,
         CancellationToken cancellationToken)
     {
@@ -720,21 +987,37 @@ internal sealed class HilSafetySessionLossOperation(
                 m_profile.SignalReason,
                 cancellationToken);
         }
-        if (authenticationMonitor is null)
+        if (m_profile.Kind == HilSafetyOwnerLossKind.Authentication)
+        {
+            if (authenticationMonitor is null)
+            {
+                throw new InvalidOperationException(
+                    "The authentication-loss operation has no exact-identity authentication monitor.");
+            }
+            StationTxAuthenticationResult authenticationLoss =
+                await authenticationMonitor.EvaluateAsync(
+                    AuthenticationObservation(arm, false),
+                    cancellationToken);
+            return new StationTxSafetyResult(
+                authenticationLoss.Success,
+                authenticationLoss.Code,
+                authenticationLoss.Message,
+                authenticationLoss.SafetySnapshot);
+        }
+        if (gatewayMonitor is null || gatewayReady is null)
         {
             throw new InvalidOperationException(
-                "The authentication-loss operation has no exact-identity authentication monitor.");
+                "The gateway-process-loss operation has no exact process monitor.");
         }
-
-        StationTxAuthenticationResult loss =
-            await authenticationMonitor.EvaluateAsync(
-                AuthenticationObservation(arm, false),
+        StationTxGatewayConnectionResult gatewayLoss =
+            await gatewayMonitor.EvaluateAsync(
+                GatewayObservation(gatewayReady, arm, false),
                 cancellationToken);
         return new StationTxSafetyResult(
-            loss.Success,
-            loss.Code,
-            loss.Message,
-            loss.SafetySnapshot);
+            gatewayLoss.Success,
+            gatewayLoss.Code,
+            gatewayLoss.Message,
+            gatewayLoss.SafetySnapshot);
     }
 
     private async Task WaitForObserverOwnershipAsync(

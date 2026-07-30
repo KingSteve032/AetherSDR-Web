@@ -441,6 +441,54 @@ The sequence is:
 9. Send CW `KC4CAW`, confirm queue drain and idle, restore settings, and remove
    temporary resources.
 
+## Independent web-gateway process-loss forced-unkey test
+
+This purpose-bound operation is named `independent-gateway-process-loss`.
+Its token cannot launch the normal pulse, heartbeat-expiry,
+browser-session-loss, authentication-loss, engine-loss, or engine-process-loss
+operations.
+
+The station engine and independent non-GUI safety observer remain connected to
+the radio. A separate HIL-only gateway-authority child process is observed as
+the exact control authority and then force-killed with its entire process tree.
+That child creates no radio connection and has no key or unkey capability. Only
+the exact observed gateway process transition may release the controlling
+session lease and signal the station-local unkey-only supervisor.
+
+### No-RF preflight
+
+```bash
+dotnet "$HIL" verify-safety-gateway-loss-preflight \
+  --frequency-hz <clear-frequency-hz> \
+  --on-air-confirm KC4CAW-PSOC2-ANT1-CLEAR-CAMERA-REMOTE-OFF
+```
+
+The preflight must prove the child process was force-killed, exactly one lease
+was released, the idle supervisor issued zero unkeys, the interlock remained
+idle, and `rfEmitted=false`.
+
+### Prepare and run
+
+```bash
+GATEWAY_ARM="/run/user/$UID/aethersdr-tx-gateway-loss.json"
+
+dotnet "$HIL" prepare-safety-gateway-loss \
+  --arm-file "$GATEWAY_ARM" \
+  --frequency-hz <clear-frequency-hz> \
+  --on-air-confirm KC4CAW-PSOC2-ANT1-CLEAR-CAMERA-REMOTE-OFF
+
+dotnet "$HIL" safety-gateway-loss \
+  --arm-file "$GATEWAY_ARM" \
+  --token "<ONE-TIME-TOKEN>"
+```
+
+The live sequence requires one engine key, zero engine unkeys, a forced gateway
+child exit, one released controlling lease, exactly one observer unkey, fresh
+radio idle, CW `KC4CAW` identification, complete setting restoration, and no
+leaked resources. A replacement or never-observed gateway process cannot claim
+the prior connection, and external SmartSDR, Maestro, or hardware-PTT ownership
+is never globally unkeyed.
+
 ## Independent engine TX command-channel-loss forced-unkey test
 
 This fifth purpose-bound operation is named

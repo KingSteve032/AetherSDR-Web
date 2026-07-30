@@ -16,6 +16,12 @@ try
             args[0],
             "internal-engine-process-child",
             StringComparison.Ordinal);
+    bool internalGatewayChild =
+        args.Length > 0 &&
+        string.Equals(
+            args[0],
+            "internal-gateway-authority-child",
+            StringComparison.Ordinal);
     using ILoggerFactory loggerFactory = LoggerFactory.Create(builder =>
     {
         builder.SetMinimumLevel(LogLevel.Information);
@@ -31,6 +37,10 @@ try
             HilEngineProcessChildOptions.Parse(args[1..]);
         HilEngineProcessChild child = new(loggerFactory);
         return await child.RunAsync(childOptions, lifetime.Token);
+    }
+    if (internalGatewayChild)
+    {
+        return await HilGatewayAuthorityChild.RunAsync(lifetime.Token);
     }
 
     HilOptions options = HilOptions.Parse(args);

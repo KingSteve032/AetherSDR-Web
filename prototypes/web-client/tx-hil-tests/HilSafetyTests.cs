@@ -629,6 +629,126 @@ public sealed class HilSafetyTests
     }
 
     [Fact]
+    public void SafetyGatewayProcessLossCommandsUseTheSameFixedOnAirBounds()
+    {
+        string armFile = Path.Combine(
+            Path.GetTempPath(),
+            "gateway-process-loss-arm.json");
+        HilOptions prepare = HilOptions.Parse(
+        [
+            "prepare-safety-gateway-loss",
+            "--arm-file",
+            armFile,
+            "--frequency-hz",
+            "14250000",
+            "--on-air-confirm",
+            HilOptions.RequiredOnAirConfirmation
+        ]);
+        HilOptions run = HilOptions.Parse(
+        [
+            "safety-gateway-loss",
+            "--arm-file",
+            armFile,
+            "--token",
+            "test-token"
+        ]);
+
+        Assert.Equal(
+            HilCommand.PrepareSafetyGatewayProcessLoss,
+            prepare.Command);
+        Assert.Equal(HilCommand.SafetyGatewayProcessLoss, run.Command);
+        Assert.Equal(14_250_000, prepare.FrequencyHz);
+        Assert.Equal("ANT1", prepare.TxAntenna);
+        Assert.Equal(1, prepare.RfPower);
+        Assert.Equal(100, prepare.KeyMilliseconds);
+    }
+
+    [Fact]
+    public async Task GatewayProcessLossManifestCannotLaunchAnotherOperation()
+    {
+        using TemporaryDirectory temporary = new();
+        string armFile = Path.Combine(
+            temporary.Path,
+            "gateway-process-loss-arm.json");
+        ManualTimeProvider time = new(
+            new DateTimeOffset(2026, 7, 30, 23, 0, 0, TimeSpan.Zero));
+        HilOptions prepared = PrepareOptions(armFile);
+        (HilArmManifest manifest, string token) = HilArmManifest.Create(
+            prepared,
+            time,
+            HilArmManifest.SafetyGatewayProcessLossPurpose);
+        await HilArmManifest.WriteAsync(
+            armFile,
+            manifest,
+            CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            HilArmManifest.ConsumeAsync(
+                armFile,
+                token,
+                HilArmManifest.SafetyAuthenticationLossPurpose,
+                time,
+                CancellationToken.None));
+        Assert.True(File.Exists(armFile));
+
+        HilArmManifest consumed = await HilArmManifest.ConsumeAsync(
+            armFile,
+            token,
+            HilArmManifest.SafetyGatewayProcessLossPurpose,
+            time,
+            CancellationToken.None);
+        Assert.False(File.Exists(armFile));
+        Assert.Throws<InvalidOperationException>(() =>
+            HilArmManifest.ToPulseOptions(consumed, armFile, token));
+        Assert.Throws<InvalidOperationException>(() =>
+            HilArmManifest.ToSafetyExpiryOptions(consumed, armFile, token));
+        Assert.Throws<InvalidOperationException>(() =>
+            HilArmManifest.ToSafetySessionLossOptions(
+                consumed,
+                armFile,
+                token));
+        Assert.Throws<InvalidOperationException>(() =>
+            HilArmManifest.ToSafetyAuthenticationLossOptions(
+                consumed,
+                armFile,
+                token));
+        Assert.Throws<InvalidOperationException>(() =>
+            HilArmManifest.ToSafetyEngineConnectionLossOptions(
+                consumed,
+                armFile,
+                token));
+        Assert.Throws<InvalidOperationException>(() =>
+            HilArmManifest.ToSafetyProcessLossOptions(
+                consumed,
+                armFile,
+                token));
+    }
+
+    [Fact]
+    public void SafetyGatewayProcessLossOptionsComeOnlyFromConsumedManifest()
+    {
+        string armFile = Path.Combine(
+            Path.GetTempPath(),
+            "gateway-process-loss-arm.json");
+        HilOptions prepared = PrepareOptions(armFile);
+        (HilArmManifest manifest, string token) = HilArmManifest.Create(
+            prepared,
+            purpose: HilArmManifest.SafetyGatewayProcessLossPurpose);
+
+        HilOptions safety =
+            HilArmManifest.ToSafetyGatewayProcessLossOptions(
+                manifest,
+                armFile,
+                token);
+
+        Assert.Equal(HilCommand.SafetyGatewayProcessLoss, safety.Command);
+        Assert.Equal(14_250_000, safety.FrequencyHz);
+        Assert.Equal("ANT1", safety.TxAntenna);
+        Assert.Equal(1, safety.RfPower);
+        Assert.Equal(100, safety.KeyMilliseconds);
+    }
+
+    [Fact]
     public void SafetyEngineConnectionLossCommandsUseTheSameFixedOnAirBounds()
     {
         string armFile = Path.Combine(
