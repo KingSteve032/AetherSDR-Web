@@ -4,9 +4,68 @@ using Microsoft.Extensions.Logging;
 
 namespace AetherSDR.TxHil;
 
+internal enum HilSafetyOwnerLossKind
+{
+    BrowserSession,
+    Authentication
+}
+
+internal sealed record HilSafetyOwnerLossProfile(
+    HilSafetyOwnerLossKind Kind,
+    string ManifestPurpose,
+    string SignalReason,
+    string ScenarioLabel,
+    string PreflightTestName,
+    string LiveTestName,
+    string PreflightSessionId,
+    string PreflightBrowserClientId,
+    string PreflightEngineInstanceId,
+    string LiveSessionId,
+    string LiveBrowserClientId,
+    string LiveEngineInstanceId,
+    string OperatorDisplayName)
+{
+    public static HilSafetyOwnerLossProfile For(
+        HilSafetyOwnerLossKind kind) =>
+        kind switch
+        {
+            HilSafetyOwnerLossKind.BrowserSession => new(
+                kind,
+                HilArmManifest.SafetySessionLossPurpose,
+                "browser-session-lost",
+                "browser-session-loss",
+                "independent-browser-session-loss-no-rf-preflight",
+                "independent-browser-session-loss-unkey",
+                "tx-hil-session-loss-preflight",
+                "tx-hil-session-loss-browser",
+                "tx-hil-session-loss-preflight-engine",
+                "tx-hil-browser-session-loss",
+                "tx-hil-browser-session-owner",
+                "tx-hil-session-loss-engine-instance",
+                "PSOC2 Browser Session Loss"),
+            HilSafetyOwnerLossKind.Authentication => new(
+                kind,
+                HilArmManifest.SafetyAuthenticationLossPurpose,
+                "authentication-lost",
+                "authentication-loss",
+                "independent-authentication-loss-no-rf-preflight",
+                "independent-authentication-loss-unkey",
+                "tx-hil-authentication-loss-preflight",
+                "tx-hil-authentication-loss-browser",
+                "tx-hil-authentication-loss-preflight-engine",
+                "tx-hil-authentication-loss",
+                "tx-hil-authentication-owner",
+                "tx-hil-authentication-loss-engine-instance",
+                "PSOC2 Authentication Loss"),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind))
+        };
+}
+
 internal sealed class HilSafetySessionLossOperation(
     ILoggerFactory loggerFactory,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    HilSafetyOwnerLossKind ownerLossKind =
+        HilSafetyOwnerLossKind.BrowserSession)
 {
     private static readonly TimeSpan HeartbeatTimeout =
         TimeSpan.FromSeconds(5);
@@ -17,6 +76,8 @@ internal sealed class HilSafetySessionLossOperation(
         loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
     private readonly TimeProvider m_timeProvider =
         timeProvider ?? TimeProvider.System;
+    private readonly HilSafetyOwnerLossProfile m_profile =
+        HilSafetyOwnerLossProfile.For(ownerLossKind);
 
     public async Task<int> VerifyPreflightAsync(
         HilOptions options,
@@ -41,11 +102,12 @@ internal sealed class HilSafetySessionLossOperation(
 
         HilOwnedRadioResources? resources = null;
         StationTxSafetySupervisor? supervisor = null;
+        StationTxAuthenticationMonitor? authenticationMonitor = null;
         CountingEmergencyUnkeyTransport? safetyTransport = null;
         TxLeaseManager? leases = null;
         TxLease? lease = null;
-        const string sessionId = "tx-hil-session-loss-preflight";
-        const string browserClientId = "tx-hil-session-loss-browser";
+        string sessionId = m_profile.PreflightSessionId;
+        string browserClientId = m_profile.PreflightBrowserClientId;
         try
         {
             resources = await engine.CreateOwnedTxResourcesAsync(
@@ -71,7 +133,7 @@ internal sealed class HilSafetySessionLossOperation(
                     sessionId,
                     browserClientId,
                     "tx-hil",
-                    "Session Loss Preflight",
+                    $"{m_profile.ScenarioLabel} preflight",
                     TimeSpan.FromSeconds(15),
                     out lease,
                     out string? leaseError))
@@ -88,7 +150,7 @@ internal sealed class HilSafetySessionLossOperation(
                 safetyTransport,
                 m_timeProvider);
             StationTxSafetyArm safetyArm = new(
-                "tx-hil-session-loss-preflight-engine",
+                m_profile.PreflightEngineInstanceId,
                 lease!.LeaseId,
                 sessionId,
                 browserClientId,
@@ -96,31 +158,50 @@ internal sealed class HilSafetySessionLossOperation(
                 HeartbeatTimeout);
             RequireSuccess(
                 await supervisor.ArmAsync(safetyArm, cancellationToken),
-                "arm the session-loss preflight supervisor");
+                $"arm the {m_profile.ScenarioLabel} preflight supervisor");
+
+            if (m_profile.Kind == HilSafetyOwnerLossKind.Authentication)
+            {
+                authenticationMonitor = new StationTxAuthenticationMonitor(
+                    supervisor);
+                StationTxAuthenticationResult authenticated =
+                    await authenticationMonitor.EvaluateAsync(
+                        AuthenticationObservation(safetyArm, true),
+                        cancellationToken);
+                if (!authenticated.Success ||
+                    authenticated.Code != "authenticated")
+                {
+                    throw new InvalidOperationException(
+                        "The preflight did not establish the exact authenticated authority before loss injection.");
+                }
+            }
 
             int released = leases.ReleaseSession(
                 sessionId,
-                "browser-session-lost");
+                m_profile.SignalReason);
             if (released != 1 || leases.GetCurrent(options.RadioId) is not null)
             {
                 throw new InvalidOperationException(
                     "The preflight did not release exactly one controlling-session TX lease.");
             }
 
-            StationTxSafetyResult abort = await supervisor.AbortAsync(
-                "browser-session-lost",
-                cancellationToken);
+            StationTxSafetyResult abort =
+                await SignalOwnerLossAsync(
+                    supervisor,
+                    authenticationMonitor,
+                    safetyArm,
+                    cancellationToken);
             if (!abort.Success ||
                 abort.Snapshot.State != StationTxSafetyState.Disarmed ||
                 safetyTransport.CommandCount != 0)
             {
                 throw new InvalidOperationException(
-                    "The idle session-loss preflight did not disarm without issuing an unkey command.");
+                    $"The idle {m_profile.ScenarioLabel} preflight did not disarm without issuing an unkey command.");
             }
 
             Console.WriteLine(JsonSerializer.Serialize(new
             {
-                test = "independent-browser-session-loss-no-rf-preflight",
+                test = m_profile.PreflightTestName,
                 passed = true,
                 radio = options.RadioId,
                 serial = initial.Serial,
@@ -143,7 +224,9 @@ internal sealed class HilSafetySessionLossOperation(
                     releasedLeases = released,
                     exactSession = sessionId,
                     exactBrowserClient = browserClientId,
-                    supervisorSignal = "browser-session-lost"
+                    supervisorSignal = m_profile.SignalReason,
+                    authenticatedTransitionObserved =
+                        authenticationMonitor is not null
                 },
                 safety = new
                 {
@@ -160,6 +243,10 @@ internal sealed class HilSafetySessionLossOperation(
         {
             using CancellationTokenSource cleanup =
                 new(TimeSpan.FromSeconds(15));
+            if (authenticationMonitor is not null)
+            {
+                await authenticationMonitor.DisposeAsync();
+            }
             bool supervisorIdle = true;
             if (supervisor is not null)
             {
@@ -175,7 +262,7 @@ internal sealed class HilSafetySessionLossOperation(
                     lease.LeaseId,
                     sessionId,
                     browserClientId,
-                    "session-loss-preflight-cleanup",
+                    $"{m_profile.ScenarioLabel}-preflight-cleanup",
                     out _);
             }
             bool radioIdle = supervisorIdle &&
@@ -187,7 +274,8 @@ internal sealed class HilSafetySessionLossOperation(
             {
                 m_loggerFactory.CreateLogger<HilSafetySessionLossOperation>()
                     .LogCritical(
-                        "The no-RF session-loss preflight did not confirm idle; verify PSOC2 before continuing");
+                        "The no-RF {Scenario} preflight did not confirm idle; verify PSOC2 before continuing",
+                        m_profile.ScenarioLabel);
             }
             else
             {
@@ -202,7 +290,8 @@ internal sealed class HilSafetySessionLossOperation(
                     m_loggerFactory.CreateLogger<HilSafetySessionLossOperation>()
                         .LogError(
                             exception,
-                            "Could not restore transmit settings after the no-RF session-loss preflight");
+                            "Could not restore transmit settings after the no-RF {Scenario} preflight",
+                            m_profile.ScenarioLabel);
                 }
                 if (resources is not null)
                 {
@@ -221,13 +310,19 @@ internal sealed class HilSafetySessionLossOperation(
         HilArmManifest manifest = await HilArmManifest.ConsumeAsync(
             commandLine.ArmFile,
             commandLine.Token,
-            HilArmManifest.SafetySessionLossPurpose,
+            m_profile.ManifestPurpose,
             m_timeProvider,
             cancellationToken);
-        HilOptions options = HilArmManifest.ToSafetySessionLossOptions(
-            manifest,
-            commandLine.ArmFile,
-            commandLine.Token);
+        HilOptions options = m_profile.Kind ==
+            HilSafetyOwnerLossKind.Authentication
+                ? HilArmManifest.ToSafetyAuthenticationLossOptions(
+                    manifest,
+                    commandLine.ArmFile,
+                    commandLine.Token)
+                : HilArmManifest.ToSafetySessionLossOptions(
+                    manifest,
+                    commandLine.ArmFile,
+                    commandLine.Token);
 
         await using HilFlexSession observer = NewSession(options.RadioId);
         await observer.ConnectAsync(
@@ -251,6 +346,7 @@ internal sealed class HilSafetySessionLossOperation(
         TxLeaseManager? leases = null;
         TxLease? lease = null;
         StationTxSafetySupervisor? supervisor = null;
+        StationTxAuthenticationMonitor? authenticationMonitor = null;
         CountingTxCommandTransport? engineTransport = null;
         CountingEmergencyUnkeyTransport? safetyTransport = null;
         DateTimeOffset? keyedAt = null;
@@ -258,8 +354,8 @@ internal sealed class HilSafetySessionLossOperation(
         DateTimeOffset? safetyUnkeyRequestedAt = null;
         DateTimeOffset? idleAt = null;
         HilCwxIdentificationResult? identification = null;
-        const string sessionId = "tx-hil-browser-session-loss";
-        const string browserClientId = "tx-hil-browser-session-owner";
+        string sessionId = m_profile.LiveSessionId;
+        string browserClientId = m_profile.LiveBrowserClientId;
 
         try
         {
@@ -285,7 +381,7 @@ internal sealed class HilSafetySessionLossOperation(
                     sessionId,
                     browserClientId,
                     "tx-hil",
-                    "PSOC2 Browser Session Loss",
+                    m_profile.OperatorDisplayName,
                     TimeSpan.FromSeconds(15),
                     out lease,
                     out string? leaseError))
@@ -302,7 +398,7 @@ internal sealed class HilSafetySessionLossOperation(
                 safetyTransport,
                 m_timeProvider);
             StationTxSafetyArm safetyArm = new(
-                "tx-hil-session-loss-engine-instance",
+                m_profile.LiveEngineInstanceId,
                 lease!.LeaseId,
                 sessionId,
                 browserClientId,
@@ -310,7 +406,23 @@ internal sealed class HilSafetySessionLossOperation(
                 HeartbeatTimeout);
             RequireSuccess(
                 await supervisor.ArmAsync(safetyArm, cancellationToken),
-                "arm the independent session-loss supervisor");
+                $"arm the independent {m_profile.ScenarioLabel} supervisor");
+
+            if (m_profile.Kind == HilSafetyOwnerLossKind.Authentication)
+            {
+                authenticationMonitor = new StationTxAuthenticationMonitor(
+                    supervisor);
+                StationTxAuthenticationResult authenticated =
+                    await authenticationMonitor.EvaluateAsync(
+                        AuthenticationObservation(safetyArm, true),
+                        cancellationToken);
+                if (!authenticated.Success ||
+                    authenticated.Code != "authenticated")
+                {
+                    throw new InvalidOperationException(
+                        "The live test did not establish the exact authenticated authority before keying.");
+                }
+            }
 
             engineTransport = new CountingTxCommandTransport(
                 resources.Transport);
@@ -353,7 +465,7 @@ internal sealed class HilSafetySessionLossOperation(
 
             int released = leases.ReleaseSession(
                 sessionId,
-                "browser-session-lost");
+                m_profile.SignalReason);
             sessionLostAt = m_timeProvider.GetUtcNow();
             if (released != 1 || leases.GetCurrent(options.RadioId) is not null)
             {
@@ -361,15 +473,18 @@ internal sealed class HilSafetySessionLossOperation(
                     "The live test did not release exactly one controlling-session TX lease.");
             }
 
-            StationTxSafetyResult abort = await supervisor.AbortAsync(
-                "browser-session-lost",
-                cancellationToken);
+            StationTxSafetyResult abort =
+                await SignalOwnerLossAsync(
+                    supervisor,
+                    authenticationMonitor,
+                    safetyArm,
+                    cancellationToken);
             if (!abort.Success ||
                 abort.Snapshot.State != StationTxSafetyState.UnkeyPending ||
                 safetyTransport.CommandCount != 1)
             {
                 throw new InvalidOperationException(
-                    $"The independent observer did not issue the exact session-loss unkey: {abort.Code}: {abort.Message}");
+                    $"The independent observer did not issue the exact {m_profile.ScenarioLabel} unkey: {abort.Code}: {abort.Message}");
             }
             safetyUnkeyRequestedAt = m_timeProvider.GetUtcNow();
 
@@ -395,7 +510,7 @@ internal sealed class HilSafetySessionLossOperation(
                 safetyTransport.CommandCount != 1)
             {
                 throw new InvalidOperationException(
-                    "The session-loss command split was not exact: the engine must key once and never unkey, while the independent observer must unkey exactly once.");
+                    $"The {m_profile.ScenarioLabel} command split was not exact: the engine must key once and never unkey, while the independent observer must unkey exactly once.");
             }
 
             await engine.SetOwnedSliceModeAsync(
@@ -409,7 +524,7 @@ internal sealed class HilSafetySessionLossOperation(
 
             Console.WriteLine(JsonSerializer.Serialize(new
             {
-                test = "independent-browser-session-loss-unkey",
+                test = m_profile.LiveTestName,
                 passed = true,
                 radio = options.RadioId,
                 serial = initial.Serial,
@@ -423,7 +538,9 @@ internal sealed class HilSafetySessionLossOperation(
                     exactSession = sessionId,
                     exactBrowserClient = browserClientId,
                     releasedLeases = 1,
-                    signaledReason = "browser-session-lost"
+                    signaledReason = m_profile.SignalReason,
+                    authenticatedTransitionObserved =
+                        authenticationMonitor is not null
                 },
                 engineCommands = new
                 {
@@ -473,6 +590,10 @@ internal sealed class HilSafetySessionLossOperation(
             using CancellationTokenSource cleanup =
                 new(TimeSpan.FromSeconds(20));
 
+            if (authenticationMonitor is not null)
+            {
+                await authenticationMonitor.DisposeAsync();
+            }
             bool supervisorIdle = true;
             if (supervisor is not null)
             {
@@ -500,7 +621,7 @@ internal sealed class HilSafetySessionLossOperation(
                     lease.LeaseId,
                     sessionId,
                     browserClientId,
-                    "hil-session-loss-cleanup",
+                    $"hil-{m_profile.ScenarioLabel}-cleanup",
                     out _);
             }
 
@@ -514,7 +635,8 @@ internal sealed class HilSafetySessionLossOperation(
             {
                 m_loggerFactory.CreateLogger<HilSafetySessionLossOperation>()
                     .LogCritical(
-                        "PSOC2 did not provide fresh idle confirmation after the browser-session-loss test. Keep RF power bounded and use the remote power kill immediately");
+                        "PSOC2 did not provide fresh idle confirmation after the {Scenario} test. Keep RF power bounded and use the remote power kill immediately",
+                        m_profile.ScenarioLabel);
             }
             else
             {
@@ -545,7 +667,8 @@ internal sealed class HilSafetySessionLossOperation(
                         m_loggerFactory.CreateLogger<HilSafetySessionLossOperation>()
                             .LogCritical(
                                 exception,
-                                "The browser-session-loss test emitted RF but automatic cleanup identification failed; identify KC4CAW manually as soon as possible");
+                                "The {Scenario} test emitted RF but automatic cleanup identification failed; identify KC4CAW manually as soon as possible",
+                                m_profile.ScenarioLabel);
                     }
                 }
 
@@ -571,6 +694,47 @@ internal sealed class HilSafetySessionLossOperation(
                 }
             }
         }
+    }
+
+    private static StationTxAuthenticationObservation
+        AuthenticationObservation(
+            StationTxSafetyArm arm,
+            bool isAuthenticated) =>
+        new(
+            arm.EngineInstanceId,
+            arm.LeaseId,
+            arm.SessionId,
+            arm.BrowserClientId,
+            arm.ProtectedClientHandle,
+            isAuthenticated);
+
+    private async Task<StationTxSafetyResult> SignalOwnerLossAsync(
+        StationTxSafetySupervisor supervisor,
+        StationTxAuthenticationMonitor? authenticationMonitor,
+        StationTxSafetyArm arm,
+        CancellationToken cancellationToken)
+    {
+        if (m_profile.Kind == HilSafetyOwnerLossKind.BrowserSession)
+        {
+            return await supervisor.AbortAsync(
+                m_profile.SignalReason,
+                cancellationToken);
+        }
+        if (authenticationMonitor is null)
+        {
+            throw new InvalidOperationException(
+                "The authentication-loss operation has no exact-identity authentication monitor.");
+        }
+
+        StationTxAuthenticationResult loss =
+            await authenticationMonitor.EvaluateAsync(
+                AuthenticationObservation(arm, false),
+                cancellationToken);
+        return new StationTxSafetyResult(
+            loss.Success,
+            loss.Code,
+            loss.Message,
+            loss.SafetySnapshot);
     }
 
     private async Task WaitForObserverOwnershipAsync(
@@ -618,7 +782,8 @@ internal sealed class HilSafetySessionLossOperation(
             m_loggerFactory.CreateLogger<HilSafetySessionLossOperation>()
                 .LogCritical(
                     exception,
-                    "The independent safety observer could not confirm emergency unkey during session-loss cleanup");
+                    "The independent safety observer could not confirm emergency unkey during {Scenario} cleanup",
+                    m_profile.ScenarioLabel);
             return false;
         }
     }
@@ -653,7 +818,8 @@ internal sealed class HilSafetySessionLossOperation(
             m_loggerFactory.CreateLogger<HilSafetySessionLossOperation>()
                 .LogCritical(
                     exception,
-                    "The engine fallback could not confirm emergency unkey during session-loss cleanup");
+                    "The engine fallback could not confirm emergency unkey during {Scenario} cleanup",
+                    m_profile.ScenarioLabel);
             return false;
         }
     }
@@ -697,7 +863,7 @@ internal sealed class HilSafetySessionLossOperation(
         {
             cancellationToken.ThrowIfCancellationRequested();
             last = await supervisor.EvaluateAsync(
-                "hil-session-loss-watchdog",
+                $"hil-{m_profile.ScenarioLabel}-watchdog",
                 cancellationToken);
             if (predicate(last))
             {
@@ -731,7 +897,7 @@ internal sealed class HilSafetySessionLossOperation(
         {
             cancellationToken.ThrowIfCancellationRequested();
             last = await gate.EvaluateAsync(
-                "hil-session-loss-engine-watchdog",
+                $"hil-{m_profile.ScenarioLabel}-engine-watchdog",
                 cancellationToken);
             if (last.Snapshot.State == expected)
             {
@@ -766,13 +932,13 @@ internal sealed class HilSafetySessionLossOperation(
         if (snapshot.ExternalGuiClients.Count != 0)
         {
             throw new InvalidOperationException(
-                "The browser-session-loss test requires every external GUI client to be disconnected.");
+                $"The {m_profile.ScenarioLabel} test requires every external GUI client to be disconnected.");
         }
         if (snapshot.TxOccupancy.State != RadioTxOccupancyState.Idle ||
             snapshot.TxOccupancy.FreshUntil <= m_timeProvider.GetUtcNow())
         {
             throw new InvalidOperationException(
-                "The browser-session-loss test requires a fresh idle interlock.");
+                $"The {m_profile.ScenarioLabel} test requires a fresh idle interlock.");
         }
         if (snapshot.TransmitSettings is null)
         {

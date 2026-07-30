@@ -28,6 +28,7 @@ internal static class HilSafetyFaultMatrix
         results.Add(await HeartbeatExpiryIdleAsync(cancellationToken));
         results.Add(await HeartbeatExpiryProtectedTxAsync(cancellationToken));
         results.Add(await BrowserLossAsync(cancellationToken));
+        results.Add(await AuthenticationLossAsync(cancellationToken));
         results.Add(await ExternalOwnerProtectionAsync(cancellationToken));
         results.Add(await UnknownUnkeyOutcomeAsync(cancellationToken));
         results.Add(await TransportOutageRecoveryAsync(cancellationToken));
@@ -113,6 +114,49 @@ internal static class HilSafetyFaultMatrix
             result,
             fixture,
             "An explicit owner-loss signal must use the same exact-owner unkey path.");
+    }
+
+    private static async Task<HilSafetyFaultScenario> AuthenticationLossAsync(
+        CancellationToken cancellationToken)
+    {
+        MatrixFixture fixture = NewFixture();
+        await using StationTxSafetySupervisor supervisor = fixture.Supervisor;
+        await using StationTxAuthenticationMonitor monitor = new(supervisor);
+        ObserveIdle(fixture, ProtectedHandle);
+        await RequireAsync(
+            supervisor.ArmAsync(Arm(), cancellationToken),
+            "arm");
+        StationTxAuthenticationResult authenticated =
+            await monitor.EvaluateAsync(
+                AuthenticationObservation(isAuthenticated: true),
+                cancellationToken);
+        if (!authenticated.Success || authenticated.Code != "authenticated")
+        {
+            throw new InvalidOperationException(
+                $"Fault matrix authentication establishment failed: {authenticated.Code}: {authenticated.Message}");
+        }
+        ObserveProtectedTx(fixture);
+        StationTxAuthenticationResult lost =
+            await monitor.EvaluateAsync(
+                AuthenticationObservation(isAuthenticated: false),
+                cancellationToken);
+        StationTxSafetyResult result = new(
+            lost.Success,
+            lost.Code,
+            lost.Message,
+            lost.SafetySnapshot);
+        bool passed =
+            result.Success &&
+            result.Code == "unkey_pending" &&
+            lost.SawAuthenticated &&
+            lost.LossSignaled &&
+            fixture.Transport.CommandCount == 1;
+        return Scenario(
+            "authentication-loss",
+            passed,
+            result,
+            fixture,
+            "Only an exact authenticated-to-unauthenticated transition may invoke the ownership-safe observer unkey path.");
     }
 
     private static async Task<HilSafetyFaultScenario>
@@ -327,6 +371,16 @@ internal static class HilSafetyFaultMatrix
             BrowserClientId,
             ProtectedHandle,
             heartbeatTimeout ?? TimeSpan.FromSeconds(2));
+
+    private static StationTxAuthenticationObservation
+        AuthenticationObservation(bool isAuthenticated) =>
+        new(
+            EngineInstanceId,
+            LeaseId,
+            SessionId,
+            BrowserClientId,
+            ProtectedHandle,
+            isAuthenticated);
 
     private static void ObserveIdle(
         MatrixFixture fixture,
