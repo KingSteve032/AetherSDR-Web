@@ -19,7 +19,7 @@ fail-closed until the dedicated TX-safety milestone is complete.
 | M3 — Mobile and constrained networks | Complete | Reliable operation over phones and VPNs |
 | M4 — Multi-radio administration | Complete | Observable and manageable radio fleet |
 | M5 — AetherD engine boundary | Blocked on RFC stages 3–5 | Versioned production engine connection |
-| M6 — Remote station connectivity | End-to-end pilot staged | Secure access to radios on other networks |
+| M6 — Remote station connectivity | Complete | Secure access to radios on other networks |
 | M7 — Transmit safety | Active | Intentional, leased, fail-closed transmit |
 | M8 — Production release | Planned | Supported deployment, upgrades, and recovery |
 
@@ -443,7 +443,7 @@ Acceptance criteria:
 
 ## M6 — Remote station connectivity
 
-Status: **End-to-end receive pilot operational; production hardening remains**
+Status: **Complete**
 
 Goal: securely connect radios that are not on the gateway LAN without exposing
 radio control ports to the public Internet or sending timing-sensitive raw
@@ -739,6 +739,24 @@ Least-privilege security review staged on 2026-07-29:
   broker sessions and 2-of-2 free. Agent, station engine, broker, and FlexWeb
   remained active with zero process restarts; the WAN soak was inactive and no
   unexpected warning-level entries followed the secure reconnection.
+- Live station credential disable/re-enable acceptance completed on 2026-07-30
+  for `odu-campus` while an independent PSOC2 browser session remained
+  connected. Disabling the station made both ODU radios unavailable as
+  expected. Re-enabling it restored both radios after approximately 5–10
+  seconds, while the PSOC2 stream continued without interruption. This proves
+  the core fail-closed station isolation and recovery path. Audit outcomes,
+  fresh-instance identity, and post-recovery capacity were not separately
+  reported in this run and are not claimed here.
+- Final live credential-lifecycle acceptance completed on 2026-07-30. Admin
+  revoked `odu-campus` with a succeeded audit event attributed to Steven
+  Griggs (KC4CAW); the old station credential remained unable to reconnect.
+  A fresh one-time re-enrollment through `aetherremote-enroll` returned the
+  station to `enabled` with purpose `reenroll` and recorded credential rotation
+  at 2026-07-30 19:00:32 UTC. The agent reconnected in approximately five
+  seconds with a fresh station instance, both ODU-6400 and ODU-6600M returned
+  available, no stale receive sessions reappeared, and the independent PSOC2
+  stream remained unaffected. The operator marked the complete revoke,
+  rotation, and recovery workflow as a pass.
 
 Deployment:
 
