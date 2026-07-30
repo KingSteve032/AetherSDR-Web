@@ -796,7 +796,7 @@ Acceptance criteria:
 
 ## M7 — Transmit safety
 
-Status: **Complete**
+Status: **Active — safety foundation accepted; production browser TX integration outstanding**
 
 Goal: enable transmit only after engine-side arbitration can prove deliberate
 operator intent and force-unkey on every loss path.
@@ -804,6 +804,17 @@ operator intent and force-unkey on every loss path.
 Foundation deployed and corrected on 2026-07-29. Corrective candidate:
 `20260729-m7-interlock-occupancy-1`.
 
+Milestone state:
+
+- **Safety foundation and loss-path HIL: Complete.** The single-radio lease,
+  exact-owner gate, independent unkey-only supervisor, production/HIL binary
+  separation, and every required owner/liveness loss path have accepted evidence.
+- **Production browser TX integration: Not implemented.** The normal browser and
+  production server still expose no reachable MOX/PTT, TUNE, CW, or microphone
+  transmit path, and production continues to report `transmitEnabled=false`.
+- **M7 remains Active** until an authorized operator can deliberately transmit
+  from the production browser through the accepted station-local safety boundary
+  and the complete browser-driven workflow passes production HIL acceptance.
 
 - Replaced the per-browser prototype lease with one process-wide authority keyed
   by the normalized physical radio ID. Separate browser sessions using the same
@@ -827,8 +838,9 @@ Foundation deployed and corrected on 2026-07-29. Corrective candidate:
   AetherSDR lease/client. It must never unkey SmartSDR, Maestro, hardware PTT,
   or another external FLEX client.
 - The browser MOX/PTT/TUNE/CW/audio path remains unreachable and production
-  configuration remains receive-only while station-local command ownership and
-  hardware unkey tests are built.
+  configuration remains receive-only. The station-local command ownership and
+  loss-path safety foundation is accepted, but its production browser integration
+  has not yet been implemented or enabled.
 - The private station TX command-gate increment is staged in source. The gate is
   browser-inaccessible and not registered in production DI. It requires the
   exact physical-radio lease, radio session, browser client, AetherSDR FLEX
@@ -1215,17 +1227,25 @@ Acceptance criteria:
 
 - A single-holder TX lease is enforced below the browser boundary and keyed by
   physical radio, not browser session.
-- PTT, TUNE, CW, and microphone transmission require an explicit operator
-  action and the appropriate capability.
+- An authorized operator can deliberately key and unkey a radio from the
+  production browser through the station-local TX gate.
+- Browser microphone audio, TUNE, and CW require explicit operator action,
+  transmit capability, the exact physical-radio lease, and matching
+  browser/session/engine/FLEX ownership.
 - Lease loss, authentication loss, browser loss, gateway loss, and engine
-  restart all force an immediate unkey of AetherSDR-owned TX in
-  hardware-in-the-loop tests without interrupting external SmartSDR, Maestro,
+  restart immediately remove browser TX authority and force an ownership-safe
+  unkey of AetherSDR-owned TX without interrupting external SmartSDR, Maestro,
   or hardware-PTT transmission.
-- Receive-only deployments continue to have no reachable keying command.
+- Production TX defaults to disabled and requires explicit reviewed
+  configuration to enable; receive-only deployments retain no reachable keying
+  command.
+- Browser-driven production HIL proves key, microphone audio or bounded test
+  modulation, TUNE and CW where enabled, unkey, final radio-authoritative idle,
+  resource cleanup, restart/reconnect behavior, and external-client protection.
 
 ## M8 — Production release
 
-Status: **Planned**
+Status: **Planned — blocked on completion of M7 production browser TX integration**
 
 Goal: make the gateway supportable as a maintained station service.
 
