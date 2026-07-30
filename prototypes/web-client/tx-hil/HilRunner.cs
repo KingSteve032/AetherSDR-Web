@@ -41,6 +41,10 @@ internal sealed class HilRunner(
                 await VerifySafetySessionLossPreflightAsync(
                     options,
                     cancellationToken),
+            HilCommand.VerifySafetyAuthenticationLossPreflight =>
+                await VerifySafetyAuthenticationLossPreflightAsync(
+                    options,
+                    cancellationToken),
             HilCommand.VerifySafetyEngineConnectionLossPreflight =>
                 await VerifySafetyEngineConnectionLossPreflightAsync(
                     options,
@@ -73,6 +77,16 @@ internal sealed class HilRunner(
                     cancellationToken),
             HilCommand.SafetySessionLoss =>
                 await SafetySessionLossAsync(options, cancellationToken),
+            HilCommand.PrepareSafetyAuthenticationLoss =>
+                await PrepareAsync(
+                    options,
+                    HilArmManifest.SafetyAuthenticationLossPurpose,
+                    "independent authentication-loss test",
+                    cancellationToken),
+            HilCommand.SafetyAuthenticationLoss =>
+                await SafetyAuthenticationLossAsync(
+                    options,
+                    cancellationToken),
             HilCommand.PrepareSafetyEngineConnectionLoss =>
                 await PrepareAsync(
                     options,
@@ -708,6 +722,17 @@ internal sealed class HilRunner(
                         independentObserverUnkeyOnly = true
                     }
                     : null,
+            safetyAuthenticationLoss =
+                purpose == HilArmManifest.SafetyAuthenticationLossPurpose
+                    ? new
+                    {
+                        exactAuthenticatedAuthorityObserved = true,
+                        controllingSessionLeaseReleased = true,
+                        explicitSupervisorAbort = "authentication-lost",
+                        engineExplicitUnkey = false,
+                        independentObserverUnkeyOnly = true
+                    }
+                    : null,
             safetyEngineConnectionLoss =
                 purpose == HilArmManifest.SafetyEngineConnectionLossPurpose
                     ? new
@@ -783,6 +808,26 @@ internal sealed class HilRunner(
         new HilSafetySessionLossOperation(
             m_loggerFactory,
             m_timeProvider).RunAsync(
+                commandLine,
+                cancellationToken);
+
+    private Task<int> VerifySafetyAuthenticationLossPreflightAsync(
+        HilOptions options,
+        CancellationToken cancellationToken) =>
+        new HilSafetySessionLossOperation(
+            m_loggerFactory,
+            m_timeProvider,
+            HilSafetyOwnerLossKind.Authentication).VerifyPreflightAsync(
+                options,
+                cancellationToken);
+
+    private Task<int> SafetyAuthenticationLossAsync(
+        HilOptions commandLine,
+        CancellationToken cancellationToken) =>
+        new HilSafetySessionLossOperation(
+            m_loggerFactory,
+            m_timeProvider,
+            HilSafetyOwnerLossKind.Authentication).RunAsync(
                 commandLine,
                 cancellationToken);
 

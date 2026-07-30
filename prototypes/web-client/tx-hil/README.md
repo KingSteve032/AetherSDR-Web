@@ -367,9 +367,83 @@ The sequence is:
 9. Send CW `KC4CAW`, confirm queue drain and idle, restore settings, and remove
    temporary resources.
 
-## Independent engine TX command-channel-loss forced-unkey test
+## Independent authentication-loss forced-unkey test
 
 This fourth purpose-bound operation is named
+`independent-authentication-loss`. Its token cannot launch the normal pulse,
+heartbeat-expiry, browser-session-loss, engine-loss, or process-loss
+operations, and none of those tokens can launch this test.
+
+The authentication monitor has no radio command transport. It acts only after
+it first observes the exact active safety arm—engine instance, lease, session,
+browser client, and FLEX handle—as authenticated. Starting unauthenticated,
+reporting a mismatched identity, or repeating the same loss report cannot
+invent ownership or issue a duplicate immediate unkey.
+
+### No-RF preflight
+
+```bash
+dotnet "$HIL" verify-safety-auth-loss-preflight \
+  --frequency-hz <operator-confirmed-clear-frequency-hz> \
+  --on-air-confirm KC4CAW-PSOC2-ANT1-CLEAR-CAMERA-REMOTE-OFF
+```
+
+The preflight creates and removes the owned radio resources, establishes the
+exact authenticated authority, releases its lease, injects authentication loss
+while the radio is idle, and must finish with zero key/unkey commands and
+`rfEmitted=false`.
+
+### Prepare
+
+```bash
+AUTH_LOSS_ARM="/run/user/$UID/aethersdr-tx-auth-loss.json"
+
+dotnet "$HIL" prepare-safety-auth-loss \
+  --arm-file "$AUTH_LOSS_ARM" \
+  --frequency-hz <operator-confirmed-clear-frequency-hz> \
+  --on-air-confirm KC4CAW-PSOC2-ANT1-CLEAR-CAMERA-REMOTE-OFF
+```
+
+The prepare output must show:
+
+- purpose `independent-authentication-loss`
+- exact authenticated authority observed
+- controlling-session lease release enabled
+- explicit supervisor abort reason `authentication-lost`
+- engine explicit unkey `false`
+- independent observer unkey-only `true`
+
+### Run
+
+```bash
+dotnet "$HIL" safety-auth-loss \
+  --arm-file "$AUTH_LOSS_ARM" \
+  --token "<ONE-TIME-TOKEN>"
+```
+
+The sequence is:
+
+1. Establish the independent non-GUI observer and engine GUI.
+2. Stage the exact operator-selected USB/ANT1 silent 1 W route and transfer
+   Local PTT to the engine handle.
+3. Arm the observer with the exact engine, lease, session, browser, and FLEX
+   client handle.
+4. Have the authentication monitor record that exact authority as
+   authenticated before any key request.
+5. Have the engine send exactly one `xmit 1` and prove exact-handle TX on both
+   independent status streams.
+6. Release exactly one lease for the authenticated session and inject the exact
+   authenticated-to-unauthenticated transition.
+7. Require the observer—not the browser/gateway engine path—to send exactly one
+   `xmit 0`; repeated loss reports may not duplicate the immediate command.
+8. Require both status streams to confirm idle and verify the engine unkey count
+   remains zero.
+9. Send CW `KC4CAW`, confirm queue drain and idle, restore settings, and remove
+   temporary resources.
+
+## Independent engine TX command-channel-loss forced-unkey test
+
+This fifth purpose-bound operation is named
 `independent-engine-connection-loss`. Its token cannot launch any other HIL
 operation, and the other purpose tokens cannot launch it.
 
@@ -431,7 +505,7 @@ The sequence is:
 
 ## Independent engine process/TCP-loss forced-unkey test
 
-This fifth purpose-bound operation is named
+This sixth purpose-bound operation is named
 `independent-engine-process-loss`. Its token cannot launch any earlier HIL
 operation, and earlier purpose tokens cannot launch it.
 
