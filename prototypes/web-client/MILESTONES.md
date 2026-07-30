@@ -814,7 +814,7 @@ Acceptance criteria:
 
 ## M7 — Transmit safety
 
-Status: **Active**
+Status: **Complete**
 
 Goal: enable transmit only after engine-side arbitration can prove deliberate
 operator intent and force-unkey on every loss path.
@@ -1157,6 +1157,77 @@ Foundation deployed and corrected on 2026-07-29. Corrective candidate:
   leaked 14.250 MHz resources, and the safety-expiry manifest consumed.
   Production remains receive-only and its clean publish contains zero FLEX
   key/unkey, CWX-ID, HIL operation, or TX-audio-stream creation strings.
+- Authentication-loss safety is now staged behind the separate purpose
+  `independent-authentication-loss`. An exact-identity monitor must first
+  observe the active engine, lease, session, browser client, and protected FLEX
+  handle as authenticated; only the matching authenticated-to-unauthenticated
+  transition may release the controlling lease and signal the independent
+  unkey-only supervisor. Startup unauthenticated, mismatched identity, repeated
+  loss reports, and external SmartSDR ownership remain non-actionable.
+- The staged tree passes 222 server tests, 45 TX-HIL tests, 70 AetherRemote
+  tests, and 106 browser tests. The simulated independent-watchdog matrix now
+  passes all nine scenarios, including authentication loss, without creating a
+  radio connection. Clean production publish inspection found zero key, unkey,
+  CW-ID, HIL-operation, or authentication-loss-purpose strings; the standalone
+  HIL artifact contains exactly one key, one unkey, and one CW-ID command
+  literal.
+- Live no-RF authentication-loss preflight passed on 2026-07-30 at 14.310 MHz
+  after the operator confirmed the frequency clear and PSOC2 free of external
+  GUI clients. Engine handle `0x09970815` and non-GUI observer handle
+  `0x259e6128` established the exact identity boundary. The preflight released
+  one controlling-session lease after the authenticated-to-unauthenticated
+  transition, delivered the `authentication-lost` signal, issued zero key and
+  zero unkey commands while idle, left the interlock idle, restored and removed
+  the owned pan/waterfall/slice resources, and reported `rfEmitted=false`.
+- Live authentication-loss RF acceptance passed on 2026-07-30 at 14.310 MHz.
+  Engine handle `0x030ba266` sent exactly one key and zero unkeys. Non-GUI
+  observer handle `0x4dd88b7c`, which had no key capability, sent the only
+  unkey after the exact authenticated-to-unauthenticated transition released
+  one controlling-session lease and delivered `authentication-lost`. The
+  observer requested unkey 42.5287 ms after authentication loss; FLEX confirmed
+  idle 28.0645 ms later, for a total keyed-to-idle interval of 77.8632 ms. The
+  engine gate reconciled to Idle with reason `lease-lost`.
+- The same operation sent CW `KC4CAW` at 20 WPM. FLEX reported insertion index
+  48 and final sent index 53, exact-handle transmit was observed, the queue
+  drained, and the radio returned idle. The purpose-bound operation completed
+  successfully and returned control without a cleanup error.
+- Gateway-process-loss safety is now staged behind the separate purpose
+  `independent-gateway-process-loss`. The station engine and independent
+  non-GUI observer remain connected while a separate HIL-only gateway-authority
+  child process is observed alive and then force-killed. That child creates no
+  radio connection and has no key or unkey capability. Only the same exact
+  gateway process instance, engine, lease, session, browser client, and FLEX
+  handle may transition connected-to-lost and signal the independent unkey-only
+  supervisor. Starting disconnected, replacing the gateway process, mismatched
+  identity, repeated loss reports, and external SmartSDR ownership remain
+  non-actionable.
+- The staged gateway increment passes 233 server tests, 48 TX-HIL tests, 70
+  AetherRemote tests, and 106 browser tests. The simulated independent-watchdog
+  matrix passes all ten scenarios, including gateway process loss, without a
+  radio connection. A real HIL child-process launch confirmed a distinct PID
+  with no radio, key, or unkey capability. Clean production publish inspection
+  found zero key, unkey, CW-ID, gateway-child, or gateway-loss-purpose strings;
+  the standalone HIL artifact retains exactly one key, one unkey, and one CW-ID
+  command literal.
+
+- Live no-RF gateway-process-loss preflight passed on 2026-07-30 at 14.325 MHz.
+  Engine handle `0x631cb085` and non-GUI observer handle `0x2d48ba07` established
+  the exact station ownership boundary. Gateway child PID 76884 was force-killed
+  with exit code 137. It created no radio connection and had no key or unkey
+  capability. One controlling lease was released, zero unkey commands were
+  issued while idle, the interlock remained idle, and `rfEmitted=false`.
+- Live gateway-process-loss RF acceptance passed on 2026-07-30 at 14.325 MHz.
+  Gateway child PID 76960, instance `gateway-76960-639210501076492349`, was
+  force-killed with exit code 137 after engine handle `0x6f31c692` became the
+  radio-confirmed TX owner. The engine sent exactly one key and zero unkeys.
+  Non-GUI observer handle `0x4f9dcab9`, with no key capability, sent the only
+  unkey. Unkey was requested 38.6124 ms after process loss; FLEX confirmed idle
+  27.2152 ms later, for a total keyed-to-idle interval of 149.0774 ms. The gate
+  reconciled to Idle with reason `lease-lost`.
+- CW `KC4CAW` completed at 20 WPM with insertion index 54 and final sent index
+  59. Exact-handle transmit was observed, the queue drained, and the radio
+  returned idle. All M7 loss paths are now proven in HIL while normal production
+  publishes remain receive-only with no reachable keying command.
 
 Acceptance criteria:
 

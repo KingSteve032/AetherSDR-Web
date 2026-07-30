@@ -45,6 +45,10 @@ internal sealed class HilRunner(
                 await VerifySafetyAuthenticationLossPreflightAsync(
                     options,
                     cancellationToken),
+            HilCommand.VerifySafetyGatewayProcessLossPreflight =>
+                await VerifySafetyGatewayProcessLossPreflightAsync(
+                    options,
+                    cancellationToken),
             HilCommand.VerifySafetyEngineConnectionLossPreflight =>
                 await VerifySafetyEngineConnectionLossPreflightAsync(
                     options,
@@ -85,6 +89,16 @@ internal sealed class HilRunner(
                     cancellationToken),
             HilCommand.SafetyAuthenticationLoss =>
                 await SafetyAuthenticationLossAsync(
+                    options,
+                    cancellationToken),
+            HilCommand.PrepareSafetyGatewayProcessLoss =>
+                await PrepareAsync(
+                    options,
+                    HilArmManifest.SafetyGatewayProcessLossPurpose,
+                    "independent web-gateway process-loss test",
+                    cancellationToken),
+            HilCommand.SafetyGatewayProcessLoss =>
+                await SafetyGatewayProcessLossAsync(
                     options,
                     cancellationToken),
             HilCommand.PrepareSafetyEngineConnectionLoss =>
@@ -733,6 +747,21 @@ internal sealed class HilRunner(
                         independentObserverUnkeyOnly = true
                     }
                     : null,
+            safetyGatewayProcessLoss =
+                purpose == HilArmManifest.SafetyGatewayProcessLossPurpose
+                    ? new
+                    {
+                        injectedBoundary = "web-gateway-authority-process",
+                        exactProcessInstanceObserved = true,
+                        processKillEntireTree = true,
+                        gatewayRadioConnectionCreated = false,
+                        gatewayKeyCapability = false,
+                        gatewayUnkeyCapability = false,
+                        controllingSessionLeaseReleased = true,
+                        engineExplicitUnkey = false,
+                        independentObserverUnkeyOnly = true
+                    }
+                    : null,
             safetyEngineConnectionLoss =
                 purpose == HilArmManifest.SafetyEngineConnectionLossPurpose
                     ? new
@@ -828,6 +857,26 @@ internal sealed class HilRunner(
             m_loggerFactory,
             m_timeProvider,
             HilSafetyOwnerLossKind.Authentication).RunAsync(
+                commandLine,
+                cancellationToken);
+
+    private Task<int> VerifySafetyGatewayProcessLossPreflightAsync(
+        HilOptions options,
+        CancellationToken cancellationToken) =>
+        new HilSafetySessionLossOperation(
+            m_loggerFactory,
+            m_timeProvider,
+            HilSafetyOwnerLossKind.GatewayProcess).VerifyPreflightAsync(
+                options,
+                cancellationToken);
+
+    private Task<int> SafetyGatewayProcessLossAsync(
+        HilOptions commandLine,
+        CancellationToken cancellationToken) =>
+        new HilSafetySessionLossOperation(
+            m_loggerFactory,
+            m_timeProvider,
+            HilSafetyOwnerLossKind.GatewayProcess).RunAsync(
                 commandLine,
                 cancellationToken);
 

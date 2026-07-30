@@ -17,6 +17,7 @@ internal enum HilCommand
     VerifySafetyExpiryPreflight,
     VerifySafetySessionLossPreflight,
     VerifySafetyAuthenticationLossPreflight,
+    VerifySafetyGatewayProcessLossPreflight,
     VerifySafetyEngineConnectionLossPreflight,
     VerifySafetyProcessLossPreflight,
     Prepare,
@@ -27,6 +28,8 @@ internal enum HilCommand
     SafetySessionLoss,
     PrepareSafetyAuthenticationLoss,
     SafetyAuthenticationLoss,
+    PrepareSafetyGatewayProcessLoss,
+    SafetyGatewayProcessLoss,
     PrepareSafetyEngineConnectionLoss,
     SafetyEngineConnectionLoss,
     PrepareSafetyProcessLoss,
@@ -84,6 +87,8 @@ internal sealed record HilOptions(
                 HilCommand.VerifySafetySessionLossPreflight,
             "verify-safety-auth-loss-preflight" =>
                 HilCommand.VerifySafetyAuthenticationLossPreflight,
+            "verify-safety-gateway-loss-preflight" =>
+                HilCommand.VerifySafetyGatewayProcessLossPreflight,
             "verify-safety-engine-loss-preflight" =>
                 HilCommand.VerifySafetyEngineConnectionLossPreflight,
             "verify-safety-process-loss-preflight" =>
@@ -98,6 +103,9 @@ internal sealed record HilOptions(
             "prepare-safety-auth-loss" =>
                 HilCommand.PrepareSafetyAuthenticationLoss,
             "safety-auth-loss" => HilCommand.SafetyAuthenticationLoss,
+            "prepare-safety-gateway-loss" =>
+                HilCommand.PrepareSafetyGatewayProcessLoss,
+            "safety-gateway-loss" => HilCommand.SafetyGatewayProcessLoss,
             "prepare-safety-engine-loss" =>
                 HilCommand.PrepareSafetyEngineConnectionLoss,
             "safety-engine-loss" => HilCommand.SafetyEngineConnectionLoss,
@@ -152,6 +160,7 @@ internal sealed record HilOptions(
             HilCommand.VerifySafetyExpiryPreflight or
             HilCommand.VerifySafetySessionLossPreflight or
             HilCommand.VerifySafetyAuthenticationLossPreflight or
+            HilCommand.VerifySafetyGatewayProcessLossPreflight or
             HilCommand.VerifySafetyEngineConnectionLossPreflight or
             HilCommand.VerifySafetyProcessLossPreflight or
             HilCommand.Prepare or
@@ -162,6 +171,8 @@ internal sealed record HilOptions(
             HilCommand.SafetySessionLoss or
             HilCommand.PrepareSafetyAuthenticationLoss or
             HilCommand.SafetyAuthenticationLoss or
+            HilCommand.PrepareSafetyGatewayProcessLoss or
+            HilCommand.SafetyGatewayProcessLoss or
             HilCommand.PrepareSafetyEngineConnectionLoss or
             HilCommand.SafetyEngineConnectionLoss or
             HilCommand.PrepareSafetyProcessLoss or
@@ -184,6 +195,8 @@ internal sealed record HilOptions(
                 HilCommand.SafetySessionLoss or
                 HilCommand.PrepareSafetyAuthenticationLoss or
                 HilCommand.SafetyAuthenticationLoss or
+                HilCommand.PrepareSafetyGatewayProcessLoss or
+                HilCommand.SafetyGatewayProcessLoss or
                 HilCommand.PrepareSafetyEngineConnectionLoss or
                 HilCommand.SafetyEngineConnectionLoss or
                 HilCommand.PrepareSafetyProcessLoss or
@@ -203,12 +216,14 @@ internal sealed record HilOptions(
             HilCommand.VerifySafetyExpiryPreflight or
             HilCommand.VerifySafetySessionLossPreflight or
             HilCommand.VerifySafetyAuthenticationLossPreflight or
+            HilCommand.VerifySafetyGatewayProcessLossPreflight or
             HilCommand.VerifySafetyEngineConnectionLossPreflight or
             HilCommand.VerifySafetyProcessLossPreflight or
             HilCommand.Prepare or
             HilCommand.PrepareSafetyExpiry or
             HilCommand.PrepareSafetySessionLoss or
             HilCommand.PrepareSafetyAuthenticationLoss or
+            HilCommand.PrepareSafetyGatewayProcessLoss or
             HilCommand.PrepareSafetyEngineConnectionLoss or
             HilCommand.PrepareSafetyProcessLoss)
         {
@@ -235,6 +250,7 @@ internal sealed record HilOptions(
                 HilCommand.SafetyExpiry or
                 HilCommand.SafetySessionLoss or
                 HilCommand.SafetyAuthenticationLoss or
+                HilCommand.SafetyGatewayProcessLoss or
                 HilCommand.SafetyEngineConnectionLoss or
                 HilCommand.SafetyProcessLoss) &&
             string.IsNullOrWhiteSpace(token))
@@ -274,6 +290,8 @@ internal sealed record HilOptions(
         "                           Stage the browser-session-loss test without RF\n" +
         "  verify-safety-auth-loss-preflight\n" +
         "                           Stage the authentication-loss test without RF\n" +
+        "  verify-safety-gateway-loss-preflight\n" +
+        "                           Kill the gateway-authority process while idle, without RF\n" +
         "  verify-safety-engine-loss-preflight\n" +
         "                           Stage engine TX command-channel loss without RF\n" +
         "  verify-safety-process-loss-preflight\n" +
@@ -288,6 +306,9 @@ internal sealed record HilOptions(
         "  prepare-safety-auth-loss\n" +
         "                           Create a five-minute authentication-loss manifest\n" +
         "  safety-auth-loss         Invalidate authentication and observer-unkey\n" +
+        "  prepare-safety-gateway-loss\n" +
+        "                           Create a five-minute gateway-process-loss manifest\n" +
+        "  safety-gateway-loss      Kill the gateway authority and observer-unkey\n" +
         "  prepare-safety-engine-loss\n" +
         "                           Create an engine command-channel-loss manifest\n" +
         "  safety-engine-loss       Disable engine TX commands and observer-unkey\n" +
@@ -437,6 +458,8 @@ internal sealed record HilArmManifest(
         "independent-browser-session-loss";
     public const string SafetyAuthenticationLossPurpose =
         "independent-authentication-loss";
+    public const string SafetyGatewayProcessLossPurpose =
+        "independent-gateway-process-loss";
     public const string SafetyEngineConnectionLossPurpose =
         "independent-engine-connection-loss";
     public const string SafetyProcessLossPurpose =
@@ -455,6 +478,7 @@ internal sealed record HilArmManifest(
                 SafetyExpiryPurpose or
                 SafetySessionLossPurpose or
                 SafetyAuthenticationLossPurpose or
+                SafetyGatewayProcessLossPurpose or
                 SafetyEngineConnectionLossPurpose or
                 SafetyProcessLossPurpose))
         {
@@ -599,6 +623,16 @@ internal sealed record HilArmManifest(
             armFile,
             token);
 
+    public static HilOptions ToSafetyGatewayProcessLossOptions(
+        HilArmManifest manifest,
+        string armFile,
+        string token) =>
+        ToOptions(
+            manifest,
+            HilCommand.SafetyGatewayProcessLoss,
+            armFile,
+            token);
+
     public static HilOptions ToSafetyEngineConnectionLossOptions(
         HilArmManifest manifest,
         string armFile,
@@ -633,6 +667,8 @@ internal sealed record HilArmManifest(
             HilCommand.SafetySessionLoss => SafetySessionLossPurpose,
             HilCommand.SafetyAuthenticationLoss =>
                 SafetyAuthenticationLossPurpose,
+            HilCommand.SafetyGatewayProcessLoss =>
+                SafetyGatewayProcessLossPurpose,
             HilCommand.SafetyEngineConnectionLoss =>
                 SafetyEngineConnectionLossPurpose,
             HilCommand.SafetyProcessLoss => SafetyProcessLossPurpose,
@@ -687,6 +723,7 @@ internal sealed record HilArmManifest(
                 SafetyExpiryPurpose or
                 SafetySessionLossPurpose or
                 SafetyAuthenticationLossPurpose or
+                SafetyGatewayProcessLossPurpose or
                 SafetyEngineConnectionLossPurpose or
                 SafetyProcessLossPurpose) ||
             manifest.Version != CurrentVersion ||
