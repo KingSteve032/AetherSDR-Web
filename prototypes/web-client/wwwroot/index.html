@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description"
+        content="A browser-native AetherSDR operator console with a receive-only Flex development bridge.">
+  <title>AetherSDR Web Console</title>
+  <link rel="icon" href="/assets/logo.png">
+  <link rel="stylesheet" href="/styles.css?v=m2-receive-fidelity-5">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="chrome">
+      <div class="window-bar">
+        <nav class="menu" aria-label="Application">
+          <button type="button" data-menu="radio">Radio</button>
+          <button type="button" data-menu="settings">Settings</button>
+          <button type="button" data-menu="profiles">Profiles</button>
+          <button type="button" data-menu="view">View</button>
+          <button type="button" data-menu="help">Help</button>
+        </nav>
+
+        <div class="radio-identity" aria-label="Selected radio">
+          <span class="status-dot" id="connection-dot"></span>
+          <strong id="connection-label">AetherSDR</strong>
+          <label class="radio-selector-shell">
+            <span class="radio-selector-label">RADIO</span>
+            <select id="radio-selector" aria-label="Select Flex radio">
+              <option value="">Discovering radios…</option>
+            </select>
+          </label>
+          <span class="web-badge">WEB</span>
+        </div>
+
+        <div class="header-actions">
+          <span class="mode-pill" id="radio-mode">SIM</span>
+          <button class="pc-audio" id="pc-audio" type="button"
+                  aria-pressed="false">PC Audio</button>
+          <span aria-hidden="true">🔊</span>
+          <input id="master-volume" type="range" min="0" max="100" value="100"
+                 aria-label="Master audio volume">
+          <output for="master-volume">100</output>
+          <span aria-hidden="true">🎧</span>
+          <input id="headphone-volume" type="range" min="0" max="100" value="90"
+                 aria-label="Headphone volume">
+          <output for="headphone-volume">90</output>
+          <button type="button" class="operators-button" id="operators-button"
+                  aria-expanded="false" aria-controls="operators-popover">
+            <span class="presence-dots" aria-hidden="true"></span>
+            <span><b id="presence-count">0</b></span>
+          </button>
+          <button type="button" class="account-button" id="account-button"
+                  aria-haspopup="true" aria-expanded="false"
+                  aria-controls="account-popover">
+            <span class="account-initial" id="account-initial">?</span>
+            <span class="account-name" id="account-name">Loading identity…</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="menu-popover" id="app-menu-popover" hidden></div>
+      <aside class="account-popover" id="account-popover" hidden>
+        <div class="account-popover-identity">
+          <strong id="account-popover-name">Operator</strong>
+          <span id="account-popover-email"></span>
+        </div>
+        <button type="button" id="choose-radio-action">Choose a radio</button>
+        <button type="button" id="admin-page-action" hidden>
+          Administration
+        </button>
+        <a href="/auth/logout" id="sign-out-action">Sign out</a>
+      </aside>
+      <aside class="operators-popover" id="operators-popover" hidden>
+        <div class="popover-heading">
+          <span>CONNECTED OPERATORS</span>
+          <span class="section-value" id="session-id">radio-1</span>
+        </div>
+        <div id="presence-list" class="presence-list" aria-live="polite"></div>
+      </aside>
+    </header>
+
+    <main class="radio-workspace">
+      <aside class="tool-rail" aria-label="Panadapter tools">
+        <button type="button" class="rail-button rail-action" id="pan-left"
+                title="Move the panadapter lower in frequency"
+                aria-label="Move panadapter lower">←</button>
+        <button type="button" class="rail-button rail-action" id="pan-right"
+                title="Move the panadapter higher in frequency"
+                aria-label="Move panadapter higher">→</button>
+        <button type="button" class="rail-button rail-action" id="add-slice"
+                 title="Create a receiver slice">+RX</button>
+        <button type="button" class="rail-button rail-action" data-add-pan
+                title="Create another panadapter">+PAN</button>
+        <button type="button" class="rail-button rail-action" disabled
+                title="Tracking notch filters are not connected yet">+TNF</button>
+        <button type="button" class="rail-button" data-tool-panel="band">Band</button>
+        <button type="button" class="rail-button" data-tool-panel="antenna">ANT</button>
+        <button type="button" class="rail-button active" data-tool-panel="dsp">DSP</button>
+        <button type="button" class="rail-button" data-tool-panel="display">Display</button>
+        <button type="button" class="rail-button" data-tool-panel="dax">DAX</button>
+      </aside>
+
+      <section class="panadapter" aria-label="Panadapter and waterfall">
+        <div class="tool-flyout closed" id="tool-flyout">
+          <section class="flyout-page" data-tool-page="dsp">
+            <div class="flyout-title">
+              <span>Slice <b id="active-slice-label">A</b></span>
+              <button type="button" class="flyout-close" aria-label="Close tool panel">×</button>
+            </div>
+            <div class="dsp-control-list">
+              <label><button type="button" data-slice-toggle="nb">NB</button>
+                <input type="range" min="0" max="100" value="50"
+                       data-slice-level="nbLevel" aria-label="NB level"><output>50</output></label>
+              <label><button type="button" data-slice-toggle="nr">NR</button>
+                <input type="range" min="0" max="100" value="0"
+                       data-slice-level="nrLevel" aria-label="NR level"><output>0</output></label>
+              <label class="disabled-control"
+                     title="NR2 is client-side DSP and is not connected yet">
+                <button type="button" disabled>NR2</button>
+                <input type="range" min="0" max="100" value="50" disabled
+                       aria-label="NR2 level unavailable"><output>-</output></label>
+              <label><button type="button" data-slice-toggle="anf">ANF</button>
+                <input type="range" min="0" max="100" value="0"
+                       data-slice-level="anfLevel" aria-label="ANF level"><output>0</output></label>
+              <label><button type="button" data-slice-toggle="nrl">NRL</button>
+                <input type="range" min="0" max="100" value="50"
+                       data-slice-level="nrlLevel" aria-label="NRL level"><output>50</output></label>
+              <label><button type="button" data-slice-toggle="nrs">NRS</button>
+                <input type="range" min="0" max="100" value="50"
+                       data-slice-level="nrsLevel" aria-label="NRS level"><output>50</output></label>
+              <label><button type="button" data-slice-toggle="rnn">RNN</button>
+                <input type="range" min="0" max="100" value="50" disabled
+                       aria-label="RNN has no level control"><output>-</output></label>
+              <label><button type="button" data-slice-toggle="nrf">NRF</button>
+                <input type="range" min="0" max="100" value="50"
+                       data-slice-level="nrfLevel" aria-label="NRF level"><output>50</output></label>
+              <label><button type="button" data-slice-toggle="anfl">ANFL</button>
+                <input type="range" min="0" max="100" value="50"
+                       data-slice-level="anflLevel" aria-label="ANFL level"><output>50</output></label>
+              <label><button type="button" data-slice-toggle="anft">ANFT</button>
+                <input type="range" min="0" max="100" value="100" disabled
+                       aria-label="ANFT has no level control"><output>-</output></label>
+            </div>
+          </section>
+
+          <section class="flyout-page" data-tool-page="band" hidden>
+            <div class="flyout-title">
+              <span>Band</span>
+              <button type="button" class="flyout-close" aria-label="Close tool panel">×</button>
+            </div>
+            <div class="band-grid">
+              <button type="button" data-band-key="160"
+                      data-band-frequency="1900000">160m</button>
+              <button type="button" data-band-key="80"
+                      data-band-frequency="3750000">80m</button>
+              <button type="button" data-band-key="60"
+                      data-band-frequency="5357000">60m</button>
+              <button type="button" data-band-key="40"
+                      data-band-frequency="7150000">40m</button>
+              <button type="button" data-band-key="30"
+                      data-band-frequency="10125000">30m</button>
+              <button type="button" class="active"
+                      data-band-key="20"
+                      data-band-frequency="14175000">20m</button>
+              <button type="button" data-band-key="17"
+                      data-band-frequency="18118000">17m</button>
+              <button type="button" data-band-key="15"
+                      data-band-frequency="21225000">15m</button>
+              <button type="button" data-band-key="12"
+                      data-band-frequency="24940000">12m</button>
+              <button type="button" data-band-key="10"
+                      data-band-frequency="28400000">10m</button>
+              <button type="button" data-band-key="6"
+                      data-band-frequency="50150000">6m</button>
+              <button type="button" data-band-key="33"
+                      data-band-frequency="10000000">WWV</button>
+            </div>
+          </section>
+
+          <section class="flyout-page" data-tool-page="antenna" hidden>
+            <div class="flyout-title">
+              <span>Antenna</span>
+              <button type="button" class="flyout-close" aria-label="Close tool panel">×</button>
+            </div>
+            <div class="button-stack">
+              <button type="button" data-rx-antenna="ANT1">ANT1</button>
+              <button type="button" data-rx-antenna="ANT2">ANT2</button>
+              <button type="button" data-rx-antenna="RX_A">RX A</button>
+              <button type="button" data-rx-antenna="RX_B">RX B</button>
+              <button type="button" data-rx-antenna="XVTR">XVTR</button>
+            </div>
+          </section>
+
+          <section class="flyout-page" data-tool-page="display" hidden>
+            <div class="flyout-title">
+              <span>Display</span>
+              <button type="button" class="flyout-close" aria-label="Close tool panel">×</button>
+            </div>
+            <div class="display-mode-row">
+              <span>Spectrum</span>
+              <div class="display-mode-switch" role="group"
+                   aria-label="Spectrum display mode">
+                <button type="button" data-spectrum-mode="2d"
+                        aria-pressed="true">2D</button>
+                <button type="button" data-spectrum-mode="3d"
+                        aria-pressed="false">3D</button>
+              </div>
+            </div>
+            <label class="control-row"><span>AVG</span>
+              <input id="display-average" type="range" min="0" max="100"
+                     value="35" aria-label="FFT average">
+              <output for="display-average">35</output></label>
+            <label class="control-row"><span>FPS</span>
+              <input id="display-fps" type="range" min="1" max="30"
+                     value="30" aria-label="Panadapter frames per second">
+              <output for="display-fps">30</output></label>
+            <label class="control-row"><span>FLOOR</span>
+              <input id="display-floor" type="range" min="-140" max="-60"
+                     value="-120" aria-label="Panadapter minimum dBm">
+              <output for="display-floor">-120</output></label>
+            <div class="button-grid">
+              <button type="button" id="display-fill"
+                      aria-pressed="true">FILL</button>
+              <button type="button" id="display-peak"
+                      aria-pressed="false">PEAK</button>
+              <button type="button" id="display-waterfall"
+                      aria-pressed="true">WF</button>
+              <button type="button" id="display-wnb"
+                      aria-pressed="false">WNB</button>
+            </div>
+            <button type="button" id="low-bandwidth"
+                    aria-pressed="false"
+                    disabled
+                    title="Reconnect using the Flex low-bandwidth client mode">
+              VPN LOW BW
+            </button>
+            <p class="control-hint" id="network-profile-status"
+               role="status" aria-live="polite">
+              ADAPTIVE · NORMAL · measuring…
+            </p>
+            <p class="control-hint">
+              Reduces radio display traffic for VPN and slower remote links.
+              Automatic changes require sustained delivery problems and
+              reconnect only your receive session.
+            </p>
+            <label class="control-row"><span>WNB</span>
+              <input id="display-wnb-level" type="range" min="0" max="100"
+                     value="50" aria-label="Wideband noise blanker level">
+              <output for="display-wnb-level">50</output></label>
+          </section>
+
+          <section class="flyout-page" data-tool-page="dax" hidden>
+            <div class="flyout-title">
+              <span>DAX</span>
+              <button type="button" class="flyout-close" aria-label="Close tool panel">×</button>
+            </div>
+            <div class="button-stack" role="group"
+                 aria-label="Active slice DAX receive channel">
+              <button type="button" class="active"
+                      data-dax-channel="0">None</button>
+              <button type="button" data-dax-channel="1">DAX 1</button>
+              <button type="button" data-dax-channel="2">DAX 2</button>
+              <button type="button" data-dax-channel="3">DAX 3</button>
+              <button type="button" data-dax-channel="4">DAX 4</button>
+              <button type="button" data-dax-channel="5">DAX 5</button>
+              <button type="button" data-dax-channel="6">DAX 6</button>
+              <button type="button" data-dax-channel="7">DAX 7</button>
+              <button type="button" data-dax-channel="8">DAX 8</button>
+            </div>
+          </section>
+        </div>
+
+        <div class="pan-tabs" id="pan-tabs" role="tablist"
+             aria-label="Panadapters"></div>
+        <div class="slice-deck" id="slice-deck" aria-label="Radio slices"></div>
+
+        <div class="spectrum-wrap" id="spectrum-wrap">
+          <canvas id="spectrum-canvas" role="img" tabindex="0"
+                  aria-label="Radio spectrum. Click to tune, drag empty spectrum to pan, or use the mouse wheel to step the active slice."></canvas>
+          <div class="spectrum-status">
+            <div class="display-mode-switch compact" role="group"
+                 aria-label="Spectrum display mode">
+              <button type="button" data-spectrum-mode="2d"
+                      aria-pressed="true">2D</button>
+              <button type="button" data-spectrum-mode="3d"
+                      aria-pressed="false">3D</button>
+            </div>
+            <span id="pan-range">14.180 — 14.380 MHz</span>
+            <span id="wnb-status">WNB OFF</span>
+          </div>
+          <div class="band-plan" id="band-plan" aria-hidden="true"></div>
+          <button type="button" class="spectrum-resizer" id="spectrum-resizer"
+                  aria-label="Resize spectrum and waterfall"></button>
+        </div>
+
+        <div class="waterfall-wrap">
+          <canvas id="waterfall-canvas" role="img"
+                  aria-label="Radio waterfall. Drag left or right to pan across the band."></canvas>
+          <div class="pan-zoom-controls" role="group"
+               aria-label="Panadapter zoom">
+            <button type="button" data-pan-zoom="out"
+                    title="Zoom out">−</button>
+            <button type="button" data-pan-zoom="in"
+                    title="Zoom in">+</button>
+          </div>
+          <div class="waterfall-slice-overlays" id="waterfall-slice-overlays"
+               aria-hidden="true"></div>
+          <div class="waterfall-age" aria-hidden="true">
+            <span>0s</span><span>5s</span><span>10s</span><span>15s</span>
+            <span>20s</span><span>25s</span><span>30s</span>
+          </div>
+        </div>
+
+      </section>
+
+      <aside class="applet-rail" id="applet-rail" aria-label="Receiver and transmitter applets">
+        <div class="applet-resizer" id="applet-resizer" role="separator"
+             aria-label="Resize receiver controls" aria-orientation="vertical"
+             tabindex="0"></div>
+        <button type="button" class="applet-rail-toggle" id="applet-rail-toggle"
+                aria-controls="applet-rail" aria-expanded="true"
+                title="Hide receiver controls">▶</button>
+        <nav class="applet-tabs" aria-label="Applet shortcuts">
+          <button type="button" data-applet="meter">VU</button>
+          <button type="button" class="active" data-applet="rx">RX</button>
+          <button type="button" data-applet="tuner">TUN</button>
+          <button type="button" data-applet="tx">TX</button>
+          <button type="button" data-applet="phone">PHNE</button>
+          <button type="button" data-applet="pcw">P/CW</button>
+          <button type="button" data-applet="eq">EQ</button>
+          <button type="button" data-applet="session">SESS</button>
+          <button type="button" data-applet="admin" id="admin-applet-tab"
+                  hidden>ADMIN</button>
+        </nav>
+
+        <div class="applets">
+          <section class="applet meter-applet" id="applet-meter">
+            <div class="applet-title">
+              <span>S-Meter</span>
+              <span class="meter-source">RX · S-Meter</span>
+            </div>
+            <div class="analog-meter">
+              <canvas id="smeter-canvas" role="meter"
+                      aria-label="S meter S5, -95 dBm"
+                      aria-valuemin="-127" aria-valuemax="-13"
+                      aria-valuenow="-95" aria-valuetext="S5, -95 dBm"></canvas>
+              <div class="visually-hidden" aria-live="polite">
+                <span id="meter-s">S5</span>
+                <span id="meter-dbm">-95 dBm</span>
+              </div>
+            </div>
+            <div class="meter-selectors">
+              <label><span>TX Select</span>
+                <select aria-label="Transmit meter"><option>Power</option><option>SWR</option>
+                  <option>Level</option><option>Compression</option></select>
+              </label>
+              <label><span>RX Select</span>
+                <select aria-label="Receive meter"><option>S-Meter</option>
+                  <option>S-Meter Peak</option></select>
+              </label>
+            </div>
+          </section>
+
+          <section class="applet rx-applet active-applet" id="applet-rx">
+            <div class="applet-title">
+              <span>RX</span>
+              <div class="vfo-badges">
+                <span class="slice-chip" id="rx-slice-chip">A</span>
+                <span id="rx-lock-state" aria-label="VFO unlocked">🔓</span>
+                <b id="rx-antenna-label">ANT1</b>
+                <b class="accent" id="rx-filter-label">2.7K</b>
+              </div>
+            </div>
+            <div class="frequency-editor">
+              <span class="tx-indicator">TX</span>
+              <select id="mode-select" aria-label="Demodulation mode">
+                <option>LSB</option><option selected>USB</option><option>CW</option>
+                <option>CWR</option><option>DIGL</option><option>DIGU</option>
+                <option>AM</option><option>SAM</option><option>FM</option><option>NFM</option>
+              </select>
+              <input id="frequency-input" type="text" inputmode="decimal"
+                     enterkeyhint="done"
+                     value="14.263.000" aria-label="Active slice frequency">
+            </div>
+            <div class="step-row">
+              <span>STEP:</span>
+              <button type="button" data-step-direction="-1">◀</button>
+              <select id="tune-step" aria-label="Tuning step">
+                <option value="10">10 Hz</option>
+                <option value="100">100 Hz</option>
+                <option value="500" selected>500 Hz</option>
+                <option value="1000">1 kHz</option>
+                <option value="5000">5 kHz</option>
+              </select>
+              <button type="button" data-step-direction="1">▶</button>
+              <input type="range" id="balance" min="-50" max="50" value="0"
+                     aria-label="Audio balance">
+            </div>
+            <div class="filter-presets" role="group" aria-label="Filter width">
+              <button type="button" data-filter="1800">1.8K</button>
+              <button type="button" data-filter="2100">2.1K</button>
+              <button type="button" data-filter="2400">2.4K</button>
+              <button type="button" class="active" data-filter="2700">2.7K</button>
+              <button type="button" data-filter="3300">3.3K</button>
+              <button type="button" data-filter="6000">6K</button>
+            </div>
+            <div class="dsp-mini-grid">
+              <button type="button" data-slice-toggle="nb">NB</button>
+              <button type="button" data-slice-toggle="nr">NR</button>
+              <button type="button" data-slice-toggle="anf">ANF</button>
+              <button type="button" disabled title="NR2 is not connected yet">NR2</button>
+              <button type="button" data-slice-toggle="nrl">NRL</button>
+              <button type="button" data-slice-toggle="nrs">NRS</button>
+              <button type="button" data-slice-toggle="rnn">RNN</button>
+              <button type="button" disabled title="RIT is not connected yet">RIT</button>
+              <button type="button" data-slice-toggle="nrf">NRF</button>
+              <button type="button" data-slice-toggle="anfl">ANFL</button>
+              <button type="button" data-slice-toggle="anft">ANFT</button>
+              <button type="button" disabled title="XIT is not connected yet">XIT</button>
+            </div>
+            <label class="control-row"><button type="button" id="af-mute">AF</button>
+              <input id="af-gain" type="range" min="0" max="100" value="50"
+                     aria-label="Audio gain"><output id="af-gain-value">50</output></label>
+            <label class="control-row"><button type="button" id="sql-toggle">SQL</button>
+              <input id="squelch" type="range" min="0" max="100" value="20"
+                     aria-label="Squelch"><output id="squelch-value">20</output></label>
+            <label class="control-row"><span>AGC</span>
+              <select id="agc-mode" aria-label="Automatic gain control">
+                <option value="OFF">Off</option><option value="SLOW">Slow</option>
+                <option value="MED" selected>Med</option><option value="FAST">Fast</option>
+              </select>
+              <input id="agc-threshold" type="range" min="0" max="100" value="65"
+                     aria-label="AGC threshold"></label>
+          </section>
+
+          <section class="applet tuner-applet" id="applet-tuner">
+            <div class="applet-title"><span>TUNER GENIUS XL</span></div>
+            <div class="gauge-labels"><span>0</span><span>50</span><span>100</span><span>150</span><span>200</span></div>
+            <div class="gauge-track tuner-forward"><i></i></div>
+            <div class="gauge-caption">Fwd Pwr</div>
+            <div class="gauge-labels"><span>1</span><span>1.5</span><span>2</span><span>2.5</span><span>3</span></div>
+            <div class="gauge-track swr tuner-swr"><i></i></div>
+            <div class="gauge-caption">SWR</div>
+            <div class="tuner-actions">
+              <button type="button" disabled>TUNE</button>
+              <button type="button" class="success" disabled>OPERATE</button>
+            </div>
+            <div class="unavailable-note">External tuner control is not connected.</div>
+          </section>
+
+          <section class="applet tx-applet" id="applet-tx" aria-disabled="true">
+            <div class="applet-title tx-title">
+              <span>TX</span><span class="safety-lock">LOCKED · GUI PROTOTYPE</span>
+            </div>
+            <div class="gauge-labels"><span>0</span><span>40</span><span>80</span><span>100</span><span>120</span></div>
+            <div class="gauge-track danger-track"><i></i></div>
+            <label class="control-row disabled-control"><span>RF Power</span>
+              <input type="range" min="0" max="100" value="100" disabled><output>100</output></label>
+            <label class="control-row disabled-control"><span>Tune Pwr</span>
+              <input type="range" min="0" max="100" value="10" disabled><output>10</output></label>
+            <div class="tx-actions">
+              <button type="button" disabled>TUNE</button>
+              <button type="button" class="mox" disabled>MOX</button>
+              <button type="button" disabled>ATU</button>
+              <button type="button" disabled>MEM</button>
+            </div>
+            <div class="tx-lock-note">No browser transmit path is connected.</div>
+          </section>
+
+          <section class="applet phone-applet" id="applet-phone">
+            <div class="applet-title">
+              <span>PHONE</span><span class="local-input-badge">LOCAL INPUT</span>
+            </div>
+            <div class="pc-mic-panel">
+              <button type="button" id="pc-mic" aria-pressed="false">PC MIC</button>
+              <div class="mic-level" role="meter" id="pc-mic-level"
+                   aria-label="Local microphone input level"
+                   aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                <i></i>
+              </div>
+              <output id="pc-mic-db">OFF</output>
+            </div>
+            <p class="local-input-note">
+              Browser input monitor only. Microphone audio is never sent to the radio.
+            </p>
+            <label class="control-row disabled-control"
+                   title="Transmit audio controls remain fail-closed">
+              <span>Mic</span>
+              <input type="range" min="0" max="100" value="18" disabled
+                     aria-label="Radio microphone gain unavailable">
+              <output>18</output></label>
+            <label class="control-row disabled-control"
+                   title="Transmit audio controls remain fail-closed">
+              <button type="button" disabled>VOX</button>
+              <input type="range" min="0" max="100" value="66" disabled
+                     aria-label="VOX level unavailable"><output>66</output></label>
+            <label class="control-row disabled-control"
+                   title="Transmit audio controls remain fail-closed">
+              <span>Delay</span>
+              <input type="range" min="0" max="100" value="15" disabled
+                     aria-label="VOX delay unavailable"><output>15</output></label>
+            <label class="control-row disabled-control"
+                   title="Transmit audio controls remain fail-closed">
+              <button type="button" disabled>DEXP</button>
+              <input type="range" min="0" max="100" value="0" disabled
+                     aria-label="Downward expander unavailable"><output>0</output></label>
+          </section>
+
+          <section class="applet pcw-applet" id="applet-pcw"
+                   aria-disabled="true">
+            <div class="applet-title"><span>P/CW</span></div>
+            <label class="control-row disabled-control"><span>PROC</span>
+              <select disabled><option>DX</option><option selected>NOR</option><option>DX+</option></select>
+              <input type="range" min="0" max="100" value="64" disabled></label>
+            <label class="control-row disabled-control">
+              <button type="button" disabled>MON</button>
+              <input type="range" min="0" max="100" value="25" disabled>
+              <output>25</output></label>
+            <div class="unavailable-note">Transmit processing is not connected.</div>
+          </section>
+
+          <section class="applet eq-applet" id="applet-eq"
+                   aria-disabled="true">
+            <div class="applet-title">
+              <span>EQ</span><button type="button" disabled>ON</button>
+            </div>
+            <div class="eq-sliders" aria-label="Receive equalizer">
+              <label><span>63</span><input type="range" min="-10" max="10" value="0" disabled></label>
+              <label><span>125</span><input type="range" min="-10" max="10" value="0" disabled></label>
+              <label><span>250</span><input type="range" min="-10" max="10" value="0" disabled></label>
+              <label><span>500</span><input type="range" min="-10" max="10" value="0" disabled></label>
+              <label><span>1k</span><input type="range" min="-10" max="10" value="0" disabled></label>
+              <label><span>2k</span><input type="range" min="-10" max="10" value="0" disabled></label>
+              <label><span>4k</span><input type="range" min="-10" max="10" value="0" disabled></label>
+              <label><span>8k</span><input type="range" min="-10" max="10" value="0" disabled></label>
+            </div>
+            <div class="unavailable-note">Radio receive EQ is not connected yet.</div>
+          </section>
+
+          <section class="applet session-applet" id="applet-session">
+            <div class="applet-title"><span>WEB SESSION</span></div>
+            <div class="session-state">
+              <span class="status-dot connected"></span>
+              <div><strong>AetherD UI boundary</strong><small>Experimental shared session</small></div>
+            </div>
+            <p>Controls marked active are browser-local until the matching AetherD model surface exists.</p>
+          </section>
+
+          <section class="applet admin-applet" id="applet-admin" hidden>
+            <div class="applet-title">
+              <span>RADIO ALLOCATION</span>
+              <button type="button" id="admin-refresh">REFRESH</button>
+            </div>
+            <p class="admin-intro">
+              Shared radios allow multiple accounts. Exclusive radios allow
+              one account at a time. A reservation limits new sessions to one
+              Entra account.
+            </p>
+            <div id="admin-radio-list" class="admin-radio-list"
+                 aria-live="polite">
+              <div class="admin-empty">Loading radio inventory…</div>
+            </div>
+          </section>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="statusbar">
+      <div class="pan-actions">
+        <button type="button" data-add-pan title="Create another panadapter">+PAN</button>
+        <button type="button" disabled title="Tracking notch filters are not connected">TNF</button>
+        <button type="button" disabled>CWX</button><button type="button" disabled>DVK</button>
+        <button type="button" disabled title="Transmit remains fail-closed">FDX</button>
+      </div>
+      <div class="operator-status">
+        <span>STATION:</span><strong>AETHER-WEB</strong>
+        <span class="radio-footer-identity">
+          <b id="radio-model">FLEX-8600</b>
+          <span class="dim" id="radio-serial">SIM-8600</span>
+        </span>
+      </div>
+      <div id="toast" class="toast" role="status" aria-live="polite">
+        Initializing browser session…
+      </div>
+      <div class="telemetry">
+        <span>RADIO: <b id="footer-connection">Connecting</b></span>
+        <span id="clock"></span>
+      </div>
+    </footer>
+  </div>
+
+  <script type="module" src="/app.js?v=m2-receive-fidelity-5"></script>
+</body>
+</html>

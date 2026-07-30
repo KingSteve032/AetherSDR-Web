@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#09111f">
+  <meta name="description"
+        content="Secure browser access to AetherSDR FlexRadio receivers.">
+  <title>Sign in · AetherSDR Web</title>
+  <link rel="icon" href="/assets/logo.png">
+  <link rel="stylesheet" href="/portal.css?v=portal-2">
+</head>
+<body class="portal-body login-body">
+  <main class="login-layout">
+    <section class="brand-panel" aria-labelledby="login-title">
+      <div class="brand-lockup">
+        <img src="/assets/logo.png" alt="" width="72" height="72">
+        <div>
+          <span class="eyebrow">AETHERSDR</span>
+          <strong>WEB</strong>
+        </div>
+      </div>
+      <div class="brand-copy">
+        <p class="eyebrow">YOUR STATION · ANY SCREEN</p>
+        <h1 id="login-title">FlexRadio control built for the browser.</h1>
+        <p>
+          A responsive AetherSDR console for secure, isolated operator
+          sessions on your station network.
+        </p>
+      </div>
+      <div class="signal-art" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </section>
+
+    <section class="login-card" aria-label="Sign in">
+      <div>
+        <p class="eyebrow">SECURE ACCESS</p>
+        <h2>Welcome back</h2>
+        <p class="muted">
+          Sign in with the Microsoft Entra account assigned by your station
+          administrator.
+        </p>
+      </div>
+      <a class="primary-action"
+         href="/auth/login?returnUrl=%2Fradios">
+        <span class="microsoft-mark" aria-hidden="true">
+          <i></i><i></i><i></i><i></i>
+        </span>
+        Continue with Microsoft
+      </a>
+      <div class="assurance-list" aria-label="Security details">
+        <div><span class="assurance-icon">✓</span><span>Entra protected</span></div>
+        <div><span class="assurance-icon">✓</span><span>Private browser session</span></div>
+        <div><span class="assurance-icon">✓</span><span>Transmit remains disabled</span></div>
+      </div>
+      <p class="fine-print">
+        AetherSDR Web does not collect your Microsoft password.
+      </p>
+    </section>
+  </main>
+</body>
+</html>

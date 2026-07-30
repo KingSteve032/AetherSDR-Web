@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+@reboot /home/flexweb/aethersdr/start-aethersdr-web.sh >> /home/flexweb/aethersdr/logs/cron.log 2>&1

@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>AetherSDR.Web</RootNamespace>
+    <AssemblyName>AetherSDR.Web</AssemblyName>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(EnableTxHil)' == 'true'">
+    <DefineConstants>$(DefineConstants);AETHERSDR_TX_HIL</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect"
+                      Version="10.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\assets\logo-circle-256.png"
+             Link="wwwroot\assets\logo.png"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\meterfaces\s-meter-v1.json"
+             Link="wwwroot\assets\s-meter-v1.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\bandplans\arrl-us.json"
+             Link="wwwroot\assets\bandplans\arrl-us.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="tests\**\*.cs" />
+    <Content Remove="tests\**\*" />
+    <EmbeddedResource Remove="tests\**\*" />
+    <None Remove="tests\**\*" />
+    <Compile Remove="tx-hil\**\*.cs" />
+    <Content Remove="tx-hil\**\*" />
+    <EmbeddedResource Remove="tx-hil\**\*" />
+    <None Remove="tx-hil\**\*" />
+    <Compile Remove="tx-hil-tests\**\*.cs" />
+    <Content Remove="tx-hil-tests\**\*" />
+    <EmbeddedResource Remove="tx-hil-tests\**\*" />
+    <None Remove="tx-hil-tests\**\*" />
+  </ItemGroup>
+</Project>

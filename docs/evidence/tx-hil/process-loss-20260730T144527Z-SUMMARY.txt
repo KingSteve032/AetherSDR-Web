@@ -1,0 +1,41 @@
+AetherSDR PSOC2 true engine-process/TCP-loss HIL report
+Generated (UTC): 2026-07-30T14:46:10+00:00
+Frequency: 14.262 MHz (14262000 Hz)
+Report directory: /home/devspace/.local/state/aethersdr-web/tx-hil-logs/process-loss-20260730T144527Z
+
+RESULT: PASS
+Test: independent-engine-process-loss-unkey
+Radio: FLEX:1121-1104-6700-2912
+Serial: 1121-1104-6700-2912
+RF emitted: true
+Child PID: 51514
+Child FLEX handle: 0x5d842625
+Child killed: true
+Entire process tree killed: true
+Child exit code: 137
+Graceful child cleanup ran: false
+Child resources gone: true
+Child commands before kill: key=1 unkey=0
+Observer FLEX handle: 0x5fb12ab5
+Observer unkeys: 1
+Observer key capability: false
+Unkey mechanism: independent-observer-unkey
+Process kill-to-exit ms: 110.0109
+Process exit-to-safety action ms: 1079.5545
+Safety action-to-idle ms: 0.914
+Process exit-to-roster loss ms: 1080.7058
+Idle-to-roster loss ms: 0.2373
+Keyed-to-idle ms: 1199.0572
+CW ID: KC4CAW at 20 WPM
+CW exact-owned TX observed: true
+
+Final TX state: idle
+Final TX occupants: 0
+Final RF power: 100 W
+Final DAX enabled: true
+Final microphone: PC
+Final VOX enabled: false
+Final CWX: 30 WPM, QSK=true, delay=5 ms
+
+Outer manifest: consumed/absent
+Child plan: consumed/absent

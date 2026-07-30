@@ -1,0 +1,47 @@
+[Unit]
+Description=AetherSDR receive-only web gateway
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=flexweb
+Group=flexweb
+WorkingDirectory=/home/flexweb/aethersdr/current
+EnvironmentFile=/home/flexweb/.config/aethersdr-web/environment
+ExecStart=/home/flexweb/aethersdr/current/AetherSDR.Web --urls http://0.0.0.0:5080
+Restart=on-failure
+RestartSec=3
+TimeoutStartSec=30
+TimeoutStopSec=15
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aethersdr-web
+LogRateLimitIntervalSec=30
+LogRateLimitBurst=2000
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/flexweb/aethersdr/data-protection /home/flexweb/aethersdr/state
+InaccessiblePaths=-/home/flexweb/.ssh
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

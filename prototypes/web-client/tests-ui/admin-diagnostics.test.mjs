@@ -1,0 +1,191 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  formatAge,
+  formatBrowserAudio,
+  formatBrowserNetwork,
+  formatBrowserReconnect,
+  formatCount,
+  formatFrequency,
+  formatHexId,
+  formatTuneTiming,
+  rememberSessionDiagnosticExpansion,
+  sessionDiagnosticExpanded,
+  shortId
+} from "../wwwroot/admin-diagnostics.js";
+
+test("admin diagnostics format radio ownership identifiers", () => {
+  assert.equal(formatHexId(0x452b3521), "0x452b3521");
+  assert.equal(formatHexId(0), "—");
+  assert.equal(shortId("1234567890abcdef"), "12345678");
+  assert.equal(shortId(""), "—");
+});
+
+test("admin diagnostics format stream activity without local ambiguity", () => {
+  const now = Date.parse("2026-07-27T14:00:00Z");
+  assert.equal(formatFrequency(14_074_000), "14.074000 MHz");
+  assert.equal(formatCount(12_345), "12,345");
+  assert.equal(formatAge("2026-07-27T13:59:52Z", now), "8s ago");
+  assert.equal(formatAge(null, now), "never");
+});
+
+test("admin diagnostics distinguish pending and radio-confirmed tunes", () => {
+  const now = Date.parse("2026-07-27T14:00:01Z");
+  assert.deepEqual(
+    formatTuneTiming({
+      state: "pending",
+      sliceId: "B",
+      radioSliceId: 4,
+      targetFrequencyHz: 14_074_000,
+      requestedAt: "2026-07-27T14:00:00Z"
+    }, now),
+    {
+      value: "PENDING",
+      detail: "B -> 4 at 14.074000 MHz; requested 1s ago"
+    });
+  assert.deepEqual(
+    formatTuneTiming({
+      state: "confirmed",
+      sliceId: "B",
+      radioSliceId: 4,
+      targetFrequencyHz: 14_074_000,
+      confirmedAt: "2026-07-27T14:00:00Z",
+      radioRoundTripMilliseconds: 47.4
+    }, now),
+    {
+      value: "47 ms",
+      detail: "B -> 4 at 14.074000 MHz; radio echo 1s ago"
+    });
+});
+
+test("admin diagnostics separate audio latency from underruns and trims", () => {
+  const now = Date.parse("2026-07-27T14:00:01Z");
+  assert.deepEqual(
+    formatBrowserAudio({
+      enabled: true,
+      deliveryPath: "worker",
+      pageVisible: true,
+      playbackSuppressed: false,
+      backgroundTransitions: 2,
+      foregroundRecoveries: 2,
+      activeSliceId: "A",
+      estimatedLatencyMilliseconds: 36.8,
+      queueMilliseconds: 19.5,
+      started: true,
+      underruns: 1,
+      trimmedFrames: 64,
+      clearedFrames: 480,
+      malformedPackets: 0,
+      missingPackets: 2,
+      maximumPacketGapMilliseconds: 38.5,
+      reportedAt: "2026-07-27T14:00:00Z"
+    }, now),
+    {
+      latencyValue: "37 ms est.",
+      latencyDetail:
+        "Slice A; 20 ms queue; playing; foreground; report 1s ago",
+      healthValue: "1 underrun",
+      healthDetail:
+        "2 foreground recoveries; 2 background pauses; " +
+        "64 latency-trimmed; 480 cleared; 0 malformed",
+      deliveryValue: "WORKER · 2 missing",
+      deliveryDetail: "39 ms max browser arrival gap"
+    });
+});
+
+test("admin diagnostics show when browser audio is intentionally background-paused", () => {
+  const now = Date.parse("2026-07-27T14:00:01Z");
+  const result = formatBrowserAudio({
+    enabled: true,
+    deliveryPath: "worker",
+    pageVisible: false,
+    playbackSuppressed: true,
+    backgroundTransitions: 1,
+    foregroundRecoveries: 0,
+    activeSliceId: "B",
+    estimatedLatencyMilliseconds: 0,
+    queueMilliseconds: 0,
+    started: false,
+    underruns: 0,
+    trimmedFrames: 0,
+    clearedFrames: 1080,
+    malformedPackets: 0,
+    missingPackets: 0,
+    maximumPacketGapMilliseconds: 20,
+    reportedAt: "2026-07-27T14:00:00Z"
+  }, now);
+
+  assert.match(result.latencyDetail, /background paused/);
+  assert.match(result.healthDetail, /1 background pause/);
+});
+
+test("admin diagnostics publish measured browser traffic by profile", () => {
+  const now = Date.parse("2026-07-28T01:00:01Z");
+  assert.deepEqual(formatBrowserNetwork({
+    profile: "low",
+    adaptation: "automatic",
+    bytesPerSecond: 18_750,
+    audioBytesPerSecond: 12_000,
+    spectrumBytesPerSecond: 6_250,
+    maximumGapMilliseconds: 44,
+    reportedAt: "2026-07-28T01:00:00Z"
+  }, now), {
+    value: "LOW · 150 kb/s",
+    detail:
+      "96 kb/s audio · 50 kb/s display · 44 ms max gap · " +
+      "adaptive · report 1s ago"
+  });
+});
+
+test("admin diagnostics report admitted browser reconnects and recovery time", () => {
+  assert.deepEqual(
+    formatBrowserReconnect({
+      connectionAttempts: 13,
+      successfulConnections: 11,
+      reconnects: 10,
+      rejectedConnections: 2,
+      lastConnectedAt: "2026-07-27T14:00:00Z",
+      lastRecoveryMilliseconds: 842
+    }),
+    {
+      value: "10 recovered",
+      detail: "11 of 13 admitted; 2 overlapping; 842 ms last recovery"
+    });
+});
+
+test("admin diagnostics retain each session expansion across refreshes", () => {
+  const expansionStates = new Map();
+  const connected = {
+    sessionId: "connected-session",
+    connectionState: "connected",
+    connectionError: null
+  };
+  const failed = {
+    sessionId: "failed-session",
+    connectionState: "faulted",
+    connectionError: "Radio unavailable"
+  };
+
+  assert.equal(
+    sessionDiagnosticExpanded(connected, expansionStates),
+    false);
+  assert.equal(
+    sessionDiagnosticExpanded(failed, expansionStates),
+    true);
+
+  rememberSessionDiagnosticExpansion(
+    expansionStates,
+    connected.sessionId,
+    true);
+  rememberSessionDiagnosticExpansion(
+    expansionStates,
+    failed.sessionId,
+    false);
+
+  assert.equal(
+    sessionDiagnosticExpanded(connected, expansionStates),
+    true);
+  assert.equal(
+    sessionDiagnosticExpanded(failed, expansionStates),
+    false);
+});

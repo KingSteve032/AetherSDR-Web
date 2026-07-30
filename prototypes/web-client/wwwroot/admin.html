@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#09111f">
+  <meta name="description" content="AetherSDR radio and operator administration.">
+  <title>Administration · AetherSDR Web</title>
+  <link rel="icon" href="/assets/logo.png">
+  <link rel="stylesheet" href="/portal.css?v=m6-wan-soak-1">
+</head>
+<body class="portal-body">
+  <header class="portal-header">
+    <a class="portal-logo" href="/radios" aria-label="AetherSDR radio chooser">
+      <img src="/assets/logo.png" alt="" width="42" height="42">
+      <span><b>AETHERSDR</b><small>ADMIN</small></span>
+    </a>
+    <nav class="portal-nav" aria-label="Administration">
+      <a href="/radios">Radios</a>
+      <span class="user-chip" id="user-name">Administrator</span>
+      <a class="quiet-action" href="/auth/logout">Sign out</a>
+    </nav>
+  </header>
+
+  <main class="portal-main admin-main">
+    <section class="page-heading">
+      <div>
+        <p class="eyebrow">STATION ADMINISTRATION</p>
+        <h1>Radio access</h1>
+        <p class="muted">
+          Set shared or exclusive access, reserve radios, and release active
+          web operators. Monitor remote stations and radio-reported GUI
+          connections from the same page.
+        </p>
+      </div>
+      <button class="secondary-action" type="button" id="admin-refresh">
+        Refresh
+      </button>
+    </section>
+
+    <div class="summary-grid" aria-live="polite">
+      <article><span>RADIOS</span><strong id="summary-radios">—</strong></article>
+      <article><span>ONLINE</span><strong id="summary-online">—</strong></article>
+      <article><span>WEB OPERATORS</span><strong id="summary-operators">—</strong></article>
+      <article><span>REMOTE STATIONS</span><strong id="summary-stations">—</strong></article>
+      <article><span>REMOTE SESSIONS</span><strong id="summary-remote-sessions">—</strong></article>
+      <article><span>EXTERNAL GUI</span><strong id="summary-external-clients">—</strong></article>
+    </div>
+
+    <div class="notice-strip" id="admin-notice" role="status"
+         aria-live="polite">
+      Loading radio inventory…
+    </div>
+
+    <section class="admin-enrollment-section"
+             aria-labelledby="admin-enrollment-heading">
+      <div class="admin-audit-heading">
+        <div>
+          <p class="eyebrow">STATION SECURITY</p>
+          <h2 id="admin-enrollment-heading">Enroll remote stations</h2>
+        </div>
+        <span>ONE-TIME CODE · 10 MINUTES</span>
+      </div>
+      <div class="admin-enrollment-panel">
+        <form class="admin-enrollment-form" id="admin-enrollment-form">
+          <label>
+            <span>STATION ID</span>
+            <input id="admin-enrollment-station-id" type="text"
+                   maxlength="64" autocomplete="off" spellcheck="false"
+                   pattern="[A-Za-z0-9][A-Za-z0-9._:-]{0,63}"
+                   placeholder="example: club-shack" required>
+          </label>
+          <button class="secondary-action" type="submit"
+                  id="admin-enrollment-create">
+            Create code
+          </button>
+        </form>
+        <p class="muted admin-enrollment-help">
+          Run the enrollment command on the station VM, then paste the
+          one-time code when prompted. The station keeps its private
+          credential locally.
+        </p>
+        <output class="admin-enrollment-result"
+                id="admin-enrollment-result" hidden></output>
+      </div>
+      <div class="admin-credential-list" id="admin-credential-list"
+           aria-live="polite"></div>
+    </section>
+
+    <section class="admin-station-section"
+             aria-labelledby="admin-station-heading">
+      <div class="admin-audit-heading">
+        <div>
+          <p class="eyebrow">REMOTE NETWORKS</p>
+          <h2 id="admin-station-heading">Station connections</h2>
+        </div>
+        <span id="admin-station-status">Loading…</span>
+      </div>
+      <div class="admin-station-grid" id="admin-station-list"
+           aria-live="polite"></div>
+    </section>
+
+    <section class="admin-radio-grid" id="admin-radio-list"
+             aria-live="polite"></section>
+
+    <section class="admin-audit-section" aria-labelledby="admin-audit-heading">
+      <div class="admin-audit-heading">
+        <div>
+          <p class="eyebrow">DURABLE AUDIT TRAIL</p>
+          <h2 id="admin-audit-heading">Recent administrative activity</h2>
+        </div>
+        <span id="admin-audit-count">0 actions</span>
+      </div>
+      <div class="admin-audit-list" id="admin-audit-list"
+           aria-live="polite"></div>
+    </section>
+  </main>
+
+  <script type="module"
+          src="/admin-page.js?v=m7-station-tx-gate-1"></script>
+</body>
+</html>

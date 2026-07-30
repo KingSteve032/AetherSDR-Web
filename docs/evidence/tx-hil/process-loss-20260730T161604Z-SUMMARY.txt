@@ -1,0 +1,57 @@
+AetherSDR PSOC2 true engine-process/TCP-loss HIL report
+Generated (UTC): 2026-07-30T16:17:36+00:00
+Frequency: 14.262 MHz (14262000 Hz)
+Report directory: /home/devspace/.local/state/aethersdr-web/tx-hil-logs/process-loss-20260730T161604Z
+
+RESULT: PASS
+Test: independent-engine-process-loss-unkey
+Radio: FLEX:1121-1104-6700-2912
+Serial: 1121-1104-6700-2912
+RF emitted: true
+Child PID: 61462
+Child FLEX handle: 0x6ba69958
+Child killed: true
+Entire process tree killed: true
+Child exit code: 137
+Graceful child cleanup ran: false
+Child resources gone: true
+Child commands before kill: key=1 unkey=0
+Replacement PID: 61487
+Replacement FLEX handle: 0x62d85b54
+Replacement exit code: 0
+Replacement old handle absent: true
+Replacement identities fresh: true
+Replacement resources gone: true
+Replacement baseline restored: true
+Replacement commands: key=0 unkey=0
+Replacement started: 2026-07-30T16:17:07.8156377+00:00
+Replacement ready: 2026-07-30T16:17:12.3583032+00:00
+Replacement reconciled: 2026-07-30T16:17:12.3603161+00:00
+Replacement exited: 2026-07-30T16:17:12.7228604+00:00
+Observer FLEX handle: 0x3145f6d9
+Observer unkeys: 1
+Observer key capability: false
+Unkey mechanism: independent-observer-unkey
+Process kill-to-exit ms: 83.8748
+Process exit-to-safety signal ms: 0.0135
+Safety signal-to-unkey dispatch ms: 3.6577
+Unkey dispatch-to-completion ms: 1333.4315
+Unkey completion-to-idle ms: 3.3847
+Process exit-to-safety action completion ms: 1339.414
+Safety action completion-to-idle ms: 1.0734
+Process exit-to-roster loss ms: 1340.7338
+Idle-to-roster loss ms: 0.2464
+Keyed-to-idle ms: 1432.8657
+CW ID: KC4CAW at 20 WPM
+CW exact-owned TX observed: true
+
+Final TX state: idle
+Final TX occupants: 0
+Final RF power: 100 W
+Final DAX enabled: true
+Final microphone: PC
+Final VOX enabled: false
+Final CWX: 30 WPM, QSK=true, delay=5 ms
+
+Outer manifest: consumed/absent
+Child plan: consumed/absent

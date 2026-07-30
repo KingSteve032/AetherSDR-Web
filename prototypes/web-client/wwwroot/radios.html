@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#09111f">
+  <meta name="description" content="Choose a FlexRadio for this browser session.">
+  <title>Choose a radio · AetherSDR Web</title>
+  <link rel="icon" href="/assets/logo.png">
+  <link rel="stylesheet" href="/portal.css?v=portal-2">
+</head>
+<body class="portal-body">
+  <header class="portal-header">
+    <a class="portal-logo" href="/radios" aria-label="AetherSDR radio chooser">
+      <img src="/assets/logo.png" alt="" width="42" height="42">
+      <span><b>AETHERSDR</b><small>WEB</small></span>
+    </a>
+    <nav class="portal-nav" aria-label="Account">
+      <a id="admin-link" href="/admin" hidden>Admin</a>
+      <span class="user-chip" id="user-name">Loading account…</span>
+      <a class="quiet-action" href="/auth/logout">Sign out</a>
+    </nav>
+  </header>
+
+  <main class="portal-main">
+    <section class="page-heading">
+      <div>
+        <p class="eyebrow">RADIO DESK</p>
+        <h1>Choose a radio</h1>
+        <p class="muted">
+          Each browser gets its own FLEX GUI client and private operator
+          session. The radio makes the final admission decision.
+        </p>
+      </div>
+      <button class="secondary-action" type="button" id="refresh-radios">
+        Refresh
+      </button>
+    </section>
+
+    <div class="notice-strip" id="radio-notice" role="status"
+         aria-live="polite">
+      Discovering radios on the station network…
+    </div>
+
+    <section class="radio-grid" id="radio-list" aria-live="polite"></section>
+
+    <section class="connection-options" aria-labelledby="connection-title">
+      <div>
+        <h2 id="connection-title">Connection profile</h2>
+        <p class="muted">
+          Reduce spectrum and waterfall traffic for VPN or mobile connections.
+        </p>
+      </div>
+      <label class="switch-row">
+        <input type="checkbox" id="low-bandwidth">
+        <span class="switch-track" aria-hidden="true"></span>
+        <span><b>Low bandwidth</b><small>Recommended over VPN</small></span>
+      </label>
+    </section>
+  </main>
+
+  <script type="module" src="/radio-select.js?v=remote-catalog-3"></script>
+</body>
+</html>

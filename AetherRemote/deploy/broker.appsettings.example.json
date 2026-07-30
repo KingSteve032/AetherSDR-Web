@@ -1,0 +1,21 @@
+{
+  "Urls": "http://127.0.0.1:5090",
+  "StationLink": {
+    "Enabled": true,
+    "RequireForwardedHttps": true,
+    "HeartbeatSeconds": 10,
+    "DegradedAfterSeconds": 25,
+    "DisconnectAfterSeconds": 45,
+    "LinkTokenSeconds": 60,
+    "EnrollmentCodeMinutes": 10,
+    "EnrollmentRegistryPath": "/var/lib/aetherremote/broker/stations.json",
+    "RuntimeCredentialSha256": "REPLACE_WITH_64_CHARACTER_SHA256",
+    "AdministrationCredentialSha256": "REPLACE_WITH_DIFFERENT_64_CHARACTER_SHA256",
+    "Stations": [
+      {
+        "StationId": "station-example",
+        "CredentialSha256": "REPLACE_WITH_64_CHARACTER_SHA256"
+      }
+    ]
+  }
+}

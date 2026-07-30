@@ -1,0 +1,56 @@
+# .NET build and test output
+**/bin/
+**/obj/
+**/bin-hil/
+**/obj-hil/
+**/TestResults/
+**/*.trx
+.vs/
+.idea/
+*.user
+*.suo
+
+# Generated publish, deployment, and release artifacts
+**/.publish/
+**/.artifacts/
+**/.deploy/
+**/deploy/.publish-*/
+prototypes/web-client/deploy/20*/
+*.tar.gz
+*.tgz
+*.zip
+*.part.*
+
+# Runtime state and logs
+**/*.log
+**/*.pid
+**/.data-protection/
+**/DataProtection-Keys/
+**/server*.stdout.log
+**/server*.stderr.log
+**/.run*.log
+
+# Local configuration and credentials
+**/appsettings.Local.json
+**/appsettings.Production.json
+**/.env
+**/.env.*
+**/secrets/
+**/runtime-credentials/
+local-config/
+**/station-credential
+**/*.credential
+
+# One-time local migration helpers
+/scripts/migrate-clean-source.sh
+/scripts/finalize-migration.sh
+
+# Node/browser test output
+**/node_modules/
+**/coverage/
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp

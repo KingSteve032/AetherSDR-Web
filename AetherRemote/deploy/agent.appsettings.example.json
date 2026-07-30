@@ -1,0 +1,15 @@
+{
+  "Agent": {
+    "BrokerUrl": "wss://flexweb.w4car.org/station/v1",
+    "StationId": "station-example",
+    "CredentialFile": "/etc/aetherremote/station-credential",
+    "DiscoveryEnabled": true,
+    "InventorySeconds": 5,
+    "RadioOfflineSeconds": 15,
+    "AllowInsecureDevelopmentTransport": false,
+    "Capabilities": [
+      "receive-projection-v1"
+    ],
+    "ConfiguredRadios": []
+  }
+}

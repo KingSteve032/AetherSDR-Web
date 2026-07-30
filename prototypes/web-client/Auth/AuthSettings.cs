@@ -1,0 +1,26 @@
+namespace AetherSDR.Web.Auth;
+
+public sealed class AuthSettings
+{
+    public const string SectionName = "Auth";
+
+    public string Mode { get; init; } = "Oidc";
+    public string Authority { get; init; } = string.Empty;
+    public string ClientId { get; init; } = string.Empty;
+    public string ClientSecret { get; init; } = string.Empty;
+    public string ClientSecretFile { get; init; } = string.Empty;
+    public string CallbackPath { get; init; } = "/signin-oidc";
+    public string SignedOutCallbackPath { get; init; } = "/signout-callback-oidc";
+    public string NameClaimType { get; init; } = "name";
+    public string RoleClaimType { get; init; } = "roles";
+    public DevelopmentUserSettings DevelopmentUser { get; init; } = new();
+}
+
+public sealed class DevelopmentUserSettings
+{
+    public string ObjectId { get; init; } = "local-operator";
+    public string Name { get; init; } = "Local Operator";
+    public string Email { get; init; } = "operator@localhost";
+    public string[] Roles { get; init; } =
+        [AetherRoles.Observe, AetherRoles.Control];
+}

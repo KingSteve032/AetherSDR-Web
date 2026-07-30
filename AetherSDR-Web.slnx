@@ -1,0 +1,10 @@
+<Solution>
+  <Project Path="prototypes/web-client/AetherSDR.Web.csproj" />
+  <Project Path="prototypes/web-client/tests/AetherSDR.Web.Tests.csproj" />
+  <Project Path="prototypes/web-client/tx-hil/AetherSDR.TxHil.csproj" />
+  <Project Path="prototypes/web-client/tx-hil-tests/AetherSDR.TxHil.Tests.csproj" />
+  <Project Path="AetherRemote/src/AetherRemote.Protocol/AetherRemote.Protocol.csproj" />
+  <Project Path="AetherRemote/src/AetherRemote.Agent/AetherRemote.Agent.csproj" />
+  <Project Path="AetherRemote/src/AetherRemote.Broker/AetherRemote.Broker.csproj" />
+  <Project Path="AetherRemote/tests/AetherRemote.Tests/AetherRemote.Tests.csproj" />
+</Solution>
