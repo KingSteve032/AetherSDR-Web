@@ -1161,7 +1161,18 @@ Foundation deployed and corrected on 2026-07-29. Corrective candidate:
   transition, delivered the `authentication-lost` signal, issued zero key and
   zero unkey commands while idle, left the interlock idle, restored and removed
   the owned pan/waterfall/slice resources, and reported `rfEmitted=false`.
-  Live RF authentication-loss acceptance remains outstanding.
+- Live authentication-loss RF acceptance passed on 2026-07-30 at 14.310 MHz.
+  Engine handle `0x030ba266` sent exactly one key and zero unkeys. Non-GUI
+  observer handle `0x4dd88b7c`, which had no key capability, sent the only
+  unkey after the exact authenticated-to-unauthenticated transition released
+  one controlling-session lease and delivered `authentication-lost`. The
+  observer requested unkey 42.5287 ms after authentication loss; FLEX confirmed
+  idle 28.0645 ms later, for a total keyed-to-idle interval of 77.8632 ms. The
+  engine gate reconciled to Idle with reason `lease-lost`.
+- The same operation sent CW `KC4CAW` at 20 WPM. FLEX reported insertion index
+  48 and final sent index 53, exact-handle transmit was observed, the queue
+  drained, and the radio returned idle. The purpose-bound operation completed
+  successfully and returned control without a cleanup error.
 
 Acceptance criteria:
 
