@@ -1139,6 +1139,29 @@ Foundation deployed and corrected on 2026-07-29. Corrective candidate:
   leaked 14.250 MHz resources, and the safety-expiry manifest consumed.
   Production remains receive-only and its clean publish contains zero FLEX
   key/unkey, CWX-ID, HIL operation, or TX-audio-stream creation strings.
+- Authentication-loss safety is now staged behind the separate purpose
+  `independent-authentication-loss`. An exact-identity monitor must first
+  observe the active engine, lease, session, browser client, and protected FLEX
+  handle as authenticated; only the matching authenticated-to-unauthenticated
+  transition may release the controlling lease and signal the independent
+  unkey-only supervisor. Startup unauthenticated, mismatched identity, repeated
+  loss reports, and external SmartSDR ownership remain non-actionable.
+- The staged tree passes 222 server tests, 45 TX-HIL tests, 70 AetherRemote
+  tests, and 106 browser tests. The simulated independent-watchdog matrix now
+  passes all nine scenarios, including authentication loss, without creating a
+  radio connection. Clean production publish inspection found zero key, unkey,
+  CW-ID, HIL-operation, or authentication-loss-purpose strings; the standalone
+  HIL artifact contains exactly one key, one unkey, and one CW-ID command
+  literal.
+- Live no-RF authentication-loss preflight passed on 2026-07-30 at 14.310 MHz
+  after the operator confirmed the frequency clear and PSOC2 free of external
+  GUI clients. Engine handle `0x09970815` and non-GUI observer handle
+  `0x259e6128` established the exact identity boundary. The preflight released
+  one controlling-session lease after the authenticated-to-unauthenticated
+  transition, delivered the `authentication-lost` signal, issued zero key and
+  zero unkey commands while idle, left the interlock idle, restored and removed
+  the owned pan/waterfall/slice resources, and reported `rfEmitted=false`.
+  Live RF authentication-loss acceptance remains outstanding.
 
 Acceptance criteria:
 
