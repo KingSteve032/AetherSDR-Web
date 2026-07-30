@@ -15,9 +15,9 @@ fail-closed until the dedicated TX-safety milestone is complete.
 |---|---|---|
 | M0 — Browser console foundation | Complete | Responsive authenticated RX console |
 | M1 — Multi-client correctness | Complete | Independent SmartSDR and web GUI clients |
-| M2 — Receive fidelity | Active | Correct, low-latency tuning, meters, DSP, and audio |
+| M2 — Receive fidelity | Complete | Correct, low-latency tuning, meters, DSP, and audio |
 | M3 — Mobile and constrained networks | Complete | Reliable operation over phones and VPNs |
-| M4 — Multi-radio administration | Active | Observable and manageable radio fleet |
+| M4 — Multi-radio administration | Complete | Observable and manageable radio fleet |
 | M5 — AetherD engine boundary | Blocked on RFC stages 3–5 | Versioned production engine connection |
 | M6 — Remote station connectivity | End-to-end pilot staged | Secure access to radios on other networks |
 | M7 — Transmit safety | Active | Intentional, leased, fail-closed transmit |
@@ -95,7 +95,7 @@ Acceptance criteria:
 
 ## M2 — Receive fidelity
 
-Status: **Active**
+Status: **Complete**
 
 Goal: the browser sounds and responds like a dependable receive client.
 
@@ -174,16 +174,21 @@ Evidence delivered:
   radio span without resizing or shifting the canvases. A 200 kHz → 133 kHz →
   200 kHz round trip preserved Slice A at 14.074000 MHz, DIGU, and 2.4K; a
   20m → 40m → 20m round trip restored the same 20m slice state.
+- Final hands-off operator acceptance completed on 2026-07-30 using Chrome on
+  a Surface Pro 8 with PSOC2 at 14.074 MHz. During 15 minutes of ordinary
+  foreground listening, the operator reported only a couple of minor audible
+  dropouts and judged SmartSDR over the same VPN path to be worse. No missing
+  packets were observed, gateway drops remained at zero, and 44 AudioWorklet
+  underruns were not materially audible. Tune, filter, and mode behavior sounded
+  equivalent to SmartSDR. Final-slice deletion and fresh-slice recovery were
+  exercised successfully, and the operator marked the run as a pass.
 
 Remaining:
 
-- [ ] Complete one final hands-off operator listen-through against SmartSDR.
-  Automated live diagnostics show worker delivery, zero missing AETA packets,
-  zero gateway drops, and no stale source after slice deletion, but the
-  instrumented in-app run accumulated AudioWorklet underruns while browser
-  automation was active. Do not hide that evidence with a permanently larger
-  latency buffer; close M2 only after confirming whether those counters are
-  audible during ordinary foreground use.
+- [x] Complete one final hands-off operator listen-through against SmartSDR.
+  The 2026-07-30 operator run confirmed the accumulated AudioWorklet underrun
+  counter did not translate into materially audible failure during ordinary
+  foreground use.
 
 Acceptance criteria:
 
@@ -317,7 +322,7 @@ Acceptance criteria:
 
 ## M4 — Multi-radio administration
 
-Status: **Active**
+Status: **Complete**
 
 Goal: administrators can understand and safely manage several radios and
 operators from one control plane.
@@ -392,6 +397,15 @@ Capacity history completed on 2026-07-29:
   transition `2/2 -> 1/2 -> 2/2` while one browser session connected and then
   expired normally. Admin rendered all three chronological samples, and the
   final state had zero operators, zero sessions, and full client capacity.
+- Final reservation-denial acceptance completed on 2026-07-30 using the
+  non-administrator account `REMOTES@w4car.org` against PSOC2/HF/XVTR. The
+  server returned `This radio is reserved for another account.`, created no
+  denied browser/radio session, and left existing sessions unaffected. Radio
+  capacity remained unchanged during the denial. The policy audit identified
+  Steven Griggs (KC4CAW), PSOC2/HF/XVTR, FLEX-6700 at 10.2.0.12, and target
+  account object ID `817cf887-bb22-49fd-9686-802602761bbe`, with a succeeded
+  result for setting the reservation. Clearing the reservation also succeeded
+  and produced the expected audit outcome.
 
 Remaining:
 
@@ -401,11 +415,10 @@ Remaining:
   offline states from session age, stream activity, and queue pressure.
 - [x] Exercise a controlled failure/restart of one radio path and prove that a
   second radio's sessions and streams are untouched.
-- [ ] Complete live acceptance checks for reservation denial and an intentional
+- [x] Complete live acceptance checks for reservation denial and an intentional
   forced operator release, including their success/failure audit outcomes.
-  The forced-release success path is complete; reservation denial still needs
-  a non-administrator test account because administrators intentionally bypass
-  reservations.
+  The 2026-07-30 non-administrator denial completed the remaining reservation
+  path; the forced-release success path was already complete.
 
 Acceptance criteria:
 
