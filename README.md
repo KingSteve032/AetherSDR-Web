@@ -40,3 +40,4 @@ node --test prototypes/web-client/tests-ui/*.test.mjs
 Production is receive-only unless transmit is explicitly enabled through the
 intended station configuration and build path. TX state is radio-authoritative,
 operator intent is mandatory, and stale or ambiguous ownership fails closed.
+
