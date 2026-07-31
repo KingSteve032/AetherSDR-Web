@@ -171,7 +171,8 @@ app.MapGet(
         {
             status = "ok",
             radioMode = radioSettings.Mode,
-            transmitEnabled = false
+            transmitEnabled = false,
+            browserTxLeaseEnabled = radioSettings.BrowserTxLeaseEnabled
         }))
     .AllowAnonymous();
 

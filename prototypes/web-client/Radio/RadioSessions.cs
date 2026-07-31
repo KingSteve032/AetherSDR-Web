@@ -834,6 +834,12 @@ public sealed class RadioSessionRegistry(
                 ? "Remote"
                 : source.Mode,
             AllowTransmit = false,
+            BrowserTxLeaseEnabled =
+                source.BrowserTxLeaseEnabled &&
+                !string.Equals(
+                    endpoint.Source,
+                    "remote",
+                    StringComparison.Ordinal),
             RadioId = endpoint.RadioId,
             SessionId = sessionId,
             Host = endpoint.Host,

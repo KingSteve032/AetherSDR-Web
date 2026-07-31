@@ -20,6 +20,49 @@ public sealed class RadioSessionRegistryTests
     private const string BrowserC = "cccccccccccccccccccccccccccccccc";
 
     [Fact]
+    public async Task LocalSessionInheritsLeaseFoundationWithoutKeyCapability()
+    {
+        (RadioSessionRegistry registry, _, _) = CreateRegistry(
+            browserTxLeaseEnabled: true);
+        await registry.StartAsync(CancellationToken.None);
+        try
+        {
+            ClaimsPrincipal user = CreateUser(
+                "operator-a",
+                "Aether.Transmit");
+            RadioSession session = await registry.GetDefaultAsync(
+                user,
+                BrowserA,
+                CancellationToken.None);
+            RadioClientConnection connection =
+                session.Coordinator.Register(user);
+            try
+            {
+                BrowserTxCapability capability =
+                    session.Coordinator.GetBrowserTxCapability(connection);
+
+                Assert.True(session.Coordinator.BrowserTxLeaseEnabled);
+                Assert.False(session.Coordinator.AllowTransmit);
+                Assert.False(session.Coordinator.Snapshot.CanTransmit);
+                Assert.True(capability.LeaseConfigured);
+                Assert.True(capability.RoleAuthorized);
+                Assert.False(capability.KeyingAvailable);
+                Assert.False(capability.MicrophoneAvailable);
+                Assert.False(capability.TuneAvailable);
+                Assert.False(capability.CwAvailable);
+            }
+            finally
+            {
+                session.Coordinator.Unregister(connection.ClientId);
+            }
+        }
+        finally
+        {
+            await registry.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task SameBrowserConnectionAndRadioReuseOneGuiSession()
     {
         (RadioSessionRegistry registry, _, _) = CreateRegistry();
@@ -501,7 +544,8 @@ public sealed class RadioSessionRegistryTests
     private static (
         RadioSessionRegistry Registry,
         RadioSelectionManager Catalog,
-        RadioAccessPolicyStore Policies) CreateRegistry()
+        RadioAccessPolicyStore Policies) CreateRegistry(
+            bool browserTxLeaseEnabled = false)
     {
         IOptions<RadioSettings> options = Options.Create(
             new RadioSettings
@@ -509,6 +553,7 @@ public sealed class RadioSessionRegistryTests
                 Mode = "Simulation",
                 Host = "192.168.7.10",
                 TcpPort = 4992,
+                BrowserTxLeaseEnabled = browserTxLeaseEnabled,
                 SessionId = "unused-global-session"
             });
         RadioSelectionManager catalog = new(options);

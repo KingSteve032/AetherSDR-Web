@@ -183,6 +183,26 @@ release, and uses the unit in
 to `~/.config/aethersdr-web/environment`, restrict it to the service account,
 and replace its temporary development-auth values before production.
 
+Before pushing a change that modifies the FlexWeb server, run the guarded
+pre-push deployment gate from the exact working tree:
+
+```bash
+bash prototypes/web-client/deploy/validate-deploy-flexweb.sh
+```
+
+The gate has no skip-tests option. It builds the complete solution, runs the
+server, TX-HIL isolation, AetherRemote, and browser test suites, inspects the
+normal production publish for forbidden TX/HIL command strings, deploys only
+FlexWeb through the `flexweb-gateway` SSH alias (resolving to
+`flexweb@10.2.0.254`), and verifies internal and public fail-closed health. After
+all local validation passes, it prompts once without echo for the FlexWeb sudo
+password, validates it before activation, and reuses it only for the service
+restart or automatic rollback. The existing configuration and credentials are
+preserved, the previous immutable release remains available, and a failed
+activation or health check rolls the `current` link back automatically. The
+script never commits or pushes; a Browser Bridge acceptance pass against the
+deployed site is required before Git publication.
+
 The user service needs lingering to start at boot without an interactive SSH
 login:
 

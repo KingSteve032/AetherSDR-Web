@@ -4,6 +4,7 @@ using System.Net.WebSockets;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Threading.Channels;
+using AetherSDR.Web.Auth;
 using Microsoft.Extensions.Options;
 
 namespace AetherSDR.Web.Radio;
@@ -171,6 +172,7 @@ public sealed class RadioCoordinator : IDisposable
     private readonly RadioSettings m_radioSettings;
     private readonly RadioTuneTracker m_tuneTracker = new();
     private readonly bool m_allowTransmit;
+    private readonly bool m_browserTxLeaseEnabled;
     private readonly string m_radioMode;
     private CancellationTokenSource? m_sliceRefreshCancellation;
     private RadioSnapshot m_snapshot;
@@ -192,6 +194,7 @@ public sealed class RadioCoordinator : IDisposable
         m_intentTransport = intentTransport;
         m_radioSettings = settings.Value;
         m_allowTransmit = settings.Value.AllowTransmit;
+        m_browserTxLeaseEnabled = settings.Value.BrowserTxLeaseEnabled;
         m_radioMode = settings.Value.Mode;
         string sessionId = string.IsNullOrWhiteSpace(settings.Value.SessionId)
             ? "radio-1"
@@ -253,6 +256,7 @@ public sealed class RadioCoordinator : IDisposable
     }
 
     public bool AllowTransmit => m_allowTransmit;
+    public bool BrowserTxLeaseEnabled => m_browserTxLeaseEnabled;
     public TxLeaseStatus? TxLeaseStatus =>
         m_txLeaseManager
             .GetCurrent(m_radioSettings.RadioId)?
@@ -3087,36 +3091,91 @@ public sealed class RadioCoordinator : IDisposable
         int FilterLowHz,
         int FilterHighHz);
 
+    public BrowserTxCapability GetBrowserTxCapability(
+        RadioClientConnection connection)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        bool roleAuthorized = connection.Roles.Any(role =>
+            string.Equals(role, AetherRoles.Transmit, StringComparison.Ordinal) ||
+            string.Equals(role, AetherRoles.Admin, StringComparison.Ordinal));
+        RadioSnapshot snapshot = Snapshot;
+        RadioTxOccupancySnapshot occupancy =
+            m_txOccupancyRegistry.GetSnapshot(m_radioSettings.RadioId);
+        TxLease? current =
+            m_txLeaseManager.GetCurrent(m_radioSettings.RadioId);
+        bool leaseHeldByBrowser = current is not null &&
+            string.Equals(
+                current.SessionId,
+                m_radioSettings.SessionId,
+                StringComparison.Ordinal) &&
+            string.Equals(
+                current.ClientId,
+                connection.ClientId,
+                StringComparison.Ordinal);
+        bool anotherLeaseHeld = current is not null && !leaseHeldByBrowser;
+        bool leaseAvailable =
+            m_browserTxLeaseEnabled &&
+            roleAuthorized &&
+            snapshot.Connected &&
+            occupancy.BrowserLeaseAllowed &&
+            current is null;
+
+        (string state, string message) =
+            !m_browserTxLeaseEnabled
+                ? (
+                    "lease-disabled",
+                    "Browser TX lease acquisition is disabled by server configuration.")
+                : !roleAuthorized
+                    ? (
+                        "role-required",
+                        "The authenticated Aether.Transmit role is required.")
+                    : !snapshot.Connected
+                        ? (
+                            "radio-disconnected",
+                            "The radio must be connected before a browser TX lease can be acquired.")
+                        : !occupancy.BrowserLeaseAllowed
+                            ? (
+                                $"occupancy-{occupancy.StateName}",
+                                "Fresh radio-authoritative idle occupancy is required before lease acquisition.")
+                            : leaseHeldByBrowser
+                                ? (
+                                    "lease-held-by-browser",
+                                    "This browser already holds the TX lease and may renew or release it.")
+                                : anotherLeaseHeld
+                                    ? (
+                                        "lease-held-by-other",
+                                        $"TX is held by {current!.DisplayName}.")
+                                    : (
+                                        "lease-available",
+                                        "The browser may acquire the ownership lease, but keying remains unavailable.");
+
+        return new BrowserTxCapability(
+            m_browserTxLeaseEnabled,
+            roleAuthorized,
+            snapshot.Connected,
+            occupancy.BrowserLeaseAllowed,
+            leaseHeldByBrowser,
+            leaseAvailable,
+            KeyingAvailable: false,
+            MicrophoneAvailable: false,
+            TuneAvailable: false,
+            CwAvailable: false,
+            state,
+            message);
+    }
+
     public bool TryAcquireTxLease(
         RadioClientConnection connection,
         TimeSpan duration,
         out TxLease? lease,
         out string? error)
     {
-        if (!m_allowTransmit || !Snapshot.CanTransmit)
+        BrowserTxCapability capability =
+            GetBrowserTxCapability(connection);
+        if (!capability.LeaseAvailable)
         {
             lease = null;
-            error =
-                "Transmit is fail-closed in the web prototype. No radio keying path exists.";
-            return false;
-        }
-
-        RadioTxOccupancySnapshot occupancy =
-            m_txOccupancyRegistry.GetSnapshot(m_radioSettings.RadioId);
-        if (!occupancy.BrowserLeaseAllowed)
-        {
-            lease = null;
-            error = occupancy.State switch
-            {
-                RadioTxOccupancyState.External =>
-                    "An external SmartSDR, Maestro, or local PTT source is transmitting.",
-                RadioTxOccupancyState.AetherOwned =>
-                    "Another AetherSDR session is already transmitting.",
-                RadioTxOccupancyState.Ambiguous =>
-                    "Transmit ownership is ambiguous; wait for the radio to return idle.",
-                _ =>
-                    "Current radio transmit occupancy is unknown or stale."
-            };
+            error = capability.Message;
             return false;
         }
 
@@ -3138,11 +3197,14 @@ public sealed class RadioCoordinator : IDisposable
         out TxLease? lease,
         out string? error)
     {
-        if (!m_allowTransmit || !Snapshot.CanTransmit)
+        BrowserTxCapability capability =
+            GetBrowserTxCapability(connection);
+        if (!capability.LeaseConfigured ||
+            !capability.RoleAuthorized ||
+            !capability.RadioConnected)
         {
             lease = null;
-            error =
-                "Transmit is fail-closed in the web prototype. No radio keying path exists.";
+            error = capability.Message;
             return false;
         }
 
@@ -3232,6 +3294,7 @@ public sealed class RadioSettings
 
     public string Mode { get; init; } = "Simulation";
     public bool AllowTransmit { get; init; }
+    public bool BrowserTxLeaseEnabled { get; init; }
     public string RadioId { get; init; } = "radio-1";
     public string SessionId { get; init; } = "radio-1";
     public string Host { get; init; } = "127.0.0.1";

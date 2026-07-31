@@ -97,6 +97,7 @@ public static class RadioWebSocketEndpoint
                         control = context.User.IsInRole(AetherRoles.Control) ||
                                   context.User.IsInRole(AetherRoles.Admin),
                         transmit = false,
+                        tx = coordinator.GetBrowserTxCapability(connection),
                         slices = coordinator.Snapshot.Slices.Count,
                         spectrum = new
                         {
@@ -520,7 +521,8 @@ public static class RadioWebSocketEndpoint
             id = ResponseId(id),
             ok = acquired,
             error,
-            lease
+            lease,
+            capability = coordinator.GetBrowserTxCapability(connection)
         });
     }
 
@@ -546,7 +548,8 @@ public static class RadioWebSocketEndpoint
             id = ResponseId(id),
             ok = renewed,
             error,
-            lease
+            lease,
+            capability = coordinator.GetBrowserTxCapability(connection)
         });
     }
 
@@ -564,7 +567,8 @@ public static class RadioWebSocketEndpoint
             ok = released,
             error = released
                 ? null
-                : "A current TX lease held by this browser is required."
+                : "A current TX lease held by this browser is required.",
+            capability = coordinator.GetBrowserTxCapability(connection)
         });
     }
 
