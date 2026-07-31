@@ -77,6 +77,8 @@ done
 
 WEB_PROJECT="${REPO_ROOT}/prototypes/web-client/AetherSDR.Web.csproj"
 WEB_TEST_PROJECT="${REPO_ROOT}/prototypes/web-client/tests/AetherSDR.Web.Tests.csproj"
+WATCHDOG_PROJECT="${REPO_ROOT}/prototypes/tx-watchdog/AetherSDR.TxWatchdog/AetherSDR.TxWatchdog.csproj"
+WATCHDOG_TEST_PROJECT="${REPO_ROOT}/prototypes/tx-watchdog/AetherSDR.TxWatchdog.Tests/AetherSDR.TxWatchdog.Tests.csproj"
 HIL_TEST_PROJECT="${REPO_ROOT}/prototypes/web-client/tx-hil-tests/AetherSDR.TxHil.Tests.csproj"
 REMOTE_TEST_PROJECT="${REPO_ROOT}/AetherRemote/tests/AetherRemote.Tests/AetherRemote.Tests.csproj"
 UI_TEST_DIR="${REPO_ROOT}/prototypes/web-client/tests-ui"
@@ -85,6 +87,8 @@ ACTIVATOR="${REPO_ROOT}/prototypes/web-client/deploy/activate-release.sh"
 for required_path in \
   "${WEB_PROJECT}" \
   "${WEB_TEST_PROJECT}" \
+  "${WATCHDOG_PROJECT}" \
+  "${WATCHDOG_TEST_PROJECT}" \
   "${HIL_TEST_PROJECT}" \
   "${REMOTE_TEST_PROJECT}" \
   "${UI_TEST_DIR}" \
@@ -194,6 +198,11 @@ expected = {
     "browserTxLeaseEnabled": False,
     "txGateLifecycleRegistered": True,
     "txLifecycleWatchdogRegistered": True,
+    "txIndependentWatchdogHostPackaged": True,
+    "txIndependentWatchdogState": "packaged-disarmed",
+    "txIndependentWatchdogConnected": False,
+    "txIndependentWatchdogCommandTransportRegistered": False,
+    "txIndependentWatchdogArmingAvailable": False,
     "txCommandTransportRegistered": False,
     "txSafetySupervisorArmingAvailable": False,
 }
@@ -202,6 +211,48 @@ for key, value in expected.items():
         raise SystemExit(
             f"{source} health field {key!r} was {payload.get(key)!r}; expected {value!r}")
 print(f"{source} health is fail-closed: {payload}")
+PY
+}
+
+assert_watchdog_disarmed() {
+  local payload="$1"
+  local source="$2"
+  WATCHDOG_PAYLOAD="${payload}" python3 - "${source}" <<'PY'
+import json
+import os
+import sys
+
+source = sys.argv[1]
+try:
+    payload = json.loads(os.environ["WATCHDOG_PAYLOAD"])
+except (KeyError, json.JSONDecodeError) as exc:
+    raise SystemExit(f"{source} did not return valid watchdog JSON: {exc}")
+expected = {
+    "protocolVersion": 1,
+    "requestId": "artifact-status",
+    "ok": True,
+}
+for key, value in expected.items():
+    if payload.get(key) != value:
+        raise SystemExit(
+            f"{source} field {key!r} was {payload.get(key)!r}; expected {value!r}")
+snapshot = payload.get("snapshot") or {}
+expected_snapshot = {
+    "state": "Disarmed",
+    "reason": "command-incapable-skeleton",
+    "radioCommandTransportAvailable": False,
+    "armingAvailable": False,
+    "registered": False,
+    "connected": False,
+    "leaseBound": False,
+    "lastSequence": 0,
+    "lastObservation": "process-started-disarmed",
+}
+for key, value in expected_snapshot.items():
+    if snapshot.get(key) != value:
+        raise SystemExit(
+            f"{source} snapshot field {key!r} was {snapshot.get(key)!r}; expected {value!r}")
+print(f"{source} starts empty and disarmed: {snapshot}")
 PY
 }
 
@@ -240,6 +291,9 @@ dotnet build "${REPO_ROOT}/AetherSDR-Web.slnx" --configuration Release
 echo "Running FlexWeb server tests..."
 dotnet test "${WEB_TEST_PROJECT}" --configuration Release --no-build
 
+echo "Running independent TX watchdog tests..."
+dotnet test "${WATCHDOG_TEST_PROJECT}" --configuration Release --no-build
+
 echo "Running TX-HIL isolation tests..."
 dotnet test "${HIL_TEST_PROJECT}" --configuration Release --no-build
 
@@ -261,16 +315,34 @@ dotnet publish "${WEB_PROJECT}" \
   -p:EnableTxHil=false \
   --output "${publish_dir}"
 
+watchdog_publish_dir="${publish_dir}/watchdog"
+mkdir -p -- "${watchdog_publish_dir}"
+echo "Publishing command-incapable independent watchdog artifact..."
+dotnet publish "${WATCHDOG_PROJECT}" \
+  --configuration Release \
+  --runtime linux-x64 \
+  --self-contained true \
+  --output "${watchdog_publish_dir}"
+
 binary="${publish_dir}/AetherSDR.Web"
 [[ -x "${binary}" ]] || {
   echo "Published AetherSDR.Web binary is missing." >&2
   exit 1
 }
+watchdog_binary="${watchdog_publish_dir}/AetherSDR.TxWatchdog"
+[[ -x "${watchdog_binary}" ]] || {
+  echo "Published AetherSDR.TxWatchdog binary is missing." >&2
+  exit 1
+}
 
 ascii_strings="${work_dir}/production-ascii.txt"
 utf16_strings="${work_dir}/production-utf16.txt"
+watchdog_ascii_strings="${work_dir}/watchdog-production-ascii.txt"
+watchdog_utf16_strings="${work_dir}/watchdog-production-utf16.txt"
 strings -a "${binary}" > "${ascii_strings}"
 strings -el "${binary}" > "${utf16_strings}"
+strings -a "${watchdog_binary}" > "${watchdog_ascii_strings}"
+strings -el "${watchdog_binary}" > "${watchdog_utf16_strings}"
 for forbidden in \
   'xmit 1' \
   'xmit 0' \
@@ -281,8 +353,18 @@ for forbidden in \
   'dax tx'; do
   assert_forbidden_string_absent \
     "${forbidden}" "${ascii_strings}" "${utf16_strings}"
+  assert_forbidden_string_absent \
+    "${forbidden}" "${watchdog_ascii_strings}" "${watchdog_utf16_strings}"
 done
-echo "Production artifact contains no forbidden TX/HIL command surface."
+echo "Production web and watchdog artifacts contain no forbidden TX/HIL command surface."
+
+watchdog_status="$(
+  printf '%s\n' \
+    '{"protocolVersion":1,"requestId":"artifact-status","type":"status"}' |
+    "${watchdog_binary}" --stdio
+)"
+assert_watchdog_disarmed \
+  "${watchdog_status}" "local independent watchdog artifact"
 
 if [[ "${deploy}" == true ]]; then
   prompt_for_sudo_password
@@ -337,6 +419,10 @@ active_release="$(ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
 }
 ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
   'systemctl is-active --quiet aethersdr-web.service'
+remote_watchdog_status="$(ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
+  'test -x /home/flexweb/aethersdr/current/watchdog/AetherSDR.TxWatchdog && printf '\''%s\n'\'' '\''{"protocolVersion":1,"requestId":"artifact-status","type":"status"}'\'' | /home/flexweb/aethersdr/current/watchdog/AetherSDR.TxWatchdog --stdio')"
+assert_watchdog_disarmed \
+  "${remote_watchdog_status}" "deployed independent watchdog artifact"
 
 public_health="$(curl --fail --silent --show-error --max-time 15 \
   "${PUBLIC_HEALTH_URL}")"

@@ -41,6 +41,7 @@ CONSTITUTION.md
 assets/
 AetherRemote/
 prototypes/web-client/
+prototypes/tx-watchdog/
 scripts/
 docs/
 local-config/              # ignored; never commit
@@ -51,6 +52,9 @@ Primary components:
 - `prototypes/web-client/` — ASP.NET Core station engine/web gateway, browser
   client, server tests, browser tests, deployment helpers, and the isolated TX
   hardware-in-the-loop harness.
+- `prototypes/tx-watchdog/` — command-incapable independent TX watchdog
+  protocol, process host, deterministic process-boundary tests, and packaging
+  documentation. It has no production radio transport or arming surface.
 - `AetherRemote/src/AetherRemote.Protocol/` — versioned station/broker protocol
   contracts and validation.
 - `AetherRemote/src/AetherRemote.Agent/` — station-local remote connectivity and
