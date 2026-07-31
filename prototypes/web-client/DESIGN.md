@@ -140,8 +140,20 @@ authority. A 100 ms private watchdog reconciles lease loss and bounded unkey
 retries. Unknown network outcomes retain the guarded intent until the radio
 interlock resolves ownership. The real `xmit 1`/`xmit 0` adapter is compiled
 only when `EnableTxHil=true`; normal production publishes contain neither
-command string and the gate/watchdog are not registered in DI or WebSocket
-routing. Production therefore remains receive-only with `CanTransmit=false`.
+command string. Production therefore remains receive-only with
+`CanTransmit=false`.
+
+The Phase 2A production lifecycle registers the accepted command gate, safety
+supervisor, and authentication/engine/gateway monitors once per isolated radio
+session, but only behind purpose-built unavailable transports. The command gate
+is always constructed with transmit disabled, the supervisor remains disarmed,
+and no arm, key, unkey, microphone, TUNE, or CW caller is registered. A bounded
+single-reader observation queue records exact gateway instance, engine instance,
+session, browser connection, authentication, local FLEX handle, and lease
+changes. Queue failure releases only that session's lease and marks the lifecycle
+faulted. The read-only lifecycle snapshot is included in administrative session
+diagnostics, while `/healthz` proves that the lifecycle is registered and both
+command transport and supervisor arming remain unavailable.
 
 The first browser-integration increment exposes only a separately configured
 ownership lease. `Radio:BrowserTxLeaseEnabled` defaults to false and is distinct

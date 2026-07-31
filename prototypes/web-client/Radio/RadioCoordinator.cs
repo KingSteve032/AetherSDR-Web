@@ -167,6 +167,7 @@ public sealed class RadioCoordinator : IDisposable
     private readonly JsonSerializerOptions m_jsonOptions;
     private readonly TxLeaseManager m_txLeaseManager;
     private readonly RadioTxOccupancyRegistry m_txOccupancyRegistry;
+    private readonly StationTxProductionLifecycle? m_txLifecycle;
     private readonly FlexRadioCommandRouter m_flexRouter;
     private readonly IRadioIntentTransport? m_intentTransport;
     private readonly RadioSettings m_radioSettings;
@@ -178,18 +179,20 @@ public sealed class RadioCoordinator : IDisposable
     private RadioSnapshot m_snapshot;
     private int m_disposed;
 
-    public RadioCoordinator(
+    internal RadioCoordinator(
         ILogger<RadioCoordinator> logger,
         IOptions<RadioSettings> settings,
         TxLeaseManager txLeaseManager,
         FlexRadioCommandRouter? flexRouter = null,
         IRadioIntentTransport? intentTransport = null,
-        RadioTxOccupancyRegistry? txOccupancyRegistry = null)
+        RadioTxOccupancyRegistry? txOccupancyRegistry = null,
+        StationTxProductionLifecycle? txLifecycle = null)
     {
         m_logger = logger;
         m_txLeaseManager = txLeaseManager;
         m_txOccupancyRegistry =
             txOccupancyRegistry ?? new RadioTxOccupancyRegistry();
+        m_txLifecycle = txLifecycle;
         m_flexRouter = flexRouter ?? new FlexRadioCommandRouter();
         m_intentTransport = intentTransport;
         m_radioSettings = settings.Value;
@@ -313,6 +316,10 @@ public sealed class RadioCoordinator : IDisposable
             throw new InvalidOperationException("Could not register browser client.");
         }
 
+        m_txLifecycle?.ObserveBrowserConnection(
+            connection.ClientId,
+            connected: true,
+            authenticated: user.Identity?.IsAuthenticated == true);
         m_logger.LogInformation(
             "Web client {ClientId} connected as {UserId}",
             clientId,
@@ -339,6 +346,10 @@ public sealed class RadioCoordinator : IDisposable
             clientId,
             "client-disconnected",
             out _);
+        m_txLifecycle?.ObserveBrowserConnection(
+            clientId,
+            connected: false,
+            authenticated: false);
 
         m_logger.LogInformation("Web client {ClientId} disconnected", clientId);
         if (notifyPresence)
@@ -404,7 +415,8 @@ public sealed class RadioCoordinator : IDisposable
         string? radioModel = null,
         string? serial = null,
         string? connectionState = null,
-        string? connectionError = null)
+        string? connectionError = null,
+        uint stationClientHandle = 0)
     {
         RadioSnapshot updated;
         lock (m_stateGate)
@@ -434,6 +446,9 @@ public sealed class RadioCoordinator : IDisposable
             m_snapshot = updated;
         }
 
+        m_txLifecycle?.ObserveEngineConnection(
+            connected,
+            stationClientHandle);
         BroadcastJson(new
         {
             @event = "snapshot",
@@ -3242,6 +3257,7 @@ public sealed class RadioCoordinator : IDisposable
             return;
         }
 
+        m_txLifecycle?.ObserveLeaseChange(change);
         BroadcastJson(change.Active
             ? new
             {

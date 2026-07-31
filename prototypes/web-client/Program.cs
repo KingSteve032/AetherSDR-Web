@@ -172,7 +172,10 @@ app.MapGet(
             status = "ok",
             radioMode = radioSettings.Mode,
             transmitEnabled = false,
-            browserTxLeaseEnabled = radioSettings.BrowserTxLeaseEnabled
+            browserTxLeaseEnabled = radioSettings.BrowserTxLeaseEnabled,
+            txGateLifecycleRegistered = true,
+            txCommandTransportRegistered = false,
+            txSafetySupervisorArmingAvailable = false
         }))
     .AllowAnonymous();
 

@@ -192,6 +192,9 @@ expected = {
     "status": "ok",
     "transmitEnabled": False,
     "browserTxLeaseEnabled": False,
+    "txGateLifecycleRegistered": True,
+    "txCommandTransportRegistered": False,
+    "txSafetySupervisorArmingAvailable": False,
 }
 for key, value in expected.items():
     if payload.get(key) != value:

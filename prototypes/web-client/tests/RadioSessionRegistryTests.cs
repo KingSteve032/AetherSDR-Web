@@ -50,6 +50,19 @@ public sealed class RadioSessionRegistryTests
                 Assert.False(capability.MicrophoneAvailable);
                 Assert.False(capability.TuneAvailable);
                 Assert.False(capability.CwAvailable);
+
+                await session.TxLifecycle.FlushAsync();
+                StationTxLifecycleDiagnostics? lifecycle =
+                    session.GetDiagnostics().TxLifecycle;
+                Assert.NotNull(lifecycle);
+                Assert.True(lifecycle.Registered);
+                Assert.True(lifecycle.BrowserConnected);
+                Assert.True(lifecycle.Authenticated);
+                Assert.False(lifecycle.ProductionTransmitEnabled);
+                Assert.False(lifecycle.CommandTransportAvailable);
+                Assert.False(lifecycle.EmergencyUnkeyTransportAvailable);
+                Assert.Equal("Disabled", lifecycle.GateState);
+                Assert.Equal("Disarmed", lifecycle.SafetyState);
             }
             finally
             {

@@ -62,9 +62,10 @@ internal interface IStationTxEmergencyUnkeyTransport
 /// fresh radio state proves that the single TX occupant is the exact FLEX
 /// client handle named by the active arm record.
 ///
-/// This class is intentionally not registered in production DI and has no
-/// browser endpoint. It is the state-machine foundation for a future separate
-/// station watchdog process that survives gateway or station-engine restarts.
+/// Production registers this state machine only inside the command-incapable
+/// per-session lifecycle. It remains disarmed, has no browser endpoint, and has
+/// no production emergency-unkey transport. A future reviewed milestone must
+/// move the active supervisor into an independent station watchdog process.
 /// </summary>
 internal sealed class StationTxSafetySupervisor : IAsyncDisposable
 {

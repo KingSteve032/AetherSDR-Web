@@ -136,4 +136,5 @@ public sealed record RadioSessionDiagnostics(
     IReadOnlyList<PanadapterSnapshot> Panadapters,
     IReadOnlyList<SliceSnapshot> Slices,
     RadioTxOccupancySnapshot TxOccupancy,
-    RadioTuneTimingDiagnostics Tune);
+    RadioTuneTimingDiagnostics Tune,
+    StationTxLifecycleDiagnostics? TxLifecycle = null);
