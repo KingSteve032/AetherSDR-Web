@@ -52,18 +52,33 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
     lifecycle.emergencyUnkeyTransportAvailable
       ? "TX transport present"
       : "TX transports absent";
+  const authorityReason = String(
+    lifecycle.authorityReason || "unknown");
+  const authorityState = lifecycle.authorityFresh
+    ? "FRESH"
+    : authorityReason === "no-active-lease"
+      ? "NO LEASE"
+      : "REVOKED";
+  const watchdogState = lifecycle.watchdogRunning
+    ? `watchdog ${formatCount(lifecycle.watchdogEvaluationSequence)} ` +
+      `(${formatAge(lifecycle.lastWatchdogEvaluatedAt, now)})`
+    : "watchdog stopped";
   return {
-    value: `${gate} · ${safety}`,
+    value: `${gate} · ${safety} · ${authorityState}`,
     detail:
-      `browser ${formatCount(lifecycle.browserObservationSequence)} ` +
+      `browser ${formatCount(lifecycle.browserObservationSequence)}/` +
+      `${lifecycle.browserFresh ? "fresh" : "stale"} ` +
       `(${formatAge(lifecycle.lastBrowserObservedAt, now)}) · ` +
-      `engine ${formatCount(lifecycle.engineObservationSequence)} ` +
+      `engine ${formatCount(lifecycle.engineObservationSequence)}/` +
+      `${lifecycle.engineFresh ? "fresh" : "stale"} ` +
       `(${formatAge(lifecycle.lastEngineObservedAt, now)}) · ` +
-      `gateway ${formatCount(lifecycle.gatewayObservationSequence)} ` +
+      `gateway ${formatCount(lifecycle.gatewayObservationSequence)}/` +
+      `${lifecycle.gatewayFresh ? "fresh" : "stale"} ` +
       `(${formatAge(lifecycle.lastGatewayObservedAt, now)}) · ` +
       `lease ${formatCount(lifecycle.leaseObservationSequence)} ` +
       `(${formatAge(lifecycle.lastLeaseObservedAt, now)}) · ` +
-      transportState
+      `${watchdogState} · authority ${authorityReason} · ` +
+      `last ${lifecycle.lastObservation || "none"} · ${transportState}`
   };
 }
 

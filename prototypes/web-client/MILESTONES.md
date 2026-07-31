@@ -1253,6 +1253,21 @@ Milestone state:
   Admin renders the resulting disabled/disarmed state and per-boundary freshness
   as `TX LIFECYCLE`. The gate remains Disabled, the supervisor remains Disarmed,
   and production still contains no reachable key or unkey transport.
+- Phase 2C adds a one-second in-process watchdog over those exact observations.
+  A tracked lease requires browser freshness within six seconds and station FLEX
+  plus gateway freshness within ten seconds. Explicit engine/gateway disconnect
+  releases the exact tracked lease immediately; stale browser, engine, or gateway
+  observations release it on watchdog evaluation. Frozen-clock tests prove that
+  each boundary revokes the tracked lease independently, later fresh observations
+  cannot restore it, and another browser's lease in the same session is not
+  released. Health now reports `txLifecycleWatchdogRegistered=true`; Admin shows
+  watchdog count/time, fresh/stale flags, authority reason, and the last lifecycle
+  observation. This remains an in-process authority revoker, not the future
+  independent emergency-unkey process, and production remains receive-only.
+  The complete validation gate passes 252 server tests, 48 TX-HIL isolation
+  tests, 70 AetherRemote tests, and 107 browser tests (477 total), with a
+  zero-warning solution build. Clean production publish inspection contains no
+  forbidden TX/HIL command surface.
 
 Acceptance criteria:
 

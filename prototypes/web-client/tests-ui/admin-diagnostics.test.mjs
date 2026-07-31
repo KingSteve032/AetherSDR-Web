@@ -45,12 +45,23 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
     gatewayObservationSequence: 9,
     lastGatewayObservedAt: "2026-07-31T02:29:58Z",
     leaseObservationSequence: 2,
-    lastLeaseObservedAt: "2026-07-31T02:29:50Z"
+    lastLeaseObservedAt: "2026-07-31T02:29:50Z",
+    watchdogRunning: true,
+    watchdogEvaluationSequence: 3,
+    lastWatchdogEvaluatedAt: "2026-07-31T02:29:59Z",
+    browserFresh: true,
+    engineFresh: true,
+    gatewayFresh: true,
+    authorityFresh: false,
+    authorityReason: "no-active-lease",
+    lastObservation: "gateway-heartbeat"
   }, now), {
-    value: "DISABLED · DISARMED",
+    value: "DISABLED · DISARMED · NO LEASE",
     detail:
-      "browser 4 (1s ago) · engine 7 (3s ago) · " +
-      "gateway 9 (2s ago) · lease 2 (10s ago) · TX transports absent"
+      "browser 4/fresh (1s ago) · engine 7/fresh (3s ago) · " +
+      "gateway 9/fresh (2s ago) · lease 2 (10s ago) · " +
+      "watchdog 3 (1s ago) · authority no-active-lease · " +
+      "last gateway-heartbeat · TX transports absent"
   });
   assert.deepEqual(formatTxLifecycle(null, now), {
     value: "NOT REGISTERED",

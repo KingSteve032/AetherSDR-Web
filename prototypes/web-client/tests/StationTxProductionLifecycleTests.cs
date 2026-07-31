@@ -41,6 +41,14 @@ public sealed class StationTxProductionLifecycleTests
         Assert.NotNull(snapshot.LastGatewayObservedAt);
         Assert.Equal(0, snapshot.LeaseObservationSequence);
         Assert.Null(snapshot.LastLeaseObservedAt);
+        Assert.True(snapshot.WatchdogRunning);
+        Assert.Equal(0, snapshot.WatchdogEvaluationSequence);
+        Assert.Null(snapshot.LastWatchdogEvaluatedAt);
+        Assert.False(snapshot.BrowserFresh);
+        Assert.False(snapshot.EngineFresh);
+        Assert.True(snapshot.GatewayFresh);
+        Assert.False(snapshot.AuthorityFresh);
+        Assert.Equal("no-active-lease", snapshot.AuthorityReason);
     }
 
     [Fact]
@@ -92,6 +100,11 @@ public sealed class StationTxProductionLifecycleTests
         Assert.NotNull(active.LastEngineObservedAt);
         Assert.Equal(1, active.LeaseObservationSequence);
         Assert.NotNull(active.LastLeaseObservedAt);
+        Assert.True(active.BrowserFresh);
+        Assert.True(active.EngineFresh);
+        Assert.True(active.GatewayFresh);
+        Assert.True(active.AuthorityFresh);
+        Assert.Equal("fresh", active.AuthorityReason);
 
         Assert.True(leases.TryRelease(
             "radio-a",
@@ -123,6 +136,201 @@ public sealed class StationTxProductionLifecycleTests
         Assert.Equal("Disabled", released.GateState);
         Assert.Equal("Disarmed", released.SafetyState);
         Assert.False(released.ObservationFaulted);
+        Assert.False(released.AuthorityFresh);
+        Assert.Equal("no-active-lease", released.AuthorityReason);
+    }
+
+    [Fact]
+    public async Task BrowserStalenessReleasesTheExactTrackedLease()
+    {
+        ManualTimeProvider time = NewTime();
+        TxLeaseManager leases = new(time);
+        RadioTxOccupancyRegistry occupancy = new(time);
+        await using StationTxProductionLifecycle lifecycle = Create(
+            leases,
+            occupancy,
+            time);
+        leases.Changed += lifecycle.ObserveLeaseChange;
+
+        TxLease lease = await EstablishAuthorityAsync(
+            lifecycle,
+            leases,
+            TimeSpan.FromSeconds(15));
+        Assert.True(lifecycle.Snapshot.AuthorityFresh);
+
+        time.Advance(
+            StationTxProductionLifecycle.BrowserFreshnessTimeout +
+            TimeSpan.FromMilliseconds(1));
+        await lifecycle.EvaluateWatchdogAsync();
+        await lifecycle.FlushAsync();
+
+        StationTxLifecycleDiagnostics snapshot = lifecycle.Snapshot;
+        Assert.Null(leases.GetCurrent("radio-a"));
+        Assert.False(snapshot.LeaseActive);
+        Assert.Null(snapshot.LeaseId);
+        Assert.False(snapshot.BrowserFresh);
+        Assert.True(snapshot.EngineFresh);
+        Assert.True(snapshot.GatewayFresh);
+        Assert.False(snapshot.AuthorityFresh);
+        Assert.Equal("no-active-lease", snapshot.AuthorityReason);
+        Assert.Equal(1, snapshot.WatchdogEvaluationSequence);
+        Assert.NotNull(snapshot.LastWatchdogEvaluatedAt);
+        Assert.Equal(
+            "lease-released-watchdog-browser-stale",
+            snapshot.LastObservation);
+        Assert.NotEqual(lease.LeaseId, snapshot.LeaseId);
+        Assert.Equal("Disabled", snapshot.GateState);
+        Assert.Equal("Disarmed", snapshot.SafetyState);
+    }
+
+    [Fact]
+    public async Task EngineStalenessReleasesLeaseWhileOtherObservationsRemainFresh()
+    {
+        ManualTimeProvider time = NewTime();
+        TxLeaseManager leases = new(time);
+        RadioTxOccupancyRegistry occupancy = new(time);
+        await using StationTxProductionLifecycle lifecycle = Create(
+            leases,
+            occupancy,
+            time);
+        leases.Changed += lifecycle.ObserveLeaseChange;
+
+        await EstablishAuthorityAsync(
+            lifecycle,
+            leases,
+            TimeSpan.FromSeconds(15));
+        time.Advance(TimeSpan.FromSeconds(9));
+        lifecycle.ObserveBrowserActivity(
+            "connection-a",
+            authenticated: true);
+        lifecycle.ObserveGatewayHeartbeat();
+        await lifecycle.FlushAsync();
+        time.Advance(TimeSpan.FromSeconds(2));
+
+        await lifecycle.EvaluateWatchdogAsync();
+        await lifecycle.FlushAsync();
+
+        StationTxLifecycleDiagnostics snapshot = lifecycle.Snapshot;
+        Assert.Null(leases.GetCurrent("radio-a"));
+        Assert.True(snapshot.BrowserFresh);
+        Assert.False(snapshot.EngineFresh);
+        Assert.True(snapshot.GatewayFresh);
+        Assert.Equal(
+            "lease-released-watchdog-engine-stale",
+            snapshot.LastObservation);
+        Assert.False(snapshot.ProductionTransmitEnabled);
+        Assert.False(snapshot.CommandTransportAvailable);
+        Assert.False(snapshot.EmergencyUnkeyTransportAvailable);
+    }
+
+    [Fact]
+    public async Task GatewayStalenessReleasesLeaseWithoutTrustingOtherFreshSignals()
+    {
+        ManualTimeProvider time = NewTime();
+        TxLeaseManager leases = new(time);
+        RadioTxOccupancyRegistry occupancy = new(time);
+        await using StationTxProductionLifecycle lifecycle = Create(
+            leases,
+            occupancy,
+            time);
+        leases.Changed += lifecycle.ObserveLeaseChange;
+
+        await EstablishAuthorityAsync(
+            lifecycle,
+            leases,
+            TimeSpan.FromSeconds(15));
+        time.Advance(TimeSpan.FromSeconds(9));
+        lifecycle.ObserveBrowserActivity(
+            "connection-a",
+            authenticated: true);
+        lifecycle.ObserveEngineHeartbeat(0x1234abcd);
+        await lifecycle.FlushAsync();
+        time.Advance(TimeSpan.FromSeconds(2));
+
+        await lifecycle.EvaluateWatchdogAsync();
+        await lifecycle.FlushAsync();
+
+        StationTxLifecycleDiagnostics snapshot = lifecycle.Snapshot;
+        Assert.Null(leases.GetCurrent("radio-a"));
+        Assert.True(snapshot.BrowserFresh);
+        Assert.True(snapshot.EngineFresh);
+        Assert.False(snapshot.GatewayFresh);
+        Assert.Equal(
+            "lease-released-watchdog-gateway-stale",
+            snapshot.LastObservation);
+        Assert.Equal("Disabled", snapshot.GateState);
+        Assert.Equal("Disarmed", snapshot.SafetyState);
+    }
+
+    [Fact]
+    public async Task FreshObservationsAfterWatchdogRevocationCannotRestoreTheLease()
+    {
+        ManualTimeProvider time = NewTime();
+        TxLeaseManager leases = new(time);
+        RadioTxOccupancyRegistry occupancy = new(time);
+        await using StationTxProductionLifecycle lifecycle = Create(
+            leases,
+            occupancy,
+            time);
+        leases.Changed += lifecycle.ObserveLeaseChange;
+
+        await EstablishAuthorityAsync(
+            lifecycle,
+            leases,
+            TimeSpan.FromSeconds(15));
+        time.Advance(
+            StationTxProductionLifecycle.BrowserFreshnessTimeout +
+            TimeSpan.FromMilliseconds(1));
+        await lifecycle.EvaluateWatchdogAsync();
+        await lifecycle.FlushAsync();
+
+        lifecycle.ObserveBrowserActivity(
+            "connection-a",
+            authenticated: true);
+        lifecycle.ObserveEngineHeartbeat(0x1234abcd);
+        lifecycle.ObserveGatewayHeartbeat();
+        await lifecycle.EvaluateWatchdogAsync();
+        await lifecycle.FlushAsync();
+
+        StationTxLifecycleDiagnostics snapshot = lifecycle.Snapshot;
+        Assert.True(snapshot.BrowserFresh);
+        Assert.True(snapshot.EngineFresh);
+        Assert.True(snapshot.GatewayFresh);
+        Assert.False(snapshot.LeaseActive);
+        Assert.Null(leases.GetCurrent("radio-a"));
+        Assert.False(snapshot.AuthorityFresh);
+        Assert.Equal("no-active-lease", snapshot.AuthorityReason);
+        Assert.Equal("gateway-heartbeat", snapshot.LastObservation);
+    }
+
+    [Fact]
+    public async Task EngineDisconnectImmediatelyReleasesTheTrackedLease()
+    {
+        ManualTimeProvider time = NewTime();
+        TxLeaseManager leases = new(time);
+        RadioTxOccupancyRegistry occupancy = new(time);
+        await using StationTxProductionLifecycle lifecycle = Create(
+            leases,
+            occupancy,
+            time);
+        leases.Changed += lifecycle.ObserveLeaseChange;
+
+        await EstablishAuthorityAsync(
+            lifecycle,
+            leases,
+            TimeSpan.FromSeconds(15));
+        lifecycle.ObserveEngineConnection(
+            connected: false,
+            clientHandle: 0x1234abcd);
+        await lifecycle.FlushAsync();
+
+        StationTxLifecycleDiagnostics snapshot = lifecycle.Snapshot;
+        Assert.Null(leases.GetCurrent("radio-a"));
+        Assert.False(snapshot.LeaseActive);
+        Assert.False(snapshot.EngineConnected);
+        Assert.Equal(
+            "lease-released-engine-disconnected",
+            snapshot.LastObservation);
     }
 
     [Fact]
@@ -299,6 +507,77 @@ public sealed class StationTxProductionLifecycleTests
     }
 
     [Fact]
+    public async Task GatewayDisconnectImmediatelyReleasesTheTrackedLease()
+    {
+        ManualTimeProvider time = NewTime();
+        TxLeaseManager leases = new(time);
+        RadioTxOccupancyRegistry occupancy = new(time);
+        await using StationTxProductionLifecycle lifecycle = Create(
+            leases,
+            occupancy,
+            time);
+        leases.Changed += lifecycle.ObserveLeaseChange;
+
+        await EstablishAuthorityAsync(
+            lifecycle,
+            leases,
+            TimeSpan.FromSeconds(15));
+        lifecycle.ObserveGatewayConnection(connected: false);
+        await lifecycle.FlushAsync();
+
+        StationTxLifecycleDiagnostics snapshot = lifecycle.Snapshot;
+        Assert.Null(leases.GetCurrent("radio-a"));
+        Assert.False(snapshot.LeaseActive);
+        Assert.False(snapshot.GatewayConnected);
+        Assert.Equal(
+            "lease-released-gateway-disconnected",
+            snapshot.LastObservation);
+    }
+
+    [Fact]
+    public async Task WatchdogNeverReleasesAnotherBrowserLeaseInTheSameSession()
+    {
+        ManualTimeProvider time = NewTime();
+        TxLeaseManager leases = new(time);
+        RadioTxOccupancyRegistry occupancy = new(time);
+        await using StationTxProductionLifecycle lifecycle = Create(
+            leases,
+            occupancy,
+            time);
+        leases.Changed += lifecycle.ObserveLeaseChange;
+
+        lifecycle.ObserveBrowserConnection(
+            "connection-a",
+            connected: true,
+            authenticated: true);
+        Assert.True(leases.TryAcquire(
+            "radio-a",
+            "session-a",
+            "connection-b",
+            "operator-b",
+            "Operator B",
+            TimeSpan.FromSeconds(15),
+            out TxLease? lease,
+            out string? error), error);
+        Assert.NotNull(lease);
+        await lifecycle.FlushAsync();
+        Assert.False(lifecycle.Snapshot.LeaseActive);
+
+        time.Advance(
+            StationTxProductionLifecycle.GatewayFreshnessTimeout +
+            TimeSpan.FromMilliseconds(1));
+        await lifecycle.EvaluateWatchdogAsync();
+        await lifecycle.FlushAsync();
+
+        TxLease? current = leases.GetCurrent("radio-a");
+        Assert.NotNull(current);
+        Assert.Equal(lease!.LeaseId, current.LeaseId);
+        Assert.Equal("connection-b", current.ClientId);
+        Assert.False(lifecycle.Snapshot.LeaseActive);
+        Assert.Equal("no-active-lease", lifecycle.Snapshot.AuthorityReason);
+    }
+
+    [Fact]
     public async Task ProductionTransportsRejectEveryCommandSurface()
     {
         StationTxUnavailableCommandTransport command = new();
@@ -323,9 +602,39 @@ public sealed class StationTxProductionLifecycleTests
             emergencyUnkey.Outcome);
     }
 
+    private static async Task<TxLease> EstablishAuthorityAsync(
+        StationTxProductionLifecycle lifecycle,
+        TxLeaseManager leases,
+        TimeSpan duration)
+    {
+        lifecycle.ObserveBrowserConnection(
+            "connection-a",
+            connected: true,
+            authenticated: true);
+        lifecycle.ObserveEngineConnection(
+            connected: true,
+            clientHandle: 0x1234abcd);
+        Assert.True(leases.TryAcquire(
+            "radio-a",
+            "session-a",
+            "connection-a",
+            "operator-a",
+            "Operator A",
+            duration,
+            out TxLease? lease,
+            out string? error), error);
+        Assert.NotNull(lease);
+        await lifecycle.FlushAsync();
+        return lease;
+    }
+
+    private static ManualTimeProvider NewTime() =>
+        new(new DateTimeOffset(2026, 7, 31, 12, 0, 0, TimeSpan.Zero));
+
     private static StationTxProductionLifecycle Create(
         TxLeaseManager leases,
-        RadioTxOccupancyRegistry occupancy) =>
+        RadioTxOccupancyRegistry occupancy,
+        TimeProvider? timeProvider = null) =>
         new(
             "radio-a",
             "session-a",
@@ -333,5 +642,21 @@ public sealed class StationTxProductionLifecycleTests
             "gateway-a",
             leases,
             occupancy,
-            NullLogger<StationTxProductionLifecycle>.Instance);
+            NullLogger<StationTxProductionLifecycle>.Instance,
+            timeProvider);
+
+    private sealed class ManualTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        private DateTimeOffset m_now = now;
+
+        public override DateTimeOffset GetUtcNow() => m_now;
+
+        public void Advance(TimeSpan amount)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(
+                amount,
+                TimeSpan.Zero);
+            m_now += amount;
+        }
+    }
 }

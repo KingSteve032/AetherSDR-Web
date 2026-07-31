@@ -169,6 +169,18 @@ authority-revoking only; they cannot arm the supervisor or reach either
 unavailable transport. The admin session grid renders the gate/supervisor state,
 per-boundary sequence counts, timestamps, and continued absence of TX transports.
 
+Phase 2C adds a one-second, in-process stale-authority watchdog. A tracked lease
+remains fresh only while the exact admitted browser principal has been observed
+within six seconds, the exact connected FLEX handle has completed a station
+heartbeat within ten seconds, and gateway activity has been observed within ten
+seconds. Explicit engine or gateway disconnect releases the exact tracked lease
+immediately; a stale boundary releases it on the next watchdog evaluation.
+Mismatched or untracked browser leases are never released. Later fresh
+observations update diagnostics but cannot recreate the revoked lease or TX
+authority. This watchdog is an authority-revocation layer inside the running
+gateway, not the future independent emergency-unkey process, and it cannot arm,
+key, unkey, or reach either unavailable production transport.
+
 The first browser-integration increment exposes only a separately configured
 ownership lease. `Radio:BrowserTxLeaseEnabled` defaults to false and is distinct
 from the reserved `Radio:AllowTransmit` switch. The gateway derives lease

@@ -193,6 +193,7 @@ expected = {
     "transmitEnabled": False,
     "browserTxLeaseEnabled": False,
     "txGateLifecycleRegistered": True,
+    "txLifecycleWatchdogRegistered": True,
     "txCommandTransportRegistered": False,
     "txSafetySupervisorArmingAvailable": False,
 }
