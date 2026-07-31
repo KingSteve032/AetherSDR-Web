@@ -23,5 +23,6 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\AetherSDR.Web.csproj" />
+    <ProjectReference Include="..\..\tx-watchdog\AetherSDR.TxWatchdog\AetherSDR.TxWatchdog.csproj" />
   </ItemGroup>
 </Project>

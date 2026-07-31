@@ -196,6 +196,35 @@ package contains the executable for independent artifact inspection, but the web
 service does not launch or connect to it yet. It has no timer, lease operation,
 arming operation, radio connection, command transport, or emergency action.
 
+Phase 2E makes that process boundary live without adding a radio boundary. Each
+isolated radio session supervises exactly one watchdog child inside the web
+service's existing least-privileged systemd cgroup. Standard input and output
+remain the private IPC transport; no listener, network socket, shared file, or
+persistent authority store is introduced. The session starts the child before
+its receive transport, validates a new empty `Disarmed` status, and only then
+continues receive startup. A missing or invalid child degrades watchdog health
+and is retried, but it does not block receive-only operation.
+
+The gateway registers the child only after the exact browser, gateway, engine,
+FLEX handle, and opaque lease identity are all current. Browser activity,
+station-engine heartbeat, and gateway heartbeat advance the same exact child
+epoch. Lease release or incomplete authority sends an exact disconnect and
+replaces the child with a new empty process. Child exit, malformed response,
+request-ID mismatch, stale or mismatched identity, timeout, or rejected request
+publishes a loss event immediately; the in-process lifecycle releases only its
+tracked physical-radio lease before the bounded restart delay. A restarted child
+has a new host instance, sequence zero, and no registered identity. A later ready
+or heartbeat observation cannot recreate the released lease. Session disposal
+stops the child and removes it from aggregate health.
+
+The gateway parses child responses with the same strict 4096-character boundary
+as requests. Every accepted response must remain exactly `Disarmed` with reason
+`command-incapable-skeleton`, unavailable command transport, unavailable arming,
+and internally consistent registration fields. The watchdog still has no FLEX
+reference, socket, key, unkey, emergency transport, arming operation, timer, or
+operator-facing control. Phase 2E proves supervision and fail-closed authority
+revocation only; it is not production emergency-unkey integration.
+
 The first browser-integration increment exposes only a separately configured
 ownership lease. `Radio:BrowserTxLeaseEnabled` defaults to false and is distinct
 from the reserved `Radio:AllowTransmit` switch. The gateway derives lease

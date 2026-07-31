@@ -75,7 +75,17 @@ public sealed class RadioSession : IAsyncDisposable
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        await m_transport.StartAsync(cancellationToken);
+        try
+        {
+            await TxLifecycle.StartAsync(cancellationToken);
+            await m_transport.StartAsync(cancellationToken);
+        }
+        catch
+        {
+            await TxLifecycle.DisposeAsync();
+            throw;
+        }
+
         m_logger.LogInformation(
             "Started isolated session {SessionId} for radio {RadioId}",
             SessionId,
@@ -260,7 +270,8 @@ public sealed class RadioSessionRegistry(
     RadioTxOccupancyRegistry txOccupancyRegistry,
     ILoggerFactory loggerFactory,
     ILogger<RadioSessionRegistry> logger,
-    IOptions<RemoteStationSettings>? remoteSettings = null)
+    IOptions<RemoteStationSettings>? remoteSettings = null,
+    StationTxIndependentWatchdogRegistry? independentWatchdogs = null)
     : BackgroundService
 {
     // Mobile browsers suspend WebSockets as soon as the operator changes apps
@@ -715,7 +726,8 @@ public sealed class RadioSessionRegistry(
             m_gatewayInstanceId,
             txLeaseManager,
             txOccupancyRegistry,
-            loggerFactory.CreateLogger<StationTxProductionLifecycle>());
+            loggerFactory.CreateLogger<StationTxProductionLifecycle>(),
+            independentWatchdogFactory: independentWatchdogs);
         RadioCoordinator coordinator = new(
             loggerFactory.CreateLogger<RadioCoordinator>(),
             sessionOptions,

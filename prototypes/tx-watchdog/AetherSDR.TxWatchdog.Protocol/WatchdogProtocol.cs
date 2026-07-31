@@ -87,6 +87,33 @@ public static class WatchdogProtocol
             "stationClientHandle"
         };
 
+    private static readonly HashSet<string> ResponseProperties =
+        new(StringComparer.Ordinal)
+        {
+            "protocolVersion",
+            "requestId",
+            "ok",
+            "error",
+            "snapshot"
+        };
+
+    private static readonly HashSet<string> SnapshotProperties =
+        new(StringComparer.Ordinal)
+        {
+            "hostInstanceId",
+            "startedAt",
+            "state",
+            "reason",
+            "radioCommandTransportAvailable",
+            "armingAvailable",
+            "registered",
+            "connected",
+            "leaseBound",
+            "lastSequence",
+            "lastObservation",
+            "lastObservedAt"
+        };
+
     public static bool TryParseRequest(
         string json,
         out WatchdogRequest? request,
@@ -199,8 +226,189 @@ public static class WatchdogProtocol
         }
     }
 
+    public static string SerializeRequest(WatchdogRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        string type = request.Kind switch
+        {
+            WatchdogRequestKind.Status => "status",
+            WatchdogRequestKind.Register => "register",
+            WatchdogRequestKind.Heartbeat => "heartbeat",
+            WatchdogRequestKind.Disconnect => "disconnect",
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(request),
+                "A supported watchdog request kind is required.")
+        };
+        return JsonSerializer.Serialize(
+            new
+            {
+                protocolVersion = request.ProtocolVersion,
+                requestId = request.RequestId,
+                type,
+                sequence = request.Sequence,
+                identity = request.Identity
+            },
+            SerializerOptions);
+    }
+
     public static string SerializeResponse(WatchdogResponse response) =>
         JsonSerializer.Serialize(response, SerializerOptions);
+
+    public static bool TryParseResponse(
+        string json,
+        out WatchdogResponse? response,
+        out string error)
+    {
+        response = null;
+        error = string.Empty;
+        if (json.Length is 0)
+        {
+            error = "empty-response";
+            return false;
+        }
+        if (json.Length > MaximumMessageCharacters)
+        {
+            error = "response-too-large";
+            return false;
+        }
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(
+                json,
+                new JsonDocumentOptions
+                {
+                    AllowTrailingCommas = false,
+                    CommentHandling = JsonCommentHandling.Disallow,
+                    MaxDepth = 8
+                });
+            JsonElement root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !HasOnlyUniqueProperties(root, ResponseProperties) ||
+                !TryReadInt32(root, "protocolVersion", out int version) ||
+                version != Version ||
+                !TryReadIdentifier(
+                    root,
+                    "requestId",
+                    MaximumRequestIdLength,
+                    normalizeUpper: false,
+                    out string requestId) ||
+                !TryReadBoolean(root, "ok", out bool ok) ||
+                !TryReadNullableString(root, "error", out string? responseError) ||
+                !root.TryGetProperty("snapshot", out JsonElement snapshotElement) ||
+                !TryParseSnapshot(snapshotElement, out WatchdogSnapshot? snapshot))
+            {
+                error = "invalid-response-shape";
+                return false;
+            }
+
+            if (ok && responseError is not null)
+            {
+                error = "success-response-carried-error";
+                return false;
+            }
+            if (!ok && string.IsNullOrWhiteSpace(responseError))
+            {
+                error = "failure-response-missing-error";
+                return false;
+            }
+
+            response = new WatchdogResponse(
+                version,
+                requestId,
+                ok,
+                responseError,
+                snapshot!);
+            return true;
+        }
+        catch (JsonException)
+        {
+            error = "invalid-json";
+            return false;
+        }
+    }
+
+    private static bool TryParseSnapshot(
+        JsonElement element,
+        out WatchdogSnapshot? snapshot)
+    {
+        snapshot = null;
+        if (element.ValueKind != JsonValueKind.Object ||
+            !HasOnlyUniqueProperties(element, SnapshotProperties) ||
+            !TryReadIdentifier(
+                element,
+                "hostInstanceId",
+                MaximumIdentifierLength,
+                normalizeUpper: false,
+                out string hostInstanceId) ||
+            !element.TryGetProperty("startedAt", out JsonElement startedAtElement) ||
+            startedAtElement.ValueKind != JsonValueKind.String ||
+            !startedAtElement.TryGetDateTimeOffset(out DateTimeOffset startedAt) ||
+            !TryReadIdentifier(
+                element,
+                "state",
+                MaximumIdentifierLength,
+                normalizeUpper: false,
+                out string state) ||
+            !TryReadIdentifier(
+                element,
+                "reason",
+                MaximumIdentifierLength,
+                normalizeUpper: false,
+                out string reason) ||
+            !TryReadBoolean(
+                element,
+                "radioCommandTransportAvailable",
+                out bool radioCommandTransportAvailable) ||
+            !TryReadBoolean(element, "armingAvailable", out bool armingAvailable) ||
+            !TryReadBoolean(element, "registered", out bool registered) ||
+            !TryReadBoolean(element, "connected", out bool connected) ||
+            !TryReadBoolean(element, "leaseBound", out bool leaseBound) ||
+            !element.TryGetProperty("lastSequence", out JsonElement sequenceElement) ||
+            sequenceElement.ValueKind != JsonValueKind.Number ||
+            !sequenceElement.TryGetInt64(out long lastSequence) ||
+            lastSequence < 0 ||
+            !TryReadIdentifier(
+                element,
+                "lastObservation",
+                MaximumIdentifierLength,
+                normalizeUpper: false,
+                out string lastObservation) ||
+            !TryReadNullableDateTimeOffset(
+                element,
+                "lastObservedAt",
+                out DateTimeOffset? lastObservedAt))
+        {
+            return false;
+        }
+
+        if (!string.Equals(state, "Disarmed", StringComparison.Ordinal) ||
+            !string.Equals(
+                reason,
+                "command-incapable-skeleton",
+                StringComparison.Ordinal) ||
+            radioCommandTransportAvailable || armingAvailable ||
+            (connected && !registered) || (leaseBound != registered))
+        {
+            return false;
+        }
+
+        snapshot = new WatchdogSnapshot(
+            hostInstanceId,
+            startedAt,
+            state,
+            reason,
+            radioCommandTransportAvailable,
+            armingAvailable,
+            registered,
+            connected,
+            Identity: null,
+            leaseBound,
+            lastSequence,
+            lastObservation,
+            lastObservedAt);
+        return true;
+    }
 
     private static bool TryParseIdentity(
         JsonElement element,
@@ -326,6 +534,70 @@ public static class WatchdogProtocol
             return false;
         }
         value = property.GetString() ?? string.Empty;
+        return true;
+    }
+
+    private static bool TryReadBoolean(
+        JsonElement element,
+        string propertyName,
+        out bool value)
+    {
+        value = default;
+        if (!element.TryGetProperty(propertyName, out JsonElement property) ||
+            property.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            return false;
+        }
+        value = property.GetBoolean();
+        return true;
+    }
+
+    private static bool TryReadNullableString(
+        JsonElement element,
+        string propertyName,
+        out string? value)
+    {
+        value = null;
+        if (!element.TryGetProperty(propertyName, out JsonElement property))
+        {
+            return true;
+        }
+        if (property.ValueKind == JsonValueKind.Null)
+        {
+            return true;
+        }
+        if (property.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+        string normalized = (property.GetString() ?? string.Empty).Trim();
+        if (normalized.Length is 0 ||
+            normalized.Length > MaximumIdentifierLength ||
+            normalized.Any(char.IsControl))
+        {
+            return false;
+        }
+        value = normalized;
+        return true;
+    }
+
+    private static bool TryReadNullableDateTimeOffset(
+        JsonElement element,
+        string propertyName,
+        out DateTimeOffset? value)
+    {
+        value = null;
+        if (!element.TryGetProperty(propertyName, out JsonElement property) ||
+            property.ValueKind == JsonValueKind.Null)
+        {
+            return true;
+        }
+        if (property.ValueKind != JsonValueKind.String ||
+            !property.TryGetDateTimeOffset(out DateTimeOffset parsed))
+        {
+            return false;
+        }
+        value = parsed;
         return true;
     }
 

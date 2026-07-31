@@ -53,8 +53,8 @@ Primary components:
   client, server tests, browser tests, deployment helpers, and the isolated TX
   hardware-in-the-loop harness.
 - `prototypes/tx-watchdog/` — command-incapable independent TX watchdog
-  protocol, process host, deterministic process-boundary tests, and packaging
-  documentation. It has no production radio transport or arming surface.
+  protocol, process host, deterministic process-boundary tests, and supervised
+  local-IPC integration. It has no production radio transport or arming surface.
 - `AetherRemote/src/AetherRemote.Protocol/` — versioned station/broker protocol
   contracts and validation.
 - `AetherRemote/src/AetherRemote.Agent/` — station-local remote connectivity and

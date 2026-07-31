@@ -54,13 +54,24 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
     gatewayFresh: true,
     authorityFresh: false,
     authorityReason: "no-active-lease",
+    independentWatchdog: {
+      supervisionEnabled: true,
+      processRunning: true,
+      processId: 4242,
+      hostInstanceId: "watchdog-1234567890",
+      state: "Disarmed",
+      ipcConnected: true,
+      lastSequence: 0,
+      restartCount: 1
+    },
     lastObservation: "gateway-heartbeat"
   }, now), {
     value: "DISABLED · DISARMED · NO LEASE",
     detail:
       "browser 4/fresh (1s ago) · engine 7/fresh (3s ago) · " +
       "gateway 9/fresh (2s ago) · lease 2 (10s ago) · " +
-      "watchdog 3 (1s ago) · authority no-active-lease · " +
+      "watchdog 3 (1s ago) · independent disarmed pid 4242 " +
+      "host watchdog seq 0 restarts 1 · authority no-active-lease · " +
       "last gateway-heartbeat · TX transports absent"
   });
   assert.deepEqual(formatTxLifecycle(null, now), {

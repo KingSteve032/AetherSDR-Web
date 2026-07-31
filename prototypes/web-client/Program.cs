@@ -34,6 +34,11 @@ RemoteStationSettings remoteStationSettings =
         .GetSection(RemoteStationSettings.SectionName)
         .Get<RemoteStationSettings>() ??
     new RemoteStationSettings();
+IndependentTxWatchdogSettings independentTxWatchdogSettings =
+    builder.Configuration
+        .GetSection(IndependentTxWatchdogSettings.SectionName)
+        .Get<IndependentTxWatchdogSettings>() ??
+    new IndependentTxWatchdogSettings();
 ReverseProxySettings reverseProxySettings =
     builder.Configuration
         .GetSection(ReverseProxySettings.SectionName)
@@ -45,6 +50,8 @@ string[] allowedOrigins =
 builder.Services.AddSingleton(Options.Create(authSettings));
 builder.Services.AddSingleton(Options.Create(radioSettings));
 builder.Services.AddSingleton(Options.Create(remoteStationSettings));
+builder.Services.AddSingleton(Options.Create(independentTxWatchdogSettings));
+builder.Services.AddSingleton<StationTxIndependentWatchdogRegistry>();
 builder.Services.AddSingleton(
     Options.Create(new OriginSettings { Values = allowedOrigins }));
 ConfigureReverseProxy(builder.Services, reverseProxySettings);
@@ -128,6 +135,8 @@ builder.Services.AddRateLimiter(options =>
 });
 
 WebApplication app = builder.Build();
+StationTxIndependentWatchdogRegistry independentTxWatchdogRegistry =
+    app.Services.GetRequiredService<StationTxIndependentWatchdogRegistry>();
 
 if (reverseProxySettings.Enabled)
 {
@@ -167,22 +176,40 @@ app.UseWebSockets(
 
 app.MapGet(
         "/healthz",
-        () => Results.Ok(new
+        () =>
         {
-            status = "ok",
-            radioMode = radioSettings.Mode,
-            transmitEnabled = false,
-            browserTxLeaseEnabled = radioSettings.BrowserTxLeaseEnabled,
-            txGateLifecycleRegistered = true,
-            txLifecycleWatchdogRegistered = true,
-            txIndependentWatchdogHostPackaged = true,
-            txIndependentWatchdogState = "packaged-disarmed",
-            txIndependentWatchdogConnected = false,
-            txIndependentWatchdogCommandTransportRegistered = false,
-            txIndependentWatchdogArmingAvailable = false,
-            txCommandTransportRegistered = false,
-            txSafetySupervisorArmingAvailable = false
-        }))
+            StationTxIndependentWatchdogAggregate watchdog =
+                independentTxWatchdogRegistry.Snapshot;
+            return Results.Ok(new
+            {
+                status = "ok",
+                radioMode = radioSettings.Mode,
+                transmitEnabled = false,
+                browserTxLeaseEnabled = radioSettings.BrowserTxLeaseEnabled,
+                txGateLifecycleRegistered = true,
+                txLifecycleWatchdogRegistered = true,
+                txIndependentWatchdogHostPackaged = true,
+                txIndependentWatchdogSupervisionRegistered =
+                    watchdog.SupervisionRegistered,
+                txIndependentWatchdogState = watchdog.State,
+                txIndependentWatchdogConnected =
+                    watchdog.ConnectedProcessCount > 0,
+                txIndependentWatchdogSessionCount = watchdog.SessionCount,
+                txIndependentWatchdogProcessCount =
+                    watchdog.RunningProcessCount,
+                txIndependentWatchdogConnectedProcessCount =
+                    watchdog.ConnectedProcessCount,
+                txIndependentWatchdogRegisteredIdentityCount =
+                    watchdog.RegisteredIdentityCount,
+                txIndependentWatchdogRestartCount = watchdog.RestartCount,
+                txIndependentWatchdogCommandTransportRegistered =
+                    watchdog.CommandTransportAvailable,
+                txIndependentWatchdogArmingAvailable =
+                    watchdog.ArmingAvailable,
+                txCommandTransportRegistered = false,
+                txSafetySupervisorArmingAvailable = false
+            });
+        })
     .AllowAnonymous();
 
 app.MapGet(

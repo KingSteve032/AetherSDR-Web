@@ -63,6 +63,16 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
     ? `watchdog ${formatCount(lifecycle.watchdogEvaluationSequence)} ` +
       `(${formatAge(lifecycle.lastWatchdogEvaluatedAt, now)})`
     : "watchdog stopped";
+  const independent = lifecycle.independentWatchdog;
+  const independentState = !independent?.supervisionEnabled
+    ? "independent not supervised"
+    : independent.processRunning && independent.ipcConnected
+      ? `independent ${String(independent.state || "disarmed").toLowerCase()} ` +
+        `pid ${Number.isInteger(independent.processId) ? independent.processId : "?"} ` +
+        `host ${shortId(independent.hostInstanceId)} ` +
+        `seq ${formatCount(independent.lastSequence)} ` +
+        `restarts ${formatCount(independent.restartCount)}`
+      : `independent degraded (${independent.reason || "unavailable"})`;
   return {
     value: `${gate} · ${safety} · ${authorityState}`,
     detail:
@@ -77,7 +87,8 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `(${formatAge(lifecycle.lastGatewayObservedAt, now)}) · ` +
       `lease ${formatCount(lifecycle.leaseObservationSequence)} ` +
       `(${formatAge(lifecycle.lastLeaseObservedAt, now)}) · ` +
-      `${watchdogState} · authority ${authorityReason} · ` +
+      `${watchdogState} · ${independentState} · ` +
+      `authority ${authorityReason} · ` +
       `last ${lifecycle.lastObservation || "none"} · ${transportState}`
   };
 }

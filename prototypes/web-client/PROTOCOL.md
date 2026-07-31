@@ -161,17 +161,39 @@ observation. They never echo the opaque lease ID or the full authority identity.
 lease mutation, key, unkey, timer, persistence, or radio command message. A process
 restart creates a new host instance and an empty Disarmed snapshot.
 
+Phase 2E keeps the browser protocol unchanged and makes the local process
+protocol an active per-session supervision boundary. The gateway launches one
+child for each isolated radio session and requires the startup `status` response
+to be empty, sequence zero, and exactly `Disarmed`. A complete current authority
+tuple sends `register`; later exact browser, engine, and gateway observations
+send `heartbeat`. Lease release, authority loss, or identity change sends
+`disconnect` and replaces the child with a new empty process. Session disposal
+terminates the child directly and removes it from aggregate health. The gateway
+never sends an authority-bearing request after a child restart until
+a new exact lease is observed.
+
+Responses are parsed under the same 4096-character limit and strict unique-
+property rules as requests. The response request ID must match. Any malformed,
+oversized, inconsistent, non-Disarmed, command-capable, or arming-capable
+response fails closed. Child exit or IPC failure reports loss to the existing
+lifecycle immediately, releases only that lifecycle's tracked lease, and starts
+a bounded asynchronous retry. A ready response from the replacement process is
+diagnostic only and cannot restore the released lease.
+
 `GET /healthz` additionally reports
 `txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,
 `txIndependentWatchdogHostPackaged=true`,
-`txIndependentWatchdogState=packaged-disarmed`,
-`txIndependentWatchdogConnected=false`,
-`txIndependentWatchdogCommandTransportRegistered=false`,
+`txIndependentWatchdogSupervisionRegistered=true`, a supervised Disarmed state,
+per-session running/connected/registered-identity counts, cumulative restart
+count, `txIndependentWatchdogCommandTransportRegistered=false`,
 `txIndependentWatchdogArmingAvailable=false`,
 `txCommandTransportRegistered=false`, and
-`txSafetySupervisorArmingAvailable=false`. The deployment gate requires these
-values together with `transmitEnabled=false` and
-`browserTxLeaseEnabled=false`.
+`txSafetySupervisorArmingAvailable=false`. With browser TX leases disabled, the
+deployment gate requires zero registered watchdog identities. The Admin
+`txLifecycle.independentWatchdog` projection includes process ID, host instance,
+IPC connection, registration, lease-bound state, last sequence, restart count,
+last observation, and error. These are read-only diagnostics and are never
+accepted from browser input.
 
 The browser may send:
 
