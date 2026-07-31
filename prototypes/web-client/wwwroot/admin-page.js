@@ -22,7 +22,7 @@ import {
   rememberSessionDiagnosticExpansion,
   sessionDiagnosticExpanded,
   shortId
-} from "./admin-diagnostics.js?v=tx-lifecycle-1";
+} from "./admin-diagnostics.js?v=tx-lifecycle-watchdog-1";
 
 const elements = {
   userName: document.querySelector("#user-name"),

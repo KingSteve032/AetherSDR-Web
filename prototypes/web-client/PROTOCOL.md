@@ -127,8 +127,19 @@ observation releases only that browser's lease and reaches the authentication-
 loss monitor; it does not expose a new command or enable transmit. The admin
 session grid displays this projection as `TX LIFECYCLE`.
 
+Phase 2C adds no browser message. The `txLifecycle` projection now reports
+whether its one-second watchdog is running, its evaluation sequence and last
+evaluation time, per-boundary fresh/stale flags, and a current authority reason.
+A tracked lease requires an exact browser observation within six seconds, exact
+FLEX-handle heartbeat within ten seconds, and gateway observation within ten
+seconds. Explicit engine/gateway disconnect or a stale boundary releases only
+the lifecycle's exact tracked lease. Fresh observations after revocation never
+restore that lease. The watchdog remains in-process and command-incapable; it is
+not the independent emergency-unkey boundary.
+
 `GET /healthz` additionally reports
-`txGateLifecycleRegistered=true`, `txCommandTransportRegistered=false`, and
+`txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,
+`txCommandTransportRegistered=false`, and
 `txSafetySupervisorArmingAvailable=false`. The deployment gate requires these
 values together with `transmitEnabled=false` and
 `browserTxLeaseEnabled=false`.

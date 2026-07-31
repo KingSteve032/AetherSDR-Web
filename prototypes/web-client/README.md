@@ -203,7 +203,8 @@ activation or health check rolls the `current` link back automatically. The
 script never commits or pushes; a Browser Bridge acceptance pass against the
 deployed site is required before Git publication. TX-lifecycle changes must
 also keep the public and internal health contract at
-`txGateLifecycleRegistered=true`, `txCommandTransportRegistered=false`, and
+`txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,
+`txCommandTransportRegistered=false`, and
 `txSafetySupervisorArmingAvailable=false`. The repeatable browser procedure is
 stored locally at
 `~/.browser-bridge/playbooks/aethersdr-flexweb-post-deploy-acceptance.md`.

@@ -174,6 +174,7 @@ app.MapGet(
             transmitEnabled = false,
             browserTxLeaseEnabled = radioSettings.BrowserTxLeaseEnabled,
             txGateLifecycleRegistered = true,
+            txLifecycleWatchdogRegistered = true,
             txCommandTransportRegistered = false,
             txSafetySupervisorArmingAvailable = false
         }))

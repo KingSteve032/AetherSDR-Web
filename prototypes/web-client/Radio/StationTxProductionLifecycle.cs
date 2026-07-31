@@ -35,6 +35,14 @@ public sealed record StationTxLifecycleDiagnostics(
     DateTimeOffset? LastGatewayObservedAt,
     long LeaseObservationSequence,
     DateTimeOffset? LastLeaseObservedAt,
+    bool WatchdogRunning,
+    long WatchdogEvaluationSequence,
+    DateTimeOffset? LastWatchdogEvaluatedAt,
+    bool BrowserFresh,
+    bool EngineFresh,
+    bool GatewayFresh,
+    bool AuthorityFresh,
+    string AuthorityReason,
     string LastObservation,
     DateTimeOffset LastObservedAt);
 
@@ -52,6 +60,14 @@ public sealed record StationTxLifecycleDiagnostics(
 internal sealed class StationTxProductionLifecycle : IAsyncDisposable
 {
     private const int ObservationCapacity = 64;
+    internal static readonly TimeSpan WatchdogInterval =
+        TimeSpan.FromSeconds(1);
+    internal static readonly TimeSpan BrowserFreshnessTimeout =
+        TimeSpan.FromSeconds(6);
+    internal static readonly TimeSpan EngineFreshnessTimeout =
+        TimeSpan.FromSeconds(10);
+    internal static readonly TimeSpan GatewayFreshnessTimeout =
+        TimeSpan.FromSeconds(10);
 
     private readonly object m_stateGate = new();
     private readonly string m_radioId;
@@ -61,6 +77,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     private readonly string m_engineInstanceId;
     private readonly TxLeaseManager m_leases;
     private readonly ILogger<StationTxProductionLifecycle> m_logger;
+    private readonly TimeProvider m_timeProvider;
+    private readonly CancellationTokenSource m_watchdogCancellation = new();
     private readonly StationTxCommandGate m_commandGate;
     private readonly StationTxSafetySupervisor m_supervisor;
     private readonly StationTxAuthenticationMonitor m_authenticationMonitor;
@@ -68,6 +86,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     private readonly StationTxGatewayConnectionMonitor m_gatewayMonitor;
     private readonly Channel<LifecycleObservation> m_observations;
     private readonly Task m_observationTask;
+    private readonly Task m_watchdogTask;
 
     private bool m_gatewayConnected = true;
     private bool m_engineConnected;
@@ -83,11 +102,13 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     private long m_engineObservationSequence;
     private DateTimeOffset? m_lastEngineObservedAt;
     private long m_gatewayObservationSequence = 1;
-    private DateTimeOffset? m_lastGatewayObservedAt = DateTimeOffset.UtcNow;
+    private DateTimeOffset? m_lastGatewayObservedAt;
     private long m_leaseObservationSequence;
     private DateTimeOffset? m_lastLeaseObservedAt;
+    private long m_watchdogEvaluationSequence;
+    private DateTimeOffset? m_lastWatchdogEvaluatedAt;
     private string m_lastObservation = "registered-disabled";
-    private DateTimeOffset m_lastObservedAt = DateTimeOffset.UtcNow;
+    private DateTimeOffset m_lastObservedAt;
     private int m_overflowSignaled;
     private int m_disposed;
 
@@ -98,7 +119,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         string gatewayInstanceId,
         TxLeaseManager leases,
         RadioTxOccupancyRegistry occupancy,
-        ILogger<StationTxProductionLifecycle> logger)
+        ILogger<StationTxProductionLifecycle> logger,
+        TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(leases);
         ArgumentNullException.ThrowIfNull(occupancy);
@@ -111,6 +133,10 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         m_engineInstanceId = $"engine-{Guid.NewGuid():N}";
         m_leases = leases;
         m_logger = logger;
+        m_timeProvider = timeProvider ?? TimeProvider.System;
+        DateTimeOffset now = m_timeProvider.GetUtcNow();
+        m_lastGatewayObservedAt = now;
+        m_lastObservedAt = now;
 
         StationTxUnavailableCommandTransport commandTransport = new();
         StationTxUnavailableEmergencyUnkeyTransport emergencyTransport = new();
@@ -119,11 +145,13 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             m_radioId,
             leases,
             occupancy,
-            commandTransport);
+            commandTransport,
+            m_timeProvider);
         m_supervisor = new StationTxSafetySupervisor(
             m_radioId,
             occupancy,
-            emergencyTransport);
+            emergencyTransport,
+            m_timeProvider);
         m_authenticationMonitor = new StationTxAuthenticationMonitor(m_supervisor);
         m_engineMonitor = new StationTxEngineConnectionMonitor(m_supervisor);
         m_gatewayMonitor = new StationTxGatewayConnectionMonitor(m_supervisor);
@@ -137,6 +165,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 AllowSynchronousContinuations = false
             });
         m_observationTask = Task.Run(ProcessObservationsAsync);
+        m_watchdogTask = Task.Run(RunWatchdogAsync);
     }
 
     public StationTxLifecycleDiagnostics Snapshot
@@ -147,6 +176,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             StationTxSafetySnapshot safety = m_supervisor.Snapshot;
             lock (m_stateGate)
             {
+                LifecycleFreshness freshness =
+                    EvaluateFreshnessLocked(m_timeProvider.GetUtcNow());
                 return new StationTxLifecycleDiagnostics(
                     m_radioId,
                     m_sessionId,
@@ -180,6 +211,14 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     m_lastGatewayObservedAt,
                     m_leaseObservationSequence,
                     m_lastLeaseObservedAt,
+                    WatchdogRunning: Volatile.Read(ref m_disposed) == 0,
+                    m_watchdogEvaluationSequence,
+                    m_lastWatchdogEvaluatedAt,
+                    freshness.BrowserFresh,
+                    freshness.EngineFresh,
+                    freshness.GatewayFresh,
+                    freshness.AuthorityFresh,
+                    freshness.Reason,
                     m_lastObservation,
                     m_lastObservedAt);
             }
@@ -224,23 +263,45 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     {
         TaskCompletionSource completion = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        Enqueue(new BarrierObservation(completion));
+        if (!Enqueue(new BarrierObservation(completion)))
+        {
+            completion.TrySetException(new InvalidOperationException(
+                "The station TX lifecycle cannot accept a flush barrier."));
+        }
         return completion.Task.WaitAsync(cancellationToken);
     }
 
-    private void Enqueue(LifecycleObservation observation)
+    internal Task EvaluateWatchdogAsync(
+        CancellationToken cancellationToken = default)
+    {
+        TaskCompletionSource completion = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!Enqueue(new WatchdogObservation(
+                m_timeProvider.GetUtcNow(),
+                completion)))
+        {
+            completion.TrySetException(new InvalidOperationException(
+                "The station TX lifecycle cannot accept a watchdog evaluation."));
+        }
+        return completion.Task.WaitAsync(cancellationToken);
+    }
+
+    private bool Enqueue(LifecycleObservation observation)
     {
         if (Volatile.Read(ref m_disposed) != 0)
         {
-            return;
+            return false;
         }
 
-        if (!m_observations.Writer.TryWrite(observation))
+        if (m_observations.Writer.TryWrite(observation))
         {
-            FailClosed(
-                "observation-queue-full",
-                "The bounded station TX lifecycle observation queue is full.");
+            return true;
         }
+
+        FailClosed(
+            "observation-queue-full",
+            "The bounded station TX lifecycle observation queue is full.");
+        return false;
     }
 
     private async Task ProcessObservationsAsync()
@@ -274,6 +335,9 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     case LeaseObservation lease:
                         await ProcessLeaseAsync(lease.Change);
                         break;
+                    case WatchdogObservation watchdog:
+                        ProcessWatchdog(watchdog);
+                        break;
                     case BarrierObservation barrier:
                         barrier.Completion.TrySetResult();
                         break;
@@ -297,6 +361,27 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         }
     }
 
+    private async Task RunWatchdogAsync()
+    {
+        try
+        {
+            using PeriodicTimer timer = new(
+                WatchdogInterval,
+                m_timeProvider);
+            while (await timer.WaitForNextTickAsync(
+                m_watchdogCancellation.Token))
+            {
+                Enqueue(new WatchdogObservation(
+                    m_timeProvider.GetUtcNow(),
+                    Completion: null));
+            }
+        }
+        catch (OperationCanceledException) when (
+            m_watchdogCancellation.IsCancellationRequested)
+        {
+        }
+    }
+
     private async Task ProcessBrowserAsync(BrowserObservation observation)
     {
         bool applies;
@@ -316,7 +401,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     ? observation.ConnectionClientId
                     : null;
                 m_browserObservationSequence++;
-                m_lastBrowserObservedAt = DateTimeOffset.UtcNow;
+                m_lastBrowserObservedAt = m_timeProvider.GetUtcNow();
                 RecordLocked(observation.Connected
                     ? "browser-connected-authenticated"
                     : "browser-disconnected");
@@ -365,7 +450,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
 
             m_authenticated = observation.Authenticated;
             m_browserObservationSequence++;
-            m_lastBrowserObservedAt = DateTimeOffset.UtcNow;
+            m_lastBrowserObservedAt = m_timeProvider.GetUtcNow();
             RecordLocked(observation.Authenticated
                 ? "browser-activity-authenticated"
                 : "browser-activity-unauthenticated");
@@ -401,10 +486,15 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 ? observation.ClientHandle
                 : 0;
             m_engineObservationSequence++;
-            m_lastEngineObservedAt = DateTimeOffset.UtcNow;
+            m_lastEngineObservedAt = m_timeProvider.GetUtcNow();
             RecordLocked(observation.Connected
                 ? "station-engine-connected"
                 : "station-engine-disconnected");
+        }
+
+        if (!observation.Connected)
+        {
+            ReleaseTrackedLease("engine-disconnected");
         }
 
         StationTxSafetySnapshot safety = m_supervisor.Snapshot;
@@ -428,7 +518,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             }
 
             m_engineObservationSequence++;
-            m_lastEngineObservedAt = DateTimeOffset.UtcNow;
+            m_lastEngineObservedAt = m_timeProvider.GetUtcNow();
             RecordLocked("station-engine-heartbeat");
         }
     }
@@ -439,10 +529,15 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         {
             m_gatewayConnected = observation.Connected;
             m_gatewayObservationSequence++;
-            m_lastGatewayObservedAt = DateTimeOffset.UtcNow;
+            m_lastGatewayObservedAt = m_timeProvider.GetUtcNow();
             RecordLocked(observation.Connected
                 ? "gateway-connected"
                 : "gateway-disconnected");
+        }
+
+        if (!observation.Connected)
+        {
+            ReleaseTrackedLease("gateway-disconnected");
         }
 
         StationTxSafetySnapshot safety = m_supervisor.Snapshot;
@@ -469,7 +564,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             }
 
             m_gatewayObservationSequence++;
-            m_lastGatewayObservedAt = DateTimeOffset.UtcNow;
+            m_lastGatewayObservedAt = m_timeProvider.GetUtcNow();
             RecordLocked("gateway-heartbeat");
         }
     }
@@ -510,7 +605,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 m_leaseActive = change.Active;
                 m_leaseId = change.Active ? change.Lease.LeaseId : null;
                 m_leaseObservationSequence++;
-                m_lastLeaseObservedAt = DateTimeOffset.UtcNow;
+                m_lastLeaseObservedAt = m_timeProvider.GetUtcNow();
                 RecordLocked(change.Active
                     ? $"lease-{change.Reason}"
                     : $"lease-released-{change.Reason}");
@@ -522,6 +617,132 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             await m_commandGate.HandleLeaseChangeAsync(change);
         }
     }
+
+    private void ProcessWatchdog(WatchdogObservation observation)
+    {
+        try
+        {
+            string? releaseReason = null;
+            lock (m_stateGate)
+            {
+                m_watchdogEvaluationSequence++;
+                m_lastWatchdogEvaluatedAt = observation.ObservedAt;
+                LifecycleFreshness freshness =
+                    EvaluateFreshnessLocked(observation.ObservedAt);
+                if (m_leaseActive && !freshness.AuthorityFresh)
+                {
+                    releaseReason = $"watchdog-{freshness.Reason}";
+                    RecordLocked(releaseReason);
+                }
+            }
+
+            if (releaseReason is not null)
+            {
+                ReleaseTrackedLease(releaseReason);
+            }
+        }
+        finally
+        {
+            observation.Completion?.TrySetResult();
+        }
+    }
+
+    private LifecycleFreshness EvaluateFreshnessLocked(DateTimeOffset now)
+    {
+        bool browserFresh =
+            m_browserConnected &&
+            m_authenticated &&
+            IsFresh(m_lastBrowserObservedAt, now, BrowserFreshnessTimeout);
+        bool engineFresh =
+            m_engineConnected &&
+            m_stationClientHandle != 0 &&
+            IsFresh(m_lastEngineObservedAt, now, EngineFreshnessTimeout);
+        bool gatewayFresh =
+            m_gatewayConnected &&
+            IsFresh(m_lastGatewayObservedAt, now, GatewayFreshnessTimeout);
+
+        string reason;
+        if (!m_leaseActive)
+        {
+            reason = "no-active-lease";
+        }
+        else if (m_observationFaulted)
+        {
+            reason = "observation-faulted";
+        }
+        else if (!m_gatewayConnected)
+        {
+            reason = "gateway-disconnected";
+        }
+        else if (!gatewayFresh)
+        {
+            reason = "gateway-stale";
+        }
+        else if (!m_browserConnected)
+        {
+            reason = "browser-disconnected";
+        }
+        else if (!m_authenticated)
+        {
+            reason = "browser-unauthenticated";
+        }
+        else if (!browserFresh)
+        {
+            reason = "browser-stale";
+        }
+        else if (!m_engineConnected || m_stationClientHandle == 0)
+        {
+            reason = "engine-disconnected";
+        }
+        else if (!engineFresh)
+        {
+            reason = "engine-stale";
+        }
+        else
+        {
+            reason = "fresh";
+        }
+
+        return new LifecycleFreshness(
+            browserFresh,
+            engineFresh,
+            gatewayFresh,
+            string.Equals(reason, "fresh", StringComparison.Ordinal),
+            reason);
+    }
+
+    private void ReleaseTrackedLease(string reason)
+    {
+        string? leaseId;
+        string? connectionClientId;
+        lock (m_stateGate)
+        {
+            if (!m_leaseActive ||
+                m_leaseId is null ||
+                m_connectionClientId is null)
+            {
+                return;
+            }
+            leaseId = m_leaseId;
+            connectionClientId = m_connectionClientId;
+        }
+
+        m_leases.TryRelease(
+            m_radioId,
+            leaseId,
+            m_sessionId,
+            connectionClientId,
+            reason,
+            out _);
+    }
+
+    private static bool IsFresh(
+        DateTimeOffset? observedAt,
+        DateTimeOffset now,
+        TimeSpan timeout) =>
+        observedAt.HasValue &&
+        now >= observedAt.Value &&
+        now - observedAt.Value <= timeout;
 
     private void FailClosed(string reason, string message)
     {
@@ -545,7 +766,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     private void RecordLocked(string reason)
     {
         m_lastObservation = reason;
-        m_lastObservedAt = DateTimeOffset.UtcNow;
+        m_lastObservedAt = m_timeProvider.GetUtcNow();
     }
 
     private static string NormalizeRequired(string? value, int maximumLength)
@@ -578,8 +799,11 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             RecordLocked("disposed");
         }
 
+        m_watchdogCancellation.Cancel();
+        await m_watchdogTask;
         m_observations.Writer.TryComplete();
         await m_observationTask;
+        m_watchdogCancellation.Dispose();
         await m_gatewayMonitor.DisposeAsync();
         await m_engineMonitor.DisposeAsync();
         await m_authenticationMonitor.DisposeAsync();
@@ -612,8 +836,19 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     private sealed record LeaseObservation(
         TxLeaseChange Change) : LifecycleObservation;
 
+    private sealed record WatchdogObservation(
+        DateTimeOffset ObservedAt,
+        TaskCompletionSource? Completion) : LifecycleObservation;
+
     private sealed record BarrierObservation(
         TaskCompletionSource Completion) : LifecycleObservation;
+
+    private sealed record LifecycleFreshness(
+        bool BrowserFresh,
+        bool EngineFresh,
+        bool GatewayFresh,
+        bool AuthorityFresh,
+        string Reason);
 }
 
 internal sealed class StationTxUnavailableCommandTransport : IStationTxCommandTransport
