@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using AetherSDR.TxWatchdog.Protocol;
 
 namespace AetherSDR.Web.Radio;
 
@@ -43,6 +44,7 @@ public sealed record StationTxLifecycleDiagnostics(
     bool GatewayFresh,
     bool AuthorityFresh,
     string AuthorityReason,
+    StationTxIndependentWatchdogDiagnostics IndependentWatchdog,
     string LastObservation,
     DateTimeOffset LastObservedAt);
 
@@ -84,6 +86,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     private readonly StationTxAuthenticationMonitor m_authenticationMonitor;
     private readonly StationTxEngineConnectionMonitor m_engineMonitor;
     private readonly StationTxGatewayConnectionMonitor m_gatewayMonitor;
+    private readonly IStationTxIndependentWatchdog m_independentWatchdog;
     private readonly Channel<LifecycleObservation> m_observations;
     private readonly Task m_observationTask;
     private readonly Task m_watchdogTask;
@@ -96,6 +99,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     private uint m_stationClientHandle;
     private bool m_leaseActive;
     private string? m_leaseId;
+    private WatchdogIdentity? m_independentWatchdogIdentity;
     private bool m_observationFaulted;
     private long m_browserObservationSequence;
     private DateTimeOffset? m_lastBrowserObservedAt;
@@ -120,7 +124,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         TxLeaseManager leases,
         RadioTxOccupancyRegistry occupancy,
         ILogger<StationTxProductionLifecycle> logger,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IStationTxIndependentWatchdogFactory? independentWatchdogFactory = null)
     {
         ArgumentNullException.ThrowIfNull(leases);
         ArgumentNullException.ThrowIfNull(occupancy);
@@ -155,6 +160,15 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         m_authenticationMonitor = new StationTxAuthenticationMonitor(m_supervisor);
         m_engineMonitor = new StationTxEngineConnectionMonitor(m_supervisor);
         m_gatewayMonitor = new StationTxGatewayConnectionMonitor(m_supervisor);
+        m_independentWatchdog = independentWatchdogFactory?.Create(
+            new StationTxIndependentWatchdogOwner(
+                m_radioId,
+                m_sessionId,
+                m_browserClientId,
+                m_gatewayInstanceId,
+                m_engineInstanceId),
+            ObserveIndependentWatchdogEventAsync) ??
+            new StationTxUnavailableIndependentWatchdog();
 
         m_observations = Channel.CreateBounded<LifecycleObservation>(
             new BoundedChannelOptions(ObservationCapacity)
@@ -219,11 +233,15 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     freshness.GatewayFresh,
                     freshness.AuthorityFresh,
                     freshness.Reason,
+                    m_independentWatchdog.Snapshot,
                     m_lastObservation,
                     m_lastObservedAt);
             }
         }
     }
+
+    public Task StartAsync(CancellationToken cancellationToken = default) =>
+        m_independentWatchdog.StartAsync(cancellationToken);
 
     public void ObserveBrowserConnection(
         string connectionClientId,
@@ -324,19 +342,22 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                         await ProcessEngineAsync(engine);
                         break;
                     case EngineHeartbeatObservation engineHeartbeat:
-                        ProcessEngineHeartbeat(engineHeartbeat);
+                        await ProcessEngineHeartbeatAsync(engineHeartbeat);
                         break;
                     case GatewayObservation gateway:
                         await ProcessGatewayAsync(gateway);
                         break;
                     case GatewayHeartbeatObservation:
-                        ProcessGatewayHeartbeat();
+                        await ProcessGatewayHeartbeatAsync();
                         break;
                     case LeaseObservation lease:
                         await ProcessLeaseAsync(lease.Change);
                         break;
                     case WatchdogObservation watchdog:
-                        ProcessWatchdog(watchdog);
+                        await ProcessWatchdogAsync(watchdog);
+                        break;
+                    case IndependentWatchdogEventObservation independent:
+                        ProcessIndependentWatchdogEvent(independent.Event);
                         break;
                     case BarrierObservation barrier:
                         barrier.Completion.TrySetResult();
@@ -432,6 +453,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 safety.BrowserClientId ?? observation.ConnectionClientId,
                 safety.ProtectedClientHandle,
                 observation.Connected && observation.Authenticated));
+        await SynchronizeIndependentWatchdogAsync();
     }
 
     private async Task ProcessBrowserActivityAsync(
@@ -475,6 +497,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 safety.BrowserClientId ?? observation.ConnectionClientId,
                 safety.ProtectedClientHandle,
                 observation.Authenticated));
+        await SynchronizeIndependentWatchdogAsync();
     }
 
     private async Task ProcessEngineAsync(EngineObservation observation)
@@ -504,9 +527,11 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 safety.LeaseId ?? m_leaseId ?? "no-active-lease",
                 safety.ProtectedClientHandle,
                 observation.Connected));
+        await SynchronizeIndependentWatchdogAsync();
     }
 
-    private void ProcessEngineHeartbeat(EngineHeartbeatObservation observation)
+    private async Task ProcessEngineHeartbeatAsync(
+        EngineHeartbeatObservation observation)
     {
         lock (m_stateGate)
         {
@@ -521,6 +546,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             m_lastEngineObservedAt = m_timeProvider.GetUtcNow();
             RecordLocked("station-engine-heartbeat");
         }
+        await SynchronizeIndependentWatchdogAsync();
     }
 
     private async Task ProcessGatewayAsync(GatewayObservation observation)
@@ -552,9 +578,10 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     m_browserClientId,
                 safety.ProtectedClientHandle,
                 observation.Connected));
+        await SynchronizeIndependentWatchdogAsync();
     }
 
-    private void ProcessGatewayHeartbeat()
+    private async Task ProcessGatewayHeartbeatAsync()
     {
         lock (m_stateGate)
         {
@@ -567,6 +594,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             m_lastGatewayObservedAt = m_timeProvider.GetUtcNow();
             RecordLocked("gateway-heartbeat");
         }
+        await SynchronizeIndependentWatchdogAsync();
     }
 
     private async Task ProcessLeaseAsync(TxLeaseChange change)
@@ -615,10 +643,11 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         if (applies)
         {
             await m_commandGate.HandleLeaseChangeAsync(change);
+            await SynchronizeIndependentWatchdogAsync();
         }
     }
 
-    private void ProcessWatchdog(WatchdogObservation observation)
+    private async Task ProcessWatchdogAsync(WatchdogObservation observation)
     {
         try
         {
@@ -638,6 +667,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
 
             if (releaseReason is not null)
             {
+                await DisconnectIndependentWatchdogAsync(releaseReason);
                 ReleaseTrackedLease(releaseReason);
             }
         }
@@ -645,6 +675,177 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         {
             observation.Completion?.TrySetResult();
         }
+    }
+
+    private ValueTask ObserveIndependentWatchdogEventAsync(
+        StationTxIndependentWatchdogEvent watchdogEvent)
+    {
+        Enqueue(new IndependentWatchdogEventObservation(watchdogEvent));
+        return ValueTask.CompletedTask;
+    }
+
+    private void ProcessIndependentWatchdogEvent(
+        StationTxIndependentWatchdogEvent watchdogEvent)
+    {
+        lock (m_stateGate)
+        {
+            if (watchdogEvent.Kind ==
+                StationTxIndependentWatchdogEventKind.Lost)
+            {
+                m_independentWatchdogIdentity = null;
+            }
+            RecordLocked(watchdogEvent.Reason);
+        }
+
+        if (watchdogEvent.Kind ==
+            StationTxIndependentWatchdogEventKind.Lost)
+        {
+            ReleaseTrackedLease($"independent-{watchdogEvent.Reason}");
+        }
+    }
+
+    private async Task SynchronizeIndependentWatchdogAsync()
+    {
+        StationTxIndependentWatchdogDiagnostics initial =
+            m_independentWatchdog.Snapshot;
+        if (!initial.SupervisionEnabled)
+        {
+            return;
+        }
+
+        WatchdogIdentity? current;
+        WatchdogIdentity? candidate;
+        lock (m_stateGate)
+        {
+            current = m_independentWatchdogIdentity;
+            candidate = CreateIndependentWatchdogIdentityLocked();
+        }
+
+        if (candidate is null)
+        {
+            if (current is not null)
+            {
+                await DisconnectIndependentWatchdogAsync(
+                    "authority-incomplete");
+            }
+            return;
+        }
+
+        if (current is null)
+        {
+            StationTxIndependentWatchdogDiagnostics registered =
+                await m_independentWatchdog.RegisterAsync(candidate);
+            if (!IndependentAuthorityAccepted(registered))
+            {
+                lock (m_stateGate)
+                {
+                    m_independentWatchdogIdentity = null;
+                    RecordLocked("independent-watchdog-registration-failed");
+                }
+                ReleaseTrackedLease(
+                    "independent-watchdog-registration-failed");
+                return;
+            }
+
+            lock (m_stateGate)
+            {
+                if (CreateIndependentWatchdogIdentityLocked() is
+                        WatchdogIdentity confirmed &&
+                    Equals(confirmed, candidate))
+                {
+                    m_independentWatchdogIdentity = candidate;
+                    RecordLocked("independent-watchdog-registered");
+                }
+            }
+            return;
+        }
+
+        if (!Equals(current, candidate))
+        {
+            await DisconnectIndependentWatchdogAsync(
+                "identity-changed");
+            ReleaseTrackedLease(
+                "independent-watchdog-identity-changed");
+            return;
+        }
+
+        long previousSequence = initial.LastSequence;
+        StationTxIndependentWatchdogDiagnostics heartbeat =
+            await m_independentWatchdog.HeartbeatAsync(current);
+        if (!IndependentAuthorityAccepted(heartbeat) ||
+            heartbeat.LastSequence <= previousSequence)
+        {
+            lock (m_stateGate)
+            {
+                m_independentWatchdogIdentity = null;
+                RecordLocked("independent-watchdog-heartbeat-failed");
+            }
+            ReleaseTrackedLease(
+                "independent-watchdog-heartbeat-failed");
+            return;
+        }
+
+        lock (m_stateGate)
+        {
+            RecordLocked("independent-watchdog-heartbeat");
+        }
+    }
+
+    private static bool IndependentAuthorityAccepted(
+        StationTxIndependentWatchdogDiagnostics snapshot) =>
+        snapshot.SupervisionEnabled &&
+        snapshot.ProcessRunning &&
+        snapshot.IpcConnected &&
+        snapshot.Registered &&
+        snapshot.Connected &&
+        snapshot.LeaseBound &&
+        string.Equals(snapshot.State, "Disarmed", StringComparison.Ordinal) &&
+        !snapshot.RadioCommandTransportAvailable &&
+        !snapshot.ArmingAvailable;
+
+    private async Task DisconnectIndependentWatchdogAsync(string reason)
+    {
+        WatchdogIdentity? identity;
+        lock (m_stateGate)
+        {
+            identity = m_independentWatchdogIdentity;
+            m_independentWatchdogIdentity = null;
+        }
+        if (identity is null)
+        {
+            return;
+        }
+
+        await m_independentWatchdog.DisconnectAndResetAsync(identity);
+        lock (m_stateGate)
+        {
+            RecordLocked($"independent-watchdog-disconnected-{reason}");
+        }
+    }
+
+    private WatchdogIdentity? CreateIndependentWatchdogIdentityLocked()
+    {
+        if (!m_gatewayConnected ||
+            !m_engineConnected ||
+            !m_browserConnected ||
+            !m_authenticated ||
+            !m_leaseActive ||
+            m_stationClientHandle == 0 ||
+            m_connectionClientId is null ||
+            m_leaseId is null)
+        {
+            return null;
+        }
+
+        return new WatchdogIdentity(
+            m_radioId,
+            m_sessionId,
+            m_browserClientId,
+            m_gatewayInstanceId,
+            m_engineInstanceId,
+            m_connectionClientId,
+            m_leaseId,
+            m_stationClientHandle);
     }
 
     private LifecycleFreshness EvaluateFreshnessLocked(DateTimeOffset now)
@@ -790,6 +991,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
 
         lock (m_stateGate)
         {
+            m_independentWatchdogIdentity = null;
             m_gatewayConnected = false;
             m_engineConnected = false;
             m_browserConnected = false;
@@ -809,6 +1011,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         await m_authenticationMonitor.DisposeAsync();
         await m_supervisor.DisposeAsync();
         await m_commandGate.DisposeAsync();
+        await m_independentWatchdog.DisposeAsync();
     }
 
     private abstract record LifecycleObservation;
@@ -839,6 +1042,9 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     private sealed record WatchdogObservation(
         DateTimeOffset ObservedAt,
         TaskCompletionSource? Completion) : LifecycleObservation;
+
+    private sealed record IndependentWatchdogEventObservation(
+        StationTxIndependentWatchdogEvent Event) : LifecycleObservation;
 
     private sealed record BarrierObservation(
         TaskCompletionSource Completion) : LifecycleObservation;

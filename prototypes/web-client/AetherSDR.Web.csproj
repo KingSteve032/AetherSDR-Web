@@ -19,6 +19,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\tx-watchdog\AetherSDR.TxWatchdog.Protocol\AetherSDR.TxWatchdog.Protocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="..\..\assets\logo-circle-256.png"
              Link="wwwroot\assets\logo.png"
              CopyToOutputDirectory="PreserveNewest"

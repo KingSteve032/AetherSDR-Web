@@ -193,9 +193,13 @@ bash prototypes/web-client/deploy/validate-deploy-flexweb.sh
 The gate has no skip-tests option. It builds the complete solution, runs the
 server, independent-watchdog, TX-HIL isolation, AetherRemote, and browser test
 suites, publishes the web gateway plus the command-incapable independent
-watchdog skeleton, inspects both production binaries for forbidden TX/HIL
-command strings, executes a Disarmed status probe against the published
-watchdog, deploys FlexWeb through the `flexweb-gateway` SSH alias (resolving to
+watchdog, inspects both production binaries for forbidden TX/HIL command
+strings, executes a Disarmed status probe against the published watchdog, and
+requires the activated web service to supervise one private child per active
+radio session. The child remains in the gateway's existing least-privileged
+service cgroup and communicates only over redirected standard input/output; it
+has no listener, FLEX connection, command transport, or arming surface. The gate
+deploys FlexWeb through the `flexweb-gateway` SSH alias (resolving to
 `flexweb@10.2.0.254`), and verifies internal and public fail-closed health. After
 all local validation passes, it prompts once without echo for the FlexWeb sudo
 password, validates it before activation, and reuses it only for the service
@@ -207,14 +211,23 @@ deployed site is required before Git publication. TX-lifecycle changes must
 also keep the public and internal health contract at
 `txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,
 `txIndependentWatchdogHostPackaged=true`,
-`txIndependentWatchdogState=packaged-disarmed`,
-`txIndependentWatchdogConnected=false`,
+`txIndependentWatchdogSupervisionRegistered=true`, a supervised Disarmed state,
+non-negative process/session/restart counts, zero registered watchdog identities
+while browser TX leases are disabled,
 `txIndependentWatchdogCommandTransportRegistered=false`,
 `txIndependentWatchdogArmingAvailable=false`,
 `txCommandTransportRegistered=false`, and
 `txSafetySupervisorArmingAvailable=false`. The repeatable browser procedure is
 stored locally at
 `~/.browser-bridge/playbooks/aethersdr-flexweb-post-deploy-acceptance.md`.
+
+`IndependentTxWatchdog` configuration owns only supervision mechanics:
+`Enabled`, an optional reviewed executable path, request timeout, and restart
+delay. The default executable is
+`watchdog/AetherSDR.TxWatchdog` beneath the active release. The configured path
+must still name that reviewed executable. Disabling supervision is diagnostic
+and receive-only; it never enables transmit. Process or IPC loss revokes only
+the matching tracked lease and a replacement process starts empty and Disarmed.
 
 The user service needs lingering to start at boot without an interactive SSH
 login:

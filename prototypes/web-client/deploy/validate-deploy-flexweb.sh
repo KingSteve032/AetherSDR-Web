@@ -199,8 +199,7 @@ expected = {
     "txGateLifecycleRegistered": True,
     "txLifecycleWatchdogRegistered": True,
     "txIndependentWatchdogHostPackaged": True,
-    "txIndependentWatchdogState": "packaged-disarmed",
-    "txIndependentWatchdogConnected": False,
+    "txIndependentWatchdogSupervisionRegistered": True,
     "txIndependentWatchdogCommandTransportRegistered": False,
     "txIndependentWatchdogArmingAvailable": False,
     "txCommandTransportRegistered": False,
@@ -210,6 +209,32 @@ for key, value in expected.items():
     if payload.get(key) != value:
         raise SystemExit(
             f"{source} health field {key!r} was {payload.get(key)!r}; expected {value!r}")
+state = payload.get("txIndependentWatchdogState")
+if state not in {
+        "supervised-empty-disarmed",
+        "supervised-disarmed",
+        "supervised-degraded-disarmed"}:
+    raise SystemExit(
+        f"{source} watchdog state was {state!r}; expected a supervised Disarmed state")
+count_fields = [
+    "txIndependentWatchdogSessionCount",
+    "txIndependentWatchdogProcessCount",
+    "txIndependentWatchdogConnectedProcessCount",
+    "txIndependentWatchdogRegisteredIdentityCount",
+    "txIndependentWatchdogRestartCount",
+]
+for key in count_fields:
+    value = payload.get(key)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise SystemExit(f"{source} health field {key!r} was not a non-negative integer")
+if payload["txIndependentWatchdogRegisteredIdentityCount"] != 0:
+    raise SystemExit(
+        f"{source} reported a registered watchdog identity while browser TX leases are disabled")
+if payload["txIndependentWatchdogConnectedProcessCount"] > payload["txIndependentWatchdogProcessCount"]:
+    raise SystemExit(f"{source} reported more connected watchdogs than running processes")
+connected = payload.get("txIndependentWatchdogConnected")
+if connected != (payload["txIndependentWatchdogConnectedProcessCount"] > 0):
+    raise SystemExit(f"{source} watchdog connected flag did not match its process count")
 print(f"{source} health is fail-closed: {payload}")
 PY
 }

@@ -1,7 +1,9 @@
-# Independent TX Watchdog Skeleton
+# Independent TX Watchdog
 
-`AetherSDR.TxWatchdog` is the Phase 2D process-boundary skeleton for the future
-station-local transmit safety supervisor. It is intentionally command-incapable.
+`AetherSDR.TxWatchdog` is the command-incapable process boundary for the future
+station-local transmit safety supervisor. Phase 2D introduced the standalone
+host; Phase 2E supervises one host per active web radio session. It remains
+intentionally command-incapable.
 It has no FLEX connection, no radio command transport, no arming operation, no
 lease operation, and no persistence.
 
@@ -17,12 +19,19 @@ The executable currently proves only these boundaries:
 - malformed, oversized, unknown, stale, and mismatched messages are rejected;
 - process restart never restores or infers prior identity or authority.
 
-This increment does **not** move emergency reconciliation into the process yet.
-The production web gateway does not launch or connect to the host, and the host
-cannot act on a radio. The lease ID is only an exact identity binding; the host
-has no lease acquire, renew, release, or restore operation. The guarded deployment package includes the executable so
-its independent artifact can be inspected before any later transport or service
-registration is reviewed.
+Phase 2E does **not** move emergency reconciliation or radio authority into the
+process. The production gateway launches the host as a private supervised child
+inside the same least-privileged service cgroup and communicates only through
+redirected standard input/output. The host still cannot act on a radio. The
+lease ID is only an exact identity binding; the host has no lease acquire,
+renew, release, or restore operation.
+
+Complete authority registers one process epoch. Exact observations heartbeat
+that epoch. Authority loss or disconnect replaces it with a new empty Disarmed
+process. Child exit, malformed response, timeout, request mismatch, or identity
+mismatch is reported immediately to the in-process lifecycle so only its tracked
+lease is revoked. Restart is asynchronous and never replays the old identity.
+A replacement ready response is diagnostic only.
 
 ## Protocol
 
@@ -43,8 +52,10 @@ Example status request:
 {"protocolVersion":1,"requestId":"status-1","type":"status"}
 ```
 
-A new process responds with a new host instance ID and an empty disarmed
-snapshot. `radioCommandTransportAvailable`, `armingAvailable`, `registered`,
+A new process responds with a new host instance ID and an empty Disarmed
+snapshot. Gateway response parsing requires the exact state `Disarmed`, reason
+`command-incapable-skeleton`, and a matching request ID.
+`radioCommandTransportAvailable`, `armingAvailable`, `registered`,
 `connected`, and `leaseBound` are all false, and `lastSequence` is zero. After
 registration the response may report `leaseBound=true`, but it never echoes the
 opaque lease ID or the full authority identity.
@@ -61,4 +72,6 @@ dotnet test \
 
 The full FlexWeb validation gate also publishes a self-contained Linux artifact,
 scans both the web and watchdog binaries for forbidden TX/HIL command strings,
-and executes a status request against the published watchdog before deployment.
+executes a status request against the published watchdog, and verifies supervised
+Disarmed process counts after deployment. With production browser TX leases
+disabled, no child may report a registered identity.

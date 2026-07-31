@@ -1300,6 +1300,54 @@ Milestone state:
   receive-only. Admin showed `DISABLED · DISARMED · NO LEASE` with fresh browser,
   engine, and gateway observations, no production TX transports, and both radio
   and Admin consoles had zero entries.
+- Phase 2E supervises one command-incapable watchdog child per isolated radio
+  session inside the gateway service's existing least-privileged cgroup. The
+  private transport remains redirected stdio; no listener, FLEX connection,
+  shared authority file, radio command transport, or arming operation was added.
+  Startup accepts only a new empty `Disarmed` process. Complete exact browser,
+  gateway, engine, connection, lease, and FLEX-handle authority registers that
+  process epoch; subsequent exact observations heartbeat it. Lease release or
+  incomplete/changed authority disconnects and replaces the child with a fresh
+  empty epoch. Session disposal terminates the child and removes it from aggregate
+  health.
+- Child exit, missing binary, malformed/oversized response, request-ID mismatch,
+  timeout, rejected request, identity mismatch, missing registration confirmation,
+  or non-advancing heartbeat fails closed. Loss is published before the bounded
+  restart delay and releases only that lifecycle's tracked physical-radio lease.
+  Replacement readiness is diagnostic only: it starts with a different host
+  instance, sequence zero, no bound lease, and cannot restore the released lease
+  or affect another session's lease. Every accepted child response must remain
+  exactly `Disarmed` with reason `command-incapable-skeleton`, no command
+  transport, and no arming availability.
+- Health now reports real supervision registration, supervised Disarmed state,
+  session/running/connected/registered-identity counts, and restart count. With
+  production browser leases disabled, the deployment gate requires zero
+  registered watchdog identities. Admin `TX LIFECYCLE` shows the child PID, host
+  epoch, IPC sequence, restart count, and degraded reason without adding a
+  control surface. The release activator requires both production executables
+  and marks both executable before activation.
+- The 2026-07-31 Phase 2E validation gate passed 263 server tests, 25
+  independent-watchdog tests, 48 TX-HIL isolation tests, 70 AetherRemote tests,
+  and 107 browser tests (513 total), with a zero-warning solution build. Real
+  process tests covered startup, exact registration/heartbeat, disconnect reset,
+  forced child loss, immediate loss before restart delay, missing-binary
+  degradation, identity mismatch, and clean session shutdown. Both self-contained
+  production binaries contained no forbidden TX/HIL command surface, and the
+  published watchdog status probe returned an empty Disarmed instance with no
+  identity, connection, lease, command transport, or arming surface.
+- Release `20260731-m7-independent-watchdog-supervision-phase2e` deployed
+  successfully on 2026-07-31. Public health reported one connected supervised
+  child, zero registered identities, state `supervised-disarmed`, no command
+  transport, no arming availability, and production transmit plus browser TX
+  leases disabled. Browser Bridge acceptance kept PSOC2 live and RX-only with
+  MOX/TUNE hidden and disabled, no PTT, PC MIC hidden, SPLIT/CWX/DVK/FDX disabled,
+  and a successful 2D -> 3D -> 2D display transition. The command-incapable child
+  PID 95105 / host `watchdog-bbca3586...` was terminated deliberately; supervision
+  created PID 96311 / host `watchdog-1bc15a44...`, advanced restart count to one,
+  and returned sequence zero with no identity or lease. The gate stayed Disabled,
+  the safety supervisor stayed Disarmed, no lease or authority was restored,
+  Admin showed the replacement PID and restart count, and both browser consoles
+  remained empty. Production remains receive-only.
 
 Acceptance criteria:
 

@@ -52,7 +52,13 @@ if [[ ! -f "${temporary_directory}/AetherSDR.Web" ]]; then
   echo "The release does not contain AetherSDR.Web." >&2
   exit 1
 fi
-chmod 0755 "${temporary_directory}/AetherSDR.Web"
+if [[ ! -f "${temporary_directory}/watchdog/AetherSDR.TxWatchdog" ]]; then
+  echo "The release does not contain the independent TX watchdog." >&2
+  exit 1
+fi
+chmod 0755 \
+  "${temporary_directory}/AetherSDR.Web" \
+  "${temporary_directory}/watchdog/AetherSDR.TxWatchdog"
 mv "${temporary_directory}" "${destination}"
 ln -s "${destination}" "${temporary_link}"
 previous_release="$(readlink -f "${deployment_root}/current" || true)"

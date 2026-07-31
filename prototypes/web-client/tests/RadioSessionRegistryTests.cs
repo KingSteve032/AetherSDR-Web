@@ -1,5 +1,7 @@
 using System.Security.Claims;
 using AetherSDR.Web.Radio;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -18,6 +20,61 @@ public sealed class RadioSessionRegistryTests
     private const string BrowserA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     private const string BrowserB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     private const string BrowserC = "cccccccccccccccccccccccccccccccc";
+
+    [Fact]
+    public async Task SessionSupervisesOneDisarmedWatchdogAndRemovesItOnShutdown()
+    {
+        StationTxIndependentWatchdogRegistry watchdogs =
+            CreateIndependentWatchdogRegistry();
+        (RadioSessionRegistry registry, _, _) = CreateRegistry(
+            independentWatchdogs: watchdogs);
+        await registry.StartAsync(CancellationToken.None);
+        try
+        {
+            RadioSession session = await registry.GetDefaultAsync(
+                CreateUser("operator-a"),
+                BrowserA,
+                CancellationToken.None);
+
+            StationTxIndependentWatchdogAggregate aggregate =
+                await WaitForWatchdogsAsync(
+                    watchdogs,
+                    snapshot => snapshot.SessionCount == 1 &&
+                        snapshot.RunningProcessCount == 1 &&
+                        snapshot.ConnectedProcessCount == 1);
+            Assert.True(aggregate.SupervisionRegistered);
+            Assert.Equal("supervised-disarmed", aggregate.State);
+            Assert.Equal(0, aggregate.RegisteredIdentityCount);
+            Assert.False(aggregate.CommandTransportAvailable);
+            Assert.False(aggregate.ArmingAvailable);
+
+            StationTxIndependentWatchdogDiagnostics process =
+                session.GetDiagnostics().TxLifecycle!.IndependentWatchdog;
+            Assert.True(process.SupervisionEnabled);
+            Assert.True(process.ProcessRunning);
+            Assert.True(process.IpcConnected);
+            Assert.Equal("Disarmed", process.State);
+            Assert.False(process.Registered);
+            Assert.False(process.Connected);
+            Assert.False(process.LeaseBound);
+            Assert.Equal(0, process.LastSequence);
+            Assert.False(process.RadioCommandTransportAvailable);
+            Assert.False(process.ArmingAvailable);
+        }
+        finally
+        {
+            await registry.StopAsync(CancellationToken.None);
+        }
+
+        StationTxIndependentWatchdogAggregate stopped =
+            await WaitForWatchdogsAsync(
+                watchdogs,
+                snapshot => snapshot.SessionCount == 0);
+        Assert.Equal("supervised-empty-disarmed", stopped.State);
+        Assert.Equal(0, stopped.RunningProcessCount);
+        Assert.Equal(0, stopped.ConnectedProcessCount);
+        Assert.Equal(0, stopped.RegisteredIdentityCount);
+    }
 
     [Fact]
     public async Task LocalSessionInheritsLeaseFoundationWithoutKeyCapability()
@@ -558,7 +615,8 @@ public sealed class RadioSessionRegistryTests
         RadioSessionRegistry Registry,
         RadioSelectionManager Catalog,
         RadioAccessPolicyStore Policies) CreateRegistry(
-            bool browserTxLeaseEnabled = false)
+            bool browserTxLeaseEnabled = false,
+            StationTxIndependentWatchdogRegistry? independentWatchdogs = null)
     {
         IOptions<RadioSettings> options = Options.Create(
             new RadioSettings
@@ -584,8 +642,70 @@ public sealed class RadioSessionRegistryTests
             new TxLeaseManager(),
             new RadioTxOccupancyRegistry(),
             NullLoggerFactory.Instance,
-            NullLogger<RadioSessionRegistry>.Instance);
+            NullLogger<RadioSessionRegistry>.Instance,
+            remoteSettings: null,
+            independentWatchdogs);
         return (registry, catalog, policies);
+    }
+
+    private static StationTxIndependentWatchdogRegistry
+        CreateIndependentWatchdogRegistry()
+    {
+        string hostAssembly = typeof(global::AetherSDR.TxWatchdog.Program)
+            .Assembly.Location;
+        string hostDirectory = Path.GetDirectoryName(hostAssembly) ??
+            throw new InvalidOperationException(
+                "The watchdog host directory is unavailable.");
+        string executable = Path.Combine(
+            hostDirectory,
+            OperatingSystem.IsWindows()
+                ? "AetherSDR.TxWatchdog.exe"
+                : "AetherSDR.TxWatchdog");
+        Assert.True(File.Exists(executable), executable);
+        return new StationTxIndependentWatchdogRegistry(
+            Options.Create(new IndependentTxWatchdogSettings
+            {
+                Enabled = true,
+                ExecutablePath = executable,
+                RequestTimeoutMilliseconds = 2000,
+                RestartDelayMilliseconds = 100
+            }),
+            new TestWebHostEnvironment(),
+            NullLoggerFactory.Instance);
+    }
+
+    private static async Task<StationTxIndependentWatchdogAggregate>
+        WaitForWatchdogsAsync(
+            StationTxIndependentWatchdogRegistry watchdogs,
+            Func<StationTxIndependentWatchdogAggregate, bool> predicate)
+    {
+        using CancellationTokenSource timeout =
+            new(TimeSpan.FromSeconds(5));
+        while (!timeout.IsCancellationRequested)
+        {
+            StationTxIndependentWatchdogAggregate snapshot =
+                watchdogs.Snapshot;
+            if (predicate(snapshot))
+            {
+                return snapshot;
+            }
+            await Task.Delay(25, timeout.Token);
+        }
+        throw new TimeoutException(
+            "The independent watchdog registry did not reach the expected state.");
+    }
+
+    private sealed class TestWebHostEnvironment : IWebHostEnvironment
+    {
+        public string ApplicationName { get; set; } =
+            "AetherSDR.Web.Tests";
+        public IFileProvider WebRootFileProvider { get; set; } =
+            new NullFileProvider();
+        public string WebRootPath { get; set; } = Path.GetTempPath();
+        public string EnvironmentName { get; set; } = "Testing";
+        public string ContentRootPath { get; set; } = Path.GetTempPath();
+        public IFileProvider ContentRootFileProvider { get; set; } =
+            new NullFileProvider();
     }
 
     private static ClaimsPrincipal CreateUser(

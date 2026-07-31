@@ -1,3 +1,4 @@
+using AetherSDR.TxWatchdog.Protocol;
 using AetherSDR.Web.Radio;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -578,6 +579,200 @@ public sealed class StationTxProductionLifecycleTests
     }
 
     [Fact]
+    public async Task IndependentWatchdogBindsExactLeaseAndResetsAfterRelease()
+    {
+        TxLeaseManager leases = new();
+        RadioTxOccupancyRegistry occupancy = new();
+        FakeIndependentWatchdogFactory watchdogFactory = new();
+        await using StationTxProductionLifecycle lifecycle = Create(
+            leases,
+            occupancy,
+            independentWatchdogFactory: watchdogFactory);
+        leases.Changed += lifecycle.ObserveLeaseChange;
+
+        await lifecycle.StartAsync();
+        TxLease lease = await EstablishAuthorityAsync(
+            lifecycle,
+            leases,
+            TimeSpan.FromSeconds(15));
+
+        WatchdogIdentity registered = Assert.IsType<WatchdogIdentity>(
+            watchdogFactory.Watchdog.Identity);
+        Assert.Equal("RADIO-A", registered.RadioId);
+        Assert.Equal("session-a", registered.SessionId);
+        Assert.Equal("browser-a", registered.BrowserClientId);
+        Assert.Equal("gateway-a", registered.GatewayInstanceId);
+        Assert.Equal("connection-a", registered.ConnectionClientId);
+        Assert.Equal(lease.LeaseId, registered.LeaseId);
+        Assert.Equal(0x1234abcdu, registered.StationClientHandle);
+        Assert.Equal(1, watchdogFactory.Watchdog.RegisterCount);
+        Assert.True(lifecycle.Snapshot.IndependentWatchdog.Registered);
+        Assert.False(
+            lifecycle.Snapshot.IndependentWatchdog
+                .RadioCommandTransportAvailable);
+        Assert.False(lifecycle.Snapshot.IndependentWatchdog.ArmingAvailable);
+
+        lifecycle.ObserveBrowserActivity(
+            "connection-a",
+            authenticated: true);
+        lifecycle.ObserveEngineHeartbeat(0x1234abcd);
+        lifecycle.ObserveGatewayHeartbeat();
+        await lifecycle.FlushAsync();
+
+        Assert.True(watchdogFactory.Watchdog.HeartbeatCount >= 3);
+        Assert.True(
+            lifecycle.Snapshot.IndependentWatchdog.LastSequence >= 4);
+
+        Assert.True(leases.TryRelease(
+            "radio-a",
+            lease.LeaseId,
+            "session-a",
+            "connection-a",
+            "operator-release",
+            out _));
+        await lifecycle.FlushAsync();
+
+        Assert.Equal(1, watchdogFactory.Watchdog.DisconnectCount);
+        Assert.Null(watchdogFactory.Watchdog.Identity);
+        Assert.False(lifecycle.Snapshot.IndependentWatchdog.Registered);
+        Assert.False(lifecycle.Snapshot.IndependentWatchdog.LeaseBound);
+        Assert.Equal(0, lifecycle.Snapshot.IndependentWatchdog.LastSequence);
+    }
+
+    [Fact]
+    public async Task IndependentWatchdogRegistrationWithoutConfirmationReleasesLease()
+    {
+        TxLeaseManager leases = new();
+        RadioTxOccupancyRegistry occupancy = new();
+        FakeIndependentWatchdogFactory watchdogFactory = new();
+        watchdogFactory.Watchdog.FailRegistration = true;
+        await using StationTxProductionLifecycle lifecycle = Create(
+            leases,
+            occupancy,
+            independentWatchdogFactory: watchdogFactory);
+        leases.Changed += lifecycle.ObserveLeaseChange;
+
+        await lifecycle.StartAsync();
+        await EstablishAuthorityAsync(
+            lifecycle,
+            leases,
+            TimeSpan.FromSeconds(15));
+        await lifecycle.FlushAsync();
+
+        Assert.Null(leases.GetCurrent("radio-a"));
+        Assert.False(lifecycle.Snapshot.LeaseActive);
+        Assert.False(lifecycle.Snapshot.IndependentWatchdog.Registered);
+        Assert.Equal(
+            "lease-released-independent-watchdog-registration-failed",
+            lifecycle.Snapshot.LastObservation);
+    }
+
+    [Fact]
+    public async Task IndependentWatchdogNonAdvancingHeartbeatReleasesLease()
+    {
+        TxLeaseManager leases = new();
+        RadioTxOccupancyRegistry occupancy = new();
+        FakeIndependentWatchdogFactory watchdogFactory = new();
+        await using StationTxProductionLifecycle lifecycle = Create(
+            leases,
+            occupancy,
+            independentWatchdogFactory: watchdogFactory);
+        leases.Changed += lifecycle.ObserveLeaseChange;
+
+        await lifecycle.StartAsync();
+        await EstablishAuthorityAsync(
+            lifecycle,
+            leases,
+            TimeSpan.FromSeconds(15));
+        watchdogFactory.Watchdog.FailHeartbeat = true;
+        lifecycle.ObserveGatewayHeartbeat();
+        await lifecycle.FlushAsync();
+        await lifecycle.FlushAsync();
+
+        Assert.Null(leases.GetCurrent("radio-a"));
+        Assert.False(lifecycle.Snapshot.LeaseActive);
+        Assert.Equal(
+            "lease-released-independent-watchdog-heartbeat-failed",
+            lifecycle.Snapshot.LastObservation);
+    }
+
+    [Fact]
+    public async Task IndependentWatchdogLossReleasesLeaseAndReadyCannotRestoreIt()
+    {
+        TxLeaseManager leases = new();
+        RadioTxOccupancyRegistry occupancy = new();
+        FakeIndependentWatchdogFactory watchdogFactory = new();
+        await using StationTxProductionLifecycle lifecycle = Create(
+            leases,
+            occupancy,
+            independentWatchdogFactory: watchdogFactory);
+        leases.Changed += lifecycle.ObserveLeaseChange;
+
+        await lifecycle.StartAsync();
+        TxLease lease = await EstablishAuthorityAsync(
+            lifecycle,
+            leases,
+            TimeSpan.FromSeconds(15));
+        Assert.Equal(lease.LeaseId, lifecycle.Snapshot.LeaseId);
+
+        await watchdogFactory.PublishAsync(
+            StationTxIndependentWatchdogEventKind.Lost,
+            "watchdog-process-exited");
+        await lifecycle.FlushAsync();
+
+        Assert.Null(leases.GetCurrent("radio-a"));
+        Assert.False(lifecycle.Snapshot.LeaseActive);
+        Assert.Null(lifecycle.Snapshot.LeaseId);
+        Assert.Contains(
+            "independent-watchdog-process-exited",
+            lifecycle.Snapshot.LastObservation,
+            StringComparison.Ordinal);
+
+        await watchdogFactory.PublishAsync(
+            StationTxIndependentWatchdogEventKind.Ready,
+            "watchdog-process-ready-disarmed");
+        await lifecycle.FlushAsync();
+
+        Assert.Null(leases.GetCurrent("radio-a"));
+        Assert.False(lifecycle.Snapshot.LeaseActive);
+        Assert.Equal(1, watchdogFactory.Watchdog.RegisterCount);
+        Assert.Equal("no-active-lease", lifecycle.Snapshot.AuthorityReason);
+    }
+
+    [Fact]
+    public async Task IndependentWatchdogLossDoesNotReleaseAnotherSessionLease()
+    {
+        TxLeaseManager leases = new();
+        RadioTxOccupancyRegistry occupancy = new();
+        FakeIndependentWatchdogFactory watchdogFactory = new();
+        await using StationTxProductionLifecycle lifecycle = Create(
+            leases,
+            occupancy,
+            independentWatchdogFactory: watchdogFactory);
+
+        Assert.True(leases.TryAcquire(
+            "radio-a",
+            "session-b",
+            "connection-b",
+            "operator-b",
+            "Operator B",
+            TimeSpan.FromSeconds(15),
+            out TxLease? otherLease,
+            out string? error), error);
+        Assert.NotNull(otherLease);
+
+        await watchdogFactory.PublishAsync(
+            StationTxIndependentWatchdogEventKind.Lost,
+            "watchdog-process-exited");
+        await lifecycle.FlushAsync();
+
+        Assert.Equal(
+            otherLease!.LeaseId,
+            leases.GetCurrent("radio-a")?.LeaseId);
+        Assert.False(lifecycle.Snapshot.LeaseActive);
+    }
+
+    [Fact]
     public async Task ProductionTransportsRejectEveryCommandSurface()
     {
         StationTxUnavailableCommandTransport command = new();
@@ -634,7 +829,8 @@ public sealed class StationTxProductionLifecycleTests
     private static StationTxProductionLifecycle Create(
         TxLeaseManager leases,
         RadioTxOccupancyRegistry occupancy,
-        TimeProvider? timeProvider = null) =>
+        TimeProvider? timeProvider = null,
+        IStationTxIndependentWatchdogFactory? independentWatchdogFactory = null) =>
         new(
             "radio-a",
             "session-a",
@@ -643,7 +839,178 @@ public sealed class StationTxProductionLifecycleTests
             leases,
             occupancy,
             NullLogger<StationTxProductionLifecycle>.Instance,
-            timeProvider);
+            timeProvider,
+            independentWatchdogFactory);
+
+    private sealed class FakeIndependentWatchdogFactory :
+        IStationTxIndependentWatchdogFactory
+    {
+        private Func<StationTxIndependentWatchdogEvent, ValueTask>? m_eventSink;
+
+        public FakeIndependentWatchdog Watchdog { get; } = new();
+
+        public IStationTxIndependentWatchdog Create(
+            StationTxIndependentWatchdogOwner owner,
+            Func<StationTxIndependentWatchdogEvent, ValueTask> eventSink)
+        {
+            m_eventSink = eventSink;
+            Watchdog.Owner = owner;
+            return Watchdog;
+        }
+
+        public ValueTask PublishAsync(
+            StationTxIndependentWatchdogEventKind kind,
+            string reason) =>
+            m_eventSink is null
+                ? throw new InvalidOperationException(
+                    "The fake watchdog was not attached to a lifecycle.")
+                : m_eventSink(new StationTxIndependentWatchdogEvent(
+                    kind,
+                    reason,
+                    Watchdog.Snapshot.HostInstanceId,
+                    DateTimeOffset.UtcNow));
+    }
+
+    private sealed class FakeIndependentWatchdog :
+        IStationTxIndependentWatchdog
+    {
+        private long m_sequence;
+
+        public StationTxIndependentWatchdogOwner? Owner { get; set; }
+        public WatchdogIdentity? Identity { get; private set; }
+        public int RegisterCount { get; private set; }
+        public int HeartbeatCount { get; private set; }
+        public int DisconnectCount { get; private set; }
+        public bool FailRegistration { get; set; }
+        public bool FailHeartbeat { get; set; }
+
+        public StationTxIndependentWatchdogDiagnostics Snapshot { get; private set; } =
+            NewSnapshot(
+                processRunning: false,
+                ipcConnected: false,
+                registered: false,
+                connected: false,
+                leaseBound: false,
+                lastSequence: 0,
+                lastObservation: "fake-created");
+
+        public Task StartAsync(CancellationToken cancellationToken = default)
+        {
+            Snapshot = NewSnapshot(
+                processRunning: true,
+                ipcConnected: true,
+                registered: false,
+                connected: false,
+                leaseBound: false,
+                lastSequence: 0,
+                lastObservation: "fake-ready");
+            return Task.CompletedTask;
+        }
+
+        public Task<StationTxIndependentWatchdogDiagnostics> RegisterAsync(
+            WatchdogIdentity identity,
+            CancellationToken cancellationToken = default)
+        {
+            RegisterCount++;
+            if (FailRegistration)
+            {
+                Identity = null;
+                m_sequence = 0;
+                Snapshot = NewSnapshot(
+                    processRunning: true,
+                    ipcConnected: true,
+                    registered: false,
+                    connected: false,
+                    leaseBound: false,
+                    lastSequence: 0,
+                    lastObservation: "registration-not-confirmed");
+                return Task.FromResult(Snapshot);
+            }
+
+            Identity = identity;
+            m_sequence = 1;
+            Snapshot = NewSnapshot(
+                processRunning: true,
+                ipcConnected: true,
+                registered: true,
+                connected: true,
+                leaseBound: true,
+                lastSequence: m_sequence,
+                lastObservation: "registered-disarmed");
+            return Task.FromResult(Snapshot);
+        }
+
+        public Task<StationTxIndependentWatchdogDiagnostics> HeartbeatAsync(
+            WatchdogIdentity identity,
+            CancellationToken cancellationToken = default)
+        {
+            Assert.Equal(Identity, identity);
+            HeartbeatCount++;
+            if (!FailHeartbeat)
+            {
+                m_sequence++;
+            }
+            Snapshot = NewSnapshot(
+                processRunning: true,
+                ipcConnected: true,
+                registered: true,
+                connected: true,
+                leaseBound: true,
+                lastSequence: m_sequence,
+                lastObservation: "heartbeat-observed-disarmed");
+            return Task.FromResult(Snapshot);
+        }
+
+        public Task<StationTxIndependentWatchdogDiagnostics>
+            DisconnectAndResetAsync(
+            WatchdogIdentity identity,
+            CancellationToken cancellationToken = default)
+        {
+            Assert.Equal(Identity, identity);
+            DisconnectCount++;
+            Identity = null;
+            m_sequence = 0;
+            Snapshot = NewSnapshot(
+                processRunning: true,
+                ipcConnected: true,
+                registered: false,
+                connected: false,
+                leaseBound: false,
+                lastSequence: 0,
+                lastObservation: "disconnect-reset-disarmed");
+            return Task.FromResult(Snapshot);
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        private static StationTxIndependentWatchdogDiagnostics NewSnapshot(
+            bool processRunning,
+            bool ipcConnected,
+            bool registered,
+            bool connected,
+            bool leaseBound,
+            long lastSequence,
+            string lastObservation) =>
+            new(
+                SupervisionEnabled: true,
+                processRunning,
+                ProcessId: processRunning ? 12345 : null,
+                HostInstanceId: "fake-watchdog",
+                ProcessStartedAt: DateTimeOffset.UtcNow,
+                State: "Disarmed",
+                Reason: "command-incapable-skeleton",
+                ipcConnected,
+                registered,
+                connected,
+                leaseBound,
+                lastSequence,
+                RestartCount: 0,
+                lastObservation,
+                LastObservedAt: DateTimeOffset.UtcNow,
+                LastError: null,
+                RadioCommandTransportAvailable: false,
+                ArmingAvailable: false);
+    }
 
     private sealed class ManualTimeProvider(DateTimeOffset now) : TimeProvider
     {
