@@ -332,6 +332,23 @@ public sealed class RadioCoordinator : IDisposable
         BroadcastPresence();
     }
 
+    public void ObserveBrowserActivity(
+        RadioClientConnection connection,
+        bool authenticated)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        m_txLifecycle?.ObserveGatewayHeartbeat();
+        m_txLifecycle?.ObserveBrowserActivity(
+            connection.ClientId,
+            authenticated);
+    }
+
+    public void ObserveEngineHeartbeat(uint stationClientHandle)
+    {
+        m_txLifecycle?.ObserveGatewayHeartbeat();
+        m_txLifecycle?.ObserveEngineHeartbeat(stationClientHandle);
+    }
+
     public void Unregister(string clientId, bool notifyPresence = true)
     {
         if (!m_clients.TryRemove(clientId, out RadioClientConnection? connection))
@@ -446,6 +463,7 @@ public sealed class RadioCoordinator : IDisposable
             m_snapshot = updated;
         }
 
+        m_txLifecycle?.ObserveGatewayHeartbeat();
         m_txLifecycle?.ObserveEngineConnection(
             connected,
             stationClientHandle);

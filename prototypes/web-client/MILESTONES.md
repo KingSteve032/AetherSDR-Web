@@ -1240,6 +1240,19 @@ Milestone state:
   59. Exact-handle transmit was observed, the queue drained, and the radio
   returned idle. All M7 loss paths are now proven in HIL while normal production
   publishes remain receive-only with no reachable keying command.
+- Phase 2A registered the accepted gate, supervisor, and exact-identity loss
+  monitors per production radio session behind unavailable command transports.
+  Phase 2B now records monotonic browser, gateway, station FLEX heartbeat, and
+  lease observation sequences plus timestamps in administrative diagnostics.
+  Every parsed message on an admitted browser WebSocket and every successful
+  station FLEX ping refreshes only its exact current identity. Browser freshness
+  reflects the principal admitted for that socket and is not an independent
+  mid-socket Entra token refresh. Mismatched browser IDs and FLEX handles are
+  ignored. An exact authenticated-to-unauthenticated browser activity transition
+  releases only that browser's lease and reaches the authentication-loss monitor.
+  Admin renders the resulting disabled/disarmed state and per-boundary freshness
+  as `TX LIFECYCLE`. The gate remains Disabled, the supervisor remains Disarmed,
+  and production still contains no reachable key or unkey transport.
 
 Acceptance criteria:
 

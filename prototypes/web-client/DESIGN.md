@@ -155,6 +155,20 @@ faulted. The read-only lifecycle snapshot is included in administrative session
 diagnostics, while `/healthz` proves that the lifecycle is registered and both
 command transport and supervisor arming remain unavailable.
 
+Phase 2B adds monotonic exact-identity observation sequences and timestamps for
+the gateway, browser authority, station FLEX heartbeat, and lease. Every parsed
+message on an admitted browser WebSocket refreshes only its current connection
+identity, and every successful station FLEX ping refreshes only the exact
+connected FLEX handle. Browser freshness reflects the ClaimsPrincipal admitted
+for that WebSocket; it does not independently refresh or revalidate an Entra
+token mid-socket. Mismatched browser IDs and handles are ignored. An exact
+authenticated-to-unauthenticated browser activity transition immediately
+releases only that browser's physical-radio lease and is forwarded to the
+accepted authentication-loss monitor. These observations are diagnostic and
+authority-revoking only; they cannot arm the supervisor or reach either
+unavailable transport. The admin session grid renders the gate/supervisor state,
+per-boundary sequence counts, timestamps, and continued absence of TX transports.
+
 The first browser-integration increment exposes only a separately configured
 ownership lease. `Radio:BrowserTxLeaseEnabled` defaults to false and is distinct
 from the reserved `Radio:AllowTransmit` switch. The gateway derives lease

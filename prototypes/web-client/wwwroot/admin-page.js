@@ -17,11 +17,12 @@ import {
   formatCount,
   formatFrequency,
   formatHexId,
+  formatTxLifecycle,
   formatTuneTiming,
   rememberSessionDiagnosticExpansion,
   sessionDiagnosticExpanded,
   shortId
-} from "./admin-diagnostics.js?v=network-profile-1";
+} from "./admin-diagnostics.js?v=tx-lifecycle-1";
 
 const elements = {
   userName: document.querySelector("#user-name"),
@@ -991,6 +992,7 @@ function buildSessionDiagnostic(session) {
   const transport = session.transport || {};
   const txOccupancy = formatTxOccupancy(session.txOccupancy);
   const pttAuthority = formatPttAuthority(session.txOccupancy);
+  const txLifecycle = formatTxLifecycle(session.txLifecycle);
   const tuneTiming = formatTuneTiming(session.tune);
   const reconnect = formatBrowserReconnect(session.reconnect);
   const browserAudio = latestBrowserAudio(webClients);
@@ -1048,6 +1050,10 @@ function buildSessionDiagnostic(session) {
       "PTT AUTHORITY",
       pttAuthority.value,
       pttAuthority.detail),
+    diagnosticMetric(
+      "TX LIFECYCLE",
+      txLifecycle.value,
+      txLifecycle.detail),
     diagnosticMetric(
       "TUNE ECHO",
       tuneTiming.value,

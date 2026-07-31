@@ -37,6 +37,36 @@ export function formatAge(value, now = Date.now()) {
   return minutes < 60 ? `${minutes}m ago` : `${Math.round(minutes / 60)}h ago`;
 }
 
+export function formatTxLifecycle(lifecycle, now = Date.now()) {
+  if (!lifecycle?.registered) {
+    return {
+      value: "NOT REGISTERED",
+      detail: "No station TX lifecycle snapshot is available"
+    };
+  }
+
+  const gate = String(lifecycle.gateState || "unknown").toUpperCase();
+  const safety = String(lifecycle.safetyState || "unknown").toUpperCase();
+  const transportState =
+    lifecycle.commandTransportAvailable ||
+    lifecycle.emergencyUnkeyTransportAvailable
+      ? "TX transport present"
+      : "TX transports absent";
+  return {
+    value: `${gate} · ${safety}`,
+    detail:
+      `browser ${formatCount(lifecycle.browserObservationSequence)} ` +
+      `(${formatAge(lifecycle.lastBrowserObservedAt, now)}) · ` +
+      `engine ${formatCount(lifecycle.engineObservationSequence)} ` +
+      `(${formatAge(lifecycle.lastEngineObservedAt, now)}) · ` +
+      `gateway ${formatCount(lifecycle.gatewayObservationSequence)} ` +
+      `(${formatAge(lifecycle.lastGatewayObservedAt, now)}) · ` +
+      `lease ${formatCount(lifecycle.leaseObservationSequence)} ` +
+      `(${formatAge(lifecycle.lastLeaseObservedAt, now)}) · ` +
+      transportState
+  };
+}
+
 export function formatTuneTiming(tune, now = Date.now()) {
   const state = String(tune?.state || "idle").toLowerCase();
   const slice = tune?.sliceId || "?";
