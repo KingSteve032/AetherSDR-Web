@@ -107,6 +107,20 @@ object explicitly reports `keyingAvailable`, `microphoneAvailable`,
 `tuneAvailable`, and `cwAvailable` as `false`. None of these fields are accepted
 from browser input.
 
+Phase 2A adds no browser message. Each administrative session diagnostic now
+includes a read-only `txLifecycle` object with exact gateway/engine/session/
+browser identities, current browser/authentication/radio/lease observations,
+and the disabled command-gate and disarmed safety-supervisor states. It also
+reports that production command and emergency-unkey transports are unavailable.
+These fields are diagnostic projections only and are never accepted as authority
+from a browser.
+
+`GET /healthz` additionally reports
+`txGateLifecycleRegistered=true`, `txCommandTransportRegistered=false`, and
+`txSafetySupervisorArmingAvailable=false`. The deployment gate requires these
+values together with `transmitEnabled=false` and
+`browserTxLeaseEnabled=false`.
+
 The browser may send:
 
 ```json

@@ -533,7 +533,11 @@ public sealed class FlexRadioRxService(
             // told the radio is connected, A/B identities must never move:
             // an in-progress drag continues addressing the same radio slice.
             m_webSliceIds.Freeze();
-            coordinator.SetRadioConnection(true, model, serial);
+            coordinator.SetRadioConnection(
+                true,
+                model,
+                serial,
+                stationClientHandle: handle);
             logger.LogInformation(
                 "Live Flex FFT is flowing from {RadioHost} through panadapter {PanId}",
                 endpoint.Host,
@@ -621,7 +625,11 @@ public sealed class FlexRadioRxService(
                 m_webSliceIds.Reset();
             }
             coordinator.SetLiveSlices([]);
-            coordinator.SetRadioConnection(false, model, serial);
+            coordinator.SetRadioConnection(
+                false,
+                model,
+                serial,
+                stationClientHandle: handle);
             ResetCurrentTransportIds();
         }
     }

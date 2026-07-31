@@ -69,10 +69,10 @@ internal interface IStationTxCommandTransport
 }
 
 /// <summary>
-/// Station-local, browser-inaccessible TX command gate. This class is not
-/// registered in production yet. It exists so lease, ownership, interlock, and
-/// forced-unkey behavior can be proven before any caller can reach a keying
-/// command.
+/// Station-local, browser-inaccessible TX command gate. Production now
+/// registers this state machine only through the command-incapable lifecycle
+/// boundary with transmit disabled. No production caller or transport can
+/// reach a keying command.
 /// </summary>
 internal sealed class StationTxCommandGate : IAsyncDisposable
 {

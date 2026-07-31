@@ -31,13 +31,14 @@ public sealed class RadioSession : IAsyncDisposable
         DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     private int m_stopped;
 
-    public RadioSession(
+    internal RadioSession(
         string sessionId,
         string browserClientId,
         string userId,
         string displayName,
         SelectedRadioEndpoint endpoint,
         RadioCoordinator coordinator,
+        StationTxProductionLifecycle txLifecycle,
         SessionRadioSelection selection,
         BackgroundService transport,
         ILogger logger)
@@ -48,6 +49,7 @@ public sealed class RadioSession : IAsyncDisposable
         DisplayName = displayName;
         Endpoint = endpoint;
         Coordinator = coordinator;
+        TxLifecycle = txLifecycle;
         Selection = selection;
         m_transport = transport;
         m_logger = logger;
@@ -62,6 +64,7 @@ public sealed class RadioSession : IAsyncDisposable
     public string DisplayName { get; }
     public SelectedRadioEndpoint Endpoint { get; }
     public RadioCoordinator Coordinator { get; }
+    internal StationTxProductionLifecycle TxLifecycle { get; }
     public SessionRadioSelection Selection { get; }
     public DateTimeOffset CreatedAt { get; }
     public int ClientCount => Volatile.Read(ref m_clientCount);
@@ -186,7 +189,8 @@ public sealed class RadioSession : IAsyncDisposable
             panadapters,
             snapshot.Slices.ToArray(),
             Coordinator.TxOccupancy,
-            Coordinator.TuneDiagnostics);
+            Coordinator.TuneDiagnostics,
+            TxLifecycle.Snapshot);
     }
 
     private RadioBrowserReconnectDiagnostics GetReconnectDiagnostics()
@@ -230,7 +234,14 @@ public sealed class RadioSession : IAsyncDisposable
             }
             finally
             {
-                Coordinator.Dispose();
+                try
+                {
+                    Coordinator.Dispose();
+                }
+                finally
+                {
+                    await TxLifecycle.DisposeAsync();
+                }
             }
         }
 
@@ -258,6 +269,8 @@ public sealed class RadioSessionRegistry(
     // slice at the configured startup frequency. A genuinely closed page
     // still releases its FLEX GUI slot after this bounded grace period.
     internal static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(60);
+    private readonly string m_gatewayInstanceId =
+        $"gateway-{Guid.NewGuid():N}";
     private static readonly TimeSpan CleanupInterval = TimeSpan.FromSeconds(5);
     private readonly object m_gate = new();
     private readonly SemaphoreSlim m_creationGate = new(1, 1);
@@ -695,13 +708,22 @@ public sealed class RadioSessionRegistry(
             StringComparison.Ordinal);
         RemoteRadioIntentRouter? remoteIntentRouter =
             isRemote ? new RemoteRadioIntentRouter() : null;
+        StationTxProductionLifecycle txLifecycle = new(
+            endpoint.RadioId,
+            sessionId,
+            browserClientId,
+            m_gatewayInstanceId,
+            txLeaseManager,
+            txOccupancyRegistry,
+            loggerFactory.CreateLogger<StationTxProductionLifecycle>());
         RadioCoordinator coordinator = new(
             loggerFactory.CreateLogger<RadioCoordinator>(),
             sessionOptions,
             txLeaseManager,
             commandRouter,
             remoteIntentRouter,
-            txOccupancyRegistry);
+            txOccupancyRegistry,
+            txLifecycle);
         BackgroundService transport =
             isRemote
                 ? new RemoteRadioProjectionService(
@@ -736,6 +758,7 @@ public sealed class RadioSessionRegistry(
             displayName,
             endpoint,
             coordinator,
+            txLifecycle,
             selection,
             transport,
             loggerFactory.CreateLogger<RadioSession>());
