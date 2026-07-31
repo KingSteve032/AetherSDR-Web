@@ -175,6 +175,11 @@ app.MapGet(
             browserTxLeaseEnabled = radioSettings.BrowserTxLeaseEnabled,
             txGateLifecycleRegistered = true,
             txLifecycleWatchdogRegistered = true,
+            txIndependentWatchdogHostPackaged = true,
+            txIndependentWatchdogState = "packaged-disarmed",
+            txIndependentWatchdogConnected = false,
+            txIndependentWatchdogCommandTransportRegistered = false,
+            txIndependentWatchdogArmingAvailable = false,
             txCommandTransportRegistered = false,
             txSafetySupervisorArmingAvailable = false
         }))

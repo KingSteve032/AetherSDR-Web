@@ -1268,6 +1268,38 @@ Milestone state:
   tests, 70 AetherRemote tests, and 107 browser tests (477 total), with a
   zero-warning solution build. Clean production publish inspection contains no
   forbidden TX/HIL command surface.
+- Phase 2D adds the first independent process artifact without connecting it to
+  the web gateway or a radio. The new `AetherSDR.TxWatchdog` host accepts only a
+  4096-character-bounded local stdio protocol for status, exact radio/session/
+  browser/gateway/engine/connection/lease/FLEX-handle registration, heartbeat,
+  and disconnect observations. It remains Disarmed,
+  reports no radio command transport or arming surface, carries no lease
+  mutation or emergency action, and persists nothing. Exact identity plus a strictly
+  increasing sequence prevents replacement and stale observations. Deterministic
+  process tests force-kill a registered host and prove that a replacement has a
+  different process instance, no restored identity, sequence zero, and the empty
+  Disarmed startup state. The guarded production package includes the independent
+  self-contained binary but does not launch it as a service yet. Health reports
+  `txIndependentWatchdogHostPackaged=true`, state `packaged-disarmed`, connected
+  false, and both command transport and arming unavailable.
+- The 2026-07-31 Phase 2D validation-only gate passed 252 server tests, 16
+  independent-watchdog tests, 48 TX-HIL isolation tests, 70 AetherRemote tests,
+  and 107 browser tests (493 total), with a zero-warning solution build. Both
+  self-contained production binaries contained no forbidden TX/HIL command
+  strings. The published watchdog status probe returned a new empty Disarmed
+  instance with no identity, no connection, sequence zero, and no radio command
+  transport. No production service, Git commit, or Git remote was changed.
+- Release `20260731-m7-independent-watchdog-phase2d` deployed successfully on
+  2026-07-31. Internal and public health reported the independent host packaged,
+  state `packaged-disarmed`, disconnected, with no command transport and no arming
+  availability. The deployed binary independently returned a new empty Disarmed
+  instance with no bound lease or identity and sequence zero; no persistent
+  watchdog process was running. Browser Bridge acceptance kept PSOC2 live and
+  RX-only, with MOX/TUNE hidden and disabled, no PTT, PC MIC hidden, and
+  SPLIT/CWX/DVK/FDX disabled. The 2D -> 3D -> 2D display transition remained
+  receive-only. Admin showed `DISABLED · DISARMED · NO LEASE` with fresh browser,
+  engine, and gateway observations, no production TX transports, and both radio
+  and Admin consoles had zero entries.
 
 Acceptance criteria:
 

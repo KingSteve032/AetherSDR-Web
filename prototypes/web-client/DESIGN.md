@@ -181,6 +181,21 @@ authority. This watchdog is an authority-revocation layer inside the running
 gateway, not the future independent emergency-unkey process, and it cannot arm,
 key, unkey, or reach either unavailable production transport.
 
+Phase 2D introduces the first separate-process boundary without moving radio
+authority into it. `AetherSDR.TxWatchdog` is a standalone console host with no
+reference to the web gateway, TX gate, occupancy registry, HIL assembly, or FLEX
+transport. Its versioned local stdio protocol accepts only bounded `status`,
+`register`, `heartbeat`, and `disconnect` observations. Registration binds one
+exact radio/session/browser/gateway/engine/connection/lease/FLEX-handle tuple and a
+strictly increasing sequence; mismatched or stale observations are rejected.
+Every new OS process creates a new host instance, starts empty and Disarmed, and
+never restores or infers the prior process's observation state. The host keeps
+the opaque lease ID only for internal exact-equality checks; wire responses
+expose `leaseBound` and never echo the lease or full identity. The production
+package contains the executable for independent artifact inspection, but the web
+service does not launch or connect to it yet. It has no timer, lease operation,
+arming operation, radio connection, command transport, or emergency action.
+
 The first browser-integration increment exposes only a separately configured
 ownership lease. `Radio:BrowserTxLeaseEnabled` defaults to false and is distinct
 from the reserved `Radio:AllowTransmit` switch. The gateway derives lease

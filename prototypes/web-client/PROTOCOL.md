@@ -137,8 +137,37 @@ the lifecycle's exact tracked lease. Fresh observations after revocation never
 restore that lease. The watchdog remains in-process and command-incapable; it is
 not the independent emergency-unkey boundary.
 
+Phase 2D adds a separate local process protocol without changing the browser
+protocol. `AetherSDR.TxWatchdog --stdio` consumes one JSON object per line, with
+a maximum of 4096 characters and protocol version 1. It supports only:
+
+```json
+{"protocolVersion":1,"requestId":"status-1","type":"status"}
+{"protocolVersion":1,"requestId":"register-1","type":"register","sequence":1,
+ "identity":{"radioId":"RADIO-A","sessionId":"session-a",
+ "browserClientId":"browser-a","gatewayInstanceId":"gateway-a",
+ "engineInstanceId":"engine-a","connectionClientId":"connection-a",
+ "leaseId":"lease-a","stationClientHandle":305441741}}
+```
+
+`heartbeat` and `disconnect` use the same exact identity object and a strictly
+increasing positive sequence. Status carries no identity or sequence. Unknown
+or duplicate properties, malformed JSON, unsupported versions, oversized
+messages, mismatched identity, stale sequence, and heartbeat after disconnect
+are rejected. Responses always project a Disarmed state, unavailable radio
+command transport, unavailable arming, process instance ID, registration and
+connection state, a `leaseBound` boolean, last accepted sequence, and last
+observation. They never echo the opaque lease ID or the full authority identity. There is no arm,
+lease mutation, key, unkey, timer, persistence, or radio command message. A process
+restart creates a new host instance and an empty Disarmed snapshot.
+
 `GET /healthz` additionally reports
 `txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,
+`txIndependentWatchdogHostPackaged=true`,
+`txIndependentWatchdogState=packaged-disarmed`,
+`txIndependentWatchdogConnected=false`,
+`txIndependentWatchdogCommandTransportRegistered=false`,
+`txIndependentWatchdogArmingAvailable=false`,
 `txCommandTransportRegistered=false`, and
 `txSafetySupervisorArmingAvailable=false`. The deployment gate requires these
 values together with `transmitEnabled=false` and
