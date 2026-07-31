@@ -116,7 +116,7 @@ public sealed class RadioCoordinatorTests
     }
 
     [Fact]
-    public void PrototypeCannotAcquireTxLeaseEvenWhenConfigIsArmed()
+    public void LegacyAllowTransmitCannotEnableBrowserLeaseOrKeying()
     {
         RadioCoordinator coordinator = CreateCoordinator(allowTransmit: true);
         RadioClientConnection connection = new(
@@ -125,15 +125,179 @@ public sealed class RadioCoordinatorTests
             "Operator A",
             ["Aether.Transmit"]);
 
+        BrowserTxCapability capability =
+            coordinator.GetBrowserTxCapability(connection);
         bool acquired = coordinator.TryAcquireTxLease(
             connection,
-            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(10),
             out TxLease? lease,
             out string? error);
 
+        Assert.True(coordinator.AllowTransmit);
+        Assert.False(coordinator.BrowserTxLeaseEnabled);
+        Assert.False(coordinator.Snapshot.CanTransmit);
+        Assert.False(capability.LeaseConfigured);
+        Assert.False(capability.LeaseAvailable);
+        Assert.False(capability.KeyingAvailable);
+        Assert.False(capability.MicrophoneAvailable);
+        Assert.False(capability.TuneAvailable);
+        Assert.False(capability.CwAvailable);
         Assert.False(acquired);
         Assert.Null(lease);
-        Assert.Contains("fail-closed", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("disabled", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BrowserCannotManufactureTransmitRoleForLeaseCapability()
+    {
+        RadioTxOccupancyRegistry occupancy = IdleOccupancy();
+        RadioCoordinator coordinator = CreateCoordinator(
+            browserTxLeaseEnabled: true,
+            txOccupancyRegistry: occupancy);
+        RadioClientConnection connection = new(
+            "client-a",
+            "user-a",
+            "Operator A",
+            ["Aether.Control"]);
+
+        BrowserTxCapability capability =
+            coordinator.GetBrowserTxCapability(connection);
+        bool acquired = coordinator.TryAcquireTxLease(
+            connection,
+            TimeSpan.FromSeconds(10),
+            out TxLease? lease,
+            out string? error);
+
+        Assert.True(capability.LeaseConfigured);
+        Assert.False(capability.RoleAuthorized);
+        Assert.False(capability.LeaseAvailable);
+        Assert.Equal("role-required", capability.State);
+        Assert.False(capability.KeyingAvailable);
+        Assert.False(acquired);
+        Assert.Null(lease);
+        Assert.Contains("Aether.Transmit", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BrowserTxLeaseRequiresFreshRadioAuthoritativeIdle()
+    {
+        RadioCoordinator coordinator = CreateCoordinator(
+            browserTxLeaseEnabled: true,
+            txOccupancyRegistry: new RadioTxOccupancyRegistry());
+        RadioClientConnection connection = new(
+            "client-a",
+            "user-a",
+            "Operator A",
+            ["Aether.Transmit"]);
+
+        BrowserTxCapability capability =
+            coordinator.GetBrowserTxCapability(connection);
+        bool acquired = coordinator.TryAcquireTxLease(
+            connection,
+            TimeSpan.FromSeconds(10),
+            out TxLease? lease,
+            out string? error);
+
+        Assert.True(capability.RoleAuthorized);
+        Assert.False(capability.OccupancyAllowsLease);
+        Assert.False(capability.LeaseAvailable);
+        Assert.Equal("occupancy-unknown", capability.State);
+        Assert.False(acquired);
+        Assert.Null(lease);
+        Assert.Contains("radio-authoritative idle", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AuthorizedBrowserCanHoldLeaseWhileEveryKeyingSurfaceStaysOff()
+    {
+        RadioTxOccupancyRegistry occupancy = IdleOccupancy();
+        RadioCoordinator coordinator = CreateCoordinator(
+            allowTransmit: true,
+            browserTxLeaseEnabled: true,
+            txOccupancyRegistry: occupancy);
+        RadioClientConnection connection = new(
+            "client-a",
+            "user-a",
+            "Operator A",
+            ["Aether.Transmit"]);
+
+        BrowserTxCapability before =
+            coordinator.GetBrowserTxCapability(connection);
+        bool acquired = coordinator.TryAcquireTxLease(
+            connection,
+            TimeSpan.FromSeconds(10),
+            out TxLease? lease,
+            out string? error);
+        BrowserTxCapability held =
+            coordinator.GetBrowserTxCapability(connection);
+
+        Assert.True(before.LeaseAvailable);
+        Assert.Equal("lease-available", before.State);
+        Assert.True(acquired, error);
+        Assert.NotNull(lease);
+        Assert.True(held.LeaseHeldByBrowser);
+        Assert.False(held.LeaseAvailable);
+        Assert.Equal("lease-held-by-browser", held.State);
+        Assert.False(coordinator.Snapshot.CanTransmit);
+        Assert.False(before.KeyingAvailable);
+        Assert.False(before.MicrophoneAvailable);
+        Assert.False(before.TuneAvailable);
+        Assert.False(before.CwAvailable);
+
+        bool renewed = coordinator.TryRenewTxLease(
+            connection,
+            lease!.LeaseId,
+            TimeSpan.FromSeconds(10),
+            out TxLease? renewedLease,
+            out string? renewError);
+        Assert.True(renewed, renewError);
+        Assert.NotNull(renewedLease);
+        Assert.True(coordinator.ReleaseTxLease(connection, lease.LeaseId));
+        Assert.True(
+            coordinator.GetBrowserTxCapability(connection).LeaseAvailable);
+    }
+
+    [Fact]
+    public void SecondBrowserCannotAcquireOrAdvertiseThePhysicalRadioLease()
+    {
+        RadioTxOccupancyRegistry occupancy = IdleOccupancy();
+        RadioCoordinator coordinator = CreateCoordinator(
+            browserTxLeaseEnabled: true,
+            txOccupancyRegistry: occupancy);
+        RadioClientConnection first = new(
+            "client-a",
+            "user-a",
+            "Operator A",
+            ["Aether.Transmit"]);
+        RadioClientConnection second = new(
+            "client-b",
+            "user-b",
+            "Operator B",
+            ["Aether.Transmit"]);
+
+        Assert.True(coordinator.TryAcquireTxLease(
+            first,
+            TimeSpan.FromSeconds(10),
+            out TxLease? firstLease,
+            out string? firstError), firstError);
+
+        BrowserTxCapability secondCapability =
+            coordinator.GetBrowserTxCapability(second);
+        bool secondAcquired = coordinator.TryAcquireTxLease(
+            second,
+            TimeSpan.FromSeconds(10),
+            out TxLease? secondLease,
+            out string? secondError);
+
+        Assert.False(secondCapability.LeaseHeldByBrowser);
+        Assert.False(secondCapability.LeaseAvailable);
+        Assert.Equal("lease-held-by-other", secondCapability.State);
+        Assert.False(secondCapability.KeyingAvailable);
+        Assert.False(secondAcquired);
+        Assert.Null(secondLease);
+        Assert.Contains("Operator A", secondError, StringComparison.Ordinal);
+        Assert.NotNull(firstLease);
+        Assert.True(coordinator.ReleaseTxLease(first, firstLease.LeaseId));
     }
 
     [Fact]
@@ -813,9 +977,25 @@ public sealed class RadioCoordinatorTests
         }
     }
 
+    private static RadioTxOccupancyRegistry IdleOccupancy()
+    {
+        RadioTxOccupancyRegistry occupancy = new();
+        occupancy.ObserveInterlock(
+            "radio-1",
+            "test-reporter",
+            0x10000001,
+            "READY",
+            null,
+            string.Empty,
+            []);
+        return occupancy;
+    }
+
     private static RadioCoordinator CreateCoordinator(
         bool allowTransmit = false,
-        string mode = "Simulation")
+        string mode = "Simulation",
+        bool browserTxLeaseEnabled = false,
+        RadioTxOccupancyRegistry? txOccupancyRegistry = null)
     {
         return new RadioCoordinator(
             NullLogger<RadioCoordinator>.Instance,
@@ -824,8 +1004,10 @@ public sealed class RadioCoordinatorTests
                 {
                     Mode = mode,
                     AllowTransmit = allowTransmit,
+                    BrowserTxLeaseEnabled = browserTxLeaseEnabled,
                     SessionId = "test-radio"
                 }),
-            new TxLeaseManager());
+            new TxLeaseManager(),
+            txOccupancyRegistry: txOccupancyRegistry);
     }
 }

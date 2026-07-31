@@ -91,11 +91,21 @@ only the FPS observed immediately before that session entered low mode.
 
 ## Control messages
 
-The server sends `welcome` with identity-independent capabilities, a full radio
+The server sends `welcome` with server-derived capabilities, a full radio
 snapshot, current radio-wide operator presence, and any TX lease. Presence is
 aggregated by authenticated identity for the selected physical radio and
 includes `connectionCount`; it never carries another identity's session or
 radio state.
+
+`capabilities.transmit` remains `false` until a production keying path is
+accepted. Phase 1 adds `capabilities.tx` for lease-only eligibility. It reports
+whether the lease foundation is configured, whether the authenticated server
+identity has `Aether.Transmit` or `Aether.Admin`, whether the radio is connected,
+whether fresh radio-authoritative occupancy permits a lease, whether this
+browser already holds it, and whether a lease is currently available. The same
+object explicitly reports `keyingAvailable`, `microphoneAvailable`,
+`tuneAvailable`, and `cwAvailable` as `false`. None of these fields are accepted
+from browser input.
 
 The browser may send:
 
@@ -116,6 +126,9 @@ The browser may send:
 {"id":8,"cmd":"intent","action":"pan.remove",
  "selector":"0x40000001","values":{}}
 {"id":9,"cmd":"ping"}
+{"id":10,"cmd":"tx.acquire","seconds":10}
+{"id":11,"cmd":"tx.renew","leaseId":"<opaque-lease-id>","seconds":10}
+{"id":12,"cmd":"tx.release","leaseId":"<opaque-lease-id>"}
 {"cmd":"client.visibility","visible":false}
 ```
 
@@ -129,8 +142,18 @@ boundary. `squelchEnabled` controls the radio gate independently from its
 remembered threshold. Active-slice focus is browser-local and is never sent as
 a radio property. `FlexRx` maps the supported intents, plus slice
 create/remove, to receive-only SmartSDR commands and refreshes authoritative
-slice status after accepted changes. Transmit-shaped commands and properties
+slice status after accepted changes. Transmit-shaped intents and properties
 remain rejected.
+
+The `tx.acquire`, `tx.renew`, and `tx.release` messages manage only the
+single-radio ownership lease. Acquisition requires the dedicated
+`Radio:BrowserTxLeaseEnabled` server switch, an authenticated transmit/admin
+role, a connected radio session, fresh radio-authoritative idle occupancy, and
+no lease held by another browser. `Radio:AllowTransmit` alone does not enable
+lease acquisition or keying. Lease responses include the freshly derived
+capability state. Holding a lease is not permission or a command to transmit;
+MOX/PTT, microphone audio, TUNE, and CW remain unavailable and
+`snapshot.canTransmit` remains `false`.
 
 `client.visibility` accepts only a JSON boolean. A hidden browser keeps its
 authenticated WebSocket, radio session, text responses, snapshots, presence,

@@ -9,5 +9,6 @@ Radio__Mode=FlexRx
 Radio__Host=10.2.0.12
 Radio__TcpPort=4992
 Radio__AllowTransmit=false
+Radio__BrowserTxLeaseEnabled=false
 Radio__StationName=AETHER-WEB-RX
 RadioAccess__PolicyPath=/home/flexweb/aethersdr/state/radio-access.json

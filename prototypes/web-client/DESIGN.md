@@ -143,6 +143,16 @@ only when `EnableTxHil=true`; normal production publishes contain neither
 command string and the gate/watchdog are not registered in DI or WebSocket
 routing. Production therefore remains receive-only with `CanTransmit=false`.
 
+The first browser-integration increment exposes only a separately configured
+ownership lease. `Radio:BrowserTxLeaseEnabled` defaults to false and is distinct
+from the reserved `Radio:AllowTransmit` switch. The gateway derives lease
+eligibility from its authenticated role set, live connection state, fresh
+radio-authoritative occupancy, and the process-wide physical-radio lease. The
+welcome message keeps the compatibility keying capability false and separately
+reports lease eligibility plus explicit false values for keying, microphone,
+TUNE, and CW. A lease cannot reach the hidden command gate and is not operator
+intent to transmit.
+
 The next safety layer is an independent, station-local supervisor with no key
 method and an unkey-only transport. Its arm is purpose-bound to one engine
 instance, lease, session/browser owner, exact protected FLEX client handle, and
