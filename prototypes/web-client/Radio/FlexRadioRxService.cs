@@ -543,7 +543,10 @@ public sealed class FlexRadioRxService(
                 endpoint.Host,
                 panId);
 
-            Task heartbeatTask = RunHeartbeatAsync(control, stoppingToken);
+            Task heartbeatTask = RunHeartbeatAsync(
+                control,
+                handle,
+                stoppingToken);
             Task completed = await Task.WhenAny(
                 receiveTask,
                 heartbeatTask,
@@ -1255,6 +1258,7 @@ public sealed class FlexRadioRxService(
 
     private async Task RunHeartbeatAsync(
         FlexControlSession control,
+        uint clientHandle,
         CancellationToken cancellationToken)
     {
         using PeriodicTimer timer = new(TimeSpan.FromSeconds(3));
@@ -1272,6 +1276,7 @@ public sealed class FlexRadioRxService(
             Interlocked.Exchange(
                 ref m_lastHeartbeatUnixMilliseconds,
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            coordinator.ObserveEngineHeartbeat(clientHandle);
             RefreshTxOccupancy();
         }
     }

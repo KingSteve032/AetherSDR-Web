@@ -27,6 +27,14 @@ public sealed record StationTxLifecycleDiagnostics(
     string SafetyReason,
     bool SafetyActive,
     bool ObservationFaulted,
+    long BrowserObservationSequence,
+    DateTimeOffset? LastBrowserObservedAt,
+    long EngineObservationSequence,
+    DateTimeOffset? LastEngineObservedAt,
+    long GatewayObservationSequence,
+    DateTimeOffset? LastGatewayObservedAt,
+    long LeaseObservationSequence,
+    DateTimeOffset? LastLeaseObservedAt,
     string LastObservation,
     DateTimeOffset LastObservedAt);
 
@@ -70,6 +78,14 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     private bool m_leaseActive;
     private string? m_leaseId;
     private bool m_observationFaulted;
+    private long m_browserObservationSequence;
+    private DateTimeOffset? m_lastBrowserObservedAt;
+    private long m_engineObservationSequence;
+    private DateTimeOffset? m_lastEngineObservedAt;
+    private long m_gatewayObservationSequence = 1;
+    private DateTimeOffset? m_lastGatewayObservedAt = DateTimeOffset.UtcNow;
+    private long m_leaseObservationSequence;
+    private DateTimeOffset? m_lastLeaseObservedAt;
     private string m_lastObservation = "registered-disabled";
     private DateTimeOffset m_lastObservedAt = DateTimeOffset.UtcNow;
     private int m_overflowSignaled;
@@ -156,6 +172,14 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     safety.Reason,
                     safety.Active,
                     m_observationFaulted,
+                    m_browserObservationSequence,
+                    m_lastBrowserObservedAt,
+                    m_engineObservationSequence,
+                    m_lastEngineObservedAt,
+                    m_gatewayObservationSequence,
+                    m_lastGatewayObservedAt,
+                    m_leaseObservationSequence,
+                    m_lastLeaseObservedAt,
                     m_lastObservation,
                     m_lastObservedAt);
             }
@@ -171,11 +195,24 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             connected,
             authenticated));
 
+    public void ObserveBrowserActivity(
+        string connectionClientId,
+        bool authenticated) =>
+        Enqueue(new BrowserActivityObservation(
+            NormalizeRequired(connectionClientId, 128),
+            authenticated));
+
     public void ObserveEngineConnection(bool connected, uint clientHandle) =>
         Enqueue(new EngineObservation(connected, clientHandle));
 
+    public void ObserveEngineHeartbeat(uint clientHandle) =>
+        Enqueue(new EngineHeartbeatObservation(clientHandle));
+
     public void ObserveGatewayConnection(bool connected) =>
         Enqueue(new GatewayObservation(connected));
+
+    public void ObserveGatewayHeartbeat() =>
+        Enqueue(new GatewayHeartbeatObservation());
 
     public void ObserveLeaseChange(TxLeaseChange change)
     {
@@ -219,11 +256,20 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     case BrowserObservation browser:
                         await ProcessBrowserAsync(browser);
                         break;
+                    case BrowserActivityObservation browserActivity:
+                        await ProcessBrowserActivityAsync(browserActivity);
+                        break;
                     case EngineObservation engine:
                         await ProcessEngineAsync(engine);
                         break;
+                    case EngineHeartbeatObservation engineHeartbeat:
+                        ProcessEngineHeartbeat(engineHeartbeat);
+                        break;
                     case GatewayObservation gateway:
                         await ProcessGatewayAsync(gateway);
+                        break;
+                    case GatewayHeartbeatObservation:
+                        ProcessGatewayHeartbeat();
                         break;
                     case LeaseObservation lease:
                         await ProcessLeaseAsync(lease.Change);
@@ -269,6 +315,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 m_connectionClientId = observation.Connected
                     ? observation.ConnectionClientId
                     : null;
+                m_browserObservationSequence++;
+                m_lastBrowserObservedAt = DateTimeOffset.UtcNow;
                 RecordLocked(observation.Connected
                     ? "browser-connected-authenticated"
                     : "browser-disconnected");
@@ -278,6 +326,16 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         if (!applies)
         {
             return;
+        }
+
+        if (!observation.Connected || !observation.Authenticated)
+        {
+            m_leases.TryReleaseOwner(
+                m_radioId,
+                m_sessionId,
+                observation.ConnectionClientId,
+                "authentication-lost",
+                out _);
         }
 
         StationTxSafetySnapshot safety = m_supervisor.Snapshot;
@@ -291,6 +349,49 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 observation.Connected && observation.Authenticated));
     }
 
+    private async Task ProcessBrowserActivityAsync(
+        BrowserActivityObservation observation)
+    {
+        lock (m_stateGate)
+        {
+            if (!m_browserConnected ||
+                !string.Equals(
+                    m_connectionClientId,
+                    observation.ConnectionClientId,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            m_authenticated = observation.Authenticated;
+            m_browserObservationSequence++;
+            m_lastBrowserObservedAt = DateTimeOffset.UtcNow;
+            RecordLocked(observation.Authenticated
+                ? "browser-activity-authenticated"
+                : "browser-activity-unauthenticated");
+        }
+
+        if (!observation.Authenticated)
+        {
+            m_leases.TryReleaseOwner(
+                m_radioId,
+                m_sessionId,
+                observation.ConnectionClientId,
+                "authentication-lost",
+                out _);
+        }
+
+        StationTxSafetySnapshot safety = m_supervisor.Snapshot;
+        await m_authenticationMonitor.EvaluateAsync(
+            new StationTxAuthenticationObservation(
+                safety.EngineInstanceId ?? m_engineInstanceId,
+                safety.LeaseId ?? m_leaseId ?? "no-active-lease",
+                safety.SessionId ?? m_sessionId,
+                safety.BrowserClientId ?? observation.ConnectionClientId,
+                safety.ProtectedClientHandle,
+                observation.Authenticated));
+    }
+
     private async Task ProcessEngineAsync(EngineObservation observation)
     {
         lock (m_stateGate)
@@ -299,6 +400,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             m_stationClientHandle = observation.Connected
                 ? observation.ClientHandle
                 : 0;
+            m_engineObservationSequence++;
+            m_lastEngineObservedAt = DateTimeOffset.UtcNow;
             RecordLocked(observation.Connected
                 ? "station-engine-connected"
                 : "station-engine-disconnected");
@@ -313,11 +416,30 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 observation.Connected));
     }
 
+    private void ProcessEngineHeartbeat(EngineHeartbeatObservation observation)
+    {
+        lock (m_stateGate)
+        {
+            if (!m_engineConnected ||
+                m_stationClientHandle == 0 ||
+                m_stationClientHandle != observation.ClientHandle)
+            {
+                return;
+            }
+
+            m_engineObservationSequence++;
+            m_lastEngineObservedAt = DateTimeOffset.UtcNow;
+            RecordLocked("station-engine-heartbeat");
+        }
+    }
+
     private async Task ProcessGatewayAsync(GatewayObservation observation)
     {
         lock (m_stateGate)
         {
             m_gatewayConnected = observation.Connected;
+            m_gatewayObservationSequence++;
+            m_lastGatewayObservedAt = DateTimeOffset.UtcNow;
             RecordLocked(observation.Connected
                 ? "gateway-connected"
                 : "gateway-disconnected");
@@ -335,6 +457,21 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     m_browserClientId,
                 safety.ProtectedClientHandle,
                 observation.Connected));
+    }
+
+    private void ProcessGatewayHeartbeat()
+    {
+        lock (m_stateGate)
+        {
+            if (!m_gatewayConnected)
+            {
+                return;
+            }
+
+            m_gatewayObservationSequence++;
+            m_lastGatewayObservedAt = DateTimeOffset.UtcNow;
+            RecordLocked("gateway-heartbeat");
+        }
     }
 
     private async Task ProcessLeaseAsync(TxLeaseChange change)
@@ -372,6 +509,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             {
                 m_leaseActive = change.Active;
                 m_leaseId = change.Active ? change.Lease.LeaseId : null;
+                m_leaseObservationSequence++;
+                m_lastLeaseObservedAt = DateTimeOffset.UtcNow;
                 RecordLocked(change.Active
                     ? $"lease-{change.Reason}"
                     : $"lease-released-{change.Reason}");
@@ -455,11 +594,20 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         bool Connected,
         bool Authenticated) : LifecycleObservation;
 
+    private sealed record BrowserActivityObservation(
+        string ConnectionClientId,
+        bool Authenticated) : LifecycleObservation;
+
     private sealed record EngineObservation(
         bool Connected,
         uint ClientHandle) : LifecycleObservation;
 
+    private sealed record EngineHeartbeatObservation(
+        uint ClientHandle) : LifecycleObservation;
+
     private sealed record GatewayObservation(bool Connected) : LifecycleObservation;
+
+    private sealed record GatewayHeartbeatObservation : LifecycleObservation;
 
     private sealed record LeaseObservation(
         TxLeaseChange Change) : LifecycleObservation;

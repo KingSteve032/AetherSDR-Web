@@ -292,6 +292,10 @@ public static class RadioWebSocketEndpoint
                 ? idValue.Clone()
                 : default;
 
+            coordinator.ObserveBrowserActivity(
+                connection,
+                user.Identity?.IsAuthenticated == true);
+
             switch (command)
             {
                 case "hello":

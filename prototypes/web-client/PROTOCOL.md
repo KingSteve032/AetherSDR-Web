@@ -115,6 +115,18 @@ reports that production command and emergency-unkey transports are unavailable.
 These fields are diagnostic projections only and are never accepted as authority
 from a browser.
 
+Phase 2B keeps the same browser protocol. Every parsed message on an admitted
+browser WebSocket counts as an exact-connection authority observation, and every
+successful station FLEX `ping` counts as an exact-handle engine observation.
+The browser observation reflects the ClaimsPrincipal admitted for that socket;
+it is not an independent mid-socket Entra token refresh. The `txLifecycle`
+diagnostic adds monotonic sequence numbers and last-observed timestamps for
+browser, engine, gateway, and lease observations. Wrong browser IDs and wrong
+FLEX handles do not advance those counters. An exact unauthenticated browser
+observation releases only that browser's lease and reaches the authentication-
+loss monitor; it does not expose a new command or enable transmit. The admin
+session grid displays this projection as `TX LIFECYCLE`.
+
 `GET /healthz` additionally reports
 `txGateLifecycleRegistered=true`, `txCommandTransportRegistered=false`, and
 `txSafetySupervisorArmingAvailable=false`. The deployment gate requires these

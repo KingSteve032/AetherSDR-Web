@@ -8,6 +8,7 @@ import {
   formatCount,
   formatFrequency,
   formatHexId,
+  formatTxLifecycle,
   formatTuneTiming,
   rememberSessionDiagnosticExpansion,
   sessionDiagnosticExpanded,
@@ -27,6 +28,34 @@ test("admin diagnostics format stream activity without local ambiguity", () => {
   assert.equal(formatCount(12_345), "12,345");
   assert.equal(formatAge("2026-07-27T13:59:52Z", now), "8s ago");
   assert.equal(formatAge(null, now), "never");
+});
+
+test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
+  const now = Date.parse("2026-07-31T02:30:00Z");
+  assert.deepEqual(formatTxLifecycle({
+    registered: true,
+    gateState: "Disabled",
+    safetyState: "Disarmed",
+    commandTransportAvailable: false,
+    emergencyUnkeyTransportAvailable: false,
+    browserObservationSequence: 4,
+    lastBrowserObservedAt: "2026-07-31T02:29:59Z",
+    engineObservationSequence: 7,
+    lastEngineObservedAt: "2026-07-31T02:29:57Z",
+    gatewayObservationSequence: 9,
+    lastGatewayObservedAt: "2026-07-31T02:29:58Z",
+    leaseObservationSequence: 2,
+    lastLeaseObservedAt: "2026-07-31T02:29:50Z"
+  }, now), {
+    value: "DISABLED · DISARMED",
+    detail:
+      "browser 4 (1s ago) · engine 7 (3s ago) · " +
+      "gateway 9 (2s ago) · lease 2 (10s ago) · TX transports absent"
+  });
+  assert.deepEqual(formatTxLifecycle(null, now), {
+    value: "NOT REGISTERED",
+    detail: "No station TX lifecycle snapshot is available"
+  });
 });
 
 test("admin diagnostics distinguish pending and radio-confirmed tunes", () => {
