@@ -277,11 +277,33 @@ public sealed class RadioSessionRegistryTests
             Assert.Equal("none", composition.LastOutcome);
             Assert.Equal("submission-disabled", composition.Reason);
 
+            StationTxSafetyArmAuthorityDiagnostics armAuthority =
+                lifecycle.StationCommandSafetyArmAuthority;
+            Assert.True(armAuthority.Registered);
+            Assert.True(armAuthority.BoundaryRegistered);
+            Assert.False(armAuthority.BoundaryEnabled);
+            Assert.False(armAuthority.SignatureVerificationAvailable);
+            Assert.True(armAuthority.CommandAdapterRegistered);
+            Assert.True(armAuthority.AdapterExecutorAttached);
+            Assert.True(armAuthority.AdapterExecutorRegistered);
+            Assert.True(armAuthority.GateExecutorRegistered);
+            Assert.False(armAuthority.GateTransmitEnabled);
+            Assert.False(armAuthority.CommandTransportAvailable);
+            Assert.False(armAuthority.GateSetTransmitAvailable);
+            Assert.False(armAuthority.SessionAuthoritySnapshotAvailable);
+            Assert.False(armAuthority.ArmAvailable);
+            Assert.False(armAuthority.HeartbeatAvailable);
+            Assert.False(armAuthority.AbortAvailable);
+            Assert.Equal(0, armAuthority.AttemptCount);
+            Assert.Equal("none", armAuthority.LastOperation);
+            Assert.Equal("none", armAuthority.LastOutcome);
+            Assert.Equal("connection-unavailable", armAuthority.Reason);
+
             StationTxSafetyArmCompositionDiagnostics safetyArm =
                 lifecycle.StationCommandSafetyArmComposition;
             Assert.True(safetyArm.Registered);
-            Assert.False(safetyArm.ArmAuthorityAttached);
-            Assert.False(safetyArm.ArmAuthorityRegistered);
+            Assert.True(safetyArm.ArmAuthorityAttached);
+            Assert.True(safetyArm.ArmAuthorityRegistered);
             Assert.False(safetyArm.ArmAuthorityArmAvailable);
             Assert.False(safetyArm.ArmAuthorityHeartbeatAvailable);
             Assert.False(safetyArm.ArmAuthorityAbortAvailable);
@@ -293,7 +315,7 @@ public sealed class RadioSessionRegistryTests
             Assert.Equal(0, safetyArm.ForwardedCount);
             Assert.Equal("none", safetyArm.LastOperation);
             Assert.Equal("none", safetyArm.LastOutcome);
-            Assert.Equal("arm-authority-unattached", safetyArm.Reason);
+            Assert.Equal("connection-unavailable", safetyArm.Reason);
 
             Type[] ingressTypes =
             [
@@ -317,6 +339,8 @@ public sealed class RadioSessionRegistryTests
                         parameter.ParameterType ==
                             typeof(IStationTxSafetyArmAuthority) ||
                         parameter.ParameterType ==
+                            typeof(StationTxSafetyArmAuthority) ||
+                        parameter.ParameterType ==
                             typeof(StationTxSafetyArmComposition));
             }
             Assert.DoesNotContain(
@@ -330,7 +354,9 @@ public sealed class RadioSessionRegistryTests
                     parameter.ParameterType ==
                         typeof(IStationTxCommandAdapterExecutor) ||
                     parameter.ParameterType ==
-                        typeof(IStationTxSafetyArmAuthority));
+                        typeof(IStationTxSafetyArmAuthority) ||
+                    parameter.ParameterType ==
+                        typeof(StationTxSafetyArmAuthority));
             Assert.DoesNotContain(
                 typeof(RadioCoordinator)
                     .GetMethods(

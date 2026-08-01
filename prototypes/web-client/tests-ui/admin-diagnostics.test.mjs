@@ -62,10 +62,34 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       lastOutcome: "none",
       reason: "executor-arming-unavailable"
     },
+    stationCommandSafetyArmAuthority: {
+      registered: true,
+      boundaryEnabled: false,
+      signatureVerificationAvailable: false,
+      commandAdapterRegistered: true,
+      adapterExecutorAttached: true,
+      adapterExecutorRegistered: true,
+      gateExecutorRegistered: true,
+      gateTransmitEnabled: false,
+      commandTransportAvailable: false,
+      gateSetTransmitAvailable: false,
+      sessionAuthoritySnapshotAvailable: false,
+      gateState: "Disabled",
+      safetyState: "Disarmed",
+      armAvailable: false,
+      heartbeatAvailable: false,
+      abortAvailable: false,
+      attemptCount: 0,
+      acceptedCount: 0,
+      rejectedCount: 0,
+      lastOperation: "none",
+      lastOutcome: "none",
+      reason: "connection-unavailable"
+    },
     stationCommandSafetyArmComposition: {
       registered: true,
-      armAuthorityAttached: false,
-      armAuthorityRegistered: false,
+      armAuthorityAttached: true,
+      armAuthorityRegistered: true,
       sessionAuthoritySnapshotAvailable: false,
       armAvailable: false,
       heartbeatAvailable: false,
@@ -74,7 +98,7 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       forwardedCount: 0,
       lastOperation: "none",
       lastOutcome: "none",
-      reason: "arm-authority-unattached"
+      reason: "connection-unavailable"
     },
     stationCommandSessionComposition: {
       registered: true,
@@ -124,10 +148,15 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       "signature absent adapter registered arming absent set-transmit absent " +
       "audit 0 · adapter composition executor attached registered yes authority " +
       "absent adapter registered arming absent set-transmit absent attempts 0 " +
-      "forwarded 0 last none reason executor-arming-unavailable · safety arm composition " +
-      "authority absent registered no session authority absent arm unavailable heartbeat " +
-      "unavailable abort unavailable attempts 0 forwarded 0 last none/none reason " +
-      "arm-authority-unattached · command composition coordinator attached boundary attached " +
+      "forwarded 0 last none reason executor-arming-unavailable · safety arm authority " +
+      "boundary disabled signature absent adapter registered executor attached/registered " +
+      "gate registered transmit disabled transport absent set-transmit absent session authority " +
+      "absent gate-state Disabled safety-state Disarmed arm unavailable heartbeat unavailable " +
+      "abort unavailable attempts 0 accepted 0 rejected 0 last none/none reason " +
+      "connection-unavailable · safety arm composition authority attached registered yes " +
+      "session authority absent arm unavailable heartbeat unavailable abort unavailable attempts 0 " +
+      "forwarded 0 last none/none reason connection-unavailable · command composition " +
+      "coordinator attached boundary attached " +
       "authority absent submission unavailable attempts 0 forwarded 0 " +
       "last none reason submission-disabled · authority no-active-lease · " +
       "last gateway-heartbeat · TX transports absent"
@@ -166,10 +195,34 @@ test("admin diagnostics keep ready signature verification separate from commands
       lastOutcome: "none",
       reason: "executor-arming-unavailable"
     },
+    stationCommandSafetyArmAuthority: {
+      registered: true,
+      boundaryEnabled: false,
+      signatureVerificationAvailable: true,
+      commandAdapterRegistered: true,
+      adapterExecutorAttached: true,
+      adapterExecutorRegistered: true,
+      gateExecutorRegistered: true,
+      gateTransmitEnabled: false,
+      commandTransportAvailable: false,
+      gateSetTransmitAvailable: false,
+      sessionAuthoritySnapshotAvailable: false,
+      gateState: "Disabled",
+      safetyState: "Disarmed",
+      armAvailable: false,
+      heartbeatAvailable: false,
+      abortAvailable: false,
+      attemptCount: 0,
+      acceptedCount: 0,
+      rejectedCount: 0,
+      lastOperation: "none",
+      lastOutcome: "none",
+      reason: "connection-unavailable"
+    },
     stationCommandSafetyArmComposition: {
       registered: true,
-      armAuthorityAttached: false,
-      armAuthorityRegistered: false,
+      armAuthorityAttached: true,
+      armAuthorityRegistered: true,
       sessionAuthoritySnapshotAvailable: false,
       armAvailable: false,
       heartbeatAvailable: false,
@@ -178,7 +231,7 @@ test("admin diagnostics keep ready signature verification separate from commands
       forwardedCount: 0,
       lastOperation: "none",
       lastOutcome: "none",
-      reason: "arm-authority-unattached"
+      reason: "connection-unavailable"
     },
     stationCommandSessionComposition: {
       registered: true,
@@ -208,7 +261,10 @@ test("admin diagnostics keep ready signature verification separate from commands
     /adapter composition executor attached registered yes authority absent adapter registered arming absent set-transmit absent attempts 0 forwarded 0 last none reason executor-arming-unavailable/);
   assert.match(
     result.detail,
-    /safety arm composition authority absent registered no session authority absent arm unavailable heartbeat unavailable abort unavailable attempts 0 forwarded 0 last none\/none reason arm-authority-unattached/);
+    /safety arm authority boundary disabled signature available adapter registered executor attached\/registered gate registered transmit disabled transport absent set-transmit absent session authority absent gate-state Disabled safety-state Disarmed arm unavailable heartbeat unavailable abort unavailable attempts 0 accepted 0 rejected 0 last none\/none reason connection-unavailable/);
+  assert.match(
+    result.detail,
+    /safety arm composition authority attached registered yes session authority absent arm unavailable heartbeat unavailable abort unavailable attempts 0 forwarded 0 last none\/none reason connection-unavailable/);
   assert.match(
     result.detail,
     /command composition coordinator attached boundary attached authority absent submission unavailable attempts 0 forwarded 0 last none reason submission-disabled/);
@@ -236,10 +292,34 @@ test("admin diagnostics surface lease holder expiry and browser TX intent outcom
       lastOutcome: "none",
       reason: "executor-arming-unavailable"
     },
+    stationCommandSafetyArmAuthority: {
+      registered: true,
+      boundaryEnabled: false,
+      signatureVerificationAvailable: false,
+      commandAdapterRegistered: true,
+      adapterExecutorAttached: true,
+      adapterExecutorRegistered: true,
+      gateExecutorRegistered: true,
+      gateTransmitEnabled: false,
+      commandTransportAvailable: false,
+      gateSetTransmitAvailable: false,
+      sessionAuthoritySnapshotAvailable: true,
+      gateState: "Disabled",
+      safetyState: "Disarmed",
+      armAvailable: false,
+      heartbeatAvailable: false,
+      abortAvailable: false,
+      attemptCount: 0,
+      acceptedCount: 0,
+      rejectedCount: 0,
+      lastOperation: "none",
+      lastOutcome: "none",
+      reason: "occupancy-stale"
+    },
     stationCommandSafetyArmComposition: {
       registered: true,
-      armAuthorityAttached: false,
-      armAuthorityRegistered: false,
+      armAuthorityAttached: true,
+      armAuthorityRegistered: true,
       sessionAuthoritySnapshotAvailable: true,
       armAvailable: false,
       heartbeatAvailable: false,
@@ -248,7 +328,7 @@ test("admin diagnostics surface lease holder expiry and browser TX intent outcom
       forwardedCount: 0,
       lastOperation: "none",
       lastOutcome: "none",
-      reason: "arm-authority-unattached"
+      reason: "occupancy-stale"
     },
     stationCommandSessionComposition: {
       registered: true,
@@ -313,7 +393,10 @@ test("admin diagnostics surface lease holder expiry and browser TX intent outcom
     /adapter composition executor attached registered yes authority available adapter registered arming absent set-transmit absent attempts 0 forwarded 0 last none reason executor-arming-unavailable/);
   assert.match(
     result.detail,
-    /safety arm composition authority absent registered no session authority available arm unavailable heartbeat unavailable abort unavailable attempts 0 forwarded 0 last none\/none reason arm-authority-unattached/);
+    /safety arm authority boundary disabled signature absent adapter registered executor attached\/registered gate registered transmit disabled transport absent set-transmit absent session authority available gate-state Disabled safety-state Disarmed arm unavailable heartbeat unavailable abort unavailable attempts 0 accepted 0 rejected 0 last none\/none reason occupancy-stale/);
+  assert.match(
+    result.detail,
+    /safety arm composition authority attached registered yes session authority available arm unavailable heartbeat unavailable abort unavailable attempts 0 forwarded 0 last none\/none reason occupancy-stale/);
   assert.match(
     result.detail,
     /command composition coordinator attached boundary attached authority available submission unavailable attempts 0 forwarded 0 last none reason submission-disabled/);

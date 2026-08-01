@@ -101,9 +101,11 @@ internal sealed record StationTxSafetyArmCompositionResult(
 /// heartbeat timeout or abort reason. Every radio, session, browser, lease,
 /// engine, and FLEX-handle field is re-resolved from lifecycle-owned state.
 ///
-/// Production attaches no IStationTxSafetyArmAuthority, so the composition is
-/// observable but cannot arm, heartbeat, or abort the supervisor. It owns no
-/// command transport and performs no automatic call or retry.
+/// Production attaches the lifecycle-owned Phase 2O authority, but the signed
+/// boundary, command gate, and transports remain disabled and no operation
+/// caller exists. The composition therefore remains observable but cannot arm,
+/// heartbeat, or abort the supervisor. It owns no command transport and
+/// performs no automatic call or retry.
 /// </summary>
 internal sealed class StationTxSafetyArmComposition
 {

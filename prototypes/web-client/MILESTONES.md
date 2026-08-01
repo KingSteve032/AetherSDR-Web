@@ -1910,6 +1910,69 @@ Milestone state:
   `RX-ONLY / RADIO: LIVE` session. A fresh Admin console observation contained
   zero entries. No TX control, microphone permission, radio command, or RF
   operation was used.
+- Phase 2O adds one lifecycle-owned `StationTxSafetyArmAuthority` and attaches it
+  to the Phase 2N composition. Each authorization independently reads the signed
+  boundary, adapter composition, gate executor, command gate, safety supervisor,
+  and a newly resolved current lifecycle authority. The supplied and current
+  station/radio/session/browser/lease-expiry/gateway/engine/FLEX-handle tuples
+  must match exactly.
+- Arm requires the complete normal command path, an idle gate, fresh idle
+  occupancy, exclusive Local PTT, and a Disarmed supervisor. Heartbeat requires
+  that path to remain ready, the exact current arm and deadline, and either idle
+  with exact Local PTT or the exact single AetherSDR TX owner. Abort remains
+  independent of normal command-path availability but still requires the exact
+  active safety identity and ownership-safe idle or exact AetherSDR TX state.
+  Dependency faults, stale/replaced authority, cancellation, and rejection
+  perform no retry.
+- Production now reports the arm authority attached and registered, but the
+  signed boundary remains disabled, the gate retains `allowTransmit:false`, both
+  command transports remain absent, no operation caller exists, and arm,
+  heartbeat, abort, SetTransmit, boundary execution, and submission remain
+  unavailable. The supervisor and independent watchdog remain Disarmed.
+- The Phase 2O focused authority suite passes 35 cases. The combined authority,
+  command, and safety stack passes 353 cases; the focused authority/composition/
+  lifecycle/registry proof passes 100 cases; the Admin diagnostics suite passes
+  11 cases; the complete FlexWeb server suite passes 569 cases; and all 124
+  browser tests pass.
+- The final 2026-08-01 Phase 2O guarded validation passed 569 FlexWeb server
+  tests, 25 independent-watchdog tests, 48 TX-HIL isolation tests, 70
+  AetherRemote tests, and 124 browser tests (836 total), with a zero-warning
+  solution build. Both self-contained production binaries contained no
+  forbidden TX/HIL command surface, and the published watchdog probe remained
+  empty and Disarmed with no command transport or arming capability. Validation
+  log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-safety-arm-authority-phase2o-validation-flexweb-validation.txt`.
+  No server, Git commit, Git remote, radio command, or RF operation was changed
+  by this validation-only run.
+- Release `20260801-m7-station-command-safety-arm-authority-phase2o` deployed
+  successfully to the staging FlexWeb host on 2026-08-01 with
+  `20260801-m7-station-command-safety-arm-phase2n` retained for rollback.
+  Internal, public, and post-acceptance health reported the safety-arm authority
+  attached and registered while its boundary, command transport, SetTransmit,
+  browser ingress, arm, heartbeat, and abort capabilities remained false. The
+  signed boundary, envelope submission, command transport, and supervisor arming
+  remained unavailable. Gateway PID `122055` owned the active release; watchdog
+  PID `122616` remained supervised and Disarmed with zero registered identities.
+  Deployment log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-safety-arm-authority-phase2o-flexweb-validation.txt`.
+- Browser Bridge acceptance kept PSOC2 live and receive-only with current
+  spectrum and waterfall, `FLEX-6700`, `RX-ONLY`, and `RADIO: LIVE`. Deep health
+  inspection confirmed authority attachment/registration true while boundary,
+  command transport, SetTransmit, browser ingress, arm, heartbeat, abort,
+  submission, and supervisor arming remained false. MOX, TUNE, and CWX remained
+  hidden and disabled; lease acquisition and validation-only intent controls
+  remained disabled. The harmless browser-local 2D -> 3D -> 2D renderer
+  transition passed without changing a radio control.
+- Admin showed `DISABLED · DISARMED · NO LEASE`; safety-arm authority boundary
+  disabled, signature absent, adapter/executor/gate registered, transmit
+  disabled, transport and SetTransmit absent, session authority absent, gate
+  `Disabled`, safety `Disarmed`, arm/heartbeat/abort unavailable, attempts,
+  accepts, and rejects all zero, and last `none/none`. The attached composition
+  also showed zero attempts and forwards. All TX transports remained absent.
+  Attaching the debugger temporarily made the background browser heartbeat
+  stale; detaching restored a fresh 2D `RX-ONLY / RADIO: LIVE` session. A fresh
+  Admin console observation contained zero entries. No TX control, microphone
+  permission, radio command, or RF operation was used.
 
 Acceptance criteria:
 

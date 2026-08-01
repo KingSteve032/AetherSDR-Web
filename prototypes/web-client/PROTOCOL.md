@@ -494,19 +494,37 @@ then the composition forwards at most one supervisor call. Rejection,
 cancellation, exception, or unknown supervisor state never creates an automatic
 retry.
 
-Production attaches no arm authority and exposes no submission or control route
-to this composition. Health reports
+Phase 2O also adds no wire message. Each lifecycle attaches one internal
+`StationTxSafetyArmAuthority` to the Phase 2N composition. On every authorization
+it independently reads the signed boundary, adapter composition, gate executor,
+command gate, safety supervisor, and a newly resolved current authority. The
+supplied and current station/radio/session/browser/lease-expiry/gateway/engine/
+FLEX-handle tuples must match exactly. Arm additionally requires the complete
+normal command path, an idle gate, fresh idle occupancy, exclusive Local PTT,
+and a Disarmed supervisor. Heartbeat requires that command path to remain ready,
+the exact current arm and deadline, and idle/Local-PTT or exact active TX
+ownership. Abort does not require the normal command path to remain available,
+but still requires the exact active arm and ownership-safe idle or exact
+single-owner AetherSDR TX state. One request causes one dependency read and no
+retry.
+
+Production exposes no submission or control route to this composition. Health
+reports
 `txStationCommandSafetyArmCompositionRegistered:true`,
-`txStationCommandSafetyArmAuthorityAttached:false`,
-`txStationCommandSafetyArmAuthorityRegistered:false`,
+`txStationCommandSafetyArmAuthorityAttached:true`,
+`txStationCommandSafetyArmAuthorityRegistered:true`,
+`txStationCommandSafetyArmAuthorityBoundaryEnabled:false`,
+`txStationCommandSafetyArmAuthorityCommandTransportAvailable:false`,
+`txStationCommandSafetyArmAuthoritySetTransmitAvailable:false`,
+`txStationCommandSafetyArmAuthorityBrowserIngressRegistered:false`,
 `txStationCommandSafetyArmAvailable:false`,
 `txStationCommandSafetyHeartbeatAvailable:false`,
 `txStationCommandSafetyAbortAvailable:false`, and
 `txStationCommandSafetyArmCompositionBrowserIngressRegistered:false`.
-Per-session diagnostics additionally publish only bounded attempt/forward/
-accepted/rejected counts, the last operation/outcome, authority availability,
-and a bounded reason; lease IDs and other ownership secrets are not added to
-Admin text.
+Per-session diagnostics publish the authority dependency matrix and bounded
+attempt/accepted/rejected counters separately from the composition's bounded
+attempt/forward/accepted/rejected counters. Neither adds lease IDs or ownership
+secrets to Admin text.
 
 `client.visibility` accepts only a JSON boolean. A hidden browser keeps its
 authenticated WebSocket, radio session, text responses, snapshots, presence,

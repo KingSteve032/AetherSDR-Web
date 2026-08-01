@@ -149,6 +149,52 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `last ${String(adapterComposition.lastOutcome || "none")} ` +
       `reason ${String(adapterComposition.reason || "unknown")}`
     : "adapter composition not registered";
+  const safetyArmAuthority = lifecycle.stationCommandSafetyArmAuthority;
+  const safetyArmAuthorityState = safetyArmAuthority?.registered
+    ? `safety arm authority boundary ${safetyArmAuthority.boundaryEnabled
+        ? "enabled"
+        : "disabled"} ` +
+      `signature ${safetyArmAuthority.signatureVerificationAvailable
+        ? "available"
+        : "absent"} ` +
+      `adapter ${safetyArmAuthority.commandAdapterRegistered
+        ? "registered"
+        : "absent"} ` +
+      `executor ${safetyArmAuthority.adapterExecutorAttached
+        ? "attached"
+        : "absent"}/` +
+      `${safetyArmAuthority.adapterExecutorRegistered ? "registered" : "unregistered"} ` +
+      `gate ${safetyArmAuthority.gateExecutorRegistered
+        ? "registered"
+        : "absent"} ` +
+      `transmit ${safetyArmAuthority.gateTransmitEnabled
+        ? "enabled"
+        : "disabled"} ` +
+      `transport ${safetyArmAuthority.commandTransportAvailable
+        ? "available"
+        : "absent"} ` +
+      `set-transmit ${safetyArmAuthority.gateSetTransmitAvailable
+        ? "available"
+        : "absent"} ` +
+      `session authority ${safetyArmAuthority.sessionAuthoritySnapshotAvailable
+        ? "available"
+        : "absent"} ` +
+      `gate-state ${String(safetyArmAuthority.gateState || "unknown")} ` +
+      `safety-state ${String(safetyArmAuthority.safetyState || "unknown")} ` +
+      `arm ${safetyArmAuthority.armAvailable ? "available" : "unavailable"} ` +
+      `heartbeat ${safetyArmAuthority.heartbeatAvailable
+        ? "available"
+        : "unavailable"} ` +
+      `abort ${safetyArmAuthority.abortAvailable
+        ? "available"
+        : "unavailable"} ` +
+      `attempts ${formatCount(safetyArmAuthority.attemptCount)} ` +
+      `accepted ${formatCount(safetyArmAuthority.acceptedCount)} ` +
+      `rejected ${formatCount(safetyArmAuthority.rejectedCount)} ` +
+      `last ${String(safetyArmAuthority.lastOperation || "none")}/` +
+      `${String(safetyArmAuthority.lastOutcome || "none")} ` +
+      `reason ${String(safetyArmAuthority.reason || "unknown")}`
+    : "safety arm authority not registered";
   const safetyArmComposition =
     lifecycle.stationCommandSafetyArmComposition;
   const safetyArmCompositionState = safetyArmComposition?.registered
@@ -217,7 +263,8 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `${intentState ? `${intentState} · ` : ""}` +
       `${watchdogState} · ${independentState} · ` +
       `${stationCommandState} · ${adapterCompositionState} · ` +
-      `${safetyArmCompositionState} · ${commandCompositionState} · ` +
+      `${safetyArmAuthorityState} · ${safetyArmCompositionState} · ` +
+      `${commandCompositionState} · ` +
       `authority ${authorityReason} · ` +
       `last ${lifecycle.lastObservation || "none"} · ${transportState}`
   };
