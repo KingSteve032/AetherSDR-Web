@@ -395,11 +395,34 @@ boundary rejection, adapter rejection, or unknown adapter outcome cannot cause
 an automatic retry; another operation requires a new deliberate intent ID and
 higher browser sequence.
 
+Phase 2K also adds no wire message. Each radio session owns one internal
+`StationTxCommandSessionComposition`. Its request contains only the current
+WebSocket connection ID, the already-parsed browser intent, the positive
+JavaScript-safe browser intent sequence, and the server observation time. The
+composition resolves every `StationTxCommandAuthority` field from the production
+lifecycle: gateway station identity, canonical radio, session, stable
+browser-page identity, exact active connection-owned lease and expiry, engine
+instance, FLEX handle, authentication and freshness flags, radio-authoritative
+occupancy, and safety snapshot. The browser cannot send this request or provide
+an authority field.
+
+`RadioSessionRegistry` passes the station-scoped coordinator through an internal
+submitter interface to the lifecycle composition. The composition attaches the
+session's existing command boundary, but `RadioCoordinator`, the WebSocket
+endpoint, AetherRemote, watchdog, and timers receive no submitter or submission
+method. A replaced connection, missing/mismatched/expired lease, stale authority,
+missing FLEX handle, unsupported non-MOX/PTT action, missing Boolean, invalid
+sequence, cancellation, or resolver failure stops before forwarding. A forwarded
+fault or unknown outcome is recorded and never retried automatically.
+
 Production health reports
-`txStationCommandEnvelopeCoordinatorRegistered:true`, submission disabled,
-signer/verifier readiness as observed by the coordinator, boundary unattached,
-and submission unavailable. The coordinator has no production caller and is not
-injected into a session or lifecycle. The existing
+`txStationCommandEnvelopeCoordinatorRegistered:true`,
+`txStationCommandSessionCompositionRegistered:true`, and
+`txStationCommandSessionCompositionBrowserIngressRegistered:false`.
+Submission remains disabled and unavailable. Per-session Admin diagnostics show
+coordinator/boundary attachment, authority availability, attempt/forward counts,
+last bounded outcome, and fail-closed reason without lease IDs, key paths,
+signatures, or key material. The existing
 `txStationCommandEnvelopeSubmissionRegistered:false` field continues to mean no
 browser, HTTP, WebSocket, AetherRemote, watchdog, or other externally reachable
 envelope-submission route exists.

@@ -172,6 +172,8 @@ expected = {
     "txStationCommandSigningEnabled": False,
     "txStationCommandSigningKeyConfigured": False,
     "txStationCommandSigningAvailable": False,
+    "txStationCommandSessionCompositionRegistered": True,
+    "txStationCommandSessionCompositionBrowserIngressRegistered": False,
     "txStationCommandEnvelopeSubmissionRegistered": False,
     "txStationCommandAdapterRegistered": False,
     "txStationCommandArmingAvailable": False,

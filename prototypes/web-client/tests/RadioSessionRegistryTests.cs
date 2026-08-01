@@ -200,6 +200,74 @@ public sealed class RadioSessionRegistryTests
     }
 
     [Fact]
+    public async Task SessionAttachesDisabledCommandCompositionWithoutBrowserIngress()
+    {
+        using StationTxCommandSigningAuthority signing = new(
+            Options.Create(new StationTxCommandSigningSettings()),
+            NullLogger<StationTxCommandSigningAuthority>.Instance);
+        using StationTxCommandTrustRegistry trust = new(
+            Options.Create(new StationTxCommandTrustSettings()),
+            NullLogger<StationTxCommandTrustRegistry>.Instance);
+        StationTxCommandEnvelopeCoordinator commandCoordinator = new(
+            Options.Create(
+                new StationTxCommandEnvelopeCoordinatorSettings
+                {
+                    SubmissionEnabled = false
+                }),
+            signing,
+            trust,
+            NullLogger<StationTxCommandEnvelopeCoordinator>.Instance);
+        (RadioSessionRegistry registry, _, _) = CreateRegistry(
+            stationCommandTrust: trust,
+            stationCommandCoordinator: commandCoordinator);
+        await registry.StartAsync(CancellationToken.None);
+        try
+        {
+            RadioSession session = await registry.GetDefaultAsync(
+                CreateUser("operator-a"),
+                BrowserA,
+                CancellationToken.None);
+
+            StationTxLifecycleDiagnostics lifecycle =
+                Assert.IsType<StationTxLifecycleDiagnostics>(
+                    session.GetDiagnostics().TxLifecycle);
+            StationTxCommandSessionCompositionDiagnostics composition =
+                lifecycle.StationCommandSessionComposition;
+            Assert.True(composition.Registered);
+            Assert.True(composition.CoordinatorAttached);
+            Assert.True(composition.BoundaryAttached);
+            Assert.False(composition.SubmissionEnabled);
+            Assert.False(composition.SigningAvailable);
+            Assert.False(composition.SignatureVerificationAvailable);
+            Assert.False(composition.BoundaryEnabled);
+            Assert.False(composition.BoundarySignatureVerificationAvailable);
+            Assert.False(composition.CommandAdapterRegistered);
+            Assert.False(composition.ArmingAvailable);
+            Assert.False(composition.SetTransmitAvailable);
+            Assert.False(composition.AuthoritySnapshotAvailable);
+            Assert.False(composition.SubmissionAvailable);
+            Assert.Equal(0, composition.AttemptCount);
+            Assert.Equal(0, composition.ForwardedCount);
+            Assert.Equal("none", composition.LastOutcome);
+            Assert.Equal("submission-disabled", composition.Reason);
+
+            Assert.DoesNotContain(
+                typeof(RadioCoordinator)
+                    .GetMethods(
+                        System.Reflection.BindingFlags.Public |
+                        System.Reflection.BindingFlags.Instance |
+                        System.Reflection.BindingFlags.DeclaredOnly),
+                method => method.Name.Contains(
+                    "StationCommand",
+                    StringComparison.Ordinal));
+        }
+        finally
+        {
+            await registry.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task SameBrowserConnectionAndRadioReuseOneGuiSession()
     {
         (RadioSessionRegistry registry, _, _) = CreateRegistry();
@@ -684,7 +752,8 @@ public sealed class RadioSessionRegistryTests
         RadioAccessPolicyStore Policies) CreateRegistry(
             bool browserTxLeaseEnabled = false,
             StationTxIndependentWatchdogRegistry? independentWatchdogs = null,
-            StationTxCommandTrustRegistry? stationCommandTrust = null)
+            StationTxCommandTrustRegistry? stationCommandTrust = null,
+            StationTxCommandEnvelopeCoordinator? stationCommandCoordinator = null)
     {
         IOptions<RadioSettings> options = Options.Create(
             new RadioSettings
@@ -713,7 +782,8 @@ public sealed class RadioSessionRegistryTests
             NullLogger<RadioSessionRegistry>.Instance,
             remoteSettings: null,
             independentWatchdogs,
-            stationCommandTrust);
+            stationCommandTrust,
+            stationCommandCoordinator);
         return (registry, catalog, policies);
     }
 

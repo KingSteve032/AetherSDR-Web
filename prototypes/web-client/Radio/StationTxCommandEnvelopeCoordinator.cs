@@ -48,6 +48,16 @@ internal sealed record StationTxCommandEnvelopeCoordinatorResult(
     StationTxCommandEnvelopeCoordinatorDiagnostics Diagnostics,
     StationTxCommandBoundaryResult? BoundaryResult);
 
+internal interface IStationTxCommandEnvelopeSubmitter
+{
+    StationTxCommandEnvelopeCoordinatorDiagnostics Snapshot { get; }
+
+    Task<StationTxCommandEnvelopeCoordinatorResult> SubmitAsync(
+        StationTxCommandEnvelopeSubmissionRequest request,
+        StationTxCommandBoundary boundary,
+        CancellationToken cancellationToken = default);
+}
+
 /// <summary>
 /// Station-scoped coordinator that can join a fresh validated operator intent,
 /// the private signing authority, the public trust ring, and a caller-owned
@@ -55,7 +65,8 @@ internal sealed record StationTxCommandEnvelopeCoordinatorResult(
 /// browser, HTTP, WebSocket, AetherRemote, watchdog, timer, lifecycle, adapter,
 /// arming, FLEX command, or RF entry point is attached here.
 /// </summary>
-public sealed class StationTxCommandEnvelopeCoordinator
+public sealed class StationTxCommandEnvelopeCoordinator :
+    IStationTxCommandEnvelopeSubmitter
 {
     internal const int MaximumTrackedIntentIds = 256;
     internal const int MaximumTrackedIntentOwners = 128;
@@ -144,6 +155,16 @@ public sealed class StationTxCommandEnvelopeCoordinator
             }
         }
     }
+
+    StationTxCommandEnvelopeCoordinatorDiagnostics
+        IStationTxCommandEnvelopeSubmitter.Snapshot => Snapshot;
+
+    Task<StationTxCommandEnvelopeCoordinatorResult>
+        IStationTxCommandEnvelopeSubmitter.SubmitAsync(
+            StationTxCommandEnvelopeSubmissionRequest request,
+            StationTxCommandBoundary boundary,
+            CancellationToken cancellationToken) =>
+        SubmitAsync(request, boundary, cancellationToken);
 
     internal async Task<StationTxCommandEnvelopeCoordinatorResult> SubmitAsync(
         StationTxCommandEnvelopeSubmissionRequest request,

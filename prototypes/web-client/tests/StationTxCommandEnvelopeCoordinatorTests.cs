@@ -649,18 +649,48 @@ public sealed class StationTxCommandEnvelopeCoordinatorTests
     }
 
     [Fact]
-    public async Task CoordinatorIsNotInjectedIntoRadioSessionsOrLifecycle()
+    public void CoordinatorIsAttachedOnlyThroughSessionCompositionWithoutIngress()
     {
         Type coordinatorType = typeof(StationTxCommandEnvelopeCoordinator);
-        Assembly assembly = coordinatorType.Assembly;
-        Type[] productionTypes = assembly.GetTypes()
-            .Where(type =>
-                type.Namespace == typeof(RadioSessionRegistry).Namespace &&
-                (type == typeof(RadioSessionRegistry) ||
-                 type == typeof(StationTxProductionLifecycle)))
-            .ToArray();
+        Type submitterType = typeof(IStationTxCommandEnvelopeSubmitter);
+        Type compositionType = typeof(StationTxCommandSessionComposition);
 
-        foreach (Type type in productionTypes)
+        Assert.Contains(
+            typeof(RadioSessionRegistry)
+                .GetConstructors(
+                    BindingFlags.Instance |
+                    BindingFlags.Public |
+                    BindingFlags.NonPublic)
+                .SelectMany(constructor => constructor.GetParameters()),
+            parameter => parameter.ParameterType == coordinatorType);
+        Assert.Contains(
+            typeof(StationTxProductionLifecycle)
+                .GetConstructors(
+                    BindingFlags.Instance |
+                    BindingFlags.Public |
+                    BindingFlags.NonPublic)
+                .SelectMany(constructor => constructor.GetParameters()),
+            parameter => parameter.ParameterType == submitterType);
+        Assert.DoesNotContain(
+            typeof(StationTxProductionLifecycle)
+                .GetFields(
+                    BindingFlags.Instance |
+                    BindingFlags.Public |
+                    BindingFlags.NonPublic),
+            field => field.FieldType == coordinatorType);
+        Assert.Contains(
+            typeof(StationTxProductionLifecycle)
+                .GetFields(
+                    BindingFlags.Instance |
+                    BindingFlags.NonPublic),
+            field => field.FieldType == compositionType);
+
+        Type[] ingressTypes =
+        [
+            typeof(RadioCoordinator),
+            typeof(RadioWebSocketEndpoint)
+        ];
+        foreach (Type type in ingressTypes)
         {
             Assert.DoesNotContain(
                 type.GetConstructors(
@@ -668,18 +698,24 @@ public sealed class StationTxCommandEnvelopeCoordinatorTests
                         BindingFlags.Public |
                         BindingFlags.NonPublic)
                     .SelectMany(constructor => constructor.GetParameters()),
-                parameter => parameter.ParameterType == coordinatorType);
+                parameter =>
+                    parameter.ParameterType == coordinatorType ||
+                    parameter.ParameterType == submitterType ||
+                    parameter.ParameterType == compositionType);
             Assert.DoesNotContain(
                 type.GetFields(
                     BindingFlags.Instance |
+                    BindingFlags.Static |
                     BindingFlags.Public |
                     BindingFlags.NonPublic),
-                field => field.FieldType == coordinatorType);
+                field =>
+                    field.FieldType == coordinatorType ||
+                    field.FieldType == submitterType ||
+                    field.FieldType == compositionType);
         }
 
         using Fixture fixture = new();
         Assert.False(fixture.Coordinator.Snapshot.BoundaryAttached);
-        await Task.CompletedTask;
     }
 
     private static StationTxCommandEnvelopeCoordinator CreateCoordinator(

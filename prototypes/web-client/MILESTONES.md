@@ -1584,15 +1584,15 @@ Milestone state:
   self-verified against the station trust ring before the caller boundary
   independently revalidates protocol, signature, exact authority, safety, and
   replay state.
-- Production resolves the coordinator for startup diagnostics only. It is not
-  injected into a radio session or lifecycle, no caller boundary is attached,
-  and no browser, HTTP, WebSocket, AetherRemote, watchdog, timer, adapter,
-  arming, FLEX command, or RF path can invoke it. Health distinguishes internal
-  registration from external reachability: coordinator registered, submission
-  disabled, boundary unattached, submission unavailable, and external envelope
-  submission unregistered while adapter, arming, and set-transmit remain false.
-  The focused coordinator suite passes 39 cases and the combined coordinator,
-  signer, trust, command-boundary, lifecycle, and session-wiring proof passes
+- At the Phase 2J checkpoint, production resolved the coordinator for startup
+  diagnostics only. No caller-owned boundary was attached, and no browser,
+  HTTP, WebSocket, AetherRemote, watchdog, timer, adapter, arming, FLEX command,
+  or RF path could invoke it. Health distinguished internal registration from
+  external reachability: coordinator registered, submission disabled, boundary
+  unattached, submission unavailable, and external envelope submission
+  unregistered while adapter, arming, and set-transmit remained false. The
+  focused coordinator suite passed 39 cases and the combined coordinator,
+  signer, trust, command-boundary, lifecycle, and session-wiring proof passed
   168 cases.
 - The final 2026-08-01 Phase 2J guarded validation passed 435 FlexWeb server
   tests, 25 independent-watchdog tests, 48 TX-HIL isolation tests, 70
@@ -1643,6 +1643,76 @@ Milestone state:
   receive-only page after detaching the debugger cleared the test-induced banner
   and restored a clean live 2D view without replacing radio authority. No TX
   control, radio command, or RF operation was used.
+- Phase 2K adds one internal `StationTxCommandSessionComposition` to each radio
+  session. `RadioSessionRegistry` passes the station-scoped coordinator through
+  an internal submitter interface into `StationTxProductionLifecycle`, where it
+  is attached to that session's existing disabled command boundary. Neither
+  `RadioCoordinator` nor `RadioWebSocketEndpoint` receives the coordinator,
+  submitter, composition, or submission method. The only non-test declaration of
+  `SubmitValidatedBrowserTxIntentAsync` remains the internal lifecycle method;
+  production has no caller.
+- The composition request accepts only the current WebSocket connection ID, the
+  already-parsed MOX/PTT Boolean intent, its positive JavaScript-safe sequence,
+  and the server observation time. It derives the gateway station identity,
+  canonical radio, session, stable browser-page identity, exact active
+  connection-owned lease and expiry, gateway/engine instances, FLEX handle,
+  authentication/freshness flags, occupancy, and safety snapshot from
+  server-owned lifecycle state. A caller cannot supply or override an authority
+  field. A replaced connection, absent/mismatched/expired lease, stale authority,
+  missing handle, unsupported action, missing Boolean, invalid sequence,
+  cancellation, or resolver failure stops before coordinator submission.
+- Production diagnostics now distinguish station-scoped coordinator registration
+  from per-session composition and external ingress. Health reports session
+  composition registered and browser ingress unregistered. Admin reports
+  coordinator/boundary attachment, authority availability, submission
+  availability, bounded attempt/forward counts, last outcome, and fail-closed
+  reason without exposing lease IDs, signatures, key paths, or key material.
+  Default production still has submission disabled, the boundary disabled,
+  signer/verifier unavailable, adapter absent, arming absent, SetTransmit absent,
+  and no FLEX command or RF path.
+- The Phase 2K focused composition suite passes 18 cases. The production session
+  registry plus focused composition proof passes 19 cases. The combined browser
+  intent, session composition, envelope coordinator, signing, trust,
+  command-boundary, lifecycle, and session-registry proof passes 196 cases. The
+  focused Admin diagnostics suite passes 11 cases.
+- The final 2026-08-01 Phase 2K guarded validation passed 454 FlexWeb server
+  tests, 25 independent-watchdog tests, 48 TX-HIL isolation tests, 70
+  AetherRemote tests, and 124 browser tests (721 total), with a zero-warning
+  solution build. Both self-contained production binaries contained no
+  forbidden TX/HIL command surface, and the published watchdog probe remained
+  empty and Disarmed with no command transport or arming capability. Validation
+  log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-session-phase2k-validation-flexweb-validation.txt`.
+  No server, Git commit, Git remote, radio command, or RF operation was changed
+  by this validation-only run.
+- Release `20260801-m7-station-command-session-phase2k` deployed successfully to
+  the staging FlexWeb host on 2026-08-01 with
+  `20260801-m7-station-command-envelope-phase2j` retained for rollback. Internal,
+  public, and post-acceptance health reported session composition registered,
+  browser ingress unregistered, coordinator registered, submission disabled,
+  boundary/adapter/arming/SetTransmit unavailable, and external envelope
+  submission unregistered. Gateway PID `117283` owned the active release;
+  watchdog PID `117770` remained supervised and Disarmed with zero registered
+  identities. Deployment log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-session-phase2k-flexweb-validation.txt`.
+- Browser Bridge acceptance kept PSOC2 live and receive-only. Health showed the
+  Phase 2K composition registered with browser ingress false. Deep DOM inspection
+  kept MOX, TUNE, and CWX hidden and disabled, lease acquisition and validation
+  controls disabled, and the production command capabilities false. The
+  browser-local 2D -> 3D -> 2D selection passed while the footer remained
+  `RX-ONLY` and `RADIO: LIVE`; the browser window was occluded during the 3D
+  capture, so its canvas repaint was throttled, but the selected state and live
+  radio footer remained authoritative. The final visible page text reported
+  clean 2D selection and `RADIO: LIVE`.
+- Admin showed one healthy FlexRx session with current spectrum/audio activity,
+  idle TX occupancy, exact AetherSDR Local PTT ownership, and
+  `DISABLED · DISARMED · NO LEASE`. Its Phase 2K line reported coordinator and
+  boundary attached, authority absent without a lease, submission unavailable,
+  attempts 0, forwarded 0, last outcome `none`, and reason
+  `submission-disabled`; the command boundary remained disabled with signature,
+  adapter, arming, and SetTransmit absent, audit 0, and all TX transports absent.
+  A fresh Admin console observation contained zero entries. No TX control,
+  microphone permission, radio command, or RF operation was used.
 
 Acceptance criteria:
 

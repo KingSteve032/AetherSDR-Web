@@ -247,6 +247,9 @@ app.MapGet(
                     commandSigning.SigningAvailable,
                 txStationCommandEnvelopeCoordinatorRegistered =
                     commandCoordinator.Registered,
+                txStationCommandSessionCompositionRegistered = true,
+                txStationCommandSessionCompositionBrowserIngressRegistered =
+                    false,
                 txStationCommandEnvelopeSubmissionEnabled =
                     commandCoordinator.SubmissionEnabled,
                 txStationCommandEnvelopeSigningAvailable =

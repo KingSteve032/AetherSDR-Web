@@ -339,16 +339,15 @@ envelope-submission method, and the boundary, adapter, arming, and set-transmit
 capabilities remain false. This proves private-key readiness independently from
 both command reachability and public-key verification readiness.
 
-Phase 2J adds a station-scoped internal envelope coordinator without attaching it
-to any radio session or lifecycle. `StationTxCommandEnvelopeCoordinator` owns
-one submission enable bit and defaults false. The singleton receives the signer
-and trust verifier only; it does not own a radio boundary or adapter. Its public
-surface exposes diagnostics only. The internal submission method requires a
-caller-owned boundary, one server-owned `StationTxCommandAuthority`, and one
-fresh already-validated operator intent. Only MOX/PTT Boolean intent is accepted;
-TUNE, microphone, and CW remain outside SetTransmit. Intent IDs are canonical,
-intent sequence is positive, and observation age is limited to five seconds
-with one second of future clock skew.
+Phase 2J adds a station-scoped internal envelope coordinator.
+`StationTxCommandEnvelopeCoordinator` owns one submission enable bit and defaults
+false. The singleton receives the signer and trust verifier only; it does not own
+a radio boundary or adapter. Its public surface exposes diagnostics only. The
+internal submission method requires a caller-owned boundary, one server-owned
+`StationTxCommandAuthority`, and one fresh already-validated operator intent.
+Only MOX/PTT Boolean intent is accepted; TUNE, microphone, and CW remain outside
+SetTransmit. Intent IDs are canonical, intent sequence is positive, and
+observation age is limited to five seconds with one second of future clock skew.
 
 The coordinator derives every signed identity and Boolean value from the
 validated intent plus authority; callers cannot supply an envelope, signature,
@@ -362,14 +361,39 @@ SetTransmit availability. It then self-verifies the generated fixed-width P-256
 signature against the station trust ring before the boundary independently
 revalidates the envelope and exact authority.
 
-Production resolves the coordinator for startup diagnostics only. No caller-
-owned boundary is attached, no coordinator reference enters `RadioSessionRegistry`
-or `StationTxProductionLifecycle`, and no browser, HTTP, WebSocket,
-AetherRemote, watchdog, timer, adapter, arming operation, FLEX command, or RF
-path can invoke it. Health therefore distinguishes coordinator registration from
-external submission registration: the coordinator is registered, but submission
-is disabled, boundary attachment and availability are false, and the external
-envelope-submission route remains absent.
+Phase 2K adds one internal `StationTxCommandSessionComposition` to every radio
+session. `RadioSessionRegistry` passes the station-scoped coordinator into the
+session lifecycle through an internal submitter interface. The lifecycle owns
+its existing disabled command boundary and the composition attaches that exact
+boundary to the coordinator. Neither `RadioCoordinator` nor the WebSocket
+endpoint receives the coordinator, submitter, composition, or submission
+method.
+
+The composition request contains only the current WebSocket connection ID, the
+already-parsed browser intent, its positive JavaScript-safe sequence, and the
+server observation time. It derives the station-command identity, canonical
+radio, session, stable browser-page identity, exact active connection-owned
+lease and expiry, gateway instance, engine instance, and FLEX handle from the
+lifecycle. The gateway instance remains the station identity already owned by
+the lifecycle command boundary. Radio-authoritative occupancy and the safety
+snapshot are read directly from their station-owned registries. A browser cannot
+supply or override any command-authority field.
+
+Connection replacement, missing or mismatched lease, lease expiry, stale
+browser/engine/gateway observations, missing FLEX handle, unsupported action,
+missing Boolean value, cancellation, or authority-resolution failure stops
+before coordinator submission. The composition does not retry an unknown or
+faulted submitter outcome. Its diagnostics report whether coordinator, boundary,
+authority, and submission are available plus bounded attempt/forward/outcome
+counts; lease IDs, signatures, key paths, and key material are not exposed.
+
+Production now reports coordinator and per-session composition registration,
+but submission remains disabled, the attached boundary remains disabled, and
+signer, verifier, adapter, arming, and SetTransmit capabilities remain
+unavailable under default configuration. There is still no browser, HTTP,
+WebSocket, AetherRemote, watchdog, or timer submission caller, so the external
+envelope-submission route remains absent and no FLEX command or RF path can be
+invoked.
 
 The next safety layer is an independent, station-local supervisor with no key
 method and an unkey-only transport. Its arm is purpose-bound to one engine

@@ -49,6 +49,17 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
     stationCommandArmingAvailable: false,
     stationCommandSetTransmitAvailable: false,
     stationCommandAuditCount: 0,
+    stationCommandSessionComposition: {
+      registered: true,
+      coordinatorAttached: true,
+      boundaryAttached: true,
+      authoritySnapshotAvailable: false,
+      submissionAvailable: false,
+      attemptCount: 0,
+      forwardedCount: 0,
+      lastOutcome: "none",
+      reason: "submission-disabled"
+    },
     browserObservationSequence: 4,
     lastBrowserObservedAt: "2026-07-31T02:29:59Z",
     engineObservationSequence: 7,
@@ -84,7 +95,9 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       "watchdog 3 (1s ago) · independent disarmed pid 4242 " +
       "host watchdog seq 0 restarts 1 · command boundary v1 disabled " +
       "signature absent adapter absent arming absent set-transmit absent " +
-      "audit 0 · authority no-active-lease · " +
+      "audit 0 · command composition coordinator attached boundary attached " +
+      "authority absent submission unavailable attempts 0 forwarded 0 " +
+      "last none reason submission-disabled · authority no-active-lease · " +
       "last gateway-heartbeat · TX transports absent"
   });
   assert.deepEqual(formatTxLifecycle(null, now), {
@@ -108,6 +121,17 @@ test("admin diagnostics keep ready signature verification separate from commands
     stationCommandArmingAvailable: false,
     stationCommandSetTransmitAvailable: false,
     stationCommandAuditCount: 0,
+    stationCommandSessionComposition: {
+      registered: true,
+      coordinatorAttached: true,
+      boundaryAttached: true,
+      authoritySnapshotAvailable: false,
+      submissionAvailable: false,
+      attemptCount: 0,
+      forwardedCount: 0,
+      lastOutcome: "none",
+      reason: "submission-disabled"
+    },
     authorityFresh: false,
     authorityReason: "no-active-lease",
     independentWatchdog: {
@@ -120,6 +144,9 @@ test("admin diagnostics keep ready signature verification separate from commands
   assert.match(
     result.detail,
     /command boundary v1 disabled signature available adapter absent arming absent set-transmit absent audit 0/);
+  assert.match(
+    result.detail,
+    /command composition coordinator attached boundary attached authority absent submission unavailable attempts 0 forwarded 0 last none reason submission-disabled/);
   assert.match(result.detail, /TX transports absent/);
 });
 
@@ -131,6 +158,17 @@ test("admin diagnostics surface lease holder expiry and browser TX intent outcom
     safetyState: "Disarmed",
     commandTransportAvailable: false,
     emergencyUnkeyTransportAvailable: false,
+    stationCommandSessionComposition: {
+      registered: true,
+      coordinatorAttached: true,
+      boundaryAttached: true,
+      authoritySnapshotAvailable: true,
+      submissionAvailable: false,
+      attemptCount: 0,
+      forwardedCount: 0,
+      lastOutcome: "none",
+      reason: "submission-disabled"
+    },
     browserObservationSequence: 12,
     lastBrowserObservedAt: "2026-07-31T15:59:59Z",
     engineObservationSequence: 13,
@@ -178,6 +216,9 @@ test("admin diagnostics surface lease holder expiry and browser TX intent outcom
   assert.match(
     result.detail,
     /intent 2 req 9 mox\.set\/transport-unavailable \(1s ago\)/);
+  assert.match(
+    result.detail,
+    /command composition coordinator attached boundary attached authority available submission unavailable attempts 0 forwarded 0 last none reason submission-disabled/);
   assert.match(result.detail, /TX transports absent$/);
 });
 
