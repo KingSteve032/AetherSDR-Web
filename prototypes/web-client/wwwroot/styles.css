@@ -1530,6 +1530,47 @@ input[type="range"]::-moz-range-thumb {
   text-align: center;
 }
 
+.tx-authority-panel {
+  display: grid;
+  gap: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--border);
+}
+
+.tx-authority-status {
+  display: grid;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  background: #08131d;
+}
+
+.tx-authority-status strong {
+  color: var(--warning);
+  font-size: 9px;
+}
+
+.tx-authority-status small {
+  color: var(--text-secondary);
+  font-size: 8px;
+  line-height: 1.35;
+}
+
+.tx-intent-check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: 8px;
+}
+
+.tx-intent-check select,
+#tx-intent-cw-text {
+  min-width: 0;
+  width: 100%;
+}
+
 .unavailable-note,
 .local-input-note {
   margin: 2px 0 6px;

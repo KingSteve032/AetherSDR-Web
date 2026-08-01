@@ -16,8 +16,14 @@ public sealed record OutboundMessage(
 public sealed class RadioClientConnection
 {
     public const int QueueCapacity = 64;
+    internal const int TxIntentReplayCapacity = 64;
 
     private readonly Channel<OutboundMessage> m_outbox;
+    private readonly object m_txProtocolGate = new();
+    private readonly HashSet<string> m_seenTxIntentIds =
+        new(StringComparer.Ordinal);
+    private readonly Queue<string> m_seenTxIntentOrder = new();
+    private long m_lastTxSequence;
     private int m_queueDepth;
     private long m_enqueuedMessages;
     private long m_droppedMessages;
@@ -99,6 +105,52 @@ public sealed class RadioClientConnection
     public void UpdateNetworkDiagnostics(
         RadioBrowserNetworkDiagnostics diagnostics) =>
         Volatile.Write(ref m_networkDiagnostics, diagnostics);
+
+    internal bool TryAcceptTxEnvelope(
+        long sequence,
+        string? intentId,
+        out string error)
+    {
+        lock (m_txProtocolGate)
+        {
+            if (sequence <= m_lastTxSequence)
+            {
+                error = "stale-tx-sequence";
+                return false;
+            }
+
+            m_lastTxSequence = sequence;
+            if (intentId is not null && !m_seenTxIntentIds.Add(intentId))
+            {
+                error = "replayed-tx-intent";
+                return false;
+            }
+
+            if (intentId is not null)
+            {
+                m_seenTxIntentOrder.Enqueue(intentId);
+                while (m_seenTxIntentOrder.Count > TxIntentReplayCapacity)
+                {
+                    string expired = m_seenTxIntentOrder.Dequeue();
+                    m_seenTxIntentIds.Remove(expired);
+                }
+            }
+
+            error = string.Empty;
+            return true;
+        }
+    }
+
+    internal long LastTxSequence
+    {
+        get
+        {
+            lock (m_txProtocolGate)
+            {
+                return m_lastTxSequence;
+            }
+        }
+    }
 
     public PresenceSnapshot ToPresence() =>
         new(ClientId, UserId, DisplayName, Roles, ConnectedAt);
@@ -3125,12 +3177,22 @@ public sealed class RadioCoordinator : IDisposable
         int FilterHighHz);
 
     public BrowserTxCapability GetBrowserTxCapability(
-        RadioClientConnection connection)
+        RadioClientConnection connection) =>
+        GetBrowserTxCapability(connection, authenticated: true);
+
+    internal BrowserTxCapability GetBrowserTxCapability(
+        RadioClientConnection connection,
+        bool authenticated)
     {
         ArgumentNullException.ThrowIfNull(connection);
         bool roleAuthorized = connection.Roles.Any(role =>
             string.Equals(role, AetherRoles.Transmit, StringComparison.Ordinal) ||
             string.Equals(role, AetherRoles.Admin, StringComparison.Ordinal));
+        bool connectionCurrent =
+            m_clients.TryGetValue(
+                connection.ClientId,
+                out RadioClientConnection? currentConnection) &&
+            ReferenceEquals(currentConnection, connection);
         RadioSnapshot snapshot = Snapshot;
         RadioTxOccupancySnapshot occupancy =
             m_txOccupancyRegistry.GetSnapshot(m_radioSettings.RadioId);
@@ -3146,9 +3208,48 @@ public sealed class RadioCoordinator : IDisposable
                 connection.ClientId,
                 StringComparison.Ordinal);
         bool anotherLeaseHeld = current is not null && !leaseHeldByBrowser;
+        StationTxLifecycleDiagnostics? lifecycle = m_txLifecycle?.Snapshot;
+        bool exactLifecycleAuthority =
+            current is not null &&
+            lifecycle is not null &&
+            lifecycle.Registered &&
+            lifecycle.GatewayConnected &&
+            lifecycle.EngineConnected &&
+            lifecycle.BrowserConnected &&
+            lifecycle.Authenticated &&
+            lifecycle.StationClientHandle != 0 &&
+            lifecycle.LeaseActive &&
+            lifecycle.AuthorityFresh &&
+            string.Equals(
+                lifecycle.ConnectionClientId,
+                connection.ClientId,
+                StringComparison.Ordinal) &&
+            string.Equals(
+                lifecycle.LeaseId,
+                current.LeaseId,
+                StringComparison.Ordinal) &&
+            lifecycle.IndependentWatchdog.SupervisionEnabled &&
+            lifecycle.IndependentWatchdog.ProcessRunning &&
+            lifecycle.IndependentWatchdog.IpcConnected &&
+            lifecycle.IndependentWatchdog.Registered &&
+            lifecycle.IndependentWatchdog.Connected &&
+            lifecycle.IndependentWatchdog.LeaseBound &&
+            !lifecycle.IndependentWatchdog.RadioCommandTransportAvailable &&
+            !lifecycle.IndependentWatchdog.ArmingAvailable;
+        bool intentValidationAvailable =
+            m_browserTxLeaseEnabled &&
+            authenticated &&
+            roleAuthorized &&
+            connectionCurrent &&
+            snapshot.Connected &&
+            occupancy.BrowserLeaseAllowed &&
+            leaseHeldByBrowser &&
+            exactLifecycleAuthority;
         bool leaseAvailable =
             m_browserTxLeaseEnabled &&
+            authenticated &&
             roleAuthorized &&
+            connectionCurrent &&
             snapshot.Connected &&
             occupancy.BrowserLeaseAllowed &&
             current is null;
@@ -3158,37 +3259,53 @@ public sealed class RadioCoordinator : IDisposable
                 ? (
                     "lease-disabled",
                     "Browser TX lease acquisition is disabled by server configuration.")
-                : !roleAuthorized
+                : !authenticated
                     ? (
-                        "role-required",
-                        "The authenticated Aether.Transmit role is required.")
-                    : !snapshot.Connected
+                        "authentication-required",
+                        "A current authenticated browser connection is required.")
+                    : !roleAuthorized
                         ? (
-                            "radio-disconnected",
-                            "The radio must be connected before a browser TX lease can be acquired.")
-                        : !occupancy.BrowserLeaseAllowed
+                            "role-required",
+                            "The authenticated Aether.Transmit role is required.")
+                        : !connectionCurrent
                             ? (
-                                $"occupancy-{occupancy.StateName}",
-                                "Fresh radio-authoritative idle occupancy is required before lease acquisition.")
-                            : leaseHeldByBrowser
+                                "connection-replaced",
+                                "This browser connection is no longer current.")
+                            : !snapshot.Connected
                                 ? (
-                                    "lease-held-by-browser",
-                                    "This browser already holds the TX lease and may renew or release it.")
-                                : anotherLeaseHeld
+                                    "radio-disconnected",
+                                    "The radio must be connected before a browser TX lease can be acquired.")
+                                : !occupancy.BrowserLeaseAllowed
                                     ? (
-                                        "lease-held-by-other",
-                                        $"TX is held by {current!.DisplayName}.")
-                                    : (
-                                        "lease-available",
-                                        "The browser may acquire the ownership lease, but keying remains unavailable.");
+                                        $"occupancy-{occupancy.StateName}",
+                                        "Fresh radio-authoritative idle occupancy is required before lease acquisition.")
+                                    : leaseHeldByBrowser && intentValidationAvailable
+                                        ? (
+                                            "intent-validation-ready",
+                                            "Exact TX authority is validated; production radio command transport remains unavailable.")
+                                        : leaseHeldByBrowser
+                                            ? (
+                                                "lease-held-by-browser",
+                                                $"This browser holds the TX lease; exact lifecycle authority is {lifecycle?.AuthorityReason ?? "unavailable"}.")
+                                            : anotherLeaseHeld
+                                                ? (
+                                                    "lease-held-by-other",
+                                                    $"TX is held by {current!.DisplayName}.")
+                                                : (
+                                                    "lease-available",
+                                                    "The browser may acquire the ownership lease, but keying remains unavailable.");
 
         return new BrowserTxCapability(
+            RadioBrowserTxProtocol.Version,
             m_browserTxLeaseEnabled,
+            authenticated,
             roleAuthorized,
+            connectionCurrent,
             snapshot.Connected,
             occupancy.BrowserLeaseAllowed,
             leaseHeldByBrowser,
             leaseAvailable,
+            intentValidationAvailable,
             KeyingAvailable: false,
             MicrophoneAvailable: false,
             TuneAvailable: false,
@@ -3201,10 +3318,23 @@ public sealed class RadioCoordinator : IDisposable
         RadioClientConnection connection,
         TimeSpan duration,
         out TxLease? lease,
+        out string? error) =>
+        TryAcquireTxLease(
+            connection,
+            duration,
+            authenticated: true,
+            out lease,
+            out error);
+
+    internal bool TryAcquireTxLease(
+        RadioClientConnection connection,
+        TimeSpan duration,
+        bool authenticated,
+        out TxLease? lease,
         out string? error)
     {
         BrowserTxCapability capability =
-            GetBrowserTxCapability(connection);
+            GetBrowserTxCapability(connection, authenticated);
         if (!capability.LeaseAvailable)
         {
             lease = null;
@@ -3228,16 +3358,48 @@ public sealed class RadioCoordinator : IDisposable
         string leaseId,
         TimeSpan duration,
         out TxLease? lease,
+        out string? error) =>
+        TryRenewTxLease(
+            connection,
+            leaseId,
+            duration,
+            authenticated: true,
+            out lease,
+            out error);
+
+    internal bool TryRenewTxLease(
+        RadioClientConnection connection,
+        string leaseId,
+        TimeSpan duration,
+        bool authenticated,
+        out TxLease? lease,
         out string? error)
     {
         BrowserTxCapability capability =
-            GetBrowserTxCapability(connection);
+            GetBrowserTxCapability(connection, authenticated);
+        bool supervisedAuthorityRequired = m_txLifecycle is not null;
         if (!capability.LeaseConfigured ||
+            !capability.Authenticated ||
             !capability.RoleAuthorized ||
-            !capability.RadioConnected)
+            !capability.ConnectionCurrent ||
+            !capability.RadioConnected ||
+            !capability.OccupancyAllowsLease ||
+            !capability.LeaseHeldByBrowser ||
+            (supervisedAuthorityRequired &&
+                !capability.IntentValidationAvailable))
         {
             lease = null;
             error = capability.Message;
+            if (capability.LeaseHeldByBrowser)
+            {
+                m_txLeaseManager.TryRelease(
+                    m_radioSettings.RadioId,
+                    leaseId,
+                    m_radioSettings.SessionId,
+                    connection.ClientId,
+                    "renewal-authority-lost",
+                    out _);
+            }
             return false;
         }
 
@@ -3253,15 +3415,179 @@ public sealed class RadioCoordinator : IDisposable
 
     public bool ReleaseTxLease(
         RadioClientConnection connection,
-        string leaseId)
+        string leaseId) =>
+        ReleaseTxLease(
+            connection,
+            leaseId,
+            authenticated: true,
+            out _);
+
+    internal bool ReleaseTxLease(
+        RadioClientConnection connection,
+        string leaseId,
+        bool authenticated,
+        out string? error)
     {
-        return m_txLeaseManager.TryRelease(
+        BrowserTxCapability capability =
+            GetBrowserTxCapability(connection, authenticated);
+        if (!capability.LeaseConfigured ||
+            !capability.Authenticated ||
+            !capability.RoleAuthorized ||
+            !capability.ConnectionCurrent)
+        {
+            error = capability.Message;
+            return false;
+        }
+
+        bool released = m_txLeaseManager.TryRelease(
             m_radioSettings.RadioId,
             leaseId,
             m_radioSettings.SessionId,
             connection.ClientId,
             "operator-request",
             out _);
+        error = released
+            ? null
+            : "A current TX lease held by this browser is required.";
+        return released;
+    }
+
+    internal Task FlushTxLifecycleAsync(
+        CancellationToken cancellationToken = default) =>
+        m_txLifecycle?.FlushAsync(cancellationToken) ?? Task.CompletedTask;
+
+    internal bool TryConfirmTxLease(
+        RadioClientConnection connection,
+        string leaseId,
+        out TxLease? lease,
+        out string? error)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        return m_txLeaseManager.TryValidate(
+            m_radioSettings.RadioId,
+            leaseId,
+            m_radioSettings.SessionId,
+            connection.ClientId,
+            out lease,
+            out error);
+    }
+
+    internal BrowserTxIntentResult EvaluateBrowserTxIntent(
+        RadioClientConnection connection,
+        BrowserTxRequest request,
+        bool authenticated)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(request);
+        BrowserTxIntent intent = request.Intent ??
+            throw new ArgumentException(
+                "A parsed browser TX intent is required.",
+                nameof(request));
+        DateTimeOffset observedAt = DateTimeOffset.UtcNow;
+        BrowserTxCapability capability =
+            GetBrowserTxCapability(connection, authenticated);
+
+        BrowserTxIntentResult Result(
+            bool validated,
+            string outcome,
+            string error)
+        {
+            m_txLifecycle?.ObserveBrowserTxIntent(
+                connection.ClientId,
+                request.Sequence,
+                intent.Action,
+                outcome,
+                error,
+                observedAt);
+            return new BrowserTxIntentResult(
+                Ok: false,
+                validated,
+                outcome,
+                error,
+                request.Sequence,
+                intent.IntentId,
+                intent.Action,
+                observedAt,
+                GetBrowserTxCapability(connection, authenticated));
+        }
+
+        if (!capability.LeaseConfigured)
+        {
+            return Result(
+                validated: false,
+                "lease-disabled",
+                capability.Message);
+        }
+        if (!authenticated || !capability.Authenticated)
+        {
+            m_txLeaseManager.TryReleaseOwner(
+                m_radioSettings.RadioId,
+                m_radioSettings.SessionId,
+                connection.ClientId,
+                "authentication-lost",
+                out _);
+            return Result(
+                validated: false,
+                "authentication-required",
+                capability.Message);
+        }
+        if (!capability.RoleAuthorized)
+        {
+            return Result(
+                validated: false,
+                "role-required",
+                capability.Message);
+        }
+        if (!capability.ConnectionCurrent)
+        {
+            return Result(
+                validated: false,
+                "connection-replaced",
+                capability.Message);
+        }
+        if (!capability.RadioConnected)
+        {
+            return Result(
+                validated: false,
+                "radio-disconnected",
+                capability.Message);
+        }
+        if (!m_txLeaseManager.TryValidate(
+                m_radioSettings.RadioId,
+                request.LeaseId ?? string.Empty,
+                m_radioSettings.SessionId,
+                connection.ClientId,
+                out _,
+                out string? leaseError))
+        {
+            return Result(
+                validated: false,
+                "lease-invalid",
+                leaseError ?? "A current TX lease held by this browser is required.");
+        }
+        if (!capability.OccupancyAllowsLease)
+        {
+            return Result(
+                validated: false,
+                "occupancy-not-idle",
+                capability.Message);
+        }
+        if (!capability.IntentValidationAvailable)
+        {
+            StationTxLifecycleDiagnostics? lifecycle = m_txLifecycle?.Snapshot;
+            string reason = lifecycle is null
+                ? "lifecycle-unavailable"
+                : $"lifecycle-{lifecycle.AuthorityReason}";
+            return Result(
+                validated: false,
+                reason,
+                "Exact fresh browser, gateway, engine, lease, FLEX-handle, and watchdog authority is required.");
+        }
+
+        return Result(
+            validated: true,
+            "transport-unavailable",
+            "The deliberate TX intent was validated, but production radio command transport is unavailable.");
     }
 
     private void HandleTxLeaseChange(TxLeaseChange change)
@@ -3276,21 +3602,28 @@ public sealed class RadioCoordinator : IDisposable
         }
 
         m_txLifecycle?.ObserveLeaseChange(change);
-        BroadcastJson(change.Active
-            ? new
-            {
-                @event = "tx.lease.changed",
-                reason = change.Reason,
-                occurredAt = change.OccurredAt,
-                lease = change.Lease.ToStatus()
-            }
-            : new
-            {
-                @event = "tx.lease.released",
-                reason = change.Reason,
-                occurredAt = change.OccurredAt,
-                lease = change.Lease.ToStatus()
-            });
+        foreach (RadioClientConnection connection in m_clients.Values)
+        {
+            SendJson(connection, change.Active
+                ? new
+                {
+                    @event = "tx.lease.changed",
+                    protocolVersion = RadioBrowserTxProtocol.Version,
+                    reason = change.Reason,
+                    occurredAt = change.OccurredAt,
+                    lease = change.Lease.ToStatus(),
+                    capability = GetBrowserTxCapability(connection)
+                }
+                : new
+                {
+                    @event = "tx.lease.released",
+                    protocolVersion = RadioBrowserTxProtocol.Version,
+                    reason = change.Reason,
+                    occurredAt = change.OccurredAt,
+                    lease = change.Lease.ToStatus(),
+                    capability = GetBrowserTxCapability(connection)
+                });
+        }
     }
 
     public void Dispose()

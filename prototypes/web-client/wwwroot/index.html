@@ -8,7 +8,7 @@
         content="A browser-native AetherSDR operator console with a receive-only Flex development bridge.">
   <title>AetherSDR Web Console</title>
   <link rel="icon" href="/assets/logo.png">
-  <link rel="stylesheet" href="/styles.css?v=m2-receive-fidelity-5">
+  <link rel="stylesheet" href="/styles.css?v=m7-tx-intent-validation-1">
 </head>
 <body>
   <div class="app-shell">
@@ -461,12 +461,49 @@
             <label class="control-row disabled-control"><span>Tune Pwr</span>
               <input type="range" min="0" max="100" value="10" disabled><output>10</output></label>
             <div class="tx-actions">
-              <button type="button" disabled>TUNE</button>
-              <button type="button" class="mox" disabled>MOX</button>
+              <button type="button" id="tx-tune" hidden disabled>TUNE</button>
+              <button type="button" id="tx-mox" class="mox" hidden disabled>MOX</button>
               <button type="button" disabled>ATU</button>
               <button type="button" disabled>MEM</button>
             </div>
-            <div class="tx-lock-note">No browser transmit path is connected.</div>
+            <div class="tx-lock-note" id="tx-lock-note">
+              No browser transmit path is connected.
+            </div>
+            <div class="tx-authority-panel" id="tx-authority-panel" hidden>
+              <div class="tx-authority-status">
+                <strong id="tx-authority-state">UNAVAILABLE</strong>
+                <small id="tx-authority-detail">
+                  Browser TX authority is disabled.
+                </small>
+              </div>
+              <button type="button" id="tx-lease-toggle" disabled>
+                ACQUIRE LEASE
+              </button>
+              <label class="tx-intent-check">
+                <span>Validation-only intent</span>
+                <select id="tx-intent-action" disabled>
+                  <option value="mox.set:on">MOX ON</option>
+                  <option value="mox.set:off">MOX OFF</option>
+                  <option value="ptt.set:on">PTT ON</option>
+                  <option value="ptt.set:off">PTT OFF</option>
+                  <option value="tune.set:on">TUNE ON</option>
+                  <option value="tune.set:off">TUNE OFF</option>
+                  <option value="microphone.set:on">MIC START</option>
+                  <option value="microphone.set:off">MIC STOP</option>
+                  <option value="cw.send:text">CW TEXT</option>
+                </select>
+              </label>
+              <input id="tx-intent-cw-text" type="text" maxlength="32"
+                     value="CQ TEST KC4CAW" hidden disabled
+                     aria-label="Validation-only CW text">
+              <button type="button" id="tx-intent-validate" disabled>
+                VALIDATE ONLY
+              </button>
+              <div class="unavailable-note">
+                This panel validates deliberate intent and exact ownership only.
+                It has no radio command or microphone-audio transport.
+              </div>
+            </div>
           </section>
 
           <section class="applet phone-applet" id="applet-phone">
@@ -571,7 +608,7 @@
       <div class="pan-actions">
         <button type="button" data-add-pan title="Create another panadapter">+PAN</button>
         <button type="button" disabled title="Tracking notch filters are not connected">TNF</button>
-        <button type="button" disabled>CWX</button><button type="button" disabled>DVK</button>
+        <button type="button" id="tx-cwx" hidden disabled>CWX</button><button type="button" disabled>DVK</button>
         <button type="button" disabled title="Transmit remains fail-closed">FDX</button>
       </div>
       <div class="operator-status">
@@ -591,6 +628,6 @@
     </footer>
   </div>
 
-  <script type="module" src="/app.js?v=m2-receive-fidelity-5"></script>
+  <script type="module" src="/app.js?v=m7-tx-intent-validation-1"></script>
 </body>
 </html>

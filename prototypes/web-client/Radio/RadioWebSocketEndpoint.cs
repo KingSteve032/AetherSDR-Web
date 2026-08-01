@@ -216,7 +216,25 @@ public static class RadioWebSocketEndpoint
 
                 do
                 {
-                    result = await socket.ReceiveAsync(buffer, cancellationToken);
+                    BrowserReceiveAttempt receive =
+                        await BrowserConnectionReceiveGuard.ReceiveAsync(
+                            token => socket.ReceiveAsync(buffer, token),
+                            cancellationToken);
+                    if (receive.TimedOut)
+                    {
+                        logger.LogWarning(
+                            "Closing stale browser WebSocket {ClientId} after the receive heartbeat timeout.",
+                            connection.ClientId);
+                        if (socket.State == WebSocketState.Open)
+                        {
+                            await socket.CloseOutputAsync(
+                                WebSocketCloseStatus.EndpointUnavailable,
+                                "Browser heartbeat timed out.",
+                                CancellationToken.None);
+                        }
+                        return;
+                    }
+                    result = receive.Result!;
                     if (result.MessageType == WebSocketMessageType.Close)
                     {
                         return;
@@ -285,9 +303,21 @@ public static class RadioWebSocketEndpoint
                     MaxDepth = 16
                 });
             JsonElement root = document.RootElement;
-            string? command = root.TryGetProperty("cmd", out JsonElement commandValue)
-                ? commandValue.GetString()
-                : null;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                coordinator.SendJson(connection, new
+                {
+                    ok = false,
+                    error = "A browser request must be a JSON object."
+                });
+                return;
+            }
+
+            string? command =
+                root.TryGetProperty("cmd", out JsonElement commandValue) &&
+                commandValue.ValueKind == JsonValueKind.String
+                    ? commandValue.GetString()
+                    : null;
             JsonElement id = root.TryGetProperty("id", out JsonElement idValue)
                 ? idValue.Clone()
                 : default;
@@ -332,15 +362,16 @@ public static class RadioWebSocketEndpoint
                     break;
 
                 case "tx.acquire":
-                    HandleTxAcquire(root, id, connection, coordinator, user);
-                    break;
-
                 case "tx.renew":
-                    HandleTxRenew(root, id, connection, coordinator);
-                    break;
-
                 case "tx.release":
-                    HandleTxRelease(root, id, connection, coordinator);
+                case "tx.intent":
+                    await HandleTxRequestAsync(
+                        root,
+                        id,
+                        connection,
+                        coordinator,
+                        user,
+                        cancellationToken);
                     break;
 
                 default:
@@ -492,95 +523,205 @@ public static class RadioWebSocketEndpoint
         });
     }
 
-    private static void HandleTxAcquire(
+    private static async Task HandleTxRequestAsync(
         JsonElement root,
         JsonElement id,
         RadioClientConnection connection,
         RadioCoordinator coordinator,
-        System.Security.Claims.ClaimsPrincipal user)
+        System.Security.Claims.ClaimsPrincipal user,
+        CancellationToken cancellationToken)
     {
-        if (!user.IsInRole(AetherRoles.Transmit) &&
-            !user.IsInRole(AetherRoles.Admin))
+        if (!RadioBrowserTxProtocol.TryParse(
+                root,
+                out BrowserTxRequest? request,
+                out string parseError) ||
+            request is null)
         {
             coordinator.SendJson(connection, new
             {
                 id = ResponseId(id),
+                protocolVersion = RadioBrowserTxProtocol.Version,
+                sequence = ResponseSequence(root),
                 ok = false,
-                error = "The Aether.Transmit role is required."
+                error = parseError,
+                capability = coordinator.GetBrowserTxCapability(
+                    connection,
+                    user.Identity?.IsAuthenticated == true)
             });
             return;
         }
 
-        int seconds = root.TryGetProperty("seconds", out JsonElement secondsValue) &&
-                      secondsValue.TryGetInt32(out int parsed)
-            ? parsed
-            : 10;
-        bool acquired = coordinator.TryAcquireTxLease(
-            connection,
-            TimeSpan.FromSeconds(seconds),
-            out TxLease? lease,
-            out string? error);
-        coordinator.SendJson(connection, new
+        if (!connection.TryAcceptTxEnvelope(
+                request.Sequence,
+                request.Intent?.IntentId,
+                out string replayError))
         {
-            id = ResponseId(id),
-            ok = acquired,
-            error,
-            lease,
-            capability = coordinator.GetBrowserTxCapability(connection)
-        });
+            coordinator.SendJson(connection, new
+            {
+                id = request.RequestId,
+                protocolVersion = RadioBrowserTxProtocol.Version,
+                sequence = request.Sequence,
+                ok = false,
+                error = replayError,
+                capability = coordinator.GetBrowserTxCapability(
+                    connection,
+                    user.Identity?.IsAuthenticated == true)
+            });
+            return;
+        }
+
+        bool authenticated = user.Identity?.IsAuthenticated == true;
+        switch (request.Kind)
+        {
+            case BrowserTxRequestKind.Acquire:
+            {
+                bool acquired = coordinator.TryAcquireTxLease(
+                    connection,
+                    TimeSpan.FromSeconds(request.Seconds!.Value),
+                    authenticated,
+                    out TxLease? lease,
+                    out string? error);
+                if (acquired && lease is not null)
+                {
+                    await coordinator.FlushTxLifecycleAsync(cancellationToken);
+                    if (!coordinator.TryConfirmTxLease(
+                            connection,
+                            lease.LeaseId,
+                            out TxLease? confirmed,
+                            out string? confirmationError))
+                    {
+                        acquired = false;
+                        lease = null;
+                        error = confirmationError ??
+                            "The TX lease was revoked during lifecycle registration.";
+                    }
+                    else
+                    {
+                        lease = confirmed;
+                    }
+                }
+                coordinator.SendJson(connection, new
+                {
+                    id = request.RequestId,
+                    protocolVersion = RadioBrowserTxProtocol.Version,
+                    sequence = request.Sequence,
+                    ok = acquired,
+                    error,
+                    lease,
+                    capability = coordinator.GetBrowserTxCapability(
+                        connection,
+                        authenticated)
+                });
+                break;
+            }
+            case BrowserTxRequestKind.Renew:
+            {
+                bool renewed = coordinator.TryRenewTxLease(
+                    connection,
+                    request.LeaseId!,
+                    TimeSpan.FromSeconds(request.Seconds!.Value),
+                    authenticated,
+                    out TxLease? lease,
+                    out string? error);
+                if (renewed && lease is not null)
+                {
+                    await coordinator.FlushTxLifecycleAsync(cancellationToken);
+                    if (!coordinator.TryConfirmTxLease(
+                            connection,
+                            lease.LeaseId,
+                            out TxLease? confirmed,
+                            out string? confirmationError))
+                    {
+                        renewed = false;
+                        lease = null;
+                        error = confirmationError ??
+                            "The TX lease was revoked during lifecycle renewal.";
+                    }
+                    else
+                    {
+                        lease = confirmed;
+                    }
+                }
+                coordinator.SendJson(connection, new
+                {
+                    id = request.RequestId,
+                    protocolVersion = RadioBrowserTxProtocol.Version,
+                    sequence = request.Sequence,
+                    ok = renewed,
+                    error,
+                    lease,
+                    capability = coordinator.GetBrowserTxCapability(
+                        connection,
+                        authenticated)
+                });
+                break;
+            }
+            case BrowserTxRequestKind.Release:
+            {
+                bool released = coordinator.ReleaseTxLease(
+                    connection,
+                    request.LeaseId!,
+                    authenticated,
+                    out string? error);
+                if (released)
+                {
+                    await coordinator.FlushTxLifecycleAsync(cancellationToken);
+                }
+                coordinator.SendJson(connection, new
+                {
+                    id = request.RequestId,
+                    protocolVersion = RadioBrowserTxProtocol.Version,
+                    sequence = request.Sequence,
+                    ok = released,
+                    error,
+                    capability = coordinator.GetBrowserTxCapability(
+                        connection,
+                        authenticated)
+                });
+                break;
+            }
+            case BrowserTxRequestKind.Intent:
+            {
+                await coordinator.FlushTxLifecycleAsync(cancellationToken);
+                BrowserTxIntentResult result =
+                    coordinator.EvaluateBrowserTxIntent(
+                        connection,
+                        request,
+                        authenticated);
+                coordinator.SendJson(connection, new
+                {
+                    id = request.RequestId,
+                    protocolVersion = RadioBrowserTxProtocol.Version,
+                    result.Sequence,
+                    result.Ok,
+                    result.Validated,
+                    result.Outcome,
+                    result.Error,
+                    result.IntentId,
+                    result.Action,
+                    result.ObservedAt,
+                    result.Capability
+                });
+                break;
+            }
+            default:
+                throw new InvalidOperationException(
+                    "An unsupported parsed TX request was received.");
+        }
     }
 
-    private static void HandleTxRenew(
-        JsonElement root,
-        JsonElement id,
-        RadioClientConnection connection,
-        RadioCoordinator coordinator)
+    private static long? ResponseSequence(JsonElement root)
     {
-        string leaseId = ReadLeaseId(root);
-        int seconds = root.TryGetProperty("seconds", out JsonElement secondsValue) &&
-                      secondsValue.TryGetInt32(out int parsed)
-            ? parsed
-            : 10;
-        bool renewed = coordinator.TryRenewTxLease(
-            connection,
-            leaseId,
-            TimeSpan.FromSeconds(seconds),
-            out TxLease? lease,
-            out string? error);
-        coordinator.SendJson(connection, new
+        if (!root.TryGetProperty("sequence", out JsonElement sequence) ||
+            sequence.ValueKind != JsonValueKind.Number ||
+            !sequence.TryGetInt64(out long value) ||
+            value <= 0 ||
+            value > RadioBrowserTxProtocol.MaximumSafeInteger)
         {
-            id = ResponseId(id),
-            ok = renewed,
-            error,
-            lease,
-            capability = coordinator.GetBrowserTxCapability(connection)
-        });
+            return null;
+        }
+        return value;
     }
-
-    private static void HandleTxRelease(
-        JsonElement root,
-        JsonElement id,
-        RadioClientConnection connection,
-        RadioCoordinator coordinator)
-    {
-        string leaseId = ReadLeaseId(root);
-        bool released = coordinator.ReleaseTxLease(connection, leaseId);
-        coordinator.SendJson(connection, new
-        {
-            id = ResponseId(id),
-            ok = released,
-            error = released
-                ? null
-                : "A current TX lease held by this browser is required.",
-            capability = coordinator.GetBrowserTxCapability(connection)
-        });
-    }
-
-    private static string ReadLeaseId(JsonElement root) =>
-        root.TryGetProperty("leaseId", out JsonElement leaseId) &&
-        leaseId.ValueKind == JsonValueKind.String
-            ? leaseId.GetString()?.Trim() ?? string.Empty
-            : string.Empty;
 
     private static object? ResponseId(JsonElement id) =>
         id.ValueKind == JsonValueKind.Undefined ? null : id;

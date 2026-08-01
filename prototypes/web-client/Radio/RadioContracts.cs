@@ -125,12 +125,16 @@ public sealed record TxLeaseStatus(
     DateTimeOffset ExpiresAt);
 
 public sealed record BrowserTxCapability(
+    int ProtocolVersion,
     bool LeaseConfigured,
+    bool Authenticated,
     bool RoleAuthorized,
+    bool ConnectionCurrent,
     bool RadioConnected,
     bool OccupancyAllowsLease,
     bool LeaseHeldByBrowser,
     bool LeaseAvailable,
+    bool IntentValidationAvailable,
     bool KeyingAvailable,
     bool MicrophoneAvailable,
     bool TuneAvailable,

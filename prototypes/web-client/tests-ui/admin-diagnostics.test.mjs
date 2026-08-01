@@ -10,6 +10,7 @@ import {
   formatHexId,
   formatTxLifecycle,
   formatTuneTiming,
+  formatUntil,
   rememberSessionDiagnosticExpansion,
   sessionDiagnosticExpanded,
   shortId
@@ -28,6 +29,8 @@ test("admin diagnostics format stream activity without local ambiguity", () => {
   assert.equal(formatCount(12_345), "12,345");
   assert.equal(formatAge("2026-07-27T13:59:52Z", now), "8s ago");
   assert.equal(formatAge(null, now), "never");
+  assert.equal(formatUntil("2026-07-27T14:00:08Z", now), "8s");
+  assert.equal(formatUntil("2026-07-27T13:59:59Z", now), "expired");
 });
 
 test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
@@ -78,6 +81,64 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
     value: "NOT REGISTERED",
     detail: "No station TX lifecycle snapshot is available"
   });
+});
+
+test("admin diagnostics surface lease holder expiry and browser TX intent outcome", () => {
+  const now = Date.parse("2026-07-31T16:00:00Z");
+  const result = formatTxLifecycle({
+    registered: true,
+    gateState: "Disabled",
+    safetyState: "Disarmed",
+    commandTransportAvailable: false,
+    emergencyUnkeyTransportAvailable: false,
+    browserObservationSequence: 12,
+    lastBrowserObservedAt: "2026-07-31T15:59:59Z",
+    engineObservationSequence: 13,
+    lastEngineObservedAt: "2026-07-31T15:59:59Z",
+    gatewayObservationSequence: 14,
+    lastGatewayObservedAt: "2026-07-31T15:59:59Z",
+    leaseObservationSequence: 3,
+    lastLeaseObservedAt: "2026-07-31T15:59:58Z",
+    leaseActive: true,
+    leaseDisplayName: "Operator A",
+    leaseExpiresAt: "2026-07-31T16:00:10Z",
+    lastLeaseChangeReason: "renewed",
+    browserTxIntentObservationSequence: 2,
+    lastBrowserTxIntentRequestSequence: 9,
+    lastBrowserTxIntentAction: "mox.set",
+    lastBrowserTxIntentOutcome: "transport-unavailable",
+    lastBrowserTxIntentReason:
+      "The deliberate TX intent was validated, but production radio command transport is unavailable.",
+    lastBrowserTxIntentAt: "2026-07-31T15:59:59Z",
+    watchdogRunning: true,
+    watchdogEvaluationSequence: 20,
+    lastWatchdogEvaluatedAt: "2026-07-31T15:59:59Z",
+    browserFresh: true,
+    engineFresh: true,
+    gatewayFresh: true,
+    authorityFresh: true,
+    authorityReason: "fresh",
+    independentWatchdog: {
+      supervisionEnabled: true,
+      processRunning: true,
+      processId: 4242,
+      hostInstanceId: "watchdog-1234567890",
+      state: "Disarmed",
+      ipcConnected: true,
+      lastSequence: 2,
+      restartCount: 0
+    },
+    lastObservation: "browser-tx-intent-transport-unavailable"
+  }, now);
+
+  assert.equal(result.value, "DISABLED · DISARMED · FRESH");
+  assert.match(
+    result.detail,
+    /lease 3 \(2s ago\) holder Operator A expires 10s reason renewed/);
+  assert.match(
+    result.detail,
+    /intent 2 req 9 mox\.set\/transport-unavailable \(1s ago\)/);
+  assert.match(result.detail, /TX transports absent$/);
 });
 
 test("admin diagnostics distinguish pending and radio-confirmed tunes", () => {

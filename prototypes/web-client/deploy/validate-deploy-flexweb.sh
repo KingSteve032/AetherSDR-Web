@@ -113,44 +113,6 @@ previous_release=""
 expected_release="/home/flexweb/aethersdr/releases/${release_name}"
 activated=false
 deployment_succeeded=false
-sudo_password=""
-
-prompt_for_sudo_password() {
-  if ssh -o BatchMode=yes "${FLEXWEB_HOST}" 'sudo -n true' >/dev/null 2>&1; then
-    return 0
-  fi
-
-  if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
-    echo "The FlexWeb host requires a sudo password, but no interactive terminal is available." >&2
-    exit 1
-  fi
-
-  printf 'Sudo password for %s: ' "${FLEXWEB_HOST}" >/dev/tty
-  IFS= read -r -s sudo_password </dev/tty
-  printf '\n' >/dev/tty
-  if [[ -z "${sudo_password}" ]]; then
-    echo "A sudo password is required." >&2
-    exit 1
-  fi
-
-  if ! printf '%s\n' "${sudo_password}" |
-      ssh -o BatchMode=yes "${FLEXWEB_HOST}" 'sudo -S -p "" -v'; then
-    sudo_password=""
-    echo "The sudo password was rejected." >&2
-    exit 1
-  fi
-}
-
-remote_sudo() {
-  local remote_command="$1"
-  if [[ -z "${sudo_password}" ]]; then
-    ssh -o BatchMode=yes "${FLEXWEB_HOST}" "sudo -n ${remote_command}"
-  else
-    printf '%s\n' "${sudo_password}" |
-      ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
-        "sudo -S -p '' ${remote_command}"
-  fi
-}
 
 rollback() {
   local status=$?
@@ -162,7 +124,8 @@ rollback() {
           "${previous_release}" != "${expected_release}" ]]; then
       ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
         "rollback_link='/home/flexweb/aethersdr/.current.rollback.$$'; ln -s '${previous_release}' \"\${rollback_link}\"; mv -Tf \"\${rollback_link}\" /home/flexweb/aethersdr/current"
-      remote_sudo 'systemctl restart aethersdr-web.service' || true
+      ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
+        'systemctl --user restart aethersdr-web.service' || true
     else
       echo "Previous release path was not safe to restore: ${previous_release}" >&2
     fi
@@ -172,7 +135,6 @@ rollback() {
     ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
       "rm -rf -- '${remote_dir}'" >/dev/null 2>&1 || true
   fi
-  sudo_password=""
   rm -rf -- "${work_dir}"
   exit "${status}"
 }
@@ -198,6 +160,9 @@ expected = {
     "browserTxLeaseEnabled": False,
     "txGateLifecycleRegistered": True,
     "txLifecycleWatchdogRegistered": True,
+    "txBrowserIntentProtocolVersion": 1,
+    "txBrowserIntentValidationRegistered": True,
+    "txBrowserIntentCommandTransportRegistered": False,
     "txIndependentWatchdogHostPackaged": True,
     "txIndependentWatchdogSupervisionRegistered": True,
     "txIndependentWatchdogCommandTransportRegistered": False,
@@ -300,7 +265,7 @@ printf 'Target: %s\n' "${FLEXWEB_HOST}"
 if [[ "${deploy}" == true ]]; then
   echo "Checking SSH identity and current service state..."
   ssh -o BatchMode=yes -o ConnectTimeout=10 "${FLEXWEB_HOST}" \
-    'test "$(id -un)" = flexweb && systemctl is-active --quiet aethersdr-web.service'
+    'test "$(id -un)" = flexweb && systemctl --user is-active --quiet aethersdr-web.service'
   previous_release="$(ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
     'readlink -f /home/flexweb/aethersdr/current')"
   if [[ ! "${previous_release}" =~ ^/home/flexweb/aethersdr/releases/[0-9A-Za-z._-]+$ ]]; then
@@ -327,6 +292,7 @@ dotnet test "${REMOTE_TEST_PROJECT}" --configuration Release --no-build
 
 echo "Running browser tests..."
 node --check "${REPO_ROOT}/prototypes/web-client/wwwroot/admin-page.js"
+node --check "${REPO_ROOT}/prototypes/web-client/wwwroot/tx-controls.js"
 node --test "${UI_TEST_DIR}"/*.test.mjs
 
 echo "Publishing receive-only FlexWeb artifact..."
@@ -352,6 +318,10 @@ dotnet publish "${WATCHDOG_PROJECT}" \
 binary="${publish_dir}/AetherSDR.Web"
 [[ -x "${binary}" ]] || {
   echo "Published AetherSDR.Web binary is missing." >&2
+  exit 1
+}
+[[ -s "${publish_dir}/wwwroot/tx-controls.js" ]] || {
+  echo "Published tx-controls.js module is missing or empty." >&2
   exit 1
 }
 watchdog_binary="${watchdog_publish_dir}/AetherSDR.TxWatchdog"
@@ -381,6 +351,11 @@ for forbidden in \
   assert_forbidden_string_absent \
     "${forbidden}" "${watchdog_ascii_strings}" "${watchdog_utf16_strings}"
 done
+if ! grep -F -- '"/tx-controls.js"' \
+    "${REPO_ROOT}/prototypes/web-client/Program.cs" >/dev/null; then
+  echo "Production Program.cs does not contain the authenticated tx-controls.js route." >&2
+  exit 1
+fi
 echo "Production web and watchdog artifacts contain no forbidden TX/HIL command surface."
 
 watchdog_status="$(
@@ -390,11 +365,6 @@ watchdog_status="$(
 )"
 assert_watchdog_disarmed \
   "${watchdog_status}" "local independent watchdog artifact"
-
-if [[ "${deploy}" == true ]]; then
-  prompt_for_sudo_password
-  echo "FlexWeb sudo credentials accepted."
-fi
 
 if [[ "${deploy}" != true ]]; then
   deployment_succeeded=true
@@ -420,7 +390,8 @@ ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
   "install -m 0640 '${remote_dir}/${release_name}.tar.gz' '/home/flexweb/aethersdr/incoming/${release_name}.tar.gz'; bash '${remote_dir}/activate-release.sh' /home/flexweb/aethersdr '${release_name}' '${archive_sha}'"
 activated=true
 
-remote_sudo 'systemctl restart aethersdr-web.service'
+ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
+  'systemctl --user restart aethersdr-web.service'
 
 remote_health=""
 for _ in $(seq 1 45); do
@@ -435,6 +406,15 @@ done
   exit 1
 }
 assert_health_fail_closed "${remote_health}" "internal FlexWeb"
+remote_module_status="$(ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
+  'curl -sS --max-time 5 -o /dev/null -w "%{http_code}" -H "Host: flexweb.w4car.org" http://127.0.0.1:5080/tx-controls.js')"
+case "${remote_module_status}" in
+  200|302|401|403) ;;
+  *)
+    echo "Internal tx-controls.js route returned HTTP ${remote_module_status}." >&2
+    exit 1
+    ;;
+esac
 
 active_release="$(ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
   'readlink -f /home/flexweb/aethersdr/current')"
@@ -443,7 +423,7 @@ active_release="$(ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
   exit 1
 }
 ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
-  'systemctl is-active --quiet aethersdr-web.service'
+  'systemctl --user is-active --quiet aethersdr-web.service'
 remote_watchdog_status="$(ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
   'test -x /home/flexweb/aethersdr/current/watchdog/AetherSDR.TxWatchdog && printf '\''%s\n'\'' '\''{"protocolVersion":1,"requestId":"artifact-status","type":"status"}'\'' | /home/flexweb/aethersdr/current/watchdog/AetherSDR.TxWatchdog --stdio')"
 assert_watchdog_disarmed \
@@ -452,6 +432,16 @@ assert_watchdog_disarmed \
 public_health="$(curl --fail --silent --show-error --max-time 15 \
   "${PUBLIC_HEALTH_URL}")"
 assert_health_fail_closed "${public_health}" "public FlexWeb"
+public_module_status="$(curl --silent --show-error --max-time 15 \
+  --output /dev/null --write-out '%{http_code}' \
+  'https://flexweb.w4car.org/tx-controls.js')"
+case "${public_module_status}" in
+  200|302|401|403) ;;
+  *)
+    echo "Public tx-controls.js route returned HTTP ${public_module_status}." >&2
+    exit 1
+    ;;
+esac
 
 deployment_succeeded=true
 trap - EXIT INT TERM
@@ -459,7 +449,6 @@ if [[ -n "${remote_dir}" ]]; then
   ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
     "rm -rf -- '${remote_dir}'" >/dev/null 2>&1 || true
 fi
-sudo_password=""
 rm -rf -- "${work_dir}"
 
 echo

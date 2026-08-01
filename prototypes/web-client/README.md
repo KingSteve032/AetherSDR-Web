@@ -20,8 +20,10 @@ single-holder TX lease policy without changing the native radio engine.
 - Each browser page owns an isolated `FlexRx` GUI registration and decodes its
   own 24 kHz stereo `remote_audio_rx` stream. The stream never carries
   microphone or transmit audio.
-- Transmit is fail-closed. No MOX, PTT, TUNE, ATU, or CW keying request can
-  reach a radio.
+- Transmit is fail-closed. Phase 2F can validate a deliberate MOX, PTT, TUNE,
+  microphone, or CW intent against exact ownership, but no keying or transmit-
+  audio request can reach a radio. A validated request terminates at the
+  unavailable production transport.
 - The binary spectrum framing is experimental v0 and is not the future
   AetherD v1 wire format.
 - Production radio integration waits for AetherD RFC steps 3-5: versioned
@@ -210,6 +212,9 @@ script never commits or pushes; a Browser Bridge acceptance pass against the
 deployed site is required before Git publication. TX-lifecycle changes must
 also keep the public and internal health contract at
 `txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,
+`txBrowserIntentProtocolVersion=1`,
+`txBrowserIntentValidationRegistered=true`,
+`txBrowserIntentCommandTransportRegistered=false`,
 `txIndependentWatchdogHostPackaged=true`,
 `txIndependentWatchdogSupervisionRegistered=true`, a supervised Disarmed state,
 non-negative process/session/restart counts, zero registered watchdog identities
@@ -228,6 +233,29 @@ delay. The default executable is
 must still name that reviewed executable. Disabling supervision is diagnostic
 and receive-only; it never enables transmit. Process or IPC loss revokes only
 the matching tracked lease and a replacement process starts empty and Disarmed.
+
+`Radio:BrowserTxLeaseEnabled` remains false by default. When deliberately enabled
+for validation, the radio page reveals a **TX AUTHORITY** panel that can acquire,
+automatically renew, and release the single physical-radio lease. Its messages
+use protocol version 1, JavaScript-safe request and monotonic sequence numbers
+bound to the current WebSocket, and an opaque lease secret returned only to the
+holder. The browser bounds unanswered TX requests to 16. Disconnect or reconnect
+clears that secret locally; rejected or unconfirmed renewal and unsupported
+lease-event versions also discard it. The server refuses renewal after idle
+occupancy or exact supervised lifecycle authority is lost and releases that
+exact lease as `renewal-authority-lost`. Server expiry and disconnect release
+remain authoritative.
+
+The same panel can submit validation-only `mox.set`, `ptt.set`, `tune.set`,
+`microphone.set`, and `cw.send` intents. A valid result says
+`transport-unavailable`: the server proved the exact authenticated connection,
+role, lease, idle occupancy, lifecycle/FLEX identity, and registered Disarmed
+watchdog epoch, then stopped without invoking a command gate or radio transport.
+The actual MOX, TUNE, and CWX controls remain hidden and disabled because the
+server reports their executable capabilities false. PC MIC remains a local input
+meter and no samples are transmitted. Admin shows the lease holder name, expiry
+or revocation reason, and latest validation/denial outcome without exposing the
+opaque lease ID.
 
 The user service needs lingering to start at boot without an interactive SSH
 login:

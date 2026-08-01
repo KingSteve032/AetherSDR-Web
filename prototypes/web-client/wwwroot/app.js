@@ -46,6 +46,10 @@ import {
   AdaptiveBandwidthController,
   formatTrafficRate
 } from "./network-profile.js?v=network-profile-1";
+import {
+  BrowserTxController,
+  txControlAvailability
+} from "./tx-controls.js?v=tx-intent-validation-1";
 
 const controlRole = "Aether.Control";
 const adminRole = "Aether.Admin";
@@ -72,6 +76,7 @@ const state = {
   networkProfileInitialized: false,
   networkProfileTransition: false,
   lastNetworkDecision: "",
+  tx: null,
   forcedDisconnect: false,
   activeSliceId: "A",
   activePanId: "",
@@ -176,6 +181,17 @@ const elements = {
   pcMic: document.querySelector("#pc-mic"),
   pcMicLevel: document.querySelector("#pc-mic-level"),
   pcMicDb: document.querySelector("#pc-mic-db"),
+  txMox: document.querySelector("#tx-mox"),
+  txTune: document.querySelector("#tx-tune"),
+  txCwx: document.querySelector("#tx-cwx"),
+  txLockNote: document.querySelector("#tx-lock-note"),
+  txAuthorityPanel: document.querySelector("#tx-authority-panel"),
+  txAuthorityState: document.querySelector("#tx-authority-state"),
+  txAuthorityDetail: document.querySelector("#tx-authority-detail"),
+  txLeaseToggle: document.querySelector("#tx-lease-toggle"),
+  txIntentAction: document.querySelector("#tx-intent-action"),
+  txIntentCwText: document.querySelector("#tx-intent-cw-text"),
+  txIntentValidate: document.querySelector("#tx-intent-validate"),
   adminAppletTab: document.querySelector("#admin-applet-tab"),
   adminApplet: document.querySelector("#applet-admin"),
   adminRefresh: document.querySelector("#admin-refresh"),
@@ -210,6 +226,15 @@ const microphoneMonitor = new LocalMicrophoneMonitor((percent, db) => {
   elements.pcMicDb.textContent =
     microphoneMonitor.enabled ? `${Math.round(db)} dB` : "OFF";
 });
+const txController = new BrowserTxController({
+  send: message => send(message),
+  nextRequestId,
+  onChange: snapshot => {
+    state.tx = snapshot;
+    renderTxControls();
+  }
+});
+state.tx = txController.snapshot();
 sMeter.loadGeometry("/assets/s-meter-v1.json");
 renderer.setRenderMode(state.spectrumMode);
 renderer.setFillEnabled(state.displayFill);
@@ -283,6 +308,7 @@ window.addEventListener("pagehide", event => {
   updateAudioPageVisibility(false);
   if (!event.persisted &&
       state.socket?.readyState === WebSocket.OPEN) {
+    txController.requestRelease();
     state.socket.close(1000, "Browser page closed.");
   }
 });
@@ -932,6 +958,7 @@ function handleTransportText(text) {
 
 function handleTransportClose(event) {
   cancelPendingRadioInput();
+  txController.resetForDisconnect();
   if (state.forcedDisconnect) {
     reconnectBackoff.cancel();
     setConnectionState(
@@ -1061,6 +1088,7 @@ function updateRadioConnectionState() {
 function handleMessage(message) {
   if (message.type === "welcome") {
     reconnectBackoff.reset();
+    txController.applyWelcome(message.capabilities?.tx);
     state.radio = message.snapshot;
     state.presence = message.presence || [];
     syncActivePan();
@@ -1071,6 +1099,11 @@ function handleMessage(message) {
       "";
     renderAll();
     updateRadioConnectionState();
+    return;
+  }
+
+  if (txController.handleMessage(message)) {
+    showTxFeedback(message);
     return;
   }
 
@@ -1230,6 +1263,7 @@ function renderAll() {
   renderSlices();
   renderPanTabs();
   renderControls();
+  renderTxControls();
   renderPresence();
   renderSpectrumMode();
   renderDisplayControls();
@@ -1598,6 +1632,88 @@ function renderControls() {
   });
 }
 
+function renderTxControls() {
+  const snapshot = state.tx || txController.snapshot();
+  const capability = snapshot.capability;
+  const availability = txControlAvailability(capability);
+  const hasLeaseSecret = Boolean(snapshot.lease?.leaseId);
+  const requestPending = Number(snapshot.pendingCount) > 0;
+
+  elements.txAuthorityPanel.hidden = !availability.showAuthorityPanel;
+  elements.txAuthorityState.textContent =
+    String(capability.state || "unavailable")
+      .replaceAll("-", " ")
+      .toUpperCase();
+  elements.txAuthorityDetail.textContent = capability.message;
+  elements.txLeaseToggle.textContent = hasLeaseSecret
+    ? "RELEASE LEASE"
+    : "ACQUIRE LEASE";
+  elements.txLeaseToggle.disabled = hasLeaseSecret
+    ? !availability.canReleaseLease
+    : requestPending || !availability.canAcquireLease;
+
+  const validationEnabled =
+    hasLeaseSecret &&
+    availability.canValidateIntent &&
+    !requestPending;
+  elements.txIntentAction.disabled = !validationEnabled;
+  elements.txIntentValidate.disabled = !validationEnabled;
+  const cwSelected =
+    elements.txIntentAction.value === "cw.send:text";
+  elements.txIntentCwText.hidden = !cwSelected;
+  elements.txIntentCwText.disabled = !validationEnabled || !cwSelected;
+
+  elements.txMox.hidden = !availability.enableMox;
+  elements.txMox.disabled = !availability.enableMox;
+  elements.txTune.hidden = !availability.enableTune;
+  elements.txTune.disabled = !availability.enableTune;
+  elements.txCwx.hidden = !availability.enableCw;
+  elements.txCwx.disabled = !availability.enableCw;
+  elements.txLockNote.textContent = validationEnabled
+    ? "Exact deliberate intent may be validated. No radio command transport is connected."
+    : "No browser transmit path is connected.";
+}
+
+function showTxFeedback(message) {
+  const result = state.tx?.lastResult;
+  if (!result || message.event) {
+    return;
+  }
+
+  if (result.kind === "acquire" && message.ok === true) {
+    showToast(
+      "TX ownership lease acquired. Radio command transport remains unavailable.");
+    return;
+  }
+  if (result.kind === "renew" && message.ok === true) {
+    return;
+  }
+  if (result.kind === "release" && message.ok === true) {
+    showToast("TX ownership lease released.");
+    return;
+  }
+  if (result.validated && result.outcome === "transport-unavailable") {
+    showToast(
+      `${result.action || "TX intent"} validated; no radio command was sent.`);
+    return;
+  }
+  if (result.error) {
+    showToast(result.error, true);
+  }
+}
+
+function requestSelectedTxValidation() {
+  const [action, value] = elements.txIntentAction.value.split(":", 2);
+  const values = action === "cw.send"
+    ? { text: elements.txIntentCwText.value.trim() }
+    : { enabled: value === "on" };
+  if (!txController.requestIntent(action, values)) {
+    showToast(
+      "An exact current TX lease and fresh validated authority are required.",
+      true);
+  }
+}
+
 function renderPresence() {
   elements.presenceCount.textContent = state.presence.length;
   elements.presenceList.replaceChildren();
@@ -1692,6 +1808,35 @@ function wireControls() {
       elements.pcAudio.setAttribute("aria-pressed", "false");
       showToast(error.message || "Could not start PC audio.", true);
     }
+  });
+  elements.txLeaseToggle.addEventListener("click", () => {
+    const snapshot = state.tx || txController.snapshot();
+    const requested = snapshot.lease
+      ? txController.requestRelease()
+      : txController.requestAcquire();
+    if (!requested) {
+      showToast(
+        snapshot.capability.message ||
+        "TX ownership lease is unavailable.",
+        true);
+    }
+  });
+  elements.txIntentAction.addEventListener("change", renderTxControls);
+  elements.txIntentValidate.addEventListener(
+    "click",
+    requestSelectedTxValidation);
+  elements.txMox.addEventListener("click", () => {
+    const enabled = !elements.txMox.classList.contains("active");
+    txController.requestIntent("mox.set", { enabled });
+  });
+  elements.txTune.addEventListener("click", () => {
+    const enabled = !elements.txTune.classList.contains("active");
+    txController.requestIntent("tune.set", { enabled });
+  });
+  elements.txCwx.addEventListener("click", () => {
+    txController.requestIntent("cw.send", {
+      text: elements.txIntentCwText.value.trim()
+    });
   });
   elements.pcMic.addEventListener("click", async () => {
     const enable = !elements.pcMic.classList.contains("active");
@@ -3026,9 +3171,10 @@ function canControlRadio() {
 function send(message) {
   if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
     showToast("The radio session is not connected.", true);
-    return;
+    return false;
   }
   state.socket.send(JSON.stringify(message));
+  return true;
 }
 
 function reportAudioDiagnostics() {

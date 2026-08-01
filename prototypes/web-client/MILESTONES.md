@@ -814,7 +814,7 @@ Acceptance criteria:
 
 ## M7 — Transmit safety
 
-Status: **Active — safety foundation accepted; production browser TX integration outstanding**
+Status: **Active — browser intent validation implemented; executable production TX outstanding**
 
 Goal: enable transmit only after engine-side arbitration can prove deliberate
 operator intent and force-unkey on every loss path.
@@ -827,9 +827,12 @@ Milestone state:
 - **Safety foundation and loss-path HIL: Complete.** The single-radio lease,
   exact-owner gate, independent unkey-only supervisor, production/HIL binary
   separation, and every required owner/liveness loss path have accepted evidence.
-- **Production browser TX integration: Not implemented.** The normal browser and
-  production server still expose no reachable MOX/PTT, TUNE, CW, or microphone
-  transmit path, and production continues to report `transmitEnabled=false`.
+- **Production browser TX integration: Validation-only Phase 2F implemented.**
+  The browser can manage the exact ownership lease and submit deliberate TX
+  intents through a strict replay-resistant protocol when separately configured,
+  but every fully valid request stops at `transport-unavailable`. The production
+  server still exposes no reachable MOX/PTT, TUNE, CW, microphone-audio, key, or
+  unkey radio path and continues to report `transmitEnabled=false`.
 - **M7 remains Active** until an authorized operator can deliberately transmit
   from the production browser through the accepted station-local safety boundary
   and the complete browser-driven workflow passes production HIL acceptance.
@@ -1348,6 +1351,55 @@ Milestone state:
   the safety supervisor stayed Disarmed, no lease or authority was restored,
   Admin showed the replacement PID and restart count, and both browser consoles
   remained empty. Production remains receive-only.
+- Phase 2F adds a strict browser TX protocol version 1 without adding a radio
+  command boundary. Lease acquire, renew, release, and deliberate intent requests
+  require JavaScript-safe positive request IDs, monotonic JavaScript-safe
+  per-WebSocket sequences, exact unique properties, explicit 1-15 second duration
+  where applicable, and the exact 32-character lowercase opaque lease ID. The
+  connection retains at most 64 intent IDs and rejects non-object roots, stale
+  sequences, replayed IDs, and unknown or duplicate fields. Reconnect starts at
+  sequence one and the browser never recovers or replays a prior lease secret.
+- Validation-only intent supports exact `mox.set`, `ptt.set`, `tune.set`,
+  `microphone.set`, and bounded printable `cw.send` payloads. The server ignores
+  browser identity assertions and freshly re-derives authentication, role,
+  current connection, exact lease, idle occupancy, lifecycle session/FLEX
+  handle, and a registered connected lease-bound Disarmed watchdog epoch. A
+  fully valid request returns `validated=true`, `ok=false`, and
+  `transport-unavailable`; no command-gate or radio-transport method is invoked.
+- The browser controller automatically renews the holder's lease, releases on
+  deliberate page exit where possible, bounds unanswered TX requests to 16,
+  discards the secret on every disconnect, ignores mismatched/stale responses,
+  and fails closed if a request cannot be sent. It also discards the secret after
+  a rejected renewal, unsupported lease-event version, or missing exact renewal
+  response before the current server expiry. Renewal cannot extend a lease after
+  idle occupancy or exact supervised lifecycle authority is lost; the server
+  releases only that lease as `renewal-authority-lost`. A separately labeled
+  validation-only panel is hidden while the default
+  `BrowserTxLeaseEnabled=false` setting remains active. Even when validation is
+  configured, the actual MOX, TUNE, and CWX controls stay hidden/disabled because
+  executable keying, TUNE, CW, and microphone capabilities remain false. PC MIC
+  remains a local meter and sends no samples.
+- Admin `TX LIFECYCLE` now includes the current or last lease holder name, expiry
+  or revocation reason, and latest monotonic browser intent action/outcome/reason.
+  The opaque lease ID is not projected. Health explicitly reports browser TX
+  intent protocol version 1, validation registration, and absent browser intent
+  command transport. RX-only defaults remain unchanged.
+- The 2026-07-31 Phase 2F validation-only gate passed 298 server tests, 25
+  independent-watchdog tests, 48 TX-HIL isolation tests, 70 AetherRemote tests,
+  and 123 browser tests (564 total), with a zero-warning solution build. Strict protocol
+  and integration coverage includes duplicate/unknown fields, non-object roots,
+  JavaScript-safe integer bounds, invalid versions and lease IDs, stale sequence,
+  bounded replay and pending requests, wrong/expired lease, replaced connection,
+  authentication loss, non-idle occupancy, renewal authority loss, missing
+  lifecycle authority, post-barrier lease revocation, exact validation followed
+  by `transport-unavailable`, reconnect secret discard, unconfirmed-renewal
+  expiry, unsupported event versions, immediate release-secret discard, malformed
+  response identifiers, per-browser redacted lease events, and default-hidden
+  executable controls. Both self-contained production binaries contained no
+  forbidden TX/HIL command surface, and the published watchdog status probe
+  remained empty and Disarmed. Validation log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260731-m7-browser-tx-intent-validation-phase2f-validation-final-flexweb-validation.txt`.
+  No server, Git commit, or Git remote was changed.
 
 Acceptance criteria:
 
