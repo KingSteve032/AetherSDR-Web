@@ -429,30 +429,48 @@ envelope-submission route exists.
 
 Phase 2L adds no wire message. Each production lifecycle constructs one internal
 `StationTxCommandAdapterComposition` and passes it to the session's signed
-command boundary as the `IStationTxCommandAdapter`. The composition delegates
-only to an optional `IStationTxCommandAdapterExecutor`; normal production session
-construction supplies `null`, and neither the session registry nor browser
-control types accept that executor interface.
+command boundary as the `IStationTxCommandAdapter`. Neither the session registry
+nor browser control types accept the internal executor interface.
+
+Phase 2M also adds no wire message. Each lifecycle creates one
+`StationTxCommandGateExecutor` around its existing per-session
+`StationTxCommandGate` and supplies that executor to the adapter composition. A
+validated `StationTxCommandAction.SetTransmit` with `Enabled:true` maps only to
+`RequestKeyAsync(leaseId, sessionId, browserClientId)`; `Enabled:false` maps only
+to the matching `RequestUnkeyAsync`. No other action is accepted. The executor
+performs one gate call and has no retry behavior.
 
 The executor capability snapshot has only registered, arming, SetTransmit, and
-bounded reason fields. Composition registration does not imply adapter
-registration. Without an attached registered executor,
-`IStationTxCommandAdapter.IsRegistered`, `ArmingAvailable`, and
-`SupportsSetTransmit` remain false. Health reports
+bounded reason fields. Production reports the executor and adapter registered,
+but the gate was created with `allowTransmit:false` and an unavailable command
+transport, so arming and SetTransmit remain false. Health reports
 `txStationCommandAdapterCompositionRegistered:true`,
-`txStationCommandAdapterExecutorAttached:false`,
-`txStationCommandAdapterExecutorRegistered:false`, and
+`txStationCommandAdapterExecutorAttached:true`,
+`txStationCommandAdapterExecutorRegistered:true`,
+`txStationCommandGateExecutorRegistered:true`,
+`txStationCommandGateExecutorTransmitEnabled:false`,
+`txStationCommandGateExecutorCommandTransportAvailable:false`,
+`txStationCommandGateExecutorSetTransmitAvailable:false`,
+`txStationCommandGateExecutorBrowserIngressRegistered:false`, and
 `txStationCommandAdapterCompositionBrowserIngressRegistered:false`.
 
-Before any future executor call, the composition re-resolves current
+Before the executor call, the composition re-resolves current
 `StationTxCommandAuthority` from the lifecycle and compares every validated
 command identity exactly. It also rechecks bounded command lifetime, lease
-expiry, authentication/freshness, fresh idle occupancy, exclusive Local PTT
-ownership for the protected handle, and a matching Armed safety heartbeat.
-Failure returns a rejected transport outcome before forwarding. Cancellation
-and executor exceptions propagate after bounded diagnostics are updated;
-rejected and unknown outcomes remain distinct and are never retried by the
-composition.
+expiry, authentication/freshness, and a matching Armed safety heartbeat. A key
+request requires fresh idle occupancy and exclusive Local PTT ownership for the
+protected handle. An unkey request permits only already-idle state or fresh
+proof that the protected handle is the sole AetherSDR TX owner. The signed
+boundary independently applies the same key/unkey occupancy distinction before
+calling the adapter. External, ambiguous, stale, or replaced ownership is
+rejected before the gate.
+
+Gate success becomes an accepted adapter result. Gate rejection remains a known
+rejection. `key_command_outcome_unknown` and
+`unkey_command_outcome_unknown` remain unknown adapter outcomes so the gate can
+retain guarded intent and reconcile against later radio state. Cancellation and
+exceptions propagate after bounded diagnostics are updated, and neither the
+composition nor executor retries automatically.
 
 `client.visibility` accepts only a JSON boolean. A hidden browser keeps its
 authenticated WebSocket, radio session, text responses, snapshots, presence,

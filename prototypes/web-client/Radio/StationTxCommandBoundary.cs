@@ -587,17 +587,27 @@ internal sealed class StationTxCommandBoundary
                 "occupancy_stale",
                 "Radio-authoritative TX occupancy is stale or mismatched.");
         }
-        if (!occupancy.BrowserLeaseAllowed)
+        if (envelope.Enabled)
         {
-            return new(
-                "radio_not_idle",
-                "Radio-authoritative TX occupancy is not idle.");
+            if (!occupancy.BrowserLeaseAllowed)
+            {
+                return new(
+                    "radio_not_idle",
+                    "Radio-authoritative TX occupancy is not idle.");
+            }
+            if (!occupancy.HasExclusiveLocalPttAuthority(envelope.ClientHandle))
+            {
+                return new(
+                    "local_ptt_authority_mismatch",
+                    "Exclusive Local PTT authority does not match the protected FLEX handle.");
+            }
         }
-        if (!occupancy.HasExclusiveLocalPttAuthority(envelope.ClientHandle))
+        else if (occupancy.State != RadioTxOccupancyState.Idle &&
+            !occupancy.HasExclusiveAetherTransmitOwnership(envelope.ClientHandle))
         {
             return new(
-                "local_ptt_authority_mismatch",
-                "Exclusive Local PTT authority does not match the protected FLEX handle.");
+                "unkey_ownership_mismatch",
+                "Only idle state or exact AetherSDR transmit ownership may reach the unkey adapter.");
         }
 
         StationTxSafetySnapshot safety = authority.Safety;

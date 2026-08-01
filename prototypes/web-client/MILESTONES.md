@@ -1777,6 +1777,74 @@ Milestone state:
   `executor-unattached`, unchanged command composition, and all TX transports
   absent. A fresh Admin console observation contained zero entries. No TX
   control, microphone permission, radio command, or RF operation was used.
+- Phase 2M adds one internal `StationTxCommandGateExecutor` to each production
+  lifecycle. It implements the Phase 2L executor contract and maps an already
+  validated SetTransmit true command only to the existing gate's exact-owner
+  key request, while false maps only to the exact-owner unkey request. It owns no
+  browser route, FLEX router, safety arm, timer, or retry loop.
+- The gate now exposes a fail-closed capability snapshot. Production reports the
+  gate executor and adapter registered, but the gate remains constructed with
+  `allowTransmit:false`, its command transport remains unavailable, the safety
+  supervisor remains Disarmed, and arming and SetTransmit remain false. Neither
+  `RadioSessionRegistry`, `RadioCoordinator`, nor `RadioWebSocketEndpoint`
+  accepts the executor type, and the envelope submission method remains internal
+  and uncalled.
+- Key and unkey retain different radio-authoritative occupancy requirements in
+  both the signed boundary and adapter composition. Key requires fresh idle
+  occupancy plus exclusive Local PTT for the exact AetherSDR handle. Unkey can
+  proceed only when the radio is already idle or fresh occupancy proves that the
+  exact handle is the single AetherSDR TX owner. External SmartSDR, Maestro,
+  hardware PTT, ambiguous, stale, or replaced ownership cannot reach the gate.
+  Known gate rejection stays rejected; unknown key/unkey command outcomes stay
+  unknown for bounded gate reconciliation, with no executor retry.
+- The Phase 2M focused command-pipeline proof passes 94 cases, including direct
+  disabled-gate behavior, exact key/unkey mapping, one-attempt unknown outcomes,
+  full adapter-composition-to-gate delegation, boundary and adapter unkey
+  ownership checks, production lifecycle registration, and real session
+  registry isolation. The combined command-stack proof passes 276 cases and the
+  Admin diagnostics suite passes 11 cases.
+- Full server validation exposed a pre-existing flush-barrier race: a gateway
+  observation could release a lease and enqueue its lease-change observation
+  behind an already queued test/diagnostic barrier. The lifecycle barrier now
+  moves to the queue tail until causally generated observations drain. The
+  gateway-disconnect regression passes alone and across 20 consecutive stress
+  runs without weakening immediate lease-release assertions.
+- The final 2026-08-01 Phase 2M guarded validation passed 508 FlexWeb server
+  tests, 25 independent-watchdog tests, 48 TX-HIL isolation tests, 70
+  AetherRemote tests, and 124 browser tests (775 total), with a zero-warning
+  solution build. Both self-contained production binaries contained no
+  forbidden TX/HIL command surface, and the published watchdog probe remained
+  empty and Disarmed with no command transport or arming capability. Validation
+  log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-gate-phase2m-validation-flexweb-validation.txt`.
+  No server, Git commit, Git remote, radio command, or RF operation was changed
+  by this validation-only run.
+- Release `20260801-m7-station-command-gate-phase2m` deployed successfully to the
+  staging FlexWeb host on 2026-08-01 with
+  `20260801-m7-station-command-adapter-phase2l` retained for rollback. Internal,
+  public, and post-acceptance health reported the gate executor and command
+  adapter registered while gate transmit enablement, command transport,
+  SetTransmit, browser ingress, boundary execution, envelope submission, and
+  safety arming remained false. Gateway PID `119676` owned the active release;
+  watchdog PID `120175` remained supervised and Disarmed with zero registered
+  identities. Deployment log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-gate-phase2m-flexweb-validation.txt`.
+- Browser Bridge acceptance kept PSOC2 live and receive-only with current
+  spectrum and waterfall, `FLEX-6700`, `RX-ONLY`, and `RADIO: LIVE`. Deep DOM
+  inspection found MOX, TUNE, and CWX hidden and disabled; lease acquisition and
+  validation-only intent controls disabled; and the Phase 2M health fields at
+  executor/adapter registered but gate disabled, transport absent, arming false,
+  SetTransmit false, browser ingress false, boundary disabled, and submission
+  unregistered. The harmless browser-local 2D -> 3D -> 2D renderer transition
+  passed without changing a radio control.
+- Admin showed `DISABLED · DISARMED · NO LEASE`, command boundary v1 disabled,
+  executor attached and registered, adapter registered, authority absent,
+  arming/SetTransmit absent, attempts 0, forwarded 0, last outcome `none`, reason
+  `executor-arming-unavailable`, unchanged disabled session composition, and all
+  TX transports absent. Attaching the debugger temporarily made the background
+  browser heartbeat stale; detaching restored a fresh `RADIO: LIVE` session. A
+  fresh Admin console observation contained zero entries. No TX control,
+  microphone permission, radio command, or RF operation was used.
 
 Acceptance criteria:
 

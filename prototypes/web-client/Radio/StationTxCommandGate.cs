@@ -68,6 +68,13 @@ internal interface IStationTxCommandTransport
         CancellationToken cancellationToken);
 }
 
+internal sealed record StationTxCommandGateCapabilities(
+    bool Registered,
+    bool TransmitEnabled,
+    bool CommandTransportAvailable,
+    bool SetTransmitAvailable,
+    string Reason);
+
 /// <summary>
 /// Station-local, browser-inaccessible TX command gate. Production now
 /// registers this state machine only through the command-incapable lifecycle
@@ -137,6 +144,39 @@ internal sealed class StationTxCommandGate : IAsyncDisposable
                 intent?.CreatedAt,
                 intent?.DeadlineAt,
                 intent?.UnkeyAttempts ?? 0);
+        }
+    }
+
+    internal StationTxCommandGateCapabilities Capabilities
+    {
+        get
+        {
+            bool commandTransportAvailable;
+            string reason;
+            try
+            {
+                commandTransportAvailable =
+                    m_transport.IsConnected && m_transport.ClientHandle != 0;
+                reason = !m_allowTransmit
+                    ? "transmit-disabled"
+                    : commandTransportAvailable
+                        ? "ready"
+                        : "command-transport-unavailable";
+            }
+            catch
+            {
+                commandTransportAvailable = false;
+                reason = "command-transport-capabilities-faulted";
+            }
+
+            bool setTransmitAvailable =
+                m_allowTransmit && commandTransportAvailable;
+            return new StationTxCommandGateCapabilities(
+                Registered: true,
+                TransmitEnabled: m_allowTransmit,
+                commandTransportAvailable,
+                setTransmitAvailable,
+                reason);
         }
     }
 
@@ -624,10 +664,7 @@ internal sealed class StationTxCommandGate : IAsyncDisposable
     private static bool IsExactAetherOwner(
         RadioTxOccupancySnapshot occupancy,
         uint clientHandle) =>
-        occupancy.State == RadioTxOccupancyState.AetherOwned &&
-        occupancy.Occupants.Count == 1 &&
-        occupancy.Occupants[0].AetherOwned &&
-        occupancy.Occupants[0].ClientHandle == clientHandle;
+        occupancy.HasExclusiveAetherTransmitOwnership(clientHandle);
 
     private static bool MatchesOwner(
         ActiveIntent intent,

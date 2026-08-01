@@ -73,7 +73,8 @@ public sealed record StationTxLifecycleDiagnostics(
 /// Production registration boundary for the accepted station TX gate and
 /// safety state machines. This lifecycle is deliberately command-incapable:
 /// its transports always report unavailable, the command gate is constructed
-/// with transmit disabled, and no arm/key/unkey surface is exposed.
+/// with transmit disabled, and its internal gate executor has no reachable
+/// browser, HTTP, WebSocket, AetherRemote, watchdog, or timer caller.
 ///
 /// Real gateway, engine, browser/authentication, and lease observations are
 /// serialized here so diagnostics and future reviewed transport integration
@@ -163,8 +164,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         TimeProvider? timeProvider = null,
         IStationTxIndependentWatchdogFactory? independentWatchdogFactory = null,
         IStationTxCommandSignatureVerifier? stationCommandVerifier = null,
-        IStationTxCommandEnvelopeSubmitter? stationCommandSubmitter = null,
-        IStationTxCommandAdapterExecutor? stationCommandAdapterExecutor = null)
+        IStationTxCommandEnvelopeSubmitter? stationCommandSubmitter = null)
     {
         ArgumentNullException.ThrowIfNull(leases);
         ArgumentNullException.ThrowIfNull(occupancy);
@@ -185,9 +185,18 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
 
         StationTxUnavailableCommandTransport commandTransport = new();
         StationTxUnavailableEmergencyUnkeyTransport emergencyTransport = new();
+        m_commandGate = new StationTxCommandGate(
+            allowTransmit: false,
+            m_radioId,
+            leases,
+            occupancy,
+            commandTransport,
+            m_timeProvider);
+        StationTxCommandGateExecutor commandGateExecutor =
+            new(m_commandGate);
         m_stationCommandAdapterComposition =
             new StationTxCommandAdapterComposition(
-                stationCommandAdapterExecutor,
+                commandGateExecutor,
                 ResolveStationCommandAuthority,
                 m_timeProvider);
         m_stationCommandBoundary = new StationTxCommandBoundary(
@@ -201,13 +210,6 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             stationCommandSubmitter,
             m_stationCommandBoundary,
             ResolveStationCommandAuthority,
-            m_timeProvider);
-        m_commandGate = new StationTxCommandGate(
-            allowTransmit: false,
-            m_radioId,
-            leases,
-            occupancy,
-            commandTransport,
             m_timeProvider);
         m_supervisor = new StationTxSafetySupervisor(
             m_radioId,
@@ -481,7 +483,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                         ProcessIndependentWatchdogEvent(independent.Event);
                         break;
                     case BarrierObservation barrier:
-                        barrier.Completion.TrySetResult();
+                        ProcessBarrier(barrier);
                         break;
                 }
             }
@@ -500,6 +502,26 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 "Station TX lifecycle observation processing failed for radio {RadioId} session {SessionId}",
                 m_radioId,
                 m_sessionId);
+        }
+    }
+
+    private void ProcessBarrier(BarrierObservation barrier)
+    {
+        // Earlier observations may synchronously publish lease or watchdog
+        // changes while they are processed. Those follow-up observations are
+        // appended behind a barrier that was already queued. Move the barrier
+        // to the tail until the reader is empty so FlushAsync covers both the
+        // original work and its causally generated lifecycle observations.
+        if (!m_observations.Reader.TryPeek(out _))
+        {
+            barrier.Completion.TrySetResult();
+            return;
+        }
+
+        if (!Enqueue(barrier))
+        {
+            barrier.Completion.TrySetException(new InvalidOperationException(
+                "The station TX lifecycle could not drain its flush barrier."));
         }
     }
 

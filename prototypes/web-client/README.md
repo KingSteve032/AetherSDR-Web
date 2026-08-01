@@ -36,10 +36,12 @@ single-holder TX lease policy without changing the native radio engine.
   session's existing disabled command boundary and derives the complete command
   authority from lifecycle-owned state. Phase 2L replaces the placeholder
   adapter with a typed per-session adapter composition that independently
-  rechecks exact authority before an optional internal executor. Production
-  supplies no executor. Verification, signing, and submission all default
-  disabled; no browser command ingress, registered command adapter, arming
-  capability, keying command, or transmit-audio path is registered.
+  rechecks exact authority before an internal executor. Phase 2M attaches a
+  per-session gate executor that maps validated SetTransmit true/false commands
+  only to the existing ownership-safe gate. The gate remains disabled and its
+  production FLEX transport remains unavailable. Verification, signing, and
+  submission all default disabled; no browser command ingress, arming
+  capability, reachable keying command, or transmit-audio path is registered.
 - The binary spectrum framing is experimental v0 and is not the future
   AetherD v1 wire format.
 - Production radio integration waits for AetherD RFC steps 3-5: versioned
@@ -244,8 +246,13 @@ also keep the public and internal health contract at
 `txStationCommandSessionCompositionRegistered=true`,
 `txStationCommandSessionCompositionBrowserIngressRegistered=false`,
 `txStationCommandAdapterCompositionRegistered=true`,
-`txStationCommandAdapterExecutorAttached=false`,
-`txStationCommandAdapterExecutorRegistered=false`,
+`txStationCommandAdapterExecutorAttached=true`,
+`txStationCommandAdapterExecutorRegistered=true`,
+`txStationCommandGateExecutorRegistered=true`,
+`txStationCommandGateExecutorTransmitEnabled=false`,
+`txStationCommandGateExecutorCommandTransportAvailable=false`,
+`txStationCommandGateExecutorSetTransmitAvailable=false`,
+`txStationCommandGateExecutorBrowserIngressRegistered=false`,
 `txStationCommandAdapterCompositionBrowserIngressRegistered=false`,
 `txStationCommandEnvelopeSubmissionEnabled=false`,
 `txStationCommandEnvelopeSigningAvailable=false`,
@@ -254,7 +261,7 @@ also keep the public and internal health contract at
 `txStationCommandEnvelopeBoundaryVerificationAvailable=false`,
 `txStationCommandEnvelopeSubmissionAvailable=false`,
 `txStationCommandEnvelopeSubmissionRegistered=false`,
-`txStationCommandAdapterRegistered=false`,
+`txStationCommandAdapterRegistered=true`,
 `txStationCommandArmingAvailable=false`,
 `txStationCommandSetTransmitAvailable=false`,
 `txIndependentWatchdogHostPackaged=true`,
@@ -379,22 +386,33 @@ arming, and SetTransmit availability remain false under default configuration.
 still no externally reachable submission route.
 
 Phase 2L adds one `StationTxCommandAdapterComposition` beneath each session's
-signed command boundary. It implements the existing internal adapter contract,
-but production creates it with no `IStationTxCommandAdapterExecutor`. Health and
-Admin therefore distinguish composition registration from executor attachment
-and actual adapter registration: the composition is present, while executor,
-adapter, arming, and SetTransmit remain absent. Neither `RadioSessionRegistry`
-nor `RadioCoordinator` nor the WebSocket endpoint accepts the executor type.
+signed command boundary. It implements the existing internal adapter contract
+and independently re-resolves current server-owned authority before any
+execution attempt. Neither `RadioSessionRegistry` nor `RadioCoordinator` nor the
+WebSocket endpoint accepts the executor type.
 
-Before forwarding a future already validated command, the adapter composition
-re-resolves current server-owned authority and independently requires exact
-station/radio/session/browser/lease/gateway/engine/FLEX-handle identity, a
-non-expired command and lease, current authentication and observations, fresh
-idle radio occupancy, exclusive Local PTT authority for that handle, and a
-matching freshly Armed safety identity. Mismatch, stale state, absent executor,
-executor capability loss, cancellation, rejection, unknown outcome, or exception
-never triggers a retry. Phase 2L registers no production executor and does not
-import the HIL-only radio command transport into the normal build.
+Phase 2M supplies that composition with one internal
+`StationTxCommandGateExecutor` owned by the same lifecycle. The executor maps
+only an already validated SetTransmit true command to `RequestKeyAsync` and a
+false command to `RequestUnkeyAsync`, preserving exact lease, session, browser,
+Local PTT, radio-occupancy, confirmation, and ownership-safe unkey rules in the
+existing gate. It performs no retry and translates unknown gate command outcomes
+back to unknown adapter outcomes for radio-state reconciliation.
+
+The adapter composition still independently requires exact station/radio/
+session/browser/lease/gateway/engine/FLEX-handle identity, a non-expired command
+and lease, current authentication and observations, and a matching freshly Armed
+safety identity. Key requires fresh idle occupancy and exclusive Local PTT for
+the exact handle. Unkey permits only already-idle state or fresh proof that the
+exact AetherSDR handle is the single TX owner; external, ambiguous, stale, or
+replaced ownership cannot reach the gate.
+
+Production creates the gate with `allowTransmit:false` and
+`StationTxUnavailableCommandTransport`. Health and Admin therefore report the
+executor and adapter registered while executor arming, SetTransmit, the boundary,
+and submission remain unavailable. No browser, HTTP, WebSocket, AetherRemote,
+watchdog, or timer caller is added, and the HIL-only FLEX command transport is
+not imported into the normal build.
 
 Environment-variable form remains disabled by default:
 
