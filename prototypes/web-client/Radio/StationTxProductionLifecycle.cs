@@ -21,6 +21,9 @@ public sealed record StationTxLifecycleDiagnostics(
     uint StationClientHandle,
     bool LeaseActive,
     string? LeaseId,
+    string? LeaseDisplayName,
+    DateTimeOffset? LeaseExpiresAt,
+    string? LastLeaseChangeReason,
     string GateState,
     string GateReason,
     bool GateHasActiveIntent,
@@ -36,6 +39,12 @@ public sealed record StationTxLifecycleDiagnostics(
     DateTimeOffset? LastGatewayObservedAt,
     long LeaseObservationSequence,
     DateTimeOffset? LastLeaseObservedAt,
+    long BrowserTxIntentObservationSequence,
+    long LastBrowserTxIntentRequestSequence,
+    string? LastBrowserTxIntentAction,
+    string? LastBrowserTxIntentOutcome,
+    string? LastBrowserTxIntentReason,
+    DateTimeOffset? LastBrowserTxIntentAt,
     bool WatchdogRunning,
     long WatchdogEvaluationSequence,
     DateTimeOffset? LastWatchdogEvaluatedAt,
@@ -99,6 +108,9 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     private uint m_stationClientHandle;
     private bool m_leaseActive;
     private string? m_leaseId;
+    private string? m_leaseDisplayName;
+    private DateTimeOffset? m_leaseExpiresAt;
+    private string? m_lastLeaseChangeReason;
     private WatchdogIdentity? m_independentWatchdogIdentity;
     private bool m_observationFaulted;
     private long m_browserObservationSequence;
@@ -109,6 +121,12 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     private DateTimeOffset? m_lastGatewayObservedAt;
     private long m_leaseObservationSequence;
     private DateTimeOffset? m_lastLeaseObservedAt;
+    private long m_browserTxIntentObservationSequence;
+    private long m_lastBrowserTxIntentRequestSequence;
+    private string? m_lastBrowserTxIntentAction;
+    private string? m_lastBrowserTxIntentOutcome;
+    private string? m_lastBrowserTxIntentReason;
+    private DateTimeOffset? m_lastBrowserTxIntentAt;
     private long m_watchdogEvaluationSequence;
     private DateTimeOffset? m_lastWatchdogEvaluatedAt;
     private string m_lastObservation = "registered-disabled";
@@ -210,6 +228,9 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     m_stationClientHandle,
                     m_leaseActive,
                     m_leaseId,
+                    m_leaseDisplayName,
+                    m_leaseExpiresAt,
+                    m_lastLeaseChangeReason,
                     gate.State.ToString(),
                     gate.Reason,
                     gate.HasActiveIntent,
@@ -225,6 +246,12 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     m_lastGatewayObservedAt,
                     m_leaseObservationSequence,
                     m_lastLeaseObservedAt,
+                    m_browserTxIntentObservationSequence,
+                    m_lastBrowserTxIntentRequestSequence,
+                    m_lastBrowserTxIntentAction,
+                    m_lastBrowserTxIntentOutcome,
+                    m_lastBrowserTxIntentReason,
+                    m_lastBrowserTxIntentAt,
                     WatchdogRunning: Volatile.Read(ref m_disposed) == 0,
                     m_watchdogEvaluationSequence,
                     m_lastWatchdogEvaluatedAt,
@@ -275,6 +302,27 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(change);
         Enqueue(new LeaseObservation(change));
+    }
+
+    public void ObserveBrowserTxIntent(
+        string connectionClientId,
+        long requestSequence,
+        string action,
+        string outcome,
+        string reason,
+        DateTimeOffset observedAt)
+    {
+        if (requestSequence <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(requestSequence));
+        }
+        Enqueue(new BrowserTxIntentObservation(
+            NormalizeRequired(connectionClientId, 128),
+            requestSequence,
+            NormalizeRequired(action, 64),
+            NormalizeRequired(outcome, 128),
+            NormalizeRequired(reason, 512),
+            observedAt));
     }
 
     internal Task FlushAsync(CancellationToken cancellationToken = default)
@@ -352,6 +400,9 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                         break;
                     case LeaseObservation lease:
                         await ProcessLeaseAsync(lease.Change);
+                        break;
+                    case BrowserTxIntentObservation txIntent:
+                        ProcessBrowserTxIntent(txIntent);
                         break;
                     case WatchdogObservation watchdog:
                         await ProcessWatchdogAsync(watchdog);
@@ -632,6 +683,9 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             {
                 m_leaseActive = change.Active;
                 m_leaseId = change.Active ? change.Lease.LeaseId : null;
+                m_leaseDisplayName = change.Lease.DisplayName;
+                m_leaseExpiresAt = change.Lease.ExpiresAt;
+                m_lastLeaseChangeReason = change.Reason;
                 m_leaseObservationSequence++;
                 m_lastLeaseObservedAt = m_timeProvider.GetUtcNow();
                 RecordLocked(change.Active
@@ -644,6 +698,33 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         {
             await m_commandGate.HandleLeaseChangeAsync(change);
             await SynchronizeIndependentWatchdogAsync();
+        }
+    }
+
+    private void ProcessBrowserTxIntent(
+        BrowserTxIntentObservation observation)
+    {
+        lock (m_stateGate)
+        {
+            if (!m_browserConnected ||
+                !string.Equals(
+                    m_connectionClientId,
+                    observation.ConnectionClientId,
+                    StringComparison.Ordinal) ||
+                observation.RequestSequence <=
+                    m_lastBrowserTxIntentRequestSequence)
+            {
+                return;
+            }
+
+            m_browserTxIntentObservationSequence++;
+            m_lastBrowserTxIntentRequestSequence =
+                observation.RequestSequence;
+            m_lastBrowserTxIntentAction = observation.Action;
+            m_lastBrowserTxIntentOutcome = observation.Outcome;
+            m_lastBrowserTxIntentReason = observation.Reason;
+            m_lastBrowserTxIntentAt = observation.ObservedAt;
+            RecordLocked($"browser-tx-intent-{observation.Outcome}");
         }
     }
 
@@ -1038,6 +1119,14 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
 
     private sealed record LeaseObservation(
         TxLeaseChange Change) : LifecycleObservation;
+
+    private sealed record BrowserTxIntentObservation(
+        string ConnectionClientId,
+        long RequestSequence,
+        string Action,
+        string Outcome,
+        string Reason,
+        DateTimeOffset ObservedAt) : LifecycleObservation;
 
     private sealed record WatchdogObservation(
         DateTimeOffset ObservedAt,

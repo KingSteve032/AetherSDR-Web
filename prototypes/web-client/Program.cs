@@ -188,6 +188,10 @@ app.MapGet(
                 browserTxLeaseEnabled = radioSettings.BrowserTxLeaseEnabled,
                 txGateLifecycleRegistered = true,
                 txLifecycleWatchdogRegistered = true,
+                txBrowserIntentProtocolVersion =
+                    RadioBrowserTxProtocol.Version,
+                txBrowserIntentValidationRegistered = true,
+                txBrowserIntentCommandTransportRegistered = false,
                 txIndependentWatchdogHostPackaged = true,
                 txIndependentWatchdogSupervisionRegistered =
                     watchdog.SupervisionRegistered,
@@ -1041,6 +1045,14 @@ app.MapGet(
     (IWebHostEnvironment environment) =>
         Results.File(
             Path.Combine(environment.WebRootPath, "network-profile.js"),
+            "text/javascript"))
+    .RequireAuthorization(AetherPolicies.Observe);
+
+app.MapGet(
+    "/tx-controls.js",
+    (IWebHostEnvironment environment) =>
+        Results.File(
+            Path.Combine(environment.WebRootPath, "tx-controls.js"),
             "text/javascript"))
     .RequireAuthorization(AetherPolicies.Observe);
 

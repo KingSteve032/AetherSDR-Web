@@ -119,11 +119,8 @@ public sealed class RadioCoordinatorTests
     public void LegacyAllowTransmitCannotEnableBrowserLeaseOrKeying()
     {
         RadioCoordinator coordinator = CreateCoordinator(allowTransmit: true);
-        RadioClientConnection connection = new(
-            "client-a",
-            "user-a",
-            "Operator A",
-            ["Aether.Transmit"]);
+        RadioClientConnection connection = coordinator.Register(
+            CreateUser("user-a", "Operator A", "Aether.Transmit"));
 
         BrowserTxCapability capability =
             coordinator.GetBrowserTxCapability(connection);
@@ -154,11 +151,8 @@ public sealed class RadioCoordinatorTests
         RadioCoordinator coordinator = CreateCoordinator(
             browserTxLeaseEnabled: true,
             txOccupancyRegistry: occupancy);
-        RadioClientConnection connection = new(
-            "client-a",
-            "user-a",
-            "Operator A",
-            ["Aether.Control"]);
+        RadioClientConnection connection = coordinator.Register(
+            CreateUser("user-a", "Operator A", "Aether.Control"));
 
         BrowserTxCapability capability =
             coordinator.GetBrowserTxCapability(connection);
@@ -184,11 +178,8 @@ public sealed class RadioCoordinatorTests
         RadioCoordinator coordinator = CreateCoordinator(
             browserTxLeaseEnabled: true,
             txOccupancyRegistry: new RadioTxOccupancyRegistry());
-        RadioClientConnection connection = new(
-            "client-a",
-            "user-a",
-            "Operator A",
-            ["Aether.Transmit"]);
+        RadioClientConnection connection = coordinator.Register(
+            CreateUser("user-a", "Operator A", "Aether.Transmit"));
 
         BrowserTxCapability capability =
             coordinator.GetBrowserTxCapability(connection);
@@ -215,11 +206,8 @@ public sealed class RadioCoordinatorTests
             allowTransmit: true,
             browserTxLeaseEnabled: true,
             txOccupancyRegistry: occupancy);
-        RadioClientConnection connection = new(
-            "client-a",
-            "user-a",
-            "Operator A",
-            ["Aether.Transmit"]);
+        RadioClientConnection connection = coordinator.Register(
+            CreateUser("user-a", "Operator A", "Aether.Transmit"));
 
         BrowserTxCapability before =
             coordinator.GetBrowserTxCapability(connection);
@@ -264,16 +252,10 @@ public sealed class RadioCoordinatorTests
         RadioCoordinator coordinator = CreateCoordinator(
             browserTxLeaseEnabled: true,
             txOccupancyRegistry: occupancy);
-        RadioClientConnection first = new(
-            "client-a",
-            "user-a",
-            "Operator A",
-            ["Aether.Transmit"]);
-        RadioClientConnection second = new(
-            "client-b",
-            "user-b",
-            "Operator B",
-            ["Aether.Transmit"]);
+        RadioClientConnection first = coordinator.Register(
+            CreateUser("user-a", "Operator A", "Aether.Transmit"));
+        RadioClientConnection second = coordinator.Register(
+            CreateUser("user-b", "Operator B", "Aether.Transmit"));
 
         Assert.True(coordinator.TryAcquireTxLease(
             first,
@@ -298,6 +280,57 @@ public sealed class RadioCoordinatorTests
         Assert.Contains("Operator A", secondError, StringComparison.Ordinal);
         Assert.NotNull(firstLease);
         Assert.True(coordinator.ReleaseTxLease(first, firstLease.LeaseId));
+    }
+
+    [Fact]
+    public async Task LeaseEventsRedactSecretAndProjectPerBrowserCapability()
+    {
+        RadioCoordinator coordinator = CreateCoordinator(
+            browserTxLeaseEnabled: true,
+            txOccupancyRegistry: IdleOccupancy());
+        RadioClientConnection holder = coordinator.Register(
+            CreateUser("user-a", "Operator A", "Aether.Transmit"));
+        RadioClientConnection observer = coordinator.Register(
+            CreateUser("user-b", "Operator B", "Aether.Transmit"));
+
+        Assert.True(coordinator.TryAcquireTxLease(
+            holder,
+            TimeSpan.FromSeconds(10),
+            out TxLease? lease,
+            out string? error), error);
+        Assert.NotNull(lease);
+
+        OutboundMessage holderMessage = await holder.Outbox.ReadAsync();
+        OutboundMessage observerMessage = await observer.Outbox.ReadAsync();
+        string holderJson = System.Text.Encoding.UTF8.GetString(
+            holderMessage.Payload.Span);
+        string observerJson = System.Text.Encoding.UTF8.GetString(
+            observerMessage.Payload.Span);
+
+        Assert.DoesNotContain(lease!.LeaseId, holderJson, StringComparison.Ordinal);
+        Assert.DoesNotContain(lease.LeaseId, observerJson, StringComparison.Ordinal);
+        using JsonDocument holderDocument = JsonDocument.Parse(holderJson);
+        using JsonDocument observerDocument = JsonDocument.Parse(observerJson);
+        JsonElement holderRoot = holderDocument.RootElement;
+        JsonElement observerRoot = observerDocument.RootElement;
+        Assert.Equal("tx.lease.changed", holderRoot.GetProperty("event").GetString());
+        Assert.Equal(1, holderRoot.GetProperty("protocolVersion").GetInt32());
+        Assert.False(holderRoot.GetProperty("lease").TryGetProperty("leaseId", out _));
+        Assert.True(
+            holderRoot.GetProperty("capability")
+                .GetProperty("leaseHeldByBrowser")
+                .GetBoolean());
+        Assert.False(
+            observerRoot.GetProperty("capability")
+                .GetProperty("leaseHeldByBrowser")
+                .GetBoolean());
+        Assert.Equal(
+            "lease-held-by-other",
+            observerRoot.GetProperty("capability")
+                .GetProperty("state")
+                .GetString());
+
+        Assert.True(coordinator.ReleaseTxLease(holder, lease.LeaseId));
     }
 
     [Fact]
@@ -990,6 +1023,20 @@ public sealed class RadioCoordinatorTests
             []);
         return occupancy;
     }
+
+    private static ClaimsPrincipal CreateUser(
+        string userId,
+        string displayName,
+        params string[] roles) =>
+        new(
+            new ClaimsIdentity(
+                [
+                    new Claim("oid", userId),
+                    new Claim("name", displayName),
+                    .. roles.Select(role =>
+                        new Claim(ClaimTypes.Role, role))
+                ],
+                authenticationType: "test"));
 
     private static RadioCoordinator CreateCoordinator(
         bool allowTransmit = false,

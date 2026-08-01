@@ -22,7 +22,7 @@ import {
   rememberSessionDiagnosticExpansion,
   sessionDiagnosticExpanded,
   shortId
-} from "./admin-diagnostics.js?v=independent-watchdog-supervision-1";
+} from "./admin-diagnostics.js?v=tx-intent-validation-1";
 
 const elements = {
   userName: document.querySelector("#user-name"),

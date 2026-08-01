@@ -37,6 +37,22 @@ export function formatAge(value, now = Date.now()) {
   return minutes < 60 ? `${minutes}m ago` : `${Math.round(minutes / 60)}h ago`;
 }
 
+export function formatUntil(value, now = Date.now()) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return "unknown";
+  }
+  const seconds = Math.ceil((timestamp - now) / 1000);
+  if (seconds <= 0) {
+    return "expired";
+  }
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.round(seconds / 60);
+  return minutes < 60 ? `${minutes}m` : `${Math.round(minutes / 60)}h`;
+}
+
 export function formatTxLifecycle(lifecycle, now = Date.now()) {
   if (!lifecycle?.registered) {
     return {
@@ -63,6 +79,35 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
     ? `watchdog ${formatCount(lifecycle.watchdogEvaluationSequence)} ` +
       `(${formatAge(lifecycle.lastWatchdogEvaluatedAt, now)})`
     : "watchdog stopped";
+  const leaseDetails = [];
+  const leaseHolder = String(lifecycle.leaseDisplayName || "").trim();
+  if (leaseHolder) {
+    leaseDetails.push(
+      `${lifecycle.leaseActive ? "holder" : "last holder"} ${leaseHolder}`);
+  }
+  if (lifecycle.leaseActive && lifecycle.leaseExpiresAt) {
+    leaseDetails.push(
+      `expires ${formatUntil(lifecycle.leaseExpiresAt, now)}`);
+  }
+  const leaseReason = String(
+    lifecycle.lastLeaseChangeReason || "").trim();
+  if (leaseReason) {
+    leaseDetails.push(`reason ${leaseReason}`);
+  }
+  const leaseState =
+    `lease ${formatCount(lifecycle.leaseObservationSequence)} ` +
+    `(${formatAge(lifecycle.lastLeaseObservedAt, now)})` +
+    (leaseDetails.length ? ` ${leaseDetails.join(" ")}` : "");
+  const intentCount = Number(
+    lifecycle.browserTxIntentObservationSequence) || 0;
+  const intentState = intentCount > 0
+    ? `intent ${formatCount(intentCount)} req ` +
+      `${formatCount(lifecycle.lastBrowserTxIntentRequestSequence)} ` +
+      `${String(lifecycle.lastBrowserTxIntentAction || "unknown")}/` +
+      `${String(lifecycle.lastBrowserTxIntentOutcome || "unknown")} ` +
+      `(${formatAge(lifecycle.lastBrowserTxIntentAt, now)}) ` +
+      `${String(lifecycle.lastBrowserTxIntentReason || "").slice(0, 160)}`.trim()
+    : "";
   const independent = lifecycle.independentWatchdog;
   const independentState = !independent?.supervisionEnabled
     ? "independent not supervised"
@@ -85,8 +130,8 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `gateway ${formatCount(lifecycle.gatewayObservationSequence)}/` +
       `${lifecycle.gatewayFresh ? "fresh" : "stale"} ` +
       `(${formatAge(lifecycle.lastGatewayObservedAt, now)}) · ` +
-      `lease ${formatCount(lifecycle.leaseObservationSequence)} ` +
-      `(${formatAge(lifecycle.lastLeaseObservedAt, now)}) · ` +
+      `${leaseState} · ` +
+      `${intentState ? `${intentState} · ` : ""}` +
       `${watchdogState} · ${independentState} · ` +
       `authority ${authorityReason} · ` +
       `last ${lifecycle.lastObservation || "none"} · ${transportState}`

@@ -228,12 +228,47 @@ revocation only; it is not production emergency-unkey integration.
 The first browser-integration increment exposes only a separately configured
 ownership lease. `Radio:BrowserTxLeaseEnabled` defaults to false and is distinct
 from the reserved `Radio:AllowTransmit` switch. The gateway derives lease
-eligibility from its authenticated role set, live connection state, fresh
+eligibility from its authenticated role set, exact live connection state, fresh
 radio-authoritative occupancy, and the process-wide physical-radio lease. The
 welcome message keeps the compatibility keying capability false and separately
 reports lease eligibility plus explicit false values for keying, microphone,
 TUNE, and CW. A lease cannot reach the hidden command gate and is not operator
 intent to transmit.
+
+Phase 2F adds deliberate browser intent validation without adding command
+execution. TX ownership messages use their own strict version-1 envelope,
+JavaScript-safe positive request/sequence numbers, monotonic per-WebSocket
+sequence, bounded replay set, exact opaque lease ID, and unique intent ID. A
+reconnect discards the browser's lease secret and starts a new sequence; the
+server remains authoritative for disconnect release and expiry. Unknown fields,
+duplicate JSON properties, non-object roots, stale sequence, replayed intent ID,
+invalid duration, malformed lease ID, and invalid action payload fail before
+authority evaluation. The browser bounds outstanding TX requests to 16 and
+cannot generate an intent ID without a cryptographic random source.
+
+The validation boundary never trusts a browser-supplied radio, session, user,
+role, client, engine, FLEX handle, lease holder, occupancy, or capability. It
+re-derives the current authenticated connection and requires the exact lease,
+fresh idle occupancy, matching production lifecycle connection and FLEX handle,
+and the same registered, connected, lease-bound Disarmed watchdog epoch. Only
+then can a deliberate `mox.set`, `ptt.set`, `tune.set`, `microphone.set`, or
+`cw.send` request become `validated`. The only successful Phase 2F terminal
+outcome is still `transport-unavailable`; the result is `ok:false`, no command
+gate method is called, and no radio transport exists.
+
+The browser keeps the real MOX, TUNE, and CWX controls hidden and disabled unless
+the server separately grants the corresponding executable capability. Phase 2F
+grants only `intentValidationAvailable` after exact authority. A separate,
+clearly labeled validation-only panel may acquire/release the lease and submit a
+dry-run intent; it is hidden under the default production configuration. A
+renewal may extend authority only while fresh idle occupancy and the exact
+watchdog-bound lifecycle still hold. Authority loss releases that exact lease as
+`renewal-authority-lost`. The browser also discards its local secret if renewal
+is rejected, an unsupported lease-event version arrives, or no exact renewal
+response is confirmed before the current server expiry. Local PC microphone
+metering remains browser-only and no microphone samples enter the TX protocol.
+Admin diagnostics show the lease holder name, expiry or revocation reason, and
+latest validated/denied intent outcome without exposing the opaque lease ID.
 
 The next safety layer is an independent, station-local supervisor with no key
 method and an unkey-only transport. Its arm is purpose-bound to one engine

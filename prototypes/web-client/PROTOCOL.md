@@ -182,6 +182,9 @@ diagnostic only and cannot restore the released lease.
 
 `GET /healthz` additionally reports
 `txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,
+`txBrowserIntentProtocolVersion=1`,
+`txBrowserIntentValidationRegistered=true`,
+`txBrowserIntentCommandTransportRegistered=false`,
 `txIndependentWatchdogHostPackaged=true`,
 `txIndependentWatchdogSupervisionRegistered=true`, a supervised Disarmed state,
 per-session running/connected/registered-identity counts, cumulative restart
@@ -194,6 +197,17 @@ deployment gate requires zero registered watchdog identities. The Admin
 IPC connection, registration, lease-bound state, last sequence, restart count,
 last observation, and error. These are read-only diagnostics and are never
 accepted from browser input.
+
+Phase 2F adds a separate browser TX protocol version 1 for ownership and
+validation-only deliberate intent. Every request has a positive JavaScript-safe
+integer `id`, `protocolVersion:1`, and a strictly increasing positive
+JavaScript-safe integer `sequence` scoped to the current admitted WebSocket. A
+reconnect starts a new sequence at one and the browser discards every prior
+opaque lease secret. The gateway rejects non-object roots, unknown or duplicate
+properties, missing/defaulted fields, stale sequences, and replayed intent IDs
+before a lease or authority operation. It keeps at most 64 intent IDs per
+connection. The browser keeps at most 16 unanswered TX requests and refuses to
+create an intent ID when a cryptographic random source is unavailable.
 
 The browser may send:
 
@@ -214,9 +228,15 @@ The browser may send:
 {"id":8,"cmd":"intent","action":"pan.remove",
  "selector":"0x40000001","values":{}}
 {"id":9,"cmd":"ping"}
-{"id":10,"cmd":"tx.acquire","seconds":10}
-{"id":11,"cmd":"tx.renew","leaseId":"<opaque-lease-id>","seconds":10}
-{"id":12,"cmd":"tx.release","leaseId":"<opaque-lease-id>"}
+{"id":10,"cmd":"tx.acquire","protocolVersion":1,"sequence":1,"seconds":10}
+{"id":11,"cmd":"tx.renew","protocolVersion":1,"sequence":2,
+ "leaseId":"0123456789abcdef0123456789abcdef","seconds":10}
+{"id":12,"cmd":"tx.intent","protocolVersion":1,"sequence":3,
+ "leaseId":"0123456789abcdef0123456789abcdef",
+ "intentId":"63b5e3e4-a3ac-45fd-8857-90387a00a50a",
+ "action":"mox.set","values":{"enabled":true}}
+{"id":13,"cmd":"tx.release","protocolVersion":1,"sequence":4,
+ "leaseId":"0123456789abcdef0123456789abcdef"}
 {"cmd":"client.visibility","visible":false}
 ```
 
@@ -234,14 +254,44 @@ slice status after accepted changes. Transmit-shaped intents and properties
 remain rejected.
 
 The `tx.acquire`, `tx.renew`, and `tx.release` messages manage only the
-single-radio ownership lease. Acquisition requires the dedicated
-`Radio:BrowserTxLeaseEnabled` server switch, an authenticated transmit/admin
-role, a connected radio session, fresh radio-authoritative idle occupancy, and
-no lease held by another browser. `Radio:AllowTransmit` alone does not enable
-lease acquisition or keying. Lease responses include the freshly derived
-capability state. Holding a lease is not permission or a command to transmit;
-MOX/PTT, microphone audio, TUNE, and CW remain unavailable and
-`snapshot.canTransmit` remains `false`.
+single-radio ownership lease. Durations are explicit whole seconds from 1
+through 15; there is no default. Renew and release require the exact 32-character
+lowercase hexadecimal opaque lease ID returned only to its holder. Acquisition
+requires the dedicated `Radio:BrowserTxLeaseEnabled` server switch, current
+authentication with transmit/admin role, the exact current WebSocket, a connected
+radio session, fresh radio-authoritative idle occupancy, and no lease held by
+another browser. `Radio:AllowTransmit` alone does not enable lease acquisition or
+keying. Renewal additionally requires fresh idle occupancy and, when the
+production lifecycle is registered, the same exact fresh lease-bound Disarmed
+watchdog authority. Loss of either boundary refuses renewal and releases only
+that exact lease with reason `renewal-authority-lost`. The browser renews before
+expiry, releases on deliberate page exit where possible, and always discards the
+secret on disconnect. A rejected renewal, unsupported lease-event protocol, or
+missing exact renewal response before the current expiry also discards the
+local secret. Server disconnect and lease-expiry handling remain authoritative.
+
+`tx.intent` supports only `mox.set`, `ptt.set`, `tune.set`,
+`microphone.set`, and `cw.send`. The first four accept exactly one Boolean
+`enabled` value. CW accepts exactly one conservative printable ASCII `text`
+value from 1 through 32 characters; quote, backslash, and control characters are
+rejected. Each request carries a unique bounded `intentId` and the
+exact lease ID. The server re-derives authentication, role, current connection,
+radio state, fresh idle occupancy, exact lifecycle lease/connection/FLEX handle,
+and a connected registered Disarmed watchdog epoch. Browser-supplied identity or
+capability assertions are not accepted.
+
+A fully valid Phase 2F intent returns `validated:true`,
+`outcome:"transport-unavailable"`, and `ok:false`. This means deliberate intent
+and exact ownership were proven, but no command was executed. The method never
+invokes the hidden command gate or a radio transport. Lease, authentication,
+connection, occupancy, lifecycle, expiry, and replay failures return
+`validated:false`. Accepted requests always repeat their protocol sequence;
+parse failures repeat it only when the incoming sequence itself is a valid
+positive JavaScript-safe integer. Responses include freshly derived capability
+state. `keyingAvailable`,
+`microphoneAvailable`, `tuneAvailable`, and `cwAvailable` remain false,
+`snapshot.canTransmit` remains false, and production still has no key, unkey,
+TUNE, CW, or microphone-audio radio path.
 
 `client.visibility` accepts only a JSON boolean. A hidden browser keeps its
 authenticated WebSocket, radio session, text responses, snapshots, presence,

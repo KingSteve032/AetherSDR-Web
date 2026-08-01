@@ -22,13 +22,34 @@ test("receiver header filter follows the active radio slice", () => {
     /rxFilterLabel\.textContent\s*=\s*formatFilterWidth\(width\)/);
 });
 
-test("radio page uses receive-fidelity asset revisions", () => {
+test("radio page uses TX intent validation asset revisions", () => {
   assert.match(
     indexHtml,
-    /src="\/app\.js\?v=m2-receive-fidelity-5"/);
+    /src="\/app\.js\?v=m7-tx-intent-validation-1"/);
   assert.match(
     indexHtml,
-    /href="\/styles\.css\?v=m2-receive-fidelity-5"/);
+    /href="\/styles\.css\?v=m7-tx-intent-validation-1"/);
+  assert.match(
+    applicationSource,
+    /\.\/tx-controls\.js\?v=tx-intent-validation-1/);
+});
+
+test("TX intent validation UI cannot expose a production command by default", () => {
+  assert.match(
+    indexHtml,
+    /id="tx-authority-panel" hidden/);
+  assert.match(
+    indexHtml,
+    /id="tx-mox" class="mox" hidden disabled/);
+  assert.match(
+    indexHtml,
+    /id="tx-tune" hidden disabled/);
+  assert.match(
+    indexHtml,
+    /id="tx-cwx" hidden disabled/);
+  assert.match(
+    indexHtml,
+    /It has no radio command or microphone-audio transport\./);
 });
 
 test("a recovered radio connection replaces its stale failure notice", () => {
