@@ -51,6 +51,14 @@ StationTxCommandSigningSettings stationTxCommandSigningSettings =
         .Get<StationTxCommandSigningSettings>(options =>
             options.ErrorOnUnknownConfiguration = true) ??
     new StationTxCommandSigningSettings();
+StationTxCommandEnvelopeCoordinatorSettings
+    stationTxCommandEnvelopeCoordinatorSettings =
+        builder.Configuration
+            .GetSection(
+                StationTxCommandEnvelopeCoordinatorSettings.SectionName)
+            .Get<StationTxCommandEnvelopeCoordinatorSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new StationTxCommandEnvelopeCoordinatorSettings();
 ReverseProxySettings reverseProxySettings =
     builder.Configuration
         .GetSection(ReverseProxySettings.SectionName)
@@ -65,9 +73,12 @@ builder.Services.AddSingleton(Options.Create(remoteStationSettings));
 builder.Services.AddSingleton(Options.Create(independentTxWatchdogSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandTrustSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandSigningSettings));
+builder.Services.AddSingleton(
+    Options.Create(stationTxCommandEnvelopeCoordinatorSettings));
 builder.Services.AddSingleton<StationTxIndependentWatchdogRegistry>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
+builder.Services.AddSingleton<StationTxCommandEnvelopeCoordinator>();
 builder.Services.AddSingleton(
     Options.Create(new OriginSettings { Values = allowedOrigins }));
 ConfigureReverseProxy(builder.Services, reverseProxySettings);
@@ -157,6 +168,8 @@ StationTxCommandTrustRegistry stationTxCommandTrustRegistry =
     app.Services.GetRequiredService<StationTxCommandTrustRegistry>();
 StationTxCommandSigningAuthority stationTxCommandSigningAuthority =
     app.Services.GetRequiredService<StationTxCommandSigningAuthority>();
+StationTxCommandEnvelopeCoordinator stationTxCommandEnvelopeCoordinator =
+    app.Services.GetRequiredService<StationTxCommandEnvelopeCoordinator>();
 
 if (reverseProxySettings.Enabled)
 {
@@ -204,6 +217,8 @@ app.MapGet(
                 stationTxCommandTrustRegistry.Snapshot;
             StationTxCommandSigningDiagnostics commandSigning =
                 stationTxCommandSigningAuthority.Snapshot;
+            StationTxCommandEnvelopeCoordinatorDiagnostics commandCoordinator =
+                stationTxCommandEnvelopeCoordinator.Snapshot;
             return Results.Ok(new
             {
                 status = "ok",
@@ -230,6 +245,20 @@ app.MapGet(
                     commandSigning.KeyConfigured,
                 txStationCommandSigningAvailable =
                     commandSigning.SigningAvailable,
+                txStationCommandEnvelopeCoordinatorRegistered =
+                    commandCoordinator.Registered,
+                txStationCommandEnvelopeSubmissionEnabled =
+                    commandCoordinator.SubmissionEnabled,
+                txStationCommandEnvelopeSigningAvailable =
+                    commandCoordinator.SigningAvailable,
+                txStationCommandEnvelopeVerificationAvailable =
+                    commandCoordinator.SignatureVerificationAvailable,
+                txStationCommandEnvelopeBoundaryAttached =
+                    commandCoordinator.BoundaryAttached,
+                txStationCommandEnvelopeBoundaryVerificationAvailable =
+                    commandCoordinator.BoundarySignatureVerificationAvailable,
+                txStationCommandEnvelopeSubmissionAvailable =
+                    commandCoordinator.SubmissionAvailable,
                 txStationCommandEnvelopeSubmissionRegistered = false,
                 txStationCommandAdapterRegistered = false,
                 txStationCommandArmingAvailable = false,

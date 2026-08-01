@@ -362,11 +362,47 @@ and an ECDSA P-256/SHA-256 fixed-width P1363 signature encoded as unpadded
 base64url. Signing is serialized with key disposal under the same lock.
 
 Production health reports signing enablement, whether a key was configured,
-signing availability, and `envelopeSubmissionRegistered:false`. The authority
-is resolved only for startup validation and is not injected into a radio
-session, command boundary, browser/HTTP/WebSocket route, AetherRemote transport,
-watchdog, or timer. Therefore even `signingAvailable:true` cannot enable the
-still-disabled boundary, unavailable adapter, arming, or set-transmit path.
+and signing availability. The authority is resolved only for startup validation
+and is not injected into a radio session, command boundary,
+browser/HTTP/WebSocket route, AetherRemote transport, watchdog, or timer.
+Therefore even `signingAvailable:true` cannot enable the still-disabled
+boundary, unavailable adapter, arming, or set-transmit path.
+
+Phase 2J adds no wire message. It defines an internal station-local envelope
+coordination contract with one `StationTxCommandEnvelopeCoordinator` submission
+enable bit. The request contains exactly one `StationTxValidatedOperatorIntent`
+and one server-owned `StationTxCommandAuthority`; it cannot contain a prebuilt
+envelope. The intent carries a canonical ID, positive browser intent sequence,
+MOX or PTT kind, Boolean enabled value, and observed-at timestamp. It is accepted
+only within five seconds of observation with at most one second of future clock
+skew. TUNE, microphone, and CW do not map to the version-1 SetTransmit command.
+
+The coordinator derives the signing request's station, radio, session, browser,
+lease, gateway, engine, FLEX handle, action, and Boolean value from the authority
+and validated intent. It first requires submission enablement, signer and trust
+verifier readiness, an enabled caller-owned command boundary, registered
+adapter, arming, and SetTransmit capability. The generated unpadded base64url
+signature must decode canonically to exactly 64 P-256 P1363 bytes and verify
+against the coordinator's trust ring before the same envelope is passed to the
+boundary for independent protocol, signature, authority, freshness, safety,
+replay, and adapter validation.
+
+Intent replay state is process-local and bounded to 256 live intent IDs and 128
+live session/browser owners. An intent ID is consumed once, and each owner must
+advance its intent sequence strictly. Entries expire only after the complete
+freshness/skew window. Once consumption occurs, cancellation, signing failure,
+boundary rejection, adapter rejection, or unknown adapter outcome cannot cause
+an automatic retry; another operation requires a new deliberate intent ID and
+higher browser sequence.
+
+Production health reports
+`txStationCommandEnvelopeCoordinatorRegistered:true`, submission disabled,
+signer/verifier readiness as observed by the coordinator, boundary unattached,
+and submission unavailable. The coordinator has no production caller and is not
+injected into a session or lifecycle. The existing
+`txStationCommandEnvelopeSubmissionRegistered:false` field continues to mean no
+browser, HTTP, WebSocket, AetherRemote, watchdog, or other externally reachable
+envelope-submission route exists.
 
 `client.visibility` accepts only a JSON boolean. A hidden browser keeps its
 authenticated WebSocket, radio session, text responses, snapshots, presence,
