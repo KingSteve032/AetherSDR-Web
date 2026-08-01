@@ -49,6 +49,19 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
     stationCommandArmingAvailable: false,
     stationCommandSetTransmitAvailable: false,
     stationCommandAuditCount: 0,
+    stationCommandAdapterComposition: {
+      registered: true,
+      executorAttached: false,
+      executorRegistered: false,
+      authoritySnapshotAvailable: false,
+      commandAdapterRegistered: false,
+      armingAvailable: false,
+      setTransmitAvailable: false,
+      attemptCount: 0,
+      forwardedCount: 0,
+      lastOutcome: "none",
+      reason: "executor-unattached"
+    },
     stationCommandSessionComposition: {
       registered: true,
       coordinatorAttached: true,
@@ -95,7 +108,10 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       "watchdog 3 (1s ago) · independent disarmed pid 4242 " +
       "host watchdog seq 0 restarts 1 · command boundary v1 disabled " +
       "signature absent adapter absent arming absent set-transmit absent " +
-      "audit 0 · command composition coordinator attached boundary attached " +
+      "audit 0 · adapter composition executor absent registered no authority " +
+      "absent adapter absent arming absent set-transmit absent attempts 0 " +
+      "forwarded 0 last none reason executor-unattached · command composition " +
+      "coordinator attached boundary attached " +
       "authority absent submission unavailable attempts 0 forwarded 0 " +
       "last none reason submission-disabled · authority no-active-lease · " +
       "last gateway-heartbeat · TX transports absent"
@@ -121,6 +137,19 @@ test("admin diagnostics keep ready signature verification separate from commands
     stationCommandArmingAvailable: false,
     stationCommandSetTransmitAvailable: false,
     stationCommandAuditCount: 0,
+    stationCommandAdapterComposition: {
+      registered: true,
+      executorAttached: false,
+      executorRegistered: false,
+      authoritySnapshotAvailable: false,
+      commandAdapterRegistered: false,
+      armingAvailable: false,
+      setTransmitAvailable: false,
+      attemptCount: 0,
+      forwardedCount: 0,
+      lastOutcome: "none",
+      reason: "executor-unattached"
+    },
     stationCommandSessionComposition: {
       registered: true,
       coordinatorAttached: true,
@@ -146,6 +175,9 @@ test("admin diagnostics keep ready signature verification separate from commands
     /command boundary v1 disabled signature available adapter absent arming absent set-transmit absent audit 0/);
   assert.match(
     result.detail,
+    /adapter composition executor absent registered no authority absent adapter absent arming absent set-transmit absent attempts 0 forwarded 0 last none reason executor-unattached/);
+  assert.match(
+    result.detail,
     /command composition coordinator attached boundary attached authority absent submission unavailable attempts 0 forwarded 0 last none reason submission-disabled/);
   assert.match(result.detail, /TX transports absent/);
 });
@@ -158,6 +190,19 @@ test("admin diagnostics surface lease holder expiry and browser TX intent outcom
     safetyState: "Disarmed",
     commandTransportAvailable: false,
     emergencyUnkeyTransportAvailable: false,
+    stationCommandAdapterComposition: {
+      registered: true,
+      executorAttached: false,
+      executorRegistered: false,
+      authoritySnapshotAvailable: true,
+      commandAdapterRegistered: false,
+      armingAvailable: false,
+      setTransmitAvailable: false,
+      attemptCount: 0,
+      forwardedCount: 0,
+      lastOutcome: "none",
+      reason: "executor-unattached"
+    },
     stationCommandSessionComposition: {
       registered: true,
       coordinatorAttached: true,
@@ -216,6 +261,9 @@ test("admin diagnostics surface lease holder expiry and browser TX intent outcom
   assert.match(
     result.detail,
     /intent 2 req 9 mox\.set\/transport-unavailable \(1s ago\)/);
+  assert.match(
+    result.detail,
+    /adapter composition executor absent registered no authority available adapter absent arming absent set-transmit absent attempts 0 forwarded 0 last none reason executor-unattached/);
   assert.match(
     result.detail,
     /command composition coordinator attached boundary attached authority available submission unavailable attempts 0 forwarded 0 last none reason submission-disabled/);

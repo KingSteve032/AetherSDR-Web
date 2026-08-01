@@ -126,6 +126,29 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
         : "absent"} ` +
       `audit ${formatCount(lifecycle.stationCommandAuditCount)}`
     : "command boundary not registered";
+  const adapterComposition = lifecycle.stationCommandAdapterComposition;
+  const adapterCompositionState = adapterComposition?.registered
+    ? `adapter composition executor ${adapterComposition.executorAttached
+        ? "attached"
+        : "absent"} ` +
+      `registered ${adapterComposition.executorRegistered ? "yes" : "no"} ` +
+      `authority ${adapterComposition.authoritySnapshotAvailable
+        ? "available"
+        : "absent"} ` +
+      `adapter ${adapterComposition.commandAdapterRegistered
+        ? "registered"
+        : "absent"} ` +
+      `arming ${adapterComposition.armingAvailable
+        ? "available"
+        : "absent"} ` +
+      `set-transmit ${adapterComposition.setTransmitAvailable
+        ? "available"
+        : "absent"} ` +
+      `attempts ${formatCount(adapterComposition.attemptCount)} ` +
+      `forwarded ${formatCount(adapterComposition.forwardedCount)} ` +
+      `last ${String(adapterComposition.lastOutcome || "none")} ` +
+      `reason ${String(adapterComposition.reason || "unknown")}`
+    : "adapter composition not registered";
   const commandComposition = lifecycle.stationCommandSessionComposition;
   const commandCompositionState = commandComposition?.registered
     ? `command composition coordinator ${commandComposition.coordinatorAttached
@@ -170,7 +193,8 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `${leaseState} · ` +
       `${intentState ? `${intentState} · ` : ""}` +
       `${watchdogState} · ${independentState} · ` +
-      `${stationCommandState} · ${commandCompositionState} · ` +
+      `${stationCommandState} · ${adapterCompositionState} · ` +
+      `${commandCompositionState} · ` +
       `authority ${authorityReason} · ` +
       `last ${lifecycle.lastObservation || "none"} · ${transportState}`
   };

@@ -250,6 +250,11 @@ app.MapGet(
                 txStationCommandSessionCompositionRegistered = true,
                 txStationCommandSessionCompositionBrowserIngressRegistered =
                     false,
+                txStationCommandAdapterCompositionRegistered = true,
+                txStationCommandAdapterExecutorAttached = false,
+                txStationCommandAdapterExecutorRegistered = false,
+                txStationCommandAdapterCompositionBrowserIngressRegistered =
+                    false,
                 txStationCommandEnvelopeSubmissionEnabled =
                     commandCoordinator.SubmissionEnabled,
                 txStationCommandEnvelopeSigningAvailable =

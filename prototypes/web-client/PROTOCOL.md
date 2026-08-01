@@ -427,6 +427,33 @@ signatures, or key material. The existing
 browser, HTTP, WebSocket, AetherRemote, watchdog, or other externally reachable
 envelope-submission route exists.
 
+Phase 2L adds no wire message. Each production lifecycle constructs one internal
+`StationTxCommandAdapterComposition` and passes it to the session's signed
+command boundary as the `IStationTxCommandAdapter`. The composition delegates
+only to an optional `IStationTxCommandAdapterExecutor`; normal production session
+construction supplies `null`, and neither the session registry nor browser
+control types accept that executor interface.
+
+The executor capability snapshot has only registered, arming, SetTransmit, and
+bounded reason fields. Composition registration does not imply adapter
+registration. Without an attached registered executor,
+`IStationTxCommandAdapter.IsRegistered`, `ArmingAvailable`, and
+`SupportsSetTransmit` remain false. Health reports
+`txStationCommandAdapterCompositionRegistered:true`,
+`txStationCommandAdapterExecutorAttached:false`,
+`txStationCommandAdapterExecutorRegistered:false`, and
+`txStationCommandAdapterCompositionBrowserIngressRegistered:false`.
+
+Before any future executor call, the composition re-resolves current
+`StationTxCommandAuthority` from the lifecycle and compares every validated
+command identity exactly. It also rechecks bounded command lifetime, lease
+expiry, authentication/freshness, fresh idle occupancy, exclusive Local PTT
+ownership for the protected handle, and a matching Armed safety heartbeat.
+Failure returns a rejected transport outcome before forwarding. Cancellation
+and executor exceptions propagate after bounded diagnostics are updated;
+rejected and unknown outcomes remain distinct and are never retried by the
+composition.
+
 `client.visibility` accepts only a JSON boolean. A hidden browser keeps its
 authenticated WebSocket, radio session, text responses, snapshots, presence,
 and radio-authoritative state, but the gateway does not enqueue spectrum or

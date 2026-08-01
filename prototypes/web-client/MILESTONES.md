@@ -1713,6 +1713,70 @@ Milestone state:
   adapter, arming, and SetTransmit absent, audit 0, and all TX transports absent.
   A fresh Admin console observation contained zero entries. No TX control,
   microphone permission, radio command, or RF operation was used.
+- Phase 2L adds one typed `StationTxCommandAdapterComposition` to every
+  production lifecycle and passes it into the existing disabled signed command
+  boundary. The composition implements the internal adapter contract but owns no
+  executor, radio transport, arming operation, browser route, or retry loop.
+  Normal session construction supplies no `IStationTxCommandAdapterExecutor`, so
+  the existing adapter-registered, arming, and SetTransmit capability bits
+  remain false.
+- A future executor can receive only an already validated command. Immediately
+  before delegation, the composition independently re-resolves lifecycle-owned
+  authority and requires the exact station/radio/session/browser/lease/gateway/
+  engine/FLEX-handle tuple, bounded command and lease lifetime, current
+  authentication and observations, fresh idle occupancy, exclusive Local PTT
+  authority, and a matching freshly Armed safety identity. Mismatch, missing
+  executor, capability loss, rejection, unknown outcome, cancellation, or
+  exception never creates a retry.
+- Production reachability inspection found the executor interface only in the
+  new composition and the lifecycle's optional internal constructor parameter.
+  `RadioSessionRegistry`, `RadioCoordinator`, and `RadioWebSocketEndpoint` do not
+  accept or expose it. The only normal-source FLEX transmit command
+  implementation remains inside the compile-time HIL block; no production
+  executor implementation was added.
+- The Phase 2L focused adapter-composition suite passes 34 cases. The focused
+  lifecycle, registry, and adapter proof passes 36 cases, including an exact
+  active lease with a deliberately ready test executor that remains blocked by
+  the Disarmed safety identity and disabled boundary. The Admin diagnostics
+  suite passes 11 cases.
+- The final 2026-08-01 Phase 2L guarded validation passed 489 FlexWeb server
+  tests, 25 independent-watchdog tests, 48 TX-HIL isolation tests, 70
+  AetherRemote tests, and 124 browser tests (756 total), with a zero-warning
+  solution build. Both self-contained production binaries contained no
+  forbidden TX/HIL command surface, and the published watchdog probe remained
+  empty and Disarmed with no command transport or arming capability. Validation
+  log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-adapter-phase2l-validation-flexweb-validation.txt`.
+  No server, Git commit, Git remote, radio command, or RF operation was changed
+  by this validation-only run.
+- Release `20260801-m7-station-command-adapter-phase2l` deployed successfully to
+  the staging FlexWeb host on 2026-08-01 with
+  `20260801-m7-station-command-session-phase2k` retained for rollback. Internal,
+  public, and post-acceptance health reported adapter composition registered,
+  executor attachment and registration false, adapter-composition browser
+  ingress false, boundary disabled, envelope submission unregistered, and
+  adapter/arming/SetTransmit/production command transports unavailable. Gateway
+  PID `118380` owned the active release; watchdog PID `118886` remained
+  supervised and Disarmed with zero registered identities. Deployment log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-adapter-phase2l-flexweb-validation.txt`.
+- Browser Bridge acceptance kept PSOC2 live and receive-only with current
+  spectrum and waterfall, `FLEX-6700`, `RX-ONLY`, and `RADIO: LIVE`. Deep DOM
+  inspection found MOX, TUNE, and CWX hidden and disabled; lease acquisition and
+  validation-only intent controls disabled; DVK and FDX disabled; and PC MIC
+  still a local input meter rather than a transmit-audio path. Health reported
+  adapter composition registered while executor, browser ingress, actual
+  adapter, arming, SetTransmit, envelope submission, and command transport all
+  remained false.
+- The browser-local 2D -> 3D -> 2D renderer transition passed without changing
+  frequency or invoking a radio control. Attaching the radio debugger for deep
+  inspection temporarily caused the known reconnect state; detaching and
+  reloading the same receive-only page restored a clean live session. Admin then
+  showed `DISABLED · DISARMED · NO LEASE`, boundary v1 disabled, adapter
+  composition executor absent and unregistered, authority absent, adapter/
+  arming/SetTransmit absent, attempts 0, forwarded 0, last outcome `none`, reason
+  `executor-unattached`, unchanged command composition, and all TX transports
+  absent. A fresh Admin console observation contained zero entries. No TX
+  control, microphone permission, radio command, or RF operation was used.
 
 Acceptance criteria:
 
