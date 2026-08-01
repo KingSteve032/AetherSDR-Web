@@ -46,8 +46,10 @@ single-holder TX lease policy without changing the native radio engine.
   that can sequence one safety arm, one signed command, heartbeat, and cleanup.
   Phase 2Q removes the older direct command-session submission method and leaves
   only a typed lifecycle boundary that delegates key/unkey, heartbeat, and abort
-  through that transaction composition; production still exposes no caller.
-  The gate remains disabled
+  through that transaction composition. Phase 2R adds a typed browser-intent
+  ingress adapter that accepts only an exact server-validation result paired
+  with a Boolean `mox.set` or `ptt.set` request, but production constructs it
+  execution-disabled and exposes no caller. The gate remains disabled
   and its production FLEX transport remains unavailable.
   Verification, signing, and submission all
   default disabled; no browser command ingress, arming capability, reachable
@@ -514,6 +516,19 @@ or browser caller receives those methods or transaction types. Submission
 remains disabled, the boundary and gate remain disabled, both transports remain
 absent, and all key, heartbeat, unkey, and abort transaction capabilities remain
 false with no active transaction or reconciliation state.
+
+Phase 2R adds `BrowserTxTransactionIngress` inside that lifecycle. Its input is
+both the parsed browser request and the server-produced validation result. It
+requires exact sequence, intent ID, and action equality; requires the exact
+validation-only outcome and current intent-validation capability; rejects
+validation older than two seconds or more than one second in the future; accepts
+only Boolean `mox.set`/`ptt.set`; rejects TUNE, microphone, CW, missing values,
+mismatches, and unavailable key/unkey transaction capability; and supplies the
+fixed server-owned five-second heartbeat bound. It forwards at most once and preserves
+accepted, rejected, and unknown transaction outcomes without retry. Production
+sets execution disabled, so a valid request records `ingress-disabled` with zero
+transaction forwards. `RadioWebSocketEndpoint` remains validation-only and never
+receives this adapter or its request/result types.
 
 Environment-variable form remains disabled by default:
 

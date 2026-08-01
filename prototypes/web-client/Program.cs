@@ -288,6 +288,17 @@ app.MapGet(
                 txStationCommandTransactionBrowserIngressRegistered = false,
                 txStationCommandTransactionLifecycleBrowserIngressRegistered =
                     false,
+                txBrowserTxTransactionIngressRegistered = true,
+                txBrowserTxTransactionIngressExecutionEnabled = false,
+                txBrowserTxTransactionIngressBoundaryAttached = true,
+                txBrowserTxTransactionIngressKeyAvailable = false,
+                txBrowserTxTransactionIngressUnkeyAvailable = false,
+                txBrowserTxTransactionIngressWebSocketCallerRegistered = false,
+                txBrowserTxTransactionIngressHttpCallerRegistered = false,
+                txBrowserTxTransactionIngressAetherRemoteCallerRegistered = false,
+                txBrowserTxTransactionIngressWatchdogCallerRegistered = false,
+                txBrowserTxTransactionIngressReconnectCallerRegistered = false,
+                txBrowserTxTransactionIngressTimerCallerRegistered = false,
                 txStationCommandEnvelopeSubmissionEnabled =
                     commandCoordinator.SubmissionEnabled,
                 txStationCommandEnvelopeSigningAvailable =

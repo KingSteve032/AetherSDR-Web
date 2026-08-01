@@ -27,6 +27,8 @@ public sealed record StationTxLifecycleDiagnostics(
         StationCommandSessionComposition,
     StationTxCommandTransactionCompositionDiagnostics
         StationCommandTransactionComposition,
+    BrowserTxTransactionIngressDiagnostics
+        BrowserTxTransactionIngress,
     StationTxSafetyArmAuthorityDiagnostics
         StationCommandSafetyArmAuthority,
     StationTxSafetyArmCompositionDiagnostics
@@ -120,6 +122,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         m_stationCommandComposition;
     private readonly StationTxCommandTransactionComposition
         m_stationCommandTransactionComposition;
+    private readonly BrowserTxTransactionIngress
+        m_browserTxTransactionIngress;
     private readonly StationTxSafetyArmAuthority
         m_stationCommandSafetyArmAuthority;
     private readonly StationTxSafetyArmComposition
@@ -252,6 +256,14 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 m_stationCommandComposition,
                 ResolveStationCommandAuthority,
                 m_timeProvider);
+        m_browserTxTransactionIngress = new BrowserTxTransactionIngress(
+            executionEnabled: false,
+            () => m_stationCommandTransactionComposition.Snapshot,
+            (request, cancellationToken) =>
+                m_stationCommandTransactionComposition.SubmitAsync(
+                    request,
+                    cancellationToken),
+            m_timeProvider);
         m_authenticationMonitor = new StationTxAuthenticationMonitor(m_supervisor);
         m_engineMonitor = new StationTxEngineConnectionMonitor(m_supervisor);
         m_gatewayMonitor = new StationTxGatewayConnectionMonitor(m_supervisor);
@@ -290,6 +302,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             StationTxCommandTransactionCompositionDiagnostics
                 transactionComposition =
                     m_stationCommandTransactionComposition.Snapshot;
+            BrowserTxTransactionIngressDiagnostics transactionIngress =
+                m_browserTxTransactionIngress.Snapshot;
             StationTxSafetyArmAuthorityDiagnostics safetyArmAuthority =
                 m_stationCommandSafetyArmAuthority.Snapshot;
             StationTxSafetyArmCompositionDiagnostics safetyArmComposition =
@@ -321,6 +335,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     adapterComposition,
                     commandComposition,
                     transactionComposition,
+                    transactionIngress,
                     safetyArmAuthority,
                     safetyArmComposition,
                     m_gatewayConnected,

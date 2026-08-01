@@ -505,6 +505,18 @@ reconnect, timer, or browser type receives a transaction request or result.
 Production still has no caller, and all operations stop at disabled prerequisites
 before arm or command forwarding.
 
+Phase 2R places a typed browser-intent ingress adapter inside the lifecycle but
+leaves it execution-disabled. The adapter requires the parsed request and the
+server validation result to match exactly by sequence, intent ID, and action. It
+also requires the validation-only outcome and current intent-validation capability,
+rejects validation older than two seconds or more than one second in the future,
+accepts only Boolean MOX/PTT, derives the five-second transaction heartbeat bound
+server-side, checks current key/unkey capability, forwards at most once, and
+preserves unknown outcomes for reconciliation. TUNE, microphone, CW, missing or
+mismatched values, and stale/unavailable validation or transaction capability fail before the
+transaction boundary. No coordinator, WebSocket, HTTP route, reconnect path,
+timer, watchdog, or AetherRemote type receives the adapter, request, or result.
+
 The independent, station-local supervisor has no key method and an unkey-only
 transport. Its arm is purpose-bound to one engine
 instance, lease, session/browser owner, exact protected FLEX client handle, and

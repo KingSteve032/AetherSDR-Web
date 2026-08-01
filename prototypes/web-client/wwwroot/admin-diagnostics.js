@@ -269,6 +269,24 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `${String(transaction.lastOutcome || "none")} ` +
       `reason ${String(transaction.reason || "unknown")}`
     : "transaction lifecycle boundary not registered";
+  const transactionIngress = lifecycle.browserTxTransactionIngress;
+  const transactionIngressState = transactionIngress?.registered
+    ? `browser transaction ingress execution ${transactionIngress.executionEnabled
+        ? "enabled"
+        : "disabled"} ` +
+      `boundary ${transactionIngress.transactionBoundaryAttached
+        ? "attached"
+        : "absent"} ` +
+      `key ${transactionIngress.keyAvailable ? "available" : "unavailable"} ` +
+      `unkey ${transactionIngress.unkeyAvailable ? "available" : "unavailable"} ` +
+      `attempts ${formatCount(transactionIngress.attemptCount)} ` +
+      `forwarded ${formatCount(transactionIngress.forwardedCount)} ` +
+      `accepted ${formatCount(transactionIngress.acceptedCount)} ` +
+      `rejected ${formatCount(transactionIngress.rejectedCount)} ` +
+      `unknown ${formatCount(transactionIngress.unknownCount)} ` +
+      `last ${String(transactionIngress.lastOutcome || "none")} ` +
+      `reason ${String(transactionIngress.lastReason || "unknown")}`
+    : "browser transaction ingress not registered";
   const independent = lifecycle.independentWatchdog;
   const independentState = !independent?.supervisionEnabled
     ? "independent not supervised"
@@ -297,7 +315,7 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `${stationCommandState} · ${adapterCompositionState} · ` +
       `${safetyArmAuthorityState} · ${safetyArmCompositionState} · ` +
       `${commandCompositionState} · ${transactionState} · ` +
-      `authority ${authorityReason} · ` +
+      `${transactionIngressState} · authority ${authorityReason} · ` +
       `last ${lifecycle.lastObservation || "none"} · ${transportState}`
   };
 }
