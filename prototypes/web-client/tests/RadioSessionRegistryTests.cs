@@ -731,6 +731,7 @@ public sealed class RadioSessionRegistryTests
                 ? "AetherSDR.TxWatchdog.exe"
                 : "AetherSDR.TxWatchdog");
         Assert.True(File.Exists(executable), executable);
+        executable = EnsureExecutableWatchdogHost(executable, hostAssembly);
         return new StationTxIndependentWatchdogRegistry(
             Options.Create(new IndependentTxWatchdogSettings
             {
@@ -742,6 +743,51 @@ public sealed class RadioSessionRegistryTests
             new TestWebHostEnvironment(),
             NullLoggerFactory.Instance);
     }
+
+    private static string EnsureExecutableWatchdogHost(
+        string executable,
+        string hostAssembly)
+    {
+        if (OperatingSystem.IsWindows() ||
+            (File.GetUnixFileMode(executable) & UnixFileMode.UserExecute) != 0)
+        {
+            return executable;
+        }
+
+        string dotnetHost =
+            Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ??
+            Environment.ProcessPath ??
+            throw new InvalidOperationException(
+                "The dotnet host path is unavailable.");
+        Assert.True(File.Exists(dotnetHost), dotnetHost);
+        string wrapperDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "aethersdr-web-tests",
+            $"watchdog-wrapper-{Environment.ProcessId}");
+        Directory.CreateDirectory(wrapperDirectory);
+        File.SetUnixFileMode(
+            wrapperDirectory,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.UserExecute);
+        string wrapper = Path.Combine(
+            wrapperDirectory,
+            "AetherSDR.TxWatchdog");
+        File.WriteAllText(
+            wrapper,
+            $"#!/bin/sh{Environment.NewLine}" +
+            $"exec {ShellQuote(dotnetHost)} {ShellQuote(hostAssembly)} \"$@\"" +
+            Environment.NewLine);
+        File.SetUnixFileMode(
+            wrapper,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.UserExecute);
+        return wrapper;
+    }
+
+    private static string ShellQuote(string value) =>
+        $"'{value.Replace("'", "'\"'\"'", StringComparison.Ordinal)}'";
 
     private static async Task<StationTxIndependentWatchdogAggregate>
         WaitForWatchdogsAsync(

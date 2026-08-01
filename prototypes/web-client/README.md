@@ -25,10 +25,12 @@ single-holder TX lease policy without changing the native radio engine.
   validates deterministic ECDSA-signed station-local command envelopes against
   exact station/radio/session/browser/lease/engine/FLEX-handle authority and a
   freshly Armed safety identity. Phase 2H can load a bounded station-scoped
-  ECDSA P-256 public-key trust ring for signature verification, but production
-  still keeps that verification disabled by default and registers no command
-  ingress, command adapter, arming capability, keying command, or transmit-audio
-  path.
+  ECDSA P-256 public-key trust ring for signature verification. Phase 2I can
+  separately load one station-scoped PKCS#8 ECDSA P-256 private key and construct
+  a five-second signed envelope from an exact server-owned authority tuple.
+  Verification and signing both default disabled, and production still
+  registers no envelope-submission route, command adapter, arming capability,
+  keying command, or transmit-audio path.
 - The binary spectrum framing is experimental v0 and is not the future
   AetherD v1 wire format.
 - Production radio integration waits for AetherD RFC steps 3-5: versioned
@@ -226,6 +228,10 @@ also keep the public and internal health contract at
 `txStationCommandTrustVerificationEnabled=false`,
 `txStationCommandTrustedKeyCount=0`,
 `txStationCommandSignatureVerificationAvailable=false`,
+`txStationCommandSigningEnabled=false`,
+`txStationCommandSigningKeyConfigured=false`,
+`txStationCommandSigningAvailable=false`,
+`txStationCommandEnvelopeSubmissionRegistered=false`,
 `txStationCommandAdapterRegistered=false`,
 `txStationCommandArmingAvailable=false`,
 `txStationCommandSetTransmitAvailable=false`,
@@ -272,6 +278,39 @@ Enabling verification only makes the verifier ready. The station command
 boundary remains disabled, the command adapter remains absent, arming and
 set-transmit remain unavailable, and there is still no browser, HTTP,
 WebSocket, AetherRemote, watchdog, or timer command ingress.
+
+`StationTxCommandSigning` is a separate owned configuration object for one
+station-local private signing key. `SigningEnabled` defaults to false, while
+`KeyId` and `PrivateKeyPath` default empty. If either key field is configured,
+the complete key is loaded and validated at startup even while signing remains
+disabled, so a malformed staged private key cannot remain latent until a later
+activation. The path must be absolute and canonical and name one regular,
+non-symlink UTF-8 PEM file containing exactly one unencrypted PKCS#8 `PRIVATE
+KEY` block for ECDSA P-256. On Unix the file must have mode 0400 or 0600, and its
+immediate containing directory must not be writable by group or other users.
+Public-only keys, encrypted private keys, other curves, extra PEM blocks,
+trailing data, invalid UTF-8, oversized files, unknown configuration properties,
+relative path segments, direct symbolic links, and unsafe permissions fail
+application startup. Never commit this file or copy it into a publish tree.
+
+Environment-variable form for a reviewed station signing key is:
+
+```bash
+StationTxCommandSigning__SigningEnabled=true
+StationTxCommandSigning__KeyId=station-command-2026a
+StationTxCommandSigning__PrivateKeyPath=/var/lib/aethersdr-web/command-signing/station-command-2026a.pem
+```
+
+The singleton authority owns and disposes the imported private key. It creates a
+new canonical command UUID, strictly increasing process-local sequence, current
+issue time, five-second expiry, key ID, and base64url ECDSA signature; callers
+may supply only the exact station/radio/session/browser/lease/gateway/engine/FLEX
+ownership tuple, the supported action, and its boolean value. Diagnostics expose
+only disabled/readiness state, the key ID, and a short fingerprint of the public
+key. They never expose the private-key path or key material. Production does not
+inject the signer into radio sessions or the command boundary and exposes no
+method that submits the resulting envelope, so signing readiness alone cannot
+create command reachability.
 
 `Radio:BrowserTxLeaseEnabled` remains false by default. When deliberately enabled
 for validation, the radio page reveals a **TX AUTHORITY** panel that can acquire,

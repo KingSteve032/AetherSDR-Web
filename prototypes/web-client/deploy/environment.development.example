@@ -11,5 +11,6 @@ Radio__TcpPort=4992
 Radio__AllowTransmit=false
 Radio__BrowserTxLeaseEnabled=false
 StationTxCommandTrust__VerificationEnabled=false
+StationTxCommandSigning__SigningEnabled=false
 Radio__StationName=AETHER-WEB-RX
 RadioAccess__PolicyPath=/home/flexweb/aethersdr/state/radio-access.json

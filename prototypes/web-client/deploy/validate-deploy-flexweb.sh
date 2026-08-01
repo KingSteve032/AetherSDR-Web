@@ -169,6 +169,10 @@ expected = {
     "txStationCommandTrustVerificationEnabled": False,
     "txStationCommandTrustedKeyCount": 0,
     "txStationCommandSignatureVerificationAvailable": False,
+    "txStationCommandSigningEnabled": False,
+    "txStationCommandSigningKeyConfigured": False,
+    "txStationCommandSigningAvailable": False,
+    "txStationCommandEnvelopeSubmissionRegistered": False,
     "txStationCommandAdapterRegistered": False,
     "txStationCommandArmingAvailable": False,
     "txStationCommandSetTransmitAvailable": False,
@@ -325,17 +329,27 @@ dotnet publish "${WATCHDOG_PROJECT}" \
   --output "${watchdog_publish_dir}"
 
 binary="${publish_dir}/AetherSDR.Web"
+watchdog_binary="${watchdog_publish_dir}/AetherSDR.TxWatchdog"
+for published_executable in "${binary}" "${watchdog_binary}"; do
+  [[ -f "${published_executable}" ]] || {
+    echo "Published executable is missing: ${published_executable}" >&2
+    exit 1
+  }
+  # Some reviewed shared worktrees are hosted on CIFS, which strips the
+  # generated apphost execute bit before dotnet publish copies it. Normalize
+  # only the two known Linux entry points in the local publish tree.
+  chmod 0755 -- "${published_executable}"
+done
 [[ -x "${binary}" ]] || {
-  echo "Published AetherSDR.Web binary is missing." >&2
+  echo "Published AetherSDR.Web binary is not executable." >&2
   exit 1
 }
 [[ -s "${publish_dir}/wwwroot/tx-controls.js" ]] || {
   echo "Published tx-controls.js module is missing or empty." >&2
   exit 1
 }
-watchdog_binary="${watchdog_publish_dir}/AetherSDR.TxWatchdog"
 [[ -x "${watchdog_binary}" ]] || {
-  echo "Published AetherSDR.TxWatchdog binary is missing." >&2
+  echo "Published AetherSDR.TxWatchdog binary is not executable." >&2
   exit 1
 }
 
