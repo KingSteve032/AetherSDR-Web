@@ -97,13 +97,90 @@ public sealed class StationTxCommandBoundaryTests
     }
 
     [Fact]
+    public async Task ExactAetherOwnedUnkeyReachesOnlyTheStationAdapter()
+    {
+        using Fixture fixture = CreateFixture();
+        StationTxCommandEnvelope envelope = CreateEnvelope() with
+        {
+            Enabled = false
+        };
+        RadioTxOccupant owner = new(
+            envelope.ClientHandle,
+            "AetherSDR",
+            "AETHER-WEB-RX",
+            string.Empty,
+            AetherOwned: true);
+        StationTxCommandAuthority authority = CreateAuthority(envelope) with
+        {
+            Occupancy = CreateAuthority(envelope).Occupancy with
+            {
+                State = RadioTxOccupancyState.AetherOwned,
+                Occupants = [owner],
+                LocalPttOwners = []
+            }
+        };
+        envelope = fixture.Sign(envelope);
+
+        StationTxCommandBoundaryResult result =
+            await fixture.Boundary.ValidateAndExecuteAsync(
+                envelope,
+                authority);
+
+        Assert.True(result.Success);
+        StationTxValidatedCommand command = Assert.Single(fixture.Adapter.Commands);
+        Assert.False(command.Enabled);
+        Assert.Equal("accepted", result.Code);
+        Assert.Equal("accepted", result.Audit.Outcome);
+    }
+
+    [Fact]
+    public async Task ExternalOwnerUnkeyNeverReachesTheAdapter()
+    {
+        using Fixture fixture = CreateFixture();
+        StationTxCommandEnvelope envelope = CreateEnvelope() with
+        {
+            Enabled = false
+        };
+        StationTxCommandAuthority authority = CreateAuthority(envelope);
+        authority = authority with
+        {
+            Occupancy = authority.Occupancy with
+            {
+                State = RadioTxOccupancyState.External,
+                Occupants =
+                [
+                    new RadioTxOccupant(
+                        0x22222222,
+                        "SmartSDR-Win",
+                        "EXTERNAL",
+                        string.Empty,
+                        AetherOwned: false)
+                ],
+                LocalPttOwners = []
+            }
+        };
+        envelope = fixture.Sign(envelope);
+
+        StationTxCommandBoundaryResult result =
+            await fixture.Boundary.ValidateAndExecuteAsync(
+                envelope,
+                authority);
+
+        Assert.False(result.Success);
+        Assert.Equal("unkey_ownership_mismatch", result.Code);
+        Assert.Empty(fixture.Adapter.Commands);
+        Assert.Equal("rejected", result.Audit.Outcome);
+    }
+
+    [Fact]
     public async Task InvalidSignatureNeverReachesTheAdapter()
     {
         using Fixture fixture = CreateFixture();
         StationTxCommandEnvelope envelope = fixture.Sign(CreateEnvelope());
+        char replacement = envelope.Signature[0] == 'A' ? 'B' : 'A';
         envelope = envelope with
         {
-            Signature = envelope.Signature[..^2] + "AA"
+            Signature = replacement + envelope.Signature[1..]
         };
 
         StationTxCommandBoundaryResult result =

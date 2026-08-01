@@ -251,8 +251,13 @@ app.MapGet(
                 txStationCommandSessionCompositionBrowserIngressRegistered =
                     false,
                 txStationCommandAdapterCompositionRegistered = true,
-                txStationCommandAdapterExecutorAttached = false,
-                txStationCommandAdapterExecutorRegistered = false,
+                txStationCommandAdapterExecutorAttached = true,
+                txStationCommandAdapterExecutorRegistered = true,
+                txStationCommandGateExecutorRegistered = true,
+                txStationCommandGateExecutorTransmitEnabled = false,
+                txStationCommandGateExecutorCommandTransportAvailable = false,
+                txStationCommandGateExecutorSetTransmitAvailable = false,
+                txStationCommandGateExecutorBrowserIngressRegistered = false,
                 txStationCommandAdapterCompositionBrowserIngressRegistered =
                     false,
                 txStationCommandEnvelopeSubmissionEnabled =
@@ -268,7 +273,7 @@ app.MapGet(
                 txStationCommandEnvelopeSubmissionAvailable =
                     commandCoordinator.SubmissionAvailable,
                 txStationCommandEnvelopeSubmissionRegistered = false,
-                txStationCommandAdapterRegistered = false,
+                txStationCommandAdapterRegistered = true,
                 txStationCommandArmingAvailable = false,
                 txStationCommandSetTransmitAvailable = false,
                 txIndependentWatchdogHostPackaged = true,

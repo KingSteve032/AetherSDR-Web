@@ -349,6 +349,81 @@ public sealed class StationTxCommandAdapterCompositionTests
     }
 
     [Fact]
+    public async Task ExactAetherOwnedUnkeyCanReachExecutor()
+    {
+        RecordingExecutor executor = new();
+        StationTxCommandAuthority authority = CreateAuthority();
+        RadioTxOccupant owner = new(
+            authority.ClientHandle,
+            "AetherSDR",
+            "AETHER-WEB-RX",
+            string.Empty,
+            AetherOwned: true);
+        authority = authority with
+        {
+            Occupancy = authority.Occupancy with
+            {
+                State = RadioTxOccupancyState.AetherOwned,
+                Occupants = [owner],
+                LocalPttOwners = []
+            }
+        };
+        StationTxCommandAdapterComposition composition =
+            CreateComposition(executor, authority);
+        StationTxValidatedCommand command = CreateCommand() with
+        {
+            Enabled = false
+        };
+
+        StationTxTransportResult result =
+            await composition.ExecuteAsync(command);
+
+        Assert.True(result.Success);
+        Assert.Single(executor.Commands);
+        Assert.False(executor.Commands[0].Enabled);
+        Assert.Equal("accepted", composition.Snapshot.LastOutcome);
+    }
+
+    [Fact]
+    public async Task ExternalOwnerUnkeyNeverReachesExecutor()
+    {
+        RecordingExecutor executor = new();
+        StationTxCommandAuthority authority = CreateAuthority();
+        authority = authority with
+        {
+            Occupancy = authority.Occupancy with
+            {
+                State = RadioTxOccupancyState.External,
+                Occupants =
+                [
+                    new RadioTxOccupant(
+                        0x22222222,
+                        "SmartSDR-Win",
+                        "EXTERNAL",
+                        string.Empty,
+                        AetherOwned: false)
+                ],
+                LocalPttOwners = []
+            }
+        };
+        StationTxCommandAdapterComposition composition =
+            CreateComposition(executor, authority);
+        StationTxValidatedCommand command = CreateCommand() with
+        {
+            Enabled = false
+        };
+
+        StationTxTransportResult result =
+            await composition.ExecuteAsync(command);
+
+        Assert.False(result.Success);
+        Assert.Empty(executor.Commands);
+        Assert.Equal(
+            "unkey_ownership_mismatch",
+            composition.Snapshot.LastOutcome);
+    }
+
+    [Fact]
     public async Task LocalPttMismatchNeverReachesExecutor()
     {
         RecordingExecutor executor = new();

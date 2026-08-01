@@ -25,10 +25,11 @@ internal sealed record StationTxCommandAdapterExecutorCapabilities(
     string Reason);
 
 /// <summary>
-/// Future station-local execution boundary for one already validated command.
-/// An implementation may not infer authority from the command and may not
-/// expose a browser, HTTP, WebSocket, AetherRemote, watchdog, or timer route.
-/// Phase 2L registers no production implementation.
+/// Station-local execution boundary for one already validated command. An
+/// implementation may not infer authority from the command and may not expose
+/// a browser, HTTP, WebSocket, AetherRemote, watchdog, or timer route. Phase 2M
+/// registers only the per-session disabled-gate executor; it owns no FLEX
+/// command transport or arming authority.
 /// </summary>
 internal interface IStationTxCommandAdapterExecutor
 {
@@ -42,9 +43,9 @@ internal interface IStationTxCommandAdapterExecutor
 /// <summary>
 /// Per-session adapter composition beneath the signed command boundary. It
 /// independently re-resolves exact server-owned authority before delegating to
-/// an optional internal executor. Production supplies no executor, so the
-/// existing command-adapter, arming, and SetTransmit capability bits remain
-/// false and no radio command can be reached.
+/// an internal executor. Production supplies only the disabled-gate executor,
+/// so adapter registration is observable while arming and SetTransmit remain
+/// unavailable and no radio command can be reached.
 /// </summary>
 internal sealed class StationTxCommandAdapterComposition :
     IStationTxCommandAdapter
@@ -358,17 +359,27 @@ internal sealed class StationTxCommandAdapterComposition :
                 "occupancy_stale",
                 "Radio-authoritative TX occupancy is stale or mismatched.");
         }
-        if (!occupancy.BrowserLeaseAllowed)
+        if (command.Enabled)
         {
-            return new(
-                "radio_not_idle",
-                "Radio-authoritative TX occupancy is not idle.");
+            if (!occupancy.BrowserLeaseAllowed)
+            {
+                return new(
+                    "radio_not_idle",
+                    "Radio-authoritative TX occupancy is not idle.");
+            }
+            if (!occupancy.HasExclusiveLocalPttAuthority(command.ClientHandle))
+            {
+                return new(
+                    "local_ptt_authority_mismatch",
+                    "Exclusive Local PTT authority does not match the protected FLEX handle.");
+            }
         }
-        if (!occupancy.HasExclusiveLocalPttAuthority(command.ClientHandle))
+        else if (occupancy.State != RadioTxOccupancyState.Idle &&
+            !occupancy.HasExclusiveAetherTransmitOwnership(command.ClientHandle))
         {
             return new(
-                "local_ptt_authority_mismatch",
-                "Exclusive Local PTT authority does not match the protected FLEX handle.");
+                "unkey_ownership_mismatch",
+                "Only idle state or exact AetherSDR transmit ownership may reach the unkey gate.");
         }
         if (!AuthorityIsFreshlyArmed(authority, now))
         {

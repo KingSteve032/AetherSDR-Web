@@ -40,6 +40,13 @@ public sealed record RadioTxOccupancySnapshot(
         LocalPttOwners.Count == 1 &&
         LocalPttOwners[0].AetherOwned &&
         LocalPttOwners[0].ClientHandle == clientHandle;
+
+    public bool HasExclusiveAetherTransmitOwnership(uint clientHandle) =>
+        clientHandle != 0 &&
+        State == RadioTxOccupancyState.AetherOwned &&
+        Occupants.Count == 1 &&
+        Occupants[0].AetherOwned &&
+        Occupants[0].ClientHandle == clientHandle;
 }
 
 public sealed class RadioTxOccupancyRegistry(TimeProvider? timeProvider = null)

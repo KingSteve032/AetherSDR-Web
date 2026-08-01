@@ -389,36 +389,45 @@ counts; lease IDs, signatures, key paths, and key material are not exposed.
 
 Production now reports coordinator and per-session composition registration,
 but submission remains disabled, the attached boundary remains disabled, and
-signer, verifier, adapter, arming, and SetTransmit capabilities remain
-unavailable under default configuration. There is still no browser, HTTP,
-WebSocket, AetherRemote, watchdog, or timer submission caller, so the external
-envelope-submission route remains absent and no FLEX command or RF path can be
-invoked.
+signer, verifier, arming, and SetTransmit capabilities remain unavailable under
+default configuration. The Phase 2M adapter is registered only because its
+executor terminates at the disabled command gate. There is still no browser,
+HTTP, WebSocket, AetherRemote, watchdog, or timer submission caller, so the
+external envelope-submission route remains absent and no FLEX command or RF path
+can be invoked.
 
 Phase 2L adds one `StationTxCommandAdapterComposition` beneath each session's
-signed command boundary. It implements `IStationTxCommandAdapter`, but delegates
-only to an optional internal `IStationTxCommandAdapterExecutor`. Production
-constructs the composition without an executor. The composition is therefore
-observable while `IsRegistered`, arming, and SetTransmit remain false. The
-session registry, radio coordinator, WebSocket endpoint, AetherRemote, watchdog,
-and timers do not accept the executor type.
+signed command boundary. It implements `IStationTxCommandAdapter`, treats a
+validated command as a request rather than fresh authority, and re-resolves the
+current lifecycle-owned authority immediately before delegation. The session
+registry, radio coordinator, WebSocket endpoint, AetherRemote, watchdog, and
+timers do not accept the executor type.
 
-The adapter composition treats the validated command as a request, not as fresh
-authority. Immediately before any future delegation it re-resolves the current
-lifecycle-owned authority and independently checks the exact station, canonical
-radio, web session, stable browser identity, active lease and expiry, gateway,
-engine, FLEX handle, authentication/freshness flags, fresh idle occupancy,
-exclusive Local PTT owner, and matching Armed safety identity. The command also
-must remain inside its signed lifetime. Any mismatch, missing executor,
-capability loss, cancellation, rejection, unknown outcome, or exception stops
-without retry. Diagnostics publish only attachment/readiness and bounded
+Phase 2M adds one lifecycle-owned `StationTxCommandGateExecutor` implementing the
+internal executor contract. A validated SetTransmit true command maps only to
+`StationTxCommandGate.RequestKeyAsync`; false maps only to
+`RequestUnkeyAsync`. The executor owns no FLEX router, safety supervisor, lease,
+occupancy registry, browser route, retry loop, or timer. Gate rejection remains
+a known adapter rejection, while the two unknown command-outcome codes remain
+unknown so radio-authoritative reconciliation continues in the gate.
+
+The adapter composition independently checks the exact station, canonical radio,
+web session, stable browser identity, active lease and expiry, gateway, engine,
+FLEX handle, authentication/freshness flags, and matching freshly Armed safety
+identity. A key request additionally requires fresh idle occupancy and exclusive
+Local PTT for that exact handle. An unkey request instead permits only already
+idle state or fresh proof that the exact handle is the single AetherSDR TX owner.
+External, ambiguous, stale, or replaced ownership stops before the gate. The
+command must remain inside its signed lifetime, and mismatch, capability loss,
+cancellation, rejection, unknown outcome, or exception never causes an executor
+retry. Diagnostics publish only attachment/readiness and bounded
 attempt/forward/outcome counts.
 
-Phase 2L does not define an executor implementation, does not attach the disabled
-`StationTxCommandGate` as an executor, and does not move the HIL-only radio
-command transport into the normal production build. Health distinguishes
-adapter-composition registration from executor attachment and actual adapter
-registration; the latter two remain false.
+Production constructs the gate with `allowTransmit:false` and the unavailable
+command transport. Consequently the gate executor and command adapter report
+registered, while executor arming, SetTransmit, boundary execution, and envelope
+submission remain false. The HIL-only FLEX command transport is not linked into
+the normal production path.
 
 The next safety layer is an independent, station-local supervisor with no key
 method and an unkey-only transport. Its arm is purpose-bound to one engine
