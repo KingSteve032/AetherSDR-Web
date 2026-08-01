@@ -29,10 +29,6 @@ export function rxControlAvailability(mode, radioModel = "") {
   };
 }
 
-export function normalizeSpectrumMode(value) {
-  return String(value).toLowerCase() === "3d" ? "3d" : "2d";
-}
-
 export function filterEdgesForMode(mode, widthHz) {
   const normalizedMode = String(mode).toUpperCase();
   const limits = filterLimitsForMode(normalizedMode);

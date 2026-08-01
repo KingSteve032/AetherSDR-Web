@@ -30,11 +30,17 @@ public sealed class StationTxCommandSessionCompositionTests
                 "Sequence"
             ],
             requestProperties);
+        System.Reflection.MethodInfo[] lifecycleMethods =
+            typeof(StationTxProductionLifecycle).GetMethods(
+                System.Reflection.BindingFlags.Public |
+                System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.DeclaredOnly);
         Assert.DoesNotContain(
-            typeof(StationTxProductionLifecycle)
-                .GetMethods(System.Reflection.BindingFlags.Public |
-                    System.Reflection.BindingFlags.Instance |
-                    System.Reflection.BindingFlags.DeclaredOnly),
+            lifecycleMethods,
+            method => method.Name == "SubmitValidatedBrowserTxIntentAsync");
+        Assert.DoesNotContain(
+            lifecycleMethods.Where(method => method.IsPublic),
             method => method.Name.Contains("Submit", StringComparison.Ordinal));
     }
 

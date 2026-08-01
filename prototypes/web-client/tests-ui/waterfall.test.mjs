@@ -177,18 +177,6 @@ test("LSB filter dragging stays below the carrier", () => {
     { filterLowHz: -3000, filterHighHz: 0 });
 });
 
-test("render mode falls back to 2D and clears stale 3D history", () => {
-  const renderer = rendererHarness();
-  renderer.renderMode = "3d";
-  renderer.traceHistory = [new Float32Array([1])];
-  renderer.drawSpectrum = () => {};
-
-  renderer.setRenderMode("unexpected");
-
-  assert.equal(renderer.renderMode, "2d");
-  assert.deepEqual(renderer.traceHistory, []);
-});
-
 test("background dragging previews and commits a lower pan center", () => {
   const renderer = rendererHarness();
   renderer.drawSpectrum = () => {};
@@ -322,12 +310,10 @@ test("version 2 spectrum frames are routed to the selected pan stream", () => {
   renderer.bins = new Float32Array(64).fill(-120);
   renderer.smoothedBins = new Float32Array(64).fill(-120);
   renderer.peakBins = new Float32Array(64).fill(-120);
-  renderer.traceHistory = [];
   renderer.pointerState = null;
   renderer.pendingCenterHz = null;
   renderer.pendingBandwidthHz = null;
   renderer.onPanConfirmed = null;
-  renderer.renderMode = "2d";
   renderer.peakEnabled = false;
   renderer.waterfallEnabled = false;
   renderer.lastSpectrumDrawAt = Number.POSITIVE_INFINITY;
@@ -355,12 +341,10 @@ test("version 3 spectrum frames carry bandwidth for zoom alignment", () => {
   renderer.bins = new Float32Array(64).fill(-120);
   renderer.smoothedBins = new Float32Array(64).fill(-120);
   renderer.peakBins = new Float32Array(64).fill(-120);
-  renderer.traceHistory = [];
   renderer.pointerState = null;
   renderer.pendingCenterHz = null;
   renderer.pendingBandwidthHz = null;
   renderer.onPanConfirmed = null;
-  renderer.renderMode = "2d";
   renderer.peakEnabled = false;
   renderer.waterfallEnabled = false;
   renderer.lastSpectrumDrawAt = Number.POSITIVE_INFINITY;
@@ -380,14 +364,12 @@ test("pan settles on the first changed radio frame then tracks authority", () =>
   renderer.bins = new Float32Array(64).fill(-120);
   renderer.smoothedBins = new Float32Array(64).fill(-120);
   renderer.peakBins = new Float32Array(64).fill(-120);
-  renderer.traceHistory = [];
   renderer.pointerState = null;
   renderer.pendingCenterHz = 14_100_000;
   renderer.pendingBandwidthHz = 200_000;
   renderer.pendingSourceCenterHz = 14_280_000;
   renderer.pendingSourceBandwidthHz = 200_000;
   renderer.acceptNextConfiguredCenter = true;
-  renderer.renderMode = "2d";
   renderer.peakEnabled = false;
   renderer.waterfallEnabled = false;
   renderer.lastSpectrumDrawAt = Number.POSITIVE_INFINITY;

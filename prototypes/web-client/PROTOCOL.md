@@ -548,8 +548,17 @@ one arm cleanup. Known unkey rejection retains the arm. Unknown command or
 cleanup outcome retains it for reconciliation. Operations are serialized and a
 second key while active is rejected.
 
-Production exposes no operation route. Health reports
+Production exposes no external operation route. Phase 2Q removes the older
+internal lifecycle method that returned a command-session composition result.
+The lifecycle now accepts only the typed transaction submit, heartbeat, and abort
+records and delegates them directly to the transaction composition. No browser,
+WebSocket, HTTP, AetherRemote, registry, coordinator, watchdog, reconnect, or
+timer type receives those records or results.
+
+Health reports
 `txStationCommandTransactionCompositionRegistered:true`,
+`txStationCommandTransactionLifecycleBoundaryRegistered:true`,
+`txStationCommandDirectSessionSubmissionRegistered:false`,
 `txStationCommandTransactionSafetyArmAttached:true`,
 `txStationCommandTransactionCommandCompositionAttached:true`,
 `txStationCommandTransactionKeyAvailable:false`,
@@ -557,8 +566,9 @@ Production exposes no operation route. Health reports
 `txStationCommandTransactionUnkeyAvailable:false`,
 `txStationCommandTransactionAbortAvailable:false`,
 `txStationCommandTransactionActive:false`,
-`txStationCommandTransactionReconciliationRequired:false`, and
-`txStationCommandTransactionBrowserIngressRegistered:false`.
+`txStationCommandTransactionReconciliationRequired:false`,
+`txStationCommandTransactionBrowserIngressRegistered:false`, and
+`txStationCommandTransactionLifecycleBrowserIngressRegistered:false`.
 Per-session diagnostics add only bounded state, attempt/forward/outcome counts,
 and a bounded reason; active identity and lease values are not rendered in
 Admin text.

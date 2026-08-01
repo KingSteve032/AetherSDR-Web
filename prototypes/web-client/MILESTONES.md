@@ -1648,9 +1648,9 @@ Milestone state:
   an internal submitter interface into `StationTxProductionLifecycle`, where it
   is attached to that session's existing disabled command boundary. Neither
   `RadioCoordinator` nor `RadioWebSocketEndpoint` receives the coordinator,
-  submitter, composition, or submission method. The only non-test declaration of
-  `SubmitValidatedBrowserTxIntentAsync` remains the internal lifecycle method;
-  production has no caller.
+  submitter, composition, or submission method. At this phase the only non-test
+  declaration of `SubmitValidatedBrowserTxIntentAsync` was the internal lifecycle
+  method and production had no caller; Phase 2Q later removes that direct seam.
 - The composition request accepts only the current WebSocket connection ID, the
   already-parsed MOX/PTT Boolean intent, its positive JavaScript-safe sequence,
   and the server observation time. It derives the gateway station identity,
@@ -2036,6 +2036,67 @@ Milestone state:
   fresh 2D `RX-ONLY / RADIO: LIVE` session. A fresh Admin console observation
   contained zero entries. No TX control, microphone permission, radio command,
   or RF operation was used.
+- Phase 2Q removes `SubmitValidatedBrowserTxIntentAsync` from production. The
+  lifecycle now exposes only typed internal transaction submit, heartbeat, and
+  abort operations, each delegating directly to the Phase 2P transaction
+  composition. No lifecycle method returns a command-session result, and
+  registry, coordinator, WebSocket, HTTP, AetherRemote, watchdog, reconnect,
+  timer, and browser types receive none of the transaction request/result types.
+- Production remains callerless and fail-closed. A valid key request stops at
+  the unavailable command-path prerequisite with zero arm, command, heartbeat,
+  or cleanup forwards. Inactive unkey, heartbeat, and abort requests stop before
+  participants. Pre-cancelled requests are not counted. Health distinguishes the
+  registered lifecycle transaction boundary from absent direct session
+  submission and absent lifecycle browser ingress.
+- The radio page now has one fixed Canvas 2D spectrum implementation. Both mode
+  selectors, the browser mode preference, alternate renderer state, trace-
+  history capture, stacked drawing routine, and associated CSS/tests are
+  removed. Fill, peak hold, and waterfall visibility remain device-local display
+  preferences. No radio command is involved in this UI simplification.
+- The focused Phase 2Q lifecycle/session/transaction proof passes 56 cases. The
+  focused app-shell/slice/waterfall proof passes 29 cases. The selected combined
+  command/safety/lifecycle stack passes 399 cases. The complete FlexWeb server
+  suite passes 607 cases and all 123 browser tests pass.
+- The final 2026-08-01 Phase 2Q guarded validation passed 607 FlexWeb server
+  tests, 25 independent-watchdog tests, 48 TX-HIL isolation tests, 70
+  AetherRemote tests, and 123 browser tests (873 total), with a zero-warning
+  solution build. Both self-contained production binaries contained no
+  forbidden TX/HIL command surface; published index, application, renderer,
+  control, and stylesheet assets contained none of the removed alternate-
+  renderer selector, preference, state, history, or drawing markers; and the
+  watchdog probe remained empty and Disarmed with no command transport or
+  arming capability. The final deployment reran the same 873-test matrix after
+  adding one-time cleanup of the obsolete renderer preference and enforced that
+  the published application deletes but never reads or writes that key.
+  Validation log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-transaction-lifecycle-phase2q-validation-flexweb-validation.txt`.
+- Release `20260801-m7-station-command-transaction-lifecycle-phase2q-final`
+  deployed successfully to the staging FlexWeb host on 2026-08-01 with the
+  preceding Phase 2Q release retained for rollback. Internal and public health
+  reported the lifecycle transaction boundary registered, direct session
+  submission absent, lifecycle and transaction browser ingress absent, and key,
+  heartbeat, unkey, abort, active transaction, reconciliation, boundary,
+  submission, command transport, safety arming, and SetTransmit all false. The
+  independent watchdog remained supervised and Disarmed with zero registered
+  identities. Deployment log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-transaction-lifecycle-phase2q-final-flexweb-validation.txt`.
+- Browser Bridge acceptance kept the selected FLEX radio live and receive-only
+  with current spectrum and waterfall, `FLEX-6700`, `RX-ONLY`, and
+  `RADIO: LIVE`. Deep DOM inspection found zero mode-selector nodes and zero 3D
+  buttons. The obsolete renderer preference was absent from local storage after
+  startup, the spectrum accessibility label described the single live spectrum
+  path, and opening and closing the Display panel exposed only fill, peak,
+  waterfall, WNB, bandwidth, and radio-backed display controls. MOX, TUNE, and
+  CWX remained hidden and disabled; lease acquisition and validation-only intent
+  controls remained disabled.
+- Admin showed `DISABLED · DISARMED · NO LEASE` and the new `transaction
+  lifecycle boundary` line: safety and command participants attached, authority
+  absent, key/heartbeat/unkey/abort unavailable, active `no`, reconciliation
+  `no`, state `idle`, every attempt/forward/accepted/rejected/unknown counter
+  zero, last `none/none`, reason `submission-disabled`, and all TX transports
+  absent. A fresh Admin console observation contained zero entries. Detaching the
+  debugger restored a fresh receive-only radio session. No TX control,
+  microphone permission, radio command, or RF operation was used.
 
 Acceptance criteria:
 

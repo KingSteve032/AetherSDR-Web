@@ -8,7 +8,7 @@
         content="A browser-native AetherSDR operator console with a receive-only Flex development bridge.">
   <title>AetherSDR Web Console</title>
   <link rel="icon" href="/assets/logo.png">
-  <link rel="stylesheet" href="/styles.css?v=m7-tx-intent-validation-1">
+  <link rel="stylesheet" href="/styles.css?v=2d-only-1">
 </head>
 <body>
   <div class="app-shell">
@@ -198,16 +198,6 @@
               <span>Display</span>
               <button type="button" class="flyout-close" aria-label="Close tool panel">×</button>
             </div>
-            <div class="display-mode-row">
-              <span>Spectrum</span>
-              <div class="display-mode-switch" role="group"
-                   aria-label="Spectrum display mode">
-                <button type="button" data-spectrum-mode="2d"
-                        aria-pressed="true">2D</button>
-                <button type="button" data-spectrum-mode="3d"
-                        aria-pressed="false">3D</button>
-              </div>
-            </div>
             <label class="control-row"><span>AVG</span>
               <input id="display-average" type="range" min="0" max="100"
                      value="35" aria-label="FFT average">
@@ -280,13 +270,6 @@
           <canvas id="spectrum-canvas" role="img" tabindex="0"
                   aria-label="Radio spectrum. Click to tune, drag empty spectrum to pan, or use the mouse wheel to step the active slice."></canvas>
           <div class="spectrum-status">
-            <div class="display-mode-switch compact" role="group"
-                 aria-label="Spectrum display mode">
-              <button type="button" data-spectrum-mode="2d"
-                      aria-pressed="true">2D</button>
-              <button type="button" data-spectrum-mode="3d"
-                      aria-pressed="false">3D</button>
-            </div>
             <span id="pan-range">14.180 — 14.380 MHz</span>
             <span id="wnb-status">WNB OFF</span>
           </div>
@@ -628,6 +611,6 @@
     </footer>
   </div>
 
-  <script type="module" src="/app.js?v=m7-tx-intent-validation-1"></script>
+  <script type="module" src="/app.js?v=2d-only-1"></script>
 </body>
 </html>

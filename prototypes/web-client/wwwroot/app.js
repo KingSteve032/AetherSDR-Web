@@ -1,4 +1,4 @@
-import { WaterfallRenderer } from "./waterfall.js?v=reconnect-1";
+import { WaterfallRenderer } from "./waterfall.js?v=2d-only-1";
 import { AetherSMeter } from "./meter.js?v=needle-3";
 import { RadioAudioPlayer } from "./audio.js?v=visibility-recovery-2";
 import { RadioTransportClient } from "./radio-transport.js?v=background-delivery-1";
@@ -11,13 +11,12 @@ import {
   clampFilterEdgesForMode,
   filterEdgesForMode,
   formatFilterWidth,
-  normalizeSpectrumMode,
   rxControlAvailability,
   signalDbmToMeterFraction,
   sliceFlagDirection,
   sliceFlagDirections,
   sliceSignalDbm
-} from "./slice-controls.js?v=receive-fidelity-1";
+} from "./slice-controls.js?v=2d-only-1";
 import {
   clampPanCenter,
   formatFrequency,
@@ -64,6 +63,10 @@ const browserClientIdKey = "aether.web.browserClientId";
 const sessionIdKey = "aether.web.sessionId";
 const browserClientId = createBrowserClientId();
 
+// Phase 2Q removed the alternate renderer and its preference. Clear the
+// obsolete key once so returning browsers do not retain a misleading setting.
+window.localStorage.removeItem("aether.web.spectrumMode");
+
 const state = {
   socket: null,
   session: null,
@@ -87,8 +90,6 @@ const state = {
   livePanTuners: new Map(),
   bandPlanSegments: [],
   bandPlanNodes: new Map(),
-  spectrumMode: normalizeSpectrumMode(
-    window.localStorage.getItem("aether.web.spectrumMode")),
   displayFill:
     window.localStorage.getItem("aether.web.displayFill") !== "false",
   displayPeak:
@@ -236,7 +237,6 @@ const txController = new BrowserTxController({
 });
 state.tx = txController.snapshot();
 sMeter.loadGeometry("/assets/s-meter-v1.json");
-renderer.setRenderMode(state.spectrumMode);
 renderer.setFillEnabled(state.displayFill);
 renderer.setPeakEnabled(state.displayPeak);
 renderer.setWaterfallEnabled(state.waterfallVisible);
@@ -1265,7 +1265,7 @@ function renderAll() {
   renderControls();
   renderTxControls();
   renderPresence();
-  renderSpectrumMode();
+  renderSpectrumAccessibility();
   renderDisplayControls();
 
   const pan = activePan();
@@ -1902,12 +1902,6 @@ function wireControls() {
     });
   });
 
-  document.querySelectorAll("[data-spectrum-mode]").forEach(button => {
-    button.addEventListener("click", () => {
-      setSpectrumMode(button.dataset.spectrumMode);
-    });
-  });
-
   document.querySelectorAll("input[type=\"range\"]").forEach(input => {
     updateRangeFill(input);
     input.addEventListener("input", () => {
@@ -2218,7 +2212,7 @@ function wireControls() {
 }
 
 function restoreLayoutPreferences() {
-  setSpectrumMode(state.spectrumMode, false);
+  renderSpectrumAccessibility();
   if (state.toolOpen) {
     showToolPanel(state.activeTool, false);
   } else {
@@ -3049,34 +3043,14 @@ async function loadBandPlan() {
   }
 }
 
-function setSpectrumMode(mode, announce = true) {
-  state.spectrumMode = normalizeSpectrumMode(mode);
-  window.localStorage.setItem(
-    "aether.web.spectrumMode",
-    state.spectrumMode);
-  renderer.setRenderMode(state.spectrumMode);
-  renderSpectrumMode();
-  if (announce) {
-    showToast(
-      state.spectrumMode === "2d"
-        ? "2D panadapter selected."
-        : "3D stacked panadapter selected.");
-  }
-}
-
-function renderSpectrumMode() {
-  document.querySelectorAll("[data-spectrum-mode]").forEach(button => {
-    const active = button.dataset.spectrumMode === state.spectrumMode;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-pressed", String(active));
-  });
+function renderSpectrumAccessibility() {
   const source =
     state.session?.radioMode?.toLowerCase() === "flexrx"
       ? "Flex radio"
       : "simulated radio";
   elements.spectrumCanvas.setAttribute(
     "aria-label",
-    `Live ${source} spectrum in ${state.spectrumMode.toUpperCase()} mode. ` +
+    `Live ${source} spectrum. ` +
     "Click to tune, drag a slice to move it, drag empty spectrum to pan, " +
     "use the mouse wheel to step the active slice, or hold Control while " +
     "scrolling to zoom around the pointer.");

@@ -11,6 +11,9 @@ const applicationSource = await readFile(
 const stylesheetSource = await readFile(
   new URL("../wwwroot/styles.css", import.meta.url),
   "utf8");
+const waterfallSource = await readFile(
+  new URL("../wwwroot/waterfall.js", import.meta.url),
+  "utf8");
 
 test("receiver header filter follows the active radio slice", () => {
   assert.match(indexHtml, /id="rx-filter-label"/);
@@ -22,16 +25,39 @@ test("receiver header filter follows the active radio slice", () => {
     /rxFilterLabel\.textContent\s*=\s*formatFilterWidth\(width\)/);
 });
 
-test("radio page uses TX intent validation asset revisions", () => {
+test("radio page uses current receive-only asset revisions", () => {
   assert.match(
     indexHtml,
-    /src="\/app\.js\?v=m7-tx-intent-validation-1"/);
+    /src="\/app\.js\?v=2d-only-1"/);
   assert.match(
     indexHtml,
-    /href="\/styles\.css\?v=m7-tx-intent-validation-1"/);
+    /href="\/styles\.css\?v=2d-only-1"/);
+  assert.match(
+    applicationSource,
+    /\.\/waterfall\.js\?v=2d-only-1/);
+  assert.match(
+    applicationSource,
+    /\.\/slice-controls\.js\?v=2d-only-1/);
   assert.match(
     applicationSource,
     /\.\/tx-controls\.js\?v=tx-intent-validation-1/);
+});
+
+test("radio page has one fixed 2D spectrum path", () => {
+  assert.doesNotMatch(indexHtml, /data-spectrum-mode|>3D</);
+  assert.match(
+    applicationSource,
+    /localStorage\.removeItem\("aether\.web\.spectrumMode"\)/);
+  assert.doesNotMatch(
+    applicationSource,
+    /localStorage\.(?:getItem|setItem)\("aether\.web\.spectrumMode"\)|spectrumMode:|setRenderMode|3D stacked/);
+  assert.doesNotMatch(
+    waterfallSource,
+    /renderMode|drawStackedSpectrum|traceHistory|traceCaptureInterval/);
+  assert.doesNotMatch(stylesheetSource, /display-mode-switch|display-mode-row/);
+  assert.match(
+    applicationSource,
+    /function renderSpectrumAccessibility\(\)/);
 });
 
 test("TX intent validation UI cannot expose a production command by default", () => {

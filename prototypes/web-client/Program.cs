@@ -275,6 +275,8 @@ app.MapGet(
                 txStationCommandSafetyArmCompositionBrowserIngressRegistered =
                     false,
                 txStationCommandTransactionCompositionRegistered = true,
+                txStationCommandTransactionLifecycleBoundaryRegistered = true,
+                txStationCommandDirectSessionSubmissionRegistered = false,
                 txStationCommandTransactionSafetyArmAttached = true,
                 txStationCommandTransactionCommandCompositionAttached = true,
                 txStationCommandTransactionKeyAvailable = false,
@@ -284,6 +286,8 @@ app.MapGet(
                 txStationCommandTransactionActive = false,
                 txStationCommandTransactionReconciliationRequired = false,
                 txStationCommandTransactionBrowserIngressRegistered = false,
+                txStationCommandTransactionLifecycleBrowserIngressRegistered =
+                    false,
                 txStationCommandEnvelopeSubmissionEnabled =
                     commandCoordinator.SubmissionEnabled,
                 txStationCommandEnvelopeSigningAvailable =
