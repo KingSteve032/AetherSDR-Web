@@ -290,6 +290,27 @@ in-memory recording adapter to prove that only a fully signed and exactly bound
 command reaches the adapter interface; this adapter is never registered in a
 production publish.
 
+Phase 2H adds an immutable station-scoped public-key trust ring without adding a
+command source or transport. `StationTxCommandTrust` owns the complete setting:
+verification enablement plus at most four key ID/path entries for bounded key
+rotation. Startup loads every configured trust anchor even while verification is
+disabled, so an invalid staged key cannot remain latent until activation. Each
+anchor must be an exact ECDSA P-256 SubjectPublicKeyInfo `PUBLIC KEY` PEM in a
+bounded regular file and regular containing directory that are not writable by
+group or other users. Direct symbolic links, relative path segments, duplicate
+IDs or paths, private keys, unsupported curves, multiple PEM blocks, trailing
+data, malformed UTF-8, unknown configuration properties, and oversized files
+fail startup. Invalid key IDs are rejected without echoing their untrusted text
+into startup errors.
+
+The singleton registry owns and disposes the imported public keys. Per-session
+command boundaries receive only its verifier interface; they do not receive key
+paths, key bytes, a signer, or a method that accepts an envelope. When reviewed
+configuration enables verification, health and Admin may report `signature
+available`, but `boundaryEnabled`, `commandAdapterRegistered`, `armingAvailable`,
+and `setTransmitAvailable` remain false. This deliberately proves trust-anchor
+readiness independently from command reachability.
+
 The next safety layer is an independent, station-local supervisor with no key
 method and an unkey-only transport. Its arm is purpose-bound to one engine
 instance, lease, session/browser owner, exact protected FLEX client handle, and

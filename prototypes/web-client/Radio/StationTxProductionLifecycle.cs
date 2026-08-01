@@ -152,7 +152,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         RadioTxOccupancyRegistry occupancy,
         ILogger<StationTxProductionLifecycle> logger,
         TimeProvider? timeProvider = null,
-        IStationTxIndependentWatchdogFactory? independentWatchdogFactory = null)
+        IStationTxIndependentWatchdogFactory? independentWatchdogFactory = null,
+        IStationTxCommandSignatureVerifier? stationCommandVerifier = null)
     {
         ArgumentNullException.ThrowIfNull(leases);
         ArgumentNullException.ThrowIfNull(occupancy);
@@ -175,7 +176,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         m_stationCommandBoundary = new StationTxCommandBoundary(
             enabled: false,
             m_gatewayInstanceId,
-            new StationTxUnavailableCommandSignatureVerifier(),
+            stationCommandVerifier ??
+                new StationTxUnavailableCommandSignatureVerifier(),
             new StationTxUnavailableCommandAdapter(),
             m_timeProvider);
         m_commandGate = new StationTxCommandGate(

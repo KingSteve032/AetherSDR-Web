@@ -1441,6 +1441,59 @@ Milestone state:
   stayed live, with no additional errors during a second ten-second steady-state
   interval. One managed gateway PID owned the active release and public health
   remained fail-closed.
+- Phase 2H adds one station-scoped `StationTxCommandTrust` configuration object
+  for immutable public-key verification without adding command ingress or a
+  radio adapter. Verification defaults false and the trust ring defaults empty.
+  Up to four exact key IDs support bounded rotation; every configured anchor is
+  loaded at startup even while verification is disabled so malformed staged
+  configuration cannot remain latent until activation.
+- Trust anchors must be exact UTF-8 `PUBLIC KEY` PEM files containing ECDSA
+  P-256 SubjectPublicKeyInfo. Absolute paths may contain no relative segments.
+  The file and its immediate containing directory must be regular, non-symlink,
+  and not writable by group or other users on Unix. Duplicate IDs or paths,
+  missing or oversized files, private keys, unsupported curves, multiple PEM
+  blocks, trailing data, invalid UTF-8, unknown configuration properties, and
+  unsafe file/directory permissions fail startup. Malformed key IDs are not
+  echoed into errors. Diagnostics expose only key IDs, short public-key fingerprints,
+  readiness, and count; they do not expose paths or key bytes.
+- A singleton registry owns and disposes the imported verification keys. Each
+  production session receives only its verifier interface. Even with a ready
+  verifier, focused lifecycle proof keeps the command boundary disabled, the
+  adapter absent, arming and set-transmit unavailable, audit count zero, the
+  command gate Disabled, and the safety supervisor Disarmed. The Phase 2H
+  focused suites pass 32 trust-store cases and 81 combined command-boundary,
+  trust, lifecycle, and session-wiring cases. No signer, envelope-submit method,
+  browser or AetherRemote route, watchdog command path, FLEX command, or RF
+  operation was added.
+- The final 2026-08-01 Phase 2H guarded validation passed 364 FlexWeb server
+  tests, 25 independent-watchdog tests, 48 TX-HIL isolation tests, 70
+  AetherRemote tests, and 124 browser tests (631 total), with a zero-warning
+  solution build. Both self-contained production binaries contained no
+  forbidden TX/HIL command surface, and the published watchdog status probe
+  remained empty and Disarmed with no command transport or arming capability.
+  Validation log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-trust-phase2h-validation-flexweb-validation.txt`.
+- Release `20260801-m7-station-command-trust-phase2h-r2` deployed successfully
+  on 2026-08-01 with release `20260801-020917-flexweb-validation` retained for
+  automatic rollback. Internal and public health reported trust verification
+  disabled, zero trusted keys, signature verification unavailable, the station
+  command boundary registered but disabled, and adapter, arming, set-transmit,
+  watchdog-command, and production command transports unavailable. One
+  supervised watchdog process was connected, remained Disarmed, and had zero
+  registered identities. Deployment log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-trust-phase2h-r2-flexweb-validation.txt`.
+- Browser Bridge acceptance kept PSOC2 `LIVE` and `RX-ONLY`, passed the 2D -> 3D
+  -> 2D renderer transition, rendered no validation-only panel, kept MOX and CWX
+  hidden and disabled, exposed no PTT, and left both TUNE surfaces disabled. The
+  radio UI stated `No browser transmit path is connected.` Admin reported
+  `DISABLED · DISARMED · NO LEASE` and `command boundary v1 disabled signature
+  absent adapter absent arming absent set-transmit absent audit 0`, followed by
+  `TX transports absent`; its console was empty. Radio debugger capture retained
+  four stale-session 502/404 entries and six WebSocket retry entries associated
+  with deployment/reconnect, but the fixed total of ten did not increase during
+  a further ten-second steady-state interval while the page remained live and
+  RX-only. Gateway PID `111161` owned the accepted release, watchdog PID `111294`
+  remained Disarmed, and the post-acceptance health probe remained fail-closed.
 
 Acceptance criteria:
 

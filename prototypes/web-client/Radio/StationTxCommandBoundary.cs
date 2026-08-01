@@ -869,12 +869,34 @@ internal sealed class StationTxEcdsaCommandSignatureVerifier :
 
         m_keyId = keyId;
         m_key = ECDsa.Create();
-        m_key.ImportSubjectPublicKeyInfo(subjectPublicKeyInfo, out int bytesRead);
-        if (bytesRead != subjectPublicKeyInfo.Length)
+        try
+        {
+            m_key.ImportSubjectPublicKeyInfo(
+                subjectPublicKeyInfo,
+                out int bytesRead);
+            if (bytesRead != subjectPublicKeyInfo.Length)
+            {
+                throw new CryptographicException(
+                    "The station command public key contains trailing data.");
+            }
+
+            ECParameters parameters = m_key.ExportParameters(
+                includePrivateParameters: false);
+            if (!string.Equals(
+                    parameters.Curve.Oid.Value,
+                    "1.2.840.10045.3.1.7",
+                    StringComparison.Ordinal) ||
+                parameters.Q.X?.Length != 32 ||
+                parameters.Q.Y?.Length != 32)
+            {
+                throw new CryptographicException(
+                    "Station command signatures require an ECDSA P-256 key.");
+            }
+        }
+        catch
         {
             m_key.Dispose();
-            throw new CryptographicException(
-                "The station command public key contains trailing data.");
+            throw;
         }
     }
 

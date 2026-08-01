@@ -39,6 +39,12 @@ IndependentTxWatchdogSettings independentTxWatchdogSettings =
         .GetSection(IndependentTxWatchdogSettings.SectionName)
         .Get<IndependentTxWatchdogSettings>() ??
     new IndependentTxWatchdogSettings();
+StationTxCommandTrustSettings stationTxCommandTrustSettings =
+    builder.Configuration
+        .GetSection(StationTxCommandTrustSettings.SectionName)
+        .Get<StationTxCommandTrustSettings>(options =>
+            options.ErrorOnUnknownConfiguration = true) ??
+    new StationTxCommandTrustSettings();
 ReverseProxySettings reverseProxySettings =
     builder.Configuration
         .GetSection(ReverseProxySettings.SectionName)
@@ -51,7 +57,9 @@ builder.Services.AddSingleton(Options.Create(authSettings));
 builder.Services.AddSingleton(Options.Create(radioSettings));
 builder.Services.AddSingleton(Options.Create(remoteStationSettings));
 builder.Services.AddSingleton(Options.Create(independentTxWatchdogSettings));
+builder.Services.AddSingleton(Options.Create(stationTxCommandTrustSettings));
 builder.Services.AddSingleton<StationTxIndependentWatchdogRegistry>();
+builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton(
     Options.Create(new OriginSettings { Values = allowedOrigins }));
 ConfigureReverseProxy(builder.Services, reverseProxySettings);
@@ -137,6 +145,8 @@ builder.Services.AddRateLimiter(options =>
 WebApplication app = builder.Build();
 StationTxIndependentWatchdogRegistry independentTxWatchdogRegistry =
     app.Services.GetRequiredService<StationTxIndependentWatchdogRegistry>();
+StationTxCommandTrustRegistry stationTxCommandTrustRegistry =
+    app.Services.GetRequiredService<StationTxCommandTrustRegistry>();
 
 if (reverseProxySettings.Enabled)
 {
@@ -180,6 +190,8 @@ app.MapGet(
         {
             StationTxIndependentWatchdogAggregate watchdog =
                 independentTxWatchdogRegistry.Snapshot;
+            StationTxCommandTrustDiagnostics commandTrust =
+                stationTxCommandTrustRegistry.Snapshot;
             return Results.Ok(new
             {
                 status = "ok",
@@ -196,7 +208,11 @@ app.MapGet(
                     StationTxCommandBoundary.ProtocolVersion,
                 txStationCommandBoundaryRegistered = true,
                 txStationCommandBoundaryEnabled = false,
-                txStationCommandSignatureVerificationAvailable = false,
+                txStationCommandTrustVerificationEnabled =
+                    commandTrust.VerificationEnabled,
+                txStationCommandTrustedKeyCount = commandTrust.TrustedKeyCount,
+                txStationCommandSignatureVerificationAvailable =
+                    commandTrust.SignatureVerificationAvailable,
                 txStationCommandAdapterRegistered = false,
                 txStationCommandArmingAvailable = false,
                 txStationCommandSetTransmitAvailable = false,

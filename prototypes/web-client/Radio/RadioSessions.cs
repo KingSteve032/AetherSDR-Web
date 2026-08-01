@@ -271,7 +271,8 @@ public sealed class RadioSessionRegistry(
     ILoggerFactory loggerFactory,
     ILogger<RadioSessionRegistry> logger,
     IOptions<RemoteStationSettings>? remoteSettings = null,
-    StationTxIndependentWatchdogRegistry? independentWatchdogs = null)
+    StationTxIndependentWatchdogRegistry? independentWatchdogs = null,
+    StationTxCommandTrustRegistry? stationCommandTrust = null)
     : BackgroundService
 {
     // Mobile browsers suspend WebSockets as soon as the operator changes apps
@@ -727,7 +728,8 @@ public sealed class RadioSessionRegistry(
             txLeaseManager,
             txOccupancyRegistry,
             loggerFactory.CreateLogger<StationTxProductionLifecycle>(),
-            independentWatchdogFactory: independentWatchdogs);
+            independentWatchdogFactory: independentWatchdogs,
+            stationCommandVerifier: stationCommandTrust?.Verifier);
         RadioCoordinator coordinator = new(
             loggerFactory.CreateLogger<RadioCoordinator>(),
             sessionOptions,

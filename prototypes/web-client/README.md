@@ -24,8 +24,11 @@ single-holder TX lease policy without changing the native radio engine.
   microphone, or CW intent against exact ownership. Phase 2G additionally
   validates deterministic ECDSA-signed station-local command envelopes against
   exact station/radio/session/browser/lease/engine/FLEX-handle authority and a
-  freshly Armed safety identity. Production still registers no signing key,
-  command adapter, arming capability, keying command, or transmit-audio path.
+  freshly Armed safety identity. Phase 2H can load a bounded station-scoped
+  ECDSA P-256 public-key trust ring for signature verification, but production
+  still keeps that verification disabled by default and registers no command
+  ingress, command adapter, arming capability, keying command, or transmit-audio
+  path.
 - The binary spectrum framing is experimental v0 and is not the future
   AetherD v1 wire format.
 - Production radio integration waits for AetherD RFC steps 3-5: versioned
@@ -217,6 +220,15 @@ also keep the public and internal health contract at
 `txBrowserIntentProtocolVersion=1`,
 `txBrowserIntentValidationRegistered=true`,
 `txBrowserIntentCommandTransportRegistered=false`,
+`txStationCommandProtocolVersion=1`,
+`txStationCommandBoundaryRegistered=true`,
+`txStationCommandBoundaryEnabled=false`,
+`txStationCommandTrustVerificationEnabled=false`,
+`txStationCommandTrustedKeyCount=0`,
+`txStationCommandSignatureVerificationAvailable=false`,
+`txStationCommandAdapterRegistered=false`,
+`txStationCommandArmingAvailable=false`,
+`txStationCommandSetTransmitAvailable=false`,
 `txIndependentWatchdogHostPackaged=true`,
 `txIndependentWatchdogSupervisionRegistered=true`, a supervised Disarmed state,
 non-negative process/session/restart counts, zero registered watchdog identities
@@ -235,6 +247,31 @@ delay. The default executable is
 must still name that reviewed executable. Disabling supervision is diagnostic
 and receive-only; it never enables transmit. Process or IPC loss revokes only
 the matching tracked lease and a replacement process starts empty and Disarmed.
+
+`StationTxCommandTrust` is one owned configuration object for station-local
+signature verification. `VerificationEnabled` defaults to false and `Keys`
+defaults to empty. At most four keys may be configured for bounded rotation.
+Each entry requires a unique canonical `KeyId` and an absolute canonical
+`PublicKeyPath` naming exactly one UTF-8 `PUBLIC KEY` PEM block containing an
+ECDSA P-256 SubjectPublicKeyInfo value. Private keys, other curves, extra PEM
+blocks, invalid UTF-8, oversized files, duplicate IDs or paths, unknown
+configuration properties, direct symbolic links, and key files or containing
+directories writable by group/other users fail application startup. Malformed
+key IDs are not echoed into startup errors. Key IDs and short public-key fingerprints may appear
+in diagnostics; key paths and key material do not.
+
+Environment-variable form for a reviewed public trust anchor is:
+
+```bash
+StationTxCommandTrust__VerificationEnabled=true
+StationTxCommandTrust__Keys__0__KeyId=station-command-2026a
+StationTxCommandTrust__Keys__0__PublicKeyPath=/var/lib/aethersdr-web/command-trust/station-command-2026a.pem
+```
+
+Enabling verification only makes the verifier ready. The station command
+boundary remains disabled, the command adapter remains absent, arming and
+set-transmit remain unavailable, and there is still no browser, HTTP,
+WebSocket, AetherRemote, watchdog, or timer command ingress.
 
 `Radio:BrowserTxLeaseEnabled` remains false by default. When deliberately enabled
 for validation, the radio page reveals a **TX AUTHORITY** panel that can acquire,
