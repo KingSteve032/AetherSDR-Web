@@ -1494,6 +1494,76 @@ Milestone state:
   a further ten-second steady-state interval while the page remained live and
   RX-only. Gateway PID `111161` owned the accepted release, watchdog PID `111294`
   remained Disarmed, and the post-acceptance health probe remained fail-closed.
+- Phase 2I adds one separate station-scoped `StationTxCommandSigning`
+  configuration object for private-key readiness without adding command
+  submission. Signing defaults false and key ID/path default empty. A configured
+  key is loaded even while signing remains disabled. The file must be one exact
+  UTF-8 unencrypted PKCS#8 ECDSA P-256 `PRIVATE KEY` PEM at an absolute
+  canonical path. It must be regular and non-symlink; on Unix it must be mode
+  0400 or 0600 and its immediate regular directory cannot be writable by group
+  or other users. Public-only or encrypted keys, other curves, extra blocks,
+  trailing data, invalid UTF-8, unknown properties, oversized files, path
+  indirection, and unsafe permissions fail startup.
+- The singleton signing authority owns and disposes the imported private key.
+  Its internal request accepts only the exact station/radio/session/browser/
+  lease/gateway/engine/FLEX tuple, `SetTransmit`, and the Boolean value. The
+  authority owns the protocol version, key ID, random canonical command UUID,
+  strictly increasing process-local sequence, millisecond-canonical issue time,
+  fixed five-second expiry, and base64url ECDSA P-256/SHA-256 signature. Its
+  public surface exposes diagnostics and disposal only; it is not injected into
+  a session or lifecycle and no browser, HTTP, WebSocket, AetherRemote,
+  watchdog, timer, adapter, or envelope-submit path exists. Health explicitly
+  reports signing disabled, no key configured, signing unavailable, and no
+  submission registration while all prior command capabilities remain false.
+- The Phase 2I signing-authority suite passes 32 cases, and the combined signing,
+  trust, command-boundary, lifecycle, and session-wiring proof passes 128 cases.
+  Shared CIFS worktrees can strip the generated watchdog apphost execute bit;
+  the affected process-boundary test now creates a private mode-0700 temporary
+  wrapper that invokes the same reviewed watchdog assembly through the current
+  `dotnet` host. Production watchdog launch behavior is unchanged. The guarded
+  packaging path similarly normalizes only the two known published Linux entry
+  points to mode 0755 before binary inspection.
+- The final 2026-08-01 Phase 2I guarded validation passed 396 FlexWeb server
+  tests, 25 independent-watchdog tests, 48 TX-HIL isolation tests, 70
+  AetherRemote tests, and 124 browser tests (663 total), with a zero-warning
+  solution build. Both self-contained production binaries contained no
+  forbidden TX/HIL command surface, and the published watchdog status probe
+  remained empty and Disarmed with no command transport or arming capability.
+  Validation log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-signing-phase2i-validation-r2-flexweb-validation.txt`.
+  No server, Git commit, Git remote, radio command, or RF operation was changed
+  by this validation-only run.
+- Release `20260801-m7-station-command-signing-phase2i` deployed successfully on
+  2026-08-01 with release
+  `20260801-m7-station-command-trust-phase2h-r2` retained for automatic rollback.
+  Internal and public health reported signing disabled, no signing key
+  configured, signing unavailable, no envelope-submission registration, trust
+  verification disabled, zero trusted keys, the command boundary registered but
+  disabled, and adapter, arming, set-transmit, watchdog-command, and production
+  command transports unavailable. Gateway PID `112615` owned the active release;
+  watchdog PID `113152` was connected and Disarmed with zero registered
+  identities. Deployment log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-signing-phase2i-flexweb-validation.txt`.
+- Browser Bridge acceptance authenticated Steven Griggs (KC4CAW), showed all
+  four radios online, and connected PSOC2 with one available Multi-Flex slot.
+  The live console rendered spectrum and waterfall and reported `AETHER-WEB`,
+  `FLEX-6700`, `RX-ONLY`, and `RADIO: LIVE`. The harmless browser-local 2D -> 3D
+  -> 2D transition passed while the receiver stayed live. Deep DOM inspection
+  found MOX, TUNE, and CWX hidden and disabled; TX and P/CW applets hidden;
+  split, DVK, and FDX disabled; PC MIC hidden with its local-monitor-only and
+  never-sent-to-radio warning; and no visible enabled PTT/MOX/TUNE/CW control or
+  validation-only authority panel.
+- Admin showed one healthy browser/radio session with current spectrum and audio,
+  idle TX occupancy, exact AetherSDR Local PTT authority, and
+  `DISABLED · DISARMED · NO LEASE`. Its lifecycle line retained command boundary
+  v1 disabled, signature absent, adapter absent, arming absent, set-transmit
+  absent, audit 0, authority `no-active-lease`, and `TX transports absent`; its
+  console contained zero errors or warnings. Attaching the radio debugger itself
+  produced one fixed five-entry WebSocket failure burst and temporarily showed
+  Reconnecting/Offline. The count did not increase during a ten-second
+  observation, and detaching immediately restored live 2D spectrum/waterfall
+  without replacing the server-side radio session. No frequency, TX control,
+  microphone permission, radio command, or RF operation was used.
 
 Acceptance criteria:
 

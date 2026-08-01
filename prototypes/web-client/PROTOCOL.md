@@ -341,6 +341,33 @@ keys, so `signatureVerificationAvailable` is false. The independent watchdog and
 remote gateway have no reference to the adapter interface or an envelope-submit
 method and cannot bypass the safety-supervisor validation.
 
+Phase 2I adds an internal station-local signing authority for constructing this
+same version-1 envelope, not a new wire protocol. `StationTxCommandSigning`
+accepts one enable bit, one canonical key ID, and one absolute canonical private
+key path. A configured key is loaded even while signing is disabled. The bounded
+regular, non-symlink file must be exact UTF-8 with one unencrypted PKCS#8
+`PRIVATE KEY` PEM block for ECDSA P-256; on Unix it must be mode 0400 or 0600,
+and its regular immediate containing directory cannot be writable by group or
+other users. Public-only or encrypted keys, unsupported curves, path indirection,
+extra blocks, trailing data, malformed UTF-8, unknown properties, and unsafe
+permissions fail startup.
+
+A signing request cannot supply protocol version, key ID, command UUID,
+sequence, issue time, expiry, or signature. It supplies only the exact server-
+owned station/radio/session/browser/lease/gateway/engine/FLEX-handle tuple,
+`SetTransmit`, and the Boolean value. The authority supplies protocol version 1,
+a canonical random command UUID, a strictly increasing process-local sequence,
+the current UTC issue time, a fixed five-second expiry, the configured key ID,
+and an ECDSA P-256/SHA-256 fixed-width P1363 signature encoded as unpadded
+base64url. Signing is serialized with key disposal under the same lock.
+
+Production health reports signing enablement, whether a key was configured,
+signing availability, and `envelopeSubmissionRegistered:false`. The authority
+is resolved only for startup validation and is not injected into a radio
+session, command boundary, browser/HTTP/WebSocket route, AetherRemote transport,
+watchdog, or timer. Therefore even `signingAvailable:true` cannot enable the
+still-disabled boundary, unavailable adapter, arming, or set-transmit path.
+
 `client.visibility` accepts only a JSON boolean. A hidden browser keeps its
 authenticated WebSocket, radio session, text responses, snapshots, presence,
 and radio-authoritative state, but the gateway does not enqueue spectrum or

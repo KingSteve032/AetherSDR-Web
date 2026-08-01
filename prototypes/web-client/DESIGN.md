@@ -311,6 +311,34 @@ available`, but `boundaryEnabled`, `commandAdapterRegistered`, `armingAvailable`
 and `setTransmitAvailable` remain false. This deliberately proves trust-anchor
 readiness independently from command reachability.
 
+Phase 2I adds a separate station-scoped private signing authority without adding
+a command source or destination. `StationTxCommandSigning` owns one enable bit,
+one canonical key ID, and one absolute private-key path. A configured key is
+loaded even while signing is disabled. The file must be one exact UTF-8,
+unencrypted PKCS#8 ECDSA P-256 `PRIVATE KEY` PEM in a bounded regular,
+non-symlink file; Unix mode must be 0400 or 0600 and the immediate containing
+directory cannot be writable by group or other users. Public-only keys,
+encrypted keys, other curves, extra PEM blocks, trailing data, invalid UTF-8,
+unknown properties, path indirection, and unsafe permissions fail startup.
+
+The singleton authority owns and disposes the private key and serializes signing
+under one lock because the imported `ECDsa` object is not shared concurrently.
+Its internal request contains only the exact station/radio/session/browser/
+lease/gateway/engine/FLEX tuple, the supported action, and its boolean value.
+The authority itself supplies a canonical command UUID, a strictly increasing
+process-local sequence, current issue time, five-second expiry, configured key
+ID, and base64url P-256/SHA-256 signature over the existing version-1 payload.
+Diagnostics expose only enablement, readiness, key ID, and a short public-key
+fingerprint. The private path and private material never leave the authority.
+
+Production resolves this authority at startup solely to validate configuration
+and publish fail-closed health bits. The signer is not injected into a radio
+session, lifecycle, command boundary, browser route, HTTP/WebSocket endpoint,
+AetherRemote path, watchdog, or timer. There is no envelope-submission method,
+and the boundary, adapter, arming, and set-transmit capabilities remain false.
+This proves private-key readiness independently from both command reachability
+and public-key verification readiness.
+
 The next safety layer is an independent, station-local supervisor with no key
 method and an unkey-only transport. Its arm is purpose-bound to one engine
 instance, lease, session/browser owner, exact protected FLEX client handle, and

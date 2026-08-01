@@ -45,6 +45,12 @@ StationTxCommandTrustSettings stationTxCommandTrustSettings =
         .Get<StationTxCommandTrustSettings>(options =>
             options.ErrorOnUnknownConfiguration = true) ??
     new StationTxCommandTrustSettings();
+StationTxCommandSigningSettings stationTxCommandSigningSettings =
+    builder.Configuration
+        .GetSection(StationTxCommandSigningSettings.SectionName)
+        .Get<StationTxCommandSigningSettings>(options =>
+            options.ErrorOnUnknownConfiguration = true) ??
+    new StationTxCommandSigningSettings();
 ReverseProxySettings reverseProxySettings =
     builder.Configuration
         .GetSection(ReverseProxySettings.SectionName)
@@ -58,8 +64,10 @@ builder.Services.AddSingleton(Options.Create(radioSettings));
 builder.Services.AddSingleton(Options.Create(remoteStationSettings));
 builder.Services.AddSingleton(Options.Create(independentTxWatchdogSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandTrustSettings));
+builder.Services.AddSingleton(Options.Create(stationTxCommandSigningSettings));
 builder.Services.AddSingleton<StationTxIndependentWatchdogRegistry>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
+builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
 builder.Services.AddSingleton(
     Options.Create(new OriginSettings { Values = allowedOrigins }));
 ConfigureReverseProxy(builder.Services, reverseProxySettings);
@@ -147,6 +155,8 @@ StationTxIndependentWatchdogRegistry independentTxWatchdogRegistry =
     app.Services.GetRequiredService<StationTxIndependentWatchdogRegistry>();
 StationTxCommandTrustRegistry stationTxCommandTrustRegistry =
     app.Services.GetRequiredService<StationTxCommandTrustRegistry>();
+StationTxCommandSigningAuthority stationTxCommandSigningAuthority =
+    app.Services.GetRequiredService<StationTxCommandSigningAuthority>();
 
 if (reverseProxySettings.Enabled)
 {
@@ -192,6 +202,8 @@ app.MapGet(
                 independentTxWatchdogRegistry.Snapshot;
             StationTxCommandTrustDiagnostics commandTrust =
                 stationTxCommandTrustRegistry.Snapshot;
+            StationTxCommandSigningDiagnostics commandSigning =
+                stationTxCommandSigningAuthority.Snapshot;
             return Results.Ok(new
             {
                 status = "ok",
@@ -213,6 +225,12 @@ app.MapGet(
                 txStationCommandTrustedKeyCount = commandTrust.TrustedKeyCount,
                 txStationCommandSignatureVerificationAvailable =
                     commandTrust.SignatureVerificationAvailable,
+                txStationCommandSigningEnabled = commandSigning.SigningEnabled,
+                txStationCommandSigningKeyConfigured =
+                    commandSigning.KeyConfigured,
+                txStationCommandSigningAvailable =
+                    commandSigning.SigningAvailable,
+                txStationCommandEnvelopeSubmissionRegistered = false,
                 txStationCommandAdapterRegistered = false,
                 txStationCommandArmingAvailable = false,
                 txStationCommandSetTransmitAvailable = false,
