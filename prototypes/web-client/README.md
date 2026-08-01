@@ -28,9 +28,13 @@ single-holder TX lease policy without changing the native radio engine.
   ECDSA P-256 public-key trust ring for signature verification. Phase 2I can
   separately load one station-scoped PKCS#8 ECDSA P-256 private key and construct
   a five-second signed envelope from an exact server-owned authority tuple.
-  Verification and signing both default disabled, and production still
-  registers no envelope-submission route, command adapter, arming capability,
-  keying command, or transmit-audio path.
+  Phase 2J adds a station-scoped internal envelope coordinator that accepts only
+  a fresh validated MOX/PTT intent, consumes its ID and owner sequence once,
+  derives the signing tuple from server authority, and self-verifies the
+  signature before a caller-owned command boundary. Verification, signing, and
+  submission all default disabled; production attaches no boundary or caller
+  and still registers no envelope-submission route, command adapter, arming
+  capability, keying command, or transmit-audio path.
 - The binary spectrum framing is experimental v0 and is not the future
   AetherD v1 wire format.
 - Production radio integration waits for AetherD RFC steps 3-5: versioned
@@ -231,6 +235,13 @@ also keep the public and internal health contract at
 `txStationCommandSigningEnabled=false`,
 `txStationCommandSigningKeyConfigured=false`,
 `txStationCommandSigningAvailable=false`,
+`txStationCommandEnvelopeCoordinatorRegistered=true`,
+`txStationCommandEnvelopeSubmissionEnabled=false`,
+`txStationCommandEnvelopeSigningAvailable=false`,
+`txStationCommandEnvelopeVerificationAvailable=false`,
+`txStationCommandEnvelopeBoundaryAttached=false`,
+`txStationCommandEnvelopeBoundaryVerificationAvailable=false`,
+`txStationCommandEnvelopeSubmissionAvailable=false`,
 `txStationCommandEnvelopeSubmissionRegistered=false`,
 `txStationCommandAdapterRegistered=false`,
 `txStationCommandArmingAvailable=false`,
@@ -311,6 +322,40 @@ key. They never expose the private-key path or key material. Production does not
 inject the signer into radio sessions or the command boundary and exposes no
 method that submits the resulting envelope, so signing readiness alone cannot
 create command reachability.
+
+`StationTxCommandEnvelopeCoordinator` is a third owned configuration object with
+one `SubmissionEnabled` bit, defaulting to false. Its internal submission method
+is not public and is not injected into `RadioSessionRegistry`,
+`StationTxProductionLifecycle`, any browser/HTTP/WebSocket handler,
+AetherRemote, the watchdog, or a timer. Startup resolves the singleton only to
+validate registration and report fail-closed diagnostics.
+
+An internal request contains one already-validated operator intent and one
+server-owned `StationTxCommandAuthority`. The intent must be a canonical,
+positive-sequence MOX or PTT Boolean action observed within five seconds, with
+at most one second of future clock skew. The coordinator derives every envelope
+identity and the SetTransmit value from those two records; callers cannot supply
+protocol version, key ID, command ID, envelope sequence, timestamps, signature,
+or a prebuilt envelope. A bounded tracker consumes each intent ID once and
+requires strictly increasing intent sequence per session/browser owner. Unknown
+adapter outcomes, cancellation, boundary rejection, or signing failure do not
+make the same intent retryable.
+
+Before signing, submission requires the coordinator enable bit, a ready signer,
+a ready verifier, an enabled caller-owned boundary, a registered adapter, fresh
+arming, and SetTransmit capability. After signing, the coordinator decodes the
+fixed-width P-256 signature and verifies it against the station trust ring before
+calling the boundary, which independently revalidates the envelope, exact
+authority, replay sequence, safety arm, and adapter. Production attaches no
+boundary, so health reports coordinator registered but boundary unattached and
+submission unavailable. `txStationCommandEnvelopeSubmissionRegistered` remains
+false because there is still no externally reachable submission route.
+
+Environment-variable form remains disabled by default:
+
+```bash
+StationTxCommandEnvelopeCoordinator__SubmissionEnabled=false
+```
 
 `Radio:BrowserTxLeaseEnabled` remains false by default. When deliberately enabled
 for validation, the radio page reveals a **TX AUTHORITY** panel that can acquire,

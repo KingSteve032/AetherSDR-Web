@@ -334,10 +334,42 @@ fingerprint. The private path and private material never leave the authority.
 Production resolves this authority at startup solely to validate configuration
 and publish fail-closed health bits. The signer is not injected into a radio
 session, lifecycle, command boundary, browser route, HTTP/WebSocket endpoint,
-AetherRemote path, watchdog, or timer. There is no envelope-submission method,
-and the boundary, adapter, arming, and set-transmit capabilities remain false.
-This proves private-key readiness independently from both command reachability
-and public-key verification readiness.
+AetherRemote path, watchdog, or timer. There is no externally reachable
+envelope-submission method, and the boundary, adapter, arming, and set-transmit
+capabilities remain false. This proves private-key readiness independently from
+both command reachability and public-key verification readiness.
+
+Phase 2J adds a station-scoped internal envelope coordinator without attaching it
+to any radio session or lifecycle. `StationTxCommandEnvelopeCoordinator` owns
+one submission enable bit and defaults false. The singleton receives the signer
+and trust verifier only; it does not own a radio boundary or adapter. Its public
+surface exposes diagnostics only. The internal submission method requires a
+caller-owned boundary, one server-owned `StationTxCommandAuthority`, and one
+fresh already-validated operator intent. Only MOX/PTT Boolean intent is accepted;
+TUNE, microphone, and CW remain outside SetTransmit. Intent IDs are canonical,
+intent sequence is positive, and observation age is limited to five seconds
+with one second of future clock skew.
+
+The coordinator derives every signed identity and Boolean value from the
+validated intent plus authority; callers cannot supply an envelope, signature,
+key ID, command ID, command sequence, or timestamp. A bounded in-memory replay
+tracker consumes each intent ID once and requires strictly increasing intent
+sequence for each session/browser owner. Cancellation, unknown adapter outcome,
+boundary rejection, or signing failure never makes that intent retryable. Before
+signing, the coordinator requires submission enabled, signer and verifier ready,
+an enabled caller boundary, registered adapter, arming capability, and
+SetTransmit availability. It then self-verifies the generated fixed-width P-256
+signature against the station trust ring before the boundary independently
+revalidates the envelope and exact authority.
+
+Production resolves the coordinator for startup diagnostics only. No caller-
+owned boundary is attached, no coordinator reference enters `RadioSessionRegistry`
+or `StationTxProductionLifecycle`, and no browser, HTTP, WebSocket,
+AetherRemote, watchdog, timer, adapter, arming operation, FLEX command, or RF
+path can invoke it. Health therefore distinguishes coordinator registration from
+external submission registration: the coordinator is registered, but submission
+is disabled, boundary attachment and availability are false, and the external
+envelope-submission route remains absent.
 
 The next safety layer is an independent, station-local supervisor with no key
 method and an unkey-only transport. Its arm is purpose-bound to one engine

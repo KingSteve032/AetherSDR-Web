@@ -1564,6 +1564,85 @@ Milestone state:
   observation, and detaching immediately restored live 2D spectrum/waterfall
   without replacing the server-side radio session. No frequency, TX control,
   microphone permission, radio command, or RF operation was used.
+- Phase 2J adds one station-scoped internal
+  `StationTxCommandEnvelopeCoordinator` with submission disabled by default.
+  Its public surface exposes diagnostics only. The internal request contains one
+  already-validated operator intent plus one server-owned command-authority
+  snapshot; callers cannot supply a command envelope, protocol/key/command ID,
+  envelope sequence, timestamps, signature, or adapter. Only canonical,
+  positive-sequence MOX/PTT Boolean intent observed within five seconds and no
+  more than one second in the future is eligible. TUNE, microphone, and CW do
+  not map to `SetTransmit` in this phase.
+- Before signing, the coordinator requires its enable bit, signer and trust
+  verifier readiness, an enabled caller-owned boundary with its own verifier,
+  a registered adapter, fresh arming, and SetTransmit capability. It derives all
+  signed identities from the authority snapshot, consumes each intent ID once,
+  requires strictly increasing intent sequence per session/browser owner, and
+  bounds replay state to 256 live IDs and 128 live owners. Cancellation,
+  signing failure, boundary/adapter rejection, and unknown outcomes never retry
+  a consumed intent. The generated canonical 64-byte P-256/P1363 signature is
+  self-verified against the station trust ring before the caller boundary
+  independently revalidates protocol, signature, exact authority, safety, and
+  replay state.
+- Production resolves the coordinator for startup diagnostics only. It is not
+  injected into a radio session or lifecycle, no caller boundary is attached,
+  and no browser, HTTP, WebSocket, AetherRemote, watchdog, timer, adapter,
+  arming, FLEX command, or RF path can invoke it. Health distinguishes internal
+  registration from external reachability: coordinator registered, submission
+  disabled, boundary unattached, submission unavailable, and external envelope
+  submission unregistered while adapter, arming, and set-transmit remain false.
+  The focused coordinator suite passes 39 cases and the combined coordinator,
+  signer, trust, command-boundary, lifecycle, and session-wiring proof passes
+  168 cases.
+- The final 2026-08-01 Phase 2J guarded validation passed 435 FlexWeb server
+  tests, 25 independent-watchdog tests, 48 TX-HIL isolation tests, 70
+  AetherRemote tests, and 124 browser tests (702 total), with a zero-warning
+  solution build. Both self-contained production binaries contained no
+  forbidden TX/HIL command surface, and the published watchdog probe remained
+  empty and Disarmed with no command transport or arming capability. Validation
+  log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-envelope-phase2j-validation-flexweb-validation.txt`.
+  No server, Git commit, Git remote, radio command, or RF operation was changed
+  by this validation-only run.
+- Release `20260801-m7-station-command-envelope-phase2j` deployed successfully
+  to the staging FlexWeb host on 2026-08-01 with
+  `20260801-m7-station-command-signing-phase2i` retained for rollback. Internal,
+  public, and post-deploy health reported coordinator registered, submission
+  disabled, coordinator signer/verifier unavailable under default configuration,
+  boundary unattached, boundary verification unavailable, submission
+  unavailable, and external envelope submission unregistered. The command
+  boundary remained disabled and adapter, arming, SetTransmit, watchdog-command,
+  and production command transports remained unavailable. Gateway PID `113705`
+  owned the active release; the deployed watchdog artifact remained
+  command-incapable and Disarmed. Deployment log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-envelope-phase2j-flexweb-validation.txt`.
+  Git was not committed or pushed, and no radio command or RF operation was
+  used.
+- Browser Bridge acceptance on 2026-08-01 authenticated the operator, kept the
+  PSOC2 console live with spectrum and waterfall, and reported `AETHER-WEB`,
+  `FLEX-6700`, `RX-ONLY`, and `RADIO: LIVE`. The browser-local 2D -> 3D -> 2D
+  renderer transition passed without changing frequency or invoking a radio
+  control. Deep DOM inspection found MOX and CWX hidden and disabled, both TUNE
+  surfaces disabled, the TX applet unreachable, the validation-only authority
+  panel hidden with its controls disabled, and DVK/FDX disabled. PC MIC remained
+  a local input meter only; no microphone permission or transmit audio path was
+  used.
+- Phase 2J health reported coordinator registered, submission disabled,
+  coordinator signing/verifier unavailable under default configuration,
+  boundary unattached, boundary verification unavailable, submission
+  unavailable, and external envelope submission unregistered. Admin showed one
+  healthy browser/radio session with current streaming, no external GUI owner,
+  idle occupancy, exact AetherSDR Local PTT authority, and
+  `DISABLED · DISARMED · NO LEASE`. Its command line retained boundary v1
+  disabled, signature absent, adapter absent, arming absent, set-transmit absent,
+  audit 0, no active lease, and `TX transports absent`; the Admin console buffer
+  contained zero errors or warnings.
+- Attaching the radio debugger during the deep audit created one overlong
+  browser-network diagnostic sample and a sticky validation banner. Current
+  Admin diagnostics continued to report normal fresh traffic. Reloading the same
+  receive-only page after detaching the debugger cleared the test-induced banner
+  and restored a clean live 2D view without replacing radio authority. No TX
+  control, radio command, or RF operation was used.
 
 Acceptance criteria:
 
