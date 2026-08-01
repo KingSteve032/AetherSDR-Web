@@ -25,6 +25,8 @@ public sealed record StationTxLifecycleDiagnostics(
         StationCommandAdapterComposition,
     StationTxCommandSessionCompositionDiagnostics
         StationCommandSessionComposition,
+    StationTxSafetyArmCompositionDiagnostics
+        StationCommandSafetyArmComposition,
     bool GatewayConnected,
     bool EngineConnected,
     bool BrowserConnected,
@@ -110,6 +112,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         m_stationCommandAdapterComposition;
     private readonly StationTxCommandSessionComposition
         m_stationCommandComposition;
+    private readonly StationTxSafetyArmComposition
+        m_stationCommandSafetyArmComposition;
     private readonly StationTxSafetySupervisor m_supervisor;
     private readonly StationTxAuthenticationMonitor m_authenticationMonitor;
     private readonly StationTxEngineConnectionMonitor m_engineMonitor;
@@ -192,6 +196,17 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             occupancy,
             commandTransport,
             m_timeProvider);
+        m_supervisor = new StationTxSafetySupervisor(
+            m_radioId,
+            occupancy,
+            emergencyTransport,
+            m_timeProvider);
+        m_stationCommandSafetyArmComposition =
+            new StationTxSafetyArmComposition(
+                armAuthority: null,
+                m_supervisor,
+                ResolveStationCommandAuthority,
+                m_timeProvider);
         StationTxCommandGateExecutor commandGateExecutor =
             new(m_commandGate);
         m_stationCommandAdapterComposition =
@@ -210,11 +225,6 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             stationCommandSubmitter,
             m_stationCommandBoundary,
             ResolveStationCommandAuthority,
-            m_timeProvider);
-        m_supervisor = new StationTxSafetySupervisor(
-            m_radioId,
-            occupancy,
-            emergencyTransport,
             m_timeProvider);
         m_authenticationMonitor = new StationTxAuthenticationMonitor(m_supervisor);
         m_engineMonitor = new StationTxEngineConnectionMonitor(m_supervisor);
@@ -251,6 +261,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 m_stationCommandAdapterComposition.Snapshot;
             StationTxCommandSessionCompositionDiagnostics commandComposition =
                 m_stationCommandComposition.Snapshot;
+            StationTxSafetyArmCompositionDiagnostics safetyArmComposition =
+                m_stationCommandSafetyArmComposition.Snapshot;
             lock (m_stateGate)
             {
                 LifecycleFreshness freshness =
@@ -277,6 +289,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     m_stationCommandBoundary.AuditCount,
                     adapterComposition,
                     commandComposition,
+                    safetyArmComposition,
                     m_gatewayConnected,
                     m_engineConnected,
                     m_browserConnected,

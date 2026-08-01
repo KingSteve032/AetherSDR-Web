@@ -62,6 +62,20 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       lastOutcome: "none",
       reason: "executor-arming-unavailable"
     },
+    stationCommandSafetyArmComposition: {
+      registered: true,
+      armAuthorityAttached: false,
+      armAuthorityRegistered: false,
+      sessionAuthoritySnapshotAvailable: false,
+      armAvailable: false,
+      heartbeatAvailable: false,
+      abortAvailable: false,
+      attemptCount: 0,
+      forwardedCount: 0,
+      lastOperation: "none",
+      lastOutcome: "none",
+      reason: "arm-authority-unattached"
+    },
     stationCommandSessionComposition: {
       registered: true,
       coordinatorAttached: true,
@@ -110,8 +124,10 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       "signature absent adapter registered arming absent set-transmit absent " +
       "audit 0 · adapter composition executor attached registered yes authority " +
       "absent adapter registered arming absent set-transmit absent attempts 0 " +
-      "forwarded 0 last none reason executor-arming-unavailable · command composition " +
-      "coordinator attached boundary attached " +
+      "forwarded 0 last none reason executor-arming-unavailable · safety arm composition " +
+      "authority absent registered no session authority absent arm unavailable heartbeat " +
+      "unavailable abort unavailable attempts 0 forwarded 0 last none/none reason " +
+      "arm-authority-unattached · command composition coordinator attached boundary attached " +
       "authority absent submission unavailable attempts 0 forwarded 0 " +
       "last none reason submission-disabled · authority no-active-lease · " +
       "last gateway-heartbeat · TX transports absent"
@@ -150,6 +166,20 @@ test("admin diagnostics keep ready signature verification separate from commands
       lastOutcome: "none",
       reason: "executor-arming-unavailable"
     },
+    stationCommandSafetyArmComposition: {
+      registered: true,
+      armAuthorityAttached: false,
+      armAuthorityRegistered: false,
+      sessionAuthoritySnapshotAvailable: false,
+      armAvailable: false,
+      heartbeatAvailable: false,
+      abortAvailable: false,
+      attemptCount: 0,
+      forwardedCount: 0,
+      lastOperation: "none",
+      lastOutcome: "none",
+      reason: "arm-authority-unattached"
+    },
     stationCommandSessionComposition: {
       registered: true,
       coordinatorAttached: true,
@@ -178,6 +208,9 @@ test("admin diagnostics keep ready signature verification separate from commands
     /adapter composition executor attached registered yes authority absent adapter registered arming absent set-transmit absent attempts 0 forwarded 0 last none reason executor-arming-unavailable/);
   assert.match(
     result.detail,
+    /safety arm composition authority absent registered no session authority absent arm unavailable heartbeat unavailable abort unavailable attempts 0 forwarded 0 last none\/none reason arm-authority-unattached/);
+  assert.match(
+    result.detail,
     /command composition coordinator attached boundary attached authority absent submission unavailable attempts 0 forwarded 0 last none reason submission-disabled/);
   assert.match(result.detail, /TX transports absent/);
 });
@@ -202,6 +235,20 @@ test("admin diagnostics surface lease holder expiry and browser TX intent outcom
       forwardedCount: 0,
       lastOutcome: "none",
       reason: "executor-arming-unavailable"
+    },
+    stationCommandSafetyArmComposition: {
+      registered: true,
+      armAuthorityAttached: false,
+      armAuthorityRegistered: false,
+      sessionAuthoritySnapshotAvailable: true,
+      armAvailable: false,
+      heartbeatAvailable: false,
+      abortAvailable: false,
+      attemptCount: 0,
+      forwardedCount: 0,
+      lastOperation: "none",
+      lastOutcome: "none",
+      reason: "arm-authority-unattached"
     },
     stationCommandSessionComposition: {
       registered: true,
@@ -264,6 +311,9 @@ test("admin diagnostics surface lease holder expiry and browser TX intent outcom
   assert.match(
     result.detail,
     /adapter composition executor attached registered yes authority available adapter registered arming absent set-transmit absent attempts 0 forwarded 0 last none reason executor-arming-unavailable/);
+  assert.match(
+    result.detail,
+    /safety arm composition authority absent registered no session authority available arm unavailable heartbeat unavailable abort unavailable attempts 0 forwarded 0 last none\/none reason arm-authority-unattached/);
   assert.match(
     result.detail,
     /command composition coordinator attached boundary attached authority available submission unavailable attempts 0 forwarded 0 last none reason submission-disabled/);

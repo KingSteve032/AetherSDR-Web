@@ -45,6 +45,23 @@ public sealed class StationTxProductionLifecycleTests
         Assert.Equal(0, adapterComposition.ForwardedCount);
         Assert.Equal("none", adapterComposition.LastOutcome);
         Assert.Equal("executor-arming-unavailable", adapterComposition.Reason);
+        StationTxSafetyArmCompositionDiagnostics safetyArm =
+            snapshot.StationCommandSafetyArmComposition;
+        Assert.True(safetyArm.Registered);
+        Assert.False(safetyArm.ArmAuthorityAttached);
+        Assert.False(safetyArm.ArmAuthorityRegistered);
+        Assert.False(safetyArm.ArmAuthorityArmAvailable);
+        Assert.False(safetyArm.ArmAuthorityHeartbeatAvailable);
+        Assert.False(safetyArm.ArmAuthorityAbortAvailable);
+        Assert.False(safetyArm.SessionAuthoritySnapshotAvailable);
+        Assert.False(safetyArm.ArmAvailable);
+        Assert.False(safetyArm.HeartbeatAvailable);
+        Assert.False(safetyArm.AbortAvailable);
+        Assert.Equal(0, safetyArm.AttemptCount);
+        Assert.Equal(0, safetyArm.ForwardedCount);
+        Assert.Equal("none", safetyArm.LastOperation);
+        Assert.Equal("none", safetyArm.LastOutcome);
+        Assert.Equal("arm-authority-unattached", safetyArm.Reason);
         Assert.True(snapshot.GatewayConnected);
         Assert.False(snapshot.EngineConnected);
         Assert.False(snapshot.BrowserConnected);
@@ -152,6 +169,16 @@ public sealed class StationTxProductionLifecycleTests
         Assert.False(adapter.ArmingAvailable);
         Assert.False(adapter.SetTransmitAvailable);
         Assert.Equal("executor-arming-unavailable", adapter.Reason);
+        StationTxSafetyArmCompositionDiagnostics safetyArm =
+            snapshot.StationCommandSafetyArmComposition;
+        Assert.True(safetyArm.Registered);
+        Assert.False(safetyArm.ArmAuthorityAttached);
+        Assert.False(safetyArm.ArmAuthorityRegistered);
+        Assert.True(safetyArm.SessionAuthoritySnapshotAvailable);
+        Assert.False(safetyArm.ArmAvailable);
+        Assert.False(safetyArm.HeartbeatAvailable);
+        Assert.False(safetyArm.AbortAvailable);
+        Assert.Equal("arm-authority-unattached", safetyArm.Reason);
         Assert.True(snapshot.StationCommandAdapterRegistered);
         Assert.False(snapshot.StationCommandArmingAvailable);
         Assert.False(snapshot.StationCommandSetTransmitAvailable);
@@ -231,6 +258,22 @@ public sealed class StationTxProductionLifecycleTests
         Assert.Equal(
             "executor-arming-unavailable",
             active.StationCommandAdapterComposition.Reason);
+        Assert.True(
+            active.StationCommandSafetyArmComposition.Registered);
+        Assert.False(
+            active.StationCommandSafetyArmComposition.ArmAuthorityAttached);
+        Assert.True(
+            active.StationCommandSafetyArmComposition
+                .SessionAuthoritySnapshotAvailable);
+        Assert.False(
+            active.StationCommandSafetyArmComposition.ArmAvailable);
+        Assert.False(
+            active.StationCommandSafetyArmComposition.HeartbeatAvailable);
+        Assert.False(
+            active.StationCommandSafetyArmComposition.AbortAvailable);
+        Assert.Equal(
+            "arm-authority-unattached",
+            active.StationCommandSafetyArmComposition.Reason);
 
         Assert.True(leases.TryRelease(
             "radio-a",

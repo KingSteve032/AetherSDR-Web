@@ -472,6 +472,42 @@ retain guarded intent and reconcile against later radio state. Cancellation and
 exceptions propagate after bounded diagnostics are updated, and neither the
 composition nor executor retries automatically.
 
+Phase 2N adds no wire message. Each lifecycle constructs one internal
+`StationTxSafetyArmComposition` around its existing
+`StationTxSafetySupervisor`. Typed arm and heartbeat requests contain only the
+current connection ID and a timeout bounded to the supervisor's 250 ms through
+5 second range. A typed abort request contains only the current connection ID
+and a bounded reason. All station/radio/session/browser/lease/gateway/engine/
+FLEX-handle fields are re-resolved from lifecycle-owned authority and cannot be
+supplied by a caller.
+
+Before one optional authority call, the composition rejects missing or replaced
+connections, expired leases, stale authentication or observations, missing
+handles, stale occupancy, radio mismatch, and non-exact ownership. Arm requires
+fresh idle occupancy, exclusive Local PTT for the protected handle, and a
+Disarmed supervisor. Heartbeat requires the exact Armed identity and a current
+heartbeat deadline; idle heartbeat also requires Local PTT to remain exact,
+while active heartbeat requires the exact single AetherSDR TX owner. Abort
+requires the exact arm and permits only idle or that exact TX owner. The optional
+`IStationTxSafetyArmAuthority` receives the resolved authority and operation,
+then the composition forwards at most one supervisor call. Rejection,
+cancellation, exception, or unknown supervisor state never creates an automatic
+retry.
+
+Production attaches no arm authority and exposes no submission or control route
+to this composition. Health reports
+`txStationCommandSafetyArmCompositionRegistered:true`,
+`txStationCommandSafetyArmAuthorityAttached:false`,
+`txStationCommandSafetyArmAuthorityRegistered:false`,
+`txStationCommandSafetyArmAvailable:false`,
+`txStationCommandSafetyHeartbeatAvailable:false`,
+`txStationCommandSafetyAbortAvailable:false`, and
+`txStationCommandSafetyArmCompositionBrowserIngressRegistered:false`.
+Per-session diagnostics additionally publish only bounded attempt/forward/
+accepted/rejected counts, the last operation/outcome, authority availability,
+and a bounded reason; lease IDs and other ownership secrets are not added to
+Admin text.
+
 `client.visibility` accepts only a JSON boolean. A hidden browser keeps its
 authenticated WebSocket, radio session, text responses, snapshots, presence,
 and radio-authoritative state, but the gateway does not enqueue spectrum or
