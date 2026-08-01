@@ -494,6 +494,17 @@ the composition for diagnostics only: submission, boundary, gate, and transports
 remain disabled, no operation caller exists, and key, heartbeat, unkey, and
 abort capabilities all remain false with zero attempts.
 
+Phase 2Q removes the older internal lifecycle method that delegated directly to
+the command-session composition. The lifecycle now exposes only three internal,
+typed transaction operations: submit a validated key/unkey intent, refresh the
+exact active transaction heartbeat, or abort the exact active transaction. Each
+method delegates immediately to `StationTxCommandTransactionComposition` and
+returns its accepted/rejected/unknown result. No method returns a command-session
+result, and no registry, coordinator, WebSocket, HTTP, AetherRemote, watchdog,
+reconnect, timer, or browser type receives a transaction request or result.
+Production still has no caller, and all operations stop at disabled prerequisites
+before arm or command forwarding.
+
 The independent, station-local supervisor has no key method and an unkey-only
 transport. Its arm is purpose-bound to one engine
 instance, lease, session/browser owner, exact protected FLEX client handle, and
@@ -558,10 +569,13 @@ operator keying intent.
 
 ## Browser rendering
 
-The prototype uses Canvas 2D with a compact binary spectrum frame and performs
-the waterfall scroll locally. Production can move to WebGL/WebGPU only after
-measuring the Canvas implementation; rendering technology cannot change the
-wire contract.
+The prototype uses one Canvas 2D spectrum path with a compact binary frame and
+performs the waterfall scroll locally. The former stacked-trace selector,
+browser preference, trace-history buffer, and alternate drawing path are
+removed, so there is no dormant second renderer. Startup deletes the obsolete
+preference key but never reads or writes it. Production can move to
+WebGL/WebGPU only after measuring the Canvas implementation; rendering
+technology cannot change the wire contract.
 
 RX audio should use Opus frames decoded in an `AudioWorklet`, with a bounded
 jitter buffer. Microphone capture and TX audio require a separate, explicit

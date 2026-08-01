@@ -239,7 +239,7 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
     : "command composition not registered";
   const transaction = lifecycle.stationCommandTransactionComposition;
   const transactionState = transaction?.registered
-    ? `transaction composition safety ${transaction.safetyArmCompositionAttached
+    ? `transaction lifecycle boundary safety ${transaction.safetyArmCompositionAttached
         ? "attached"
         : "absent"} ` +
       `command ${transaction.commandSessionCompositionAttached
@@ -268,7 +268,7 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `last ${String(transaction.lastOperation || "none")}/` +
       `${String(transaction.lastOutcome || "none")} ` +
       `reason ${String(transaction.reason || "unknown")}`
-    : "transaction composition not registered";
+    : "transaction lifecycle boundary not registered";
   const independent = lifecycle.independentWatchdog;
   const independentState = !independent?.supervisionEnabled
     ? "independent not supervised"

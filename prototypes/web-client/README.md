@@ -43,8 +43,11 @@ single-holder TX lease policy without changing the native radio engine.
   lifecycle-owned safety-arm authority that independently evaluates the signed
   boundary, adapter, gate executor, command transport, supervisor, and exact
   session authority. Phase 2P adds a lifecycle-owned transaction composition
-  that can sequence one safety arm, one signed command, heartbeat, and cleanup,
-  but production still exposes no operation caller. The gate remains disabled
+  that can sequence one safety arm, one signed command, heartbeat, and cleanup.
+  Phase 2Q removes the older direct command-session submission method and leaves
+  only a typed lifecycle boundary that delegates key/unkey, heartbeat, and abort
+  through that transaction composition; production still exposes no caller.
+  The gate remains disabled
   and its production FLEX transport remains unavailable.
   Verification, signing, and submission all
   default disabled; no browser command ingress, arming capability, reachable
@@ -92,8 +95,9 @@ rather than treating the radio as a generic web dashboard:
   viewport center, follow the line during drag, collapse from the slice badge,
   expose per-slice tabs, and alternate sides when two slices share a frequency
   so both remain reachable on a phone;
-- the 2D panadapter is the default, with a retained browser preference for
-  switching to the bounded 3D stacked-trace view;
+- the panadapter has one fixed Canvas 2D renderer; the former stacked-trace
+  mode, selector, preference, history buffer, and drawing path are removed, and
+  startup deletes the obsolete preference key left by earlier browser versions;
 - the S-meter renders from AetherSDR's authoritative
   `resources/meterfaces/s-meter-v1.json` geometry, including its calibrated
   movement, RX/TX arcs, ticks, pivot, peak marker, and readouts;
@@ -107,8 +111,8 @@ rather than treating the radio as a generic web dashboard:
   cannot make the first web slice open as B;
 - receive DAX channel assignment and the Display flyout's FFT average, frame
   rate, dBm floor, and WNB state/level follow the radio's status and are never
-  persisted by the browser. Fill, peak hold, waterfall visibility, and 2D/3D
-  mode are functional device-local renderer preferences;
+  persisted by the browser. Fill, peak hold, and waterfall visibility remain
+  functional device-local renderer preferences;
 - the Display flyout shows the measured inbound traffic rate and current
   adaptive network profile. Sustained delivery gaps can move only that browser
   session into the lower-traffic profile; a manual VPN low-bandwidth selection
@@ -273,6 +277,8 @@ also keep the public and internal health contract at
 `txStationCommandSafetyAbortAvailable=false`,
 `txStationCommandSafetyArmCompositionBrowserIngressRegistered=false`,
 `txStationCommandTransactionCompositionRegistered=true`,
+`txStationCommandTransactionLifecycleBoundaryRegistered=true`,
+`txStationCommandDirectSessionSubmissionRegistered=false`,
 `txStationCommandTransactionSafetyArmAttached=true`,
 `txStationCommandTransactionCommandCompositionAttached=true`,
 `txStationCommandTransactionKeyAvailable=false`,
@@ -282,6 +288,7 @@ also keep the public and internal health contract at
 `txStationCommandTransactionActive=false`,
 `txStationCommandTransactionReconciliationRequired=false`,
 `txStationCommandTransactionBrowserIngressRegistered=false`,
+`txStationCommandTransactionLifecycleBrowserIngressRegistered=false`,
 `txStationCommandEnvelopeSubmissionEnabled=false`,
 `txStationCommandEnvelopeSigningAvailable=false`,
 `txStationCommandEnvelopeVerificationAvailable=false`,
@@ -497,11 +504,16 @@ composition serializes operations, exposes bounded counters and state only, and
 stores no browser-supplied radio authority.
 
 Normal production constructs the transaction composition with both participants
-attached but no lifecycle, registry, coordinator, WebSocket, HTTP, AetherRemote,
-watchdog, reconnect, timer, or browser caller. Submission remains disabled, the
-boundary and gate remain disabled, both transports remain absent, and all key,
-heartbeat, unkey, and abort transaction capabilities remain false with no active
-transaction or reconciliation state.
+attached. Phase 2Q removes the older lifecycle method that delegated directly to
+the command-session composition. The only remaining lifecycle command methods
+accept the typed transaction submit, heartbeat, or abort records and delegate
+straight to `StationTxCommandTransactionComposition`; none returns a command-
+session result or can skip arm, cleanup, or reconciliation sequencing. No
+registry, coordinator, WebSocket, HTTP, AetherRemote, watchdog, reconnect, timer,
+or browser caller receives those methods or transaction types. Submission
+remains disabled, the boundary and gate remain disabled, both transports remain
+absent, and all key, heartbeat, unkey, and abort transaction capabilities remain
+false with no active transaction or reconciliation state.
 
 Environment-variable form remains disabled by default:
 

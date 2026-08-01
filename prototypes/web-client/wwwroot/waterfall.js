@@ -1,6 +1,6 @@
 import {
   clampFilterEdgesForMode
-} from "./slice-controls.js?v=filter-limits-1";
+} from "./slice-controls.js?v=2d-only-1";
 
 const V1_HEADER_SIZE = 20;
 const V2_HEADER_SIZE = 24;
@@ -30,15 +30,11 @@ export class WaterfallRenderer {
     this.maxDbm = -40;
     this.sequence = 0;
     this.streamId = 0;
-    this.renderMode = "2d";
     this.fillEnabled = true;
     this.peakEnabled = false;
     this.waterfallEnabled = true;
     this.smoothedBins = new Float32Array(this.bins);
     this.peakBins = new Float32Array(this.bins);
-    this.traceHistory = [];
-    this.maxTraceHistory = 12;
-    this.traceCaptureInterval = 2;
     this.spectrumFrameIntervalMs = 1000 / 12;
     this.waterfallFrameIntervalMs = 1000 / 15;
     this.lastSpectrumDrawAt = 0;
@@ -187,7 +183,6 @@ export class WaterfallRenderer {
     this.pendingSourceBandwidthHz = this.bandwidthHz;
     this.acceptNextConfiguredCenter = false;
     this.waterfallPanPreviewActive = false;
-    this.traceHistory = [];
     this.smoothedBins.fill(this.minDbm);
     this.peakBins.fill(this.minDbm);
     this.waterfallContext.fillStyle = "#000010";
@@ -196,18 +191,6 @@ export class WaterfallRenderer {
       0,
       this.waterfall.width,
       this.waterfall.height);
-  }
-
-  setRenderMode(mode) {
-    const nextMode = mode === "3d" ? "3d" : "2d";
-    if (this.renderMode === nextMode) {
-      return;
-    }
-    this.renderMode = nextMode;
-    if (nextMode === "2d") {
-      this.traceHistory = [];
-    }
-    this.drawSpectrum();
   }
 
   setFillEnabled(enabled) {
@@ -327,7 +310,6 @@ export class WaterfallRenderer {
       this.bins = new Float32Array(binCount);
       this.smoothedBins = new Float32Array(binCount);
       this.peakBins = new Float32Array(binCount);
-      this.traceHistory = [];
     }
 
     for (let index = 0; index < binCount; index += 1) {
@@ -358,14 +340,6 @@ export class WaterfallRenderer {
 
     if (document.hidden) {
       return false;
-    }
-
-    if (this.renderMode === "3d" &&
-        this.sequence % this.traceCaptureInterval === 0) {
-      this.traceHistory.push(Float32Array.from(this.smoothedBins));
-      if (this.traceHistory.length > this.maxTraceHistory) {
-        this.traceHistory.shift();
-      }
     }
 
     const now = performance.now();
@@ -443,11 +417,7 @@ export class WaterfallRenderer {
       context.fillText(`${Math.round(dbm)}`, 4, y + 12);
     }
 
-    if (this.renderMode === "3d") {
-      this.drawStackedSpectrum(context, width, height);
-    } else {
-      this.draw2DSpectrum(context, width, height);
-    }
+    this.draw2DSpectrum(context, width, height);
     if (this.peakEnabled) {
       this.drawPeakSpectrum(context, width, height);
     }
@@ -539,60 +509,6 @@ export class WaterfallRenderer {
       1,
       Math.min(window.devicePixelRatio || 1, 1.5));
     context.stroke();
-  }
-
-  drawStackedSpectrum(context, width, height) {
-    const traces =
-      this.traceHistory.length > 0 ? this.traceHistory : [this.smoothedBins];
-    const lastIndex = Math.max(1, traces.length - 1);
-    const ratio = Math.min(window.devicePixelRatio || 1, 2);
-
-    for (let traceIndex = 0; traceIndex < traces.length; traceIndex += 1) {
-      const bins = traces[traceIndex];
-      const targetPoints = Math.max(
-        160,
-        Math.min(300, Math.floor(width / ratio / 3)));
-      const points = this.frequencyProjectedPoints(bins, targetPoints);
-      const backness = (traces.length - 1 - traceIndex) / lastIndex;
-      const baseY = (height * .9) - (backness * height * .64);
-      const amplitude = height * (.42 - (backness * .2));
-      const leftInset = width * .055 * backness;
-      const traceWidth = width * (1 - (.11 * backness));
-      context.beginPath();
-      for (let index = 0; index < points.length; index += 1) {
-        const normalized = Math.max(
-          0,
-          Math.min(1, (points[index] - this.minDbm) /
-            (this.maxDbm - this.minDbm)));
-        const x =
-          leftInset +
-          ((index / Math.max(1, points.length - 1)) * traceWidth);
-        const y = baseY - (normalized * amplitude);
-        if (index === 0) {
-          context.moveTo(x, y);
-        } else {
-          context.lineTo(x, y);
-        }
-      }
-
-      const traceGradient = context.createLinearGradient(
-        0,
-        baseY - amplitude,
-        0,
-        baseY);
-      traceGradient.addColorStop(0, "#ff3b4f");
-      traceGradient.addColorStop(.18, "#ffe74c");
-      traceGradient.addColorStop(.36, "#45ef70");
-      traceGradient.addColorStop(.58, "#00d8f4");
-      traceGradient.addColorStop(1, "#1735e6");
-      context.globalAlpha = .25 + ((1 - backness) * .72);
-      context.strokeStyle = traceGradient;
-      context.lineWidth =
-        traceIndex === traces.length - 1 ? Math.max(1.4, ratio) : Math.max(.7, ratio * .58);
-      context.stroke();
-    }
-
-    context.globalAlpha = 1;
   }
 
   peakPreservingPoints(bins, targetCount) {

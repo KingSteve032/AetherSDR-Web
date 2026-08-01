@@ -195,6 +195,8 @@ expected = {
     "txStationCommandSafetyAbortAvailable": False,
     "txStationCommandSafetyArmCompositionBrowserIngressRegistered": False,
     "txStationCommandTransactionCompositionRegistered": True,
+    "txStationCommandTransactionLifecycleBoundaryRegistered": True,
+    "txStationCommandDirectSessionSubmissionRegistered": False,
     "txStationCommandTransactionSafetyArmAttached": True,
     "txStationCommandTransactionCommandCompositionAttached": True,
     "txStationCommandTransactionKeyAvailable": False,
@@ -204,6 +206,7 @@ expected = {
     "txStationCommandTransactionActive": False,
     "txStationCommandTransactionReconciliationRequired": False,
     "txStationCommandTransactionBrowserIngressRegistered": False,
+    "txStationCommandTransactionLifecycleBrowserIngressRegistered": False,
     "txStationCommandEnvelopeSubmissionRegistered": False,
     "txStationCommandAdapterRegistered": True,
     "txStationCommandArmingAvailable": False,
@@ -380,6 +383,42 @@ done
   echo "Published tx-controls.js module is missing or empty." >&2
   exit 1
 }
+renderer_files=(
+  "${publish_dir}/wwwroot/index.html"
+  "${publish_dir}/wwwroot/app.js"
+  "${publish_dir}/wwwroot/waterfall.js"
+  "${publish_dir}/wwwroot/slice-controls.js"
+  "${publish_dir}/wwwroot/styles.css"
+)
+for renderer_file in "${renderer_files[@]}"; do
+  [[ -s "${renderer_file}" ]] || {
+    echo "Published receive renderer file is missing or empty: ${renderer_file}" >&2
+    exit 1
+  }
+done
+for forbidden_renderer in \
+  'data-spectrum-mode' \
+  'normalizeSpectrumMode' \
+  'setRenderMode' \
+  'drawStackedSpectrum' \
+  'traceHistory' \
+  'display-mode-switch' \
+  '3D stacked'; do
+  if grep -F -- "${forbidden_renderer}" "${renderer_files[@]}" >/dev/null; then
+    echo "Production publish contains removed alternate renderer surface: ${forbidden_renderer}" >&2
+    exit 1
+  fi
+done
+if ! grep -F -- 'window.localStorage.removeItem("aether.web.spectrumMode")' \
+    "${publish_dir}/wwwroot/app.js" >/dev/null; then
+  echo "Production publish does not clear the removed renderer preference." >&2
+  exit 1
+fi
+if grep -E -- 'localStorage\.(getItem|setItem)\("aether\.web\.spectrumMode"\)' \
+    "${publish_dir}/wwwroot/app.js" >/dev/null; then
+  echo "Production publish still reads or writes the removed renderer preference." >&2
+  exit 1
+fi
 [[ -x "${watchdog_binary}" ]] || {
   echo "Published AetherSDR.TxWatchdog binary is not executable." >&2
   exit 1

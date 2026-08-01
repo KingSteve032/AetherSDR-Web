@@ -182,7 +182,7 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       "forwarded 0 last none/none reason connection-unavailable · command composition " +
       "coordinator attached boundary attached " +
       "authority absent submission unavailable attempts 0 forwarded 0 " +
-      "last none reason submission-disabled · transaction composition safety attached " +
+      "last none reason submission-disabled · transaction lifecycle boundary safety attached " +
       "command attached authority absent key unavailable heartbeat unavailable unkey unavailable " +
       "abort unavailable active no reconcile no state idle attempts 0 arm 0 command 0 " +
       "heartbeat-forwarded 0 cleanup 0 accepted 0 rejected 0 unknown 0 last none/none " +
@@ -322,7 +322,7 @@ test("admin diagnostics keep ready signature verification separate from commands
     /command composition coordinator attached boundary attached authority absent submission unavailable attempts 0 forwarded 0 last none reason submission-disabled/);
   assert.match(
     result.detail,
-    /transaction composition safety attached command attached authority absent key unavailable heartbeat unavailable unkey unavailable abort unavailable active no reconcile no state idle attempts 0 arm 0 command 0 heartbeat-forwarded 0 cleanup 0 accepted 0 rejected 0 unknown 0 last none\/none reason submission-disabled/);
+    /transaction lifecycle boundary safety attached command attached authority absent key unavailable heartbeat unavailable unkey unavailable abort unavailable active no reconcile no state idle attempts 0 arm 0 command 0 heartbeat-forwarded 0 cleanup 0 accepted 0 rejected 0 unknown 0 last none\/none reason submission-disabled/);
   assert.match(result.detail, /TX transports absent/);
 });
 
@@ -481,7 +481,7 @@ test("admin diagnostics surface lease holder expiry and browser TX intent outcom
     /command composition coordinator attached boundary attached authority available submission unavailable attempts 0 forwarded 0 last none reason submission-disabled/);
   assert.match(
     result.detail,
-    /transaction composition safety attached command attached authority available key unavailable heartbeat unavailable unkey unavailable abort unavailable active no reconcile no state idle attempts 0 arm 0 command 0 heartbeat-forwarded 0 cleanup 0 accepted 0 rejected 0 unknown 0 last none\/none reason submission-disabled/);
+    /transaction lifecycle boundary safety attached command attached authority available key unavailable heartbeat unavailable unkey unavailable abort unavailable active no reconcile no state idle attempts 0 arm 0 command 0 heartbeat-forwarded 0 cleanup 0 accepted 0 rejected 0 unknown 0 last none\/none reason submission-disabled/);
   assert.match(result.detail, /TX transports absent$/);
 });
 

@@ -6,7 +6,6 @@ import {
   filterEdgesForMode,
   filterLimitsForMode,
   formatFilterWidth,
-  normalizeSpectrumMode,
   rxControlAvailability,
   signalDbmToMeterFraction,
   sliceFlagDirection,
@@ -44,12 +43,6 @@ test("receive controls follow Aether mode and radio capability rules", () => {
   assert.equal(
     rxControlAvailability("FM", "FLEX-8600").nr,
     false);
-});
-
-test("2D is the safe display default", () => {
-  assert.equal(normalizeSpectrumMode(null), "2d");
-  assert.equal(normalizeSpectrumMode("anything"), "2d");
-  assert.equal(normalizeSpectrumMode("3D"), "3d");
 });
 
 test("filter presets follow the demodulation sideband", () => {

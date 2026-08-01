@@ -76,11 +76,13 @@ public sealed record StationTxLifecycleDiagnostics(
     DateTimeOffset LastObservedAt);
 
 /// <summary>
-/// Production registration boundary for the accepted station TX gate and
-/// safety state machines. This lifecycle is deliberately command-incapable:
-/// its transports always report unavailable, the command gate is constructed
-/// with transmit disabled, and its internal gate executor has no reachable
-/// browser, HTTP, WebSocket, AetherRemote, watchdog, or timer caller.
+/// Production registration boundary for the accepted station TX gate,
+/// safety, and command transaction state machines. This lifecycle is
+/// deliberately command-incapable: its transports always report unavailable,
+/// the command gate is constructed with transmit disabled, and the only
+/// internal command operation surface delegates through the transaction
+/// composition. No browser, HTTP, WebSocket, AetherRemote, watchdog, reconnect,
+/// or timer caller reaches that surface.
 ///
 /// Real gateway, engine, browser/authentication, and lease observations are
 /// serialized here so diagnostics and future reviewed transport integration
@@ -371,19 +373,28 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     public Task StartAsync(CancellationToken cancellationToken = default) =>
         m_independentWatchdog.StartAsync(cancellationToken);
 
-    internal Task<StationTxCommandSessionCompositionResult>
-        SubmitValidatedBrowserTxIntentAsync(
-            string connectionClientId,
-            long sequence,
-            BrowserTxIntent intent,
-            DateTimeOffset observedAt,
+    internal Task<StationTxCommandTransactionResult>
+        ExecuteStationCommandTransactionAsync(
+            StationTxCommandTransactionRequest request,
             CancellationToken cancellationToken = default) =>
-        m_stationCommandComposition.SubmitAsync(
-            new StationTxCommandSessionCompositionRequest(
-                connectionClientId,
-                sequence,
-                intent,
-                observedAt),
+        m_stationCommandTransactionComposition.SubmitAsync(
+            request,
+            cancellationToken);
+
+    internal Task<StationTxCommandTransactionResult>
+        HeartbeatStationCommandTransactionAsync(
+            StationTxCommandTransactionHeartbeatRequest request,
+            CancellationToken cancellationToken = default) =>
+        m_stationCommandTransactionComposition.HeartbeatAsync(
+            request,
+            cancellationToken);
+
+    internal Task<StationTxCommandTransactionResult>
+        AbortStationCommandTransactionAsync(
+            StationTxCommandTransactionAbortRequest request,
+            CancellationToken cancellationToken = default) =>
+        m_stationCommandTransactionComposition.AbortAsync(
+            request,
             cancellationToken);
 
     public void ObserveBrowserConnection(
