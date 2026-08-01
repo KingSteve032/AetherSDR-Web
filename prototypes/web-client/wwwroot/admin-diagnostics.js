@@ -149,6 +149,29 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `last ${String(adapterComposition.lastOutcome || "none")} ` +
       `reason ${String(adapterComposition.reason || "unknown")}`
     : "adapter composition not registered";
+  const safetyArmComposition =
+    lifecycle.stationCommandSafetyArmComposition;
+  const safetyArmCompositionState = safetyArmComposition?.registered
+    ? `safety arm composition authority ${safetyArmComposition.armAuthorityAttached
+        ? "attached"
+        : "absent"} ` +
+      `registered ${safetyArmComposition.armAuthorityRegistered ? "yes" : "no"} ` +
+      `session authority ${safetyArmComposition.sessionAuthoritySnapshotAvailable
+        ? "available"
+        : "absent"} ` +
+      `arm ${safetyArmComposition.armAvailable ? "available" : "unavailable"} ` +
+      `heartbeat ${safetyArmComposition.heartbeatAvailable
+        ? "available"
+        : "unavailable"} ` +
+      `abort ${safetyArmComposition.abortAvailable
+        ? "available"
+        : "unavailable"} ` +
+      `attempts ${formatCount(safetyArmComposition.attemptCount)} ` +
+      `forwarded ${formatCount(safetyArmComposition.forwardedCount)} ` +
+      `last ${String(safetyArmComposition.lastOperation || "none")}/` +
+      `${String(safetyArmComposition.lastOutcome || "none")} ` +
+      `reason ${String(safetyArmComposition.reason || "unknown")}`
+    : "safety arm composition not registered";
   const commandComposition = lifecycle.stationCommandSessionComposition;
   const commandCompositionState = commandComposition?.registered
     ? `command composition coordinator ${commandComposition.coordinatorAttached
@@ -194,7 +217,7 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `${intentState ? `${intentState} · ` : ""}` +
       `${watchdogState} · ${independentState} · ` +
       `${stationCommandState} · ${adapterCompositionState} · ` +
-      `${commandCompositionState} · ` +
+      `${safetyArmCompositionState} · ${commandCompositionState} · ` +
       `authority ${authorityReason} · ` +
       `last ${lifecycle.lastObservation || "none"} · ${transportState}`
   };

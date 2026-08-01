@@ -429,8 +429,34 @@ registered, while executor arming, SetTransmit, boundary execution, and envelope
 submission remain false. The HIL-only FLEX command transport is not linked into
 the normal production path.
 
-The next safety layer is an independent, station-local supervisor with no key
-method and an unkey-only transport. Its arm is purpose-bound to one engine
+Phase 2N adds one lifecycle-owned `StationTxSafetyArmComposition` around the
+existing supervisor. Its request records contain no station, radio, session,
+browser, lease, gateway, engine, or FLEX-handle fields. A request may carry only
+the current connection identity plus a bounded heartbeat timeout or abort
+reason. The composition re-resolves the complete `StationTxCommandAuthority`
+from lifecycle state, validates it against the supervisor and fresh occupancy,
+and asks an optional internal `IStationTxSafetyArmAuthority` to authorize the
+exact operation before forwarding one call to the supervisor. It performs no
+retry and does not expose a lifecycle method or external route.
+
+Arm requires a current authenticated lease, fresh browser/engine/gateway
+observations, fresh idle occupancy, exclusive Local PTT for the protected handle,
+and a Disarmed supervisor on the same radio. Heartbeat requires the exact active
+arm; while idle it also requires Local PTT to remain exact, and while transmitting
+it requires the protected handle to be the fresh single AetherSDR owner. Abort
+requires the exact active arm and permits only already-idle state or that same
+exact transmit owner. External, ambiguous, stale, expired, replaced, or
+mismatched authority stops before the supervisor. An idle abort clears only the
+matching arm without a radio command.
+
+Production attaches no arm authority. Diagnostics therefore report the
+composition registered but authority attachment/registration, arm, heartbeat,
+and abort unavailable with zero attempts. The supervisor remains Disarmed, the
+independent watchdog remains command-incapable, and no browser, HTTP, WebSocket,
+AetherRemote, watchdog, reconnect, or timer caller can invoke the composition.
+
+The independent, station-local supervisor has no key method and an unkey-only
+transport. Its arm is purpose-bound to one engine
 instance, lease, session/browser owner, exact protected FLEX client handle, and
 bounded heartbeat deadline. A separate non-GUI FLEX observer may classify the
 engine handle as external relative to itself; the supervisor therefore compares

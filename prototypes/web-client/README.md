@@ -38,10 +38,12 @@ single-holder TX lease policy without changing the native radio engine.
   adapter with a typed per-session adapter composition that independently
   rechecks exact authority before an internal executor. Phase 2M attaches a
   per-session gate executor that maps validated SetTransmit true/false commands
-  only to the existing ownership-safe gate. The gate remains disabled and its
-  production FLEX transport remains unavailable. Verification, signing, and
-  submission all default disabled; no browser command ingress, arming
-  capability, reachable keying command, or transmit-audio path is registered.
+  only to the existing ownership-safe gate. Phase 2N adds a lifecycle-owned
+  safety-arm composition around the existing supervisor, but production attaches
+  no arm authority or caller. The gate remains disabled and its production FLEX
+  transport remains unavailable. Verification, signing, and submission all
+  default disabled; no browser command ingress, arming capability, reachable
+  keying command, or transmit-audio path is registered.
 - The binary spectrum framing is experimental v0 and is not the future
   AetherD v1 wire format.
 - Production radio integration waits for AetherD RFC steps 3-5: versioned
@@ -254,6 +256,13 @@ also keep the public and internal health contract at
 `txStationCommandGateExecutorSetTransmitAvailable=false`,
 `txStationCommandGateExecutorBrowserIngressRegistered=false`,
 `txStationCommandAdapterCompositionBrowserIngressRegistered=false`,
+`txStationCommandSafetyArmCompositionRegistered=true`,
+`txStationCommandSafetyArmAuthorityAttached=false`,
+`txStationCommandSafetyArmAuthorityRegistered=false`,
+`txStationCommandSafetyArmAvailable=false`,
+`txStationCommandSafetyHeartbeatAvailable=false`,
+`txStationCommandSafetyAbortAvailable=false`,
+`txStationCommandSafetyArmCompositionBrowserIngressRegistered=false`,
 `txStationCommandEnvelopeSubmissionEnabled=false`,
 `txStationCommandEnvelopeSigningAvailable=false`,
 `txStationCommandEnvelopeVerificationAvailable=false`,
@@ -304,9 +313,10 @@ StationTxCommandTrust__Keys__0__PublicKeyPath=/var/lib/aethersdr-web/command-tru
 ```
 
 Enabling verification only makes the verifier ready. The station command
-boundary remains disabled, the command adapter remains absent, arming and
-set-transmit remain unavailable, and there is still no browser, HTTP,
-WebSocket, AetherRemote, watchdog, or timer command ingress.
+boundary remains disabled; the registered adapter still terminates at the
+transmit-disabled gate, safety-arm authority remains absent, and arming plus
+set-transmit remain unavailable. There is still no browser, HTTP, WebSocket,
+AetherRemote, watchdog, or timer command ingress.
 
 `StationTxCommandSigning` is a separate owned configuration object for one
 station-local private signing key. `SigningEnabled` defaults to false, while
@@ -413,6 +423,26 @@ executor and adapter registered while executor arming, SetTransmit, the boundary
 and submission remain unavailable. No browser, HTTP, WebSocket, AetherRemote,
 watchdog, or timer caller is added, and the HIL-only FLEX command transport is
 not imported into the normal build.
+
+Phase 2N adds one `StationTxSafetyArmComposition` around each lifecycle's
+existing unkey-only `StationTxSafetySupervisor`. Its typed requests accept only
+the current connection identity plus a bounded heartbeat timeout or abort reason.
+The composition re-resolves the exact radio/session/browser/lease/gateway/engine/
+FLEX-handle authority before every operation and asks an optional internal
+`IStationTxSafetyArmAuthority` to authorize that exact tuple. Arm additionally
+requires fresh idle occupancy and exclusive Local PTT for the protected handle.
+An idle heartbeat requires the same Local PTT owner; an active heartbeat or
+abort requires fresh proof of the exact single AetherSDR TX owner, while an
+already-idle abort may only clear the matching arm without a radio command.
+Mismatched, expired, stale, disconnected, external, ambiguous, cancelled, or
+faulted operations stop without retry.
+
+Normal production constructs the composition with no arm authority and exposes
+no lifecycle, registry, coordinator, WebSocket, HTTP, AetherRemote, watchdog, or
+timer method that can invoke it. Health and Admin report composition registration
+separately from arm-authority attachment, arm, heartbeat, and abort availability;
+all four latter states remain false, the supervisor remains Disarmed, and the
+composition owns no command or emergency-unkey transport.
 
 Environment-variable form remains disabled by default:
 
