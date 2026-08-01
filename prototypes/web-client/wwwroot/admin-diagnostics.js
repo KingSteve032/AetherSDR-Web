@@ -126,6 +126,25 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
         : "absent"} ` +
       `audit ${formatCount(lifecycle.stationCommandAuditCount)}`
     : "command boundary not registered";
+  const commandComposition = lifecycle.stationCommandSessionComposition;
+  const commandCompositionState = commandComposition?.registered
+    ? `command composition coordinator ${commandComposition.coordinatorAttached
+        ? "attached"
+        : "absent"} ` +
+      `boundary ${commandComposition.boundaryAttached
+        ? "attached"
+        : "absent"} ` +
+      `authority ${commandComposition.authoritySnapshotAvailable
+        ? "available"
+        : "absent"} ` +
+      `submission ${commandComposition.submissionAvailable
+        ? "available"
+        : "unavailable"} ` +
+      `attempts ${formatCount(commandComposition.attemptCount)} ` +
+      `forwarded ${formatCount(commandComposition.forwardedCount)} ` +
+      `last ${String(commandComposition.lastOutcome || "none")} ` +
+      `reason ${String(commandComposition.reason || "unknown")}`
+    : "command composition not registered";
   const independent = lifecycle.independentWatchdog;
   const independentState = !independent?.supervisionEnabled
     ? "independent not supervised"
@@ -151,7 +170,7 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `${leaseState} · ` +
       `${intentState ? `${intentState} · ` : ""}` +
       `${watchdogState} · ${independentState} · ` +
-      `${stationCommandState} · ` +
+      `${stationCommandState} · ${commandCompositionState} · ` +
       `authority ${authorityReason} · ` +
       `last ${lifecycle.lastObservation || "none"} · ${transportState}`
   };

@@ -21,6 +21,8 @@ public sealed record StationTxLifecycleDiagnostics(
     bool StationCommandArmingAvailable,
     bool StationCommandSetTransmitAvailable,
     int StationCommandAuditCount,
+    StationTxCommandSessionCompositionDiagnostics
+        StationCommandSessionComposition,
     bool GatewayConnected,
     bool EngineConnected,
     bool BrowserConnected,
@@ -95,11 +97,14 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     private readonly string m_gatewayInstanceId;
     private readonly string m_engineInstanceId;
     private readonly TxLeaseManager m_leases;
+    private readonly RadioTxOccupancyRegistry m_occupancy;
     private readonly ILogger<StationTxProductionLifecycle> m_logger;
     private readonly TimeProvider m_timeProvider;
     private readonly CancellationTokenSource m_watchdogCancellation = new();
     private readonly StationTxCommandGate m_commandGate;
     private readonly StationTxCommandBoundary m_stationCommandBoundary;
+    private readonly StationTxCommandSessionComposition
+        m_stationCommandComposition;
     private readonly StationTxSafetySupervisor m_supervisor;
     private readonly StationTxAuthenticationMonitor m_authenticationMonitor;
     private readonly StationTxEngineConnectionMonitor m_engineMonitor;
@@ -153,7 +158,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         ILogger<StationTxProductionLifecycle> logger,
         TimeProvider? timeProvider = null,
         IStationTxIndependentWatchdogFactory? independentWatchdogFactory = null,
-        IStationTxCommandSignatureVerifier? stationCommandVerifier = null)
+        IStationTxCommandSignatureVerifier? stationCommandVerifier = null,
+        IStationTxCommandEnvelopeSubmitter? stationCommandSubmitter = null)
     {
         ArgumentNullException.ThrowIfNull(leases);
         ArgumentNullException.ThrowIfNull(occupancy);
@@ -165,6 +171,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         m_gatewayInstanceId = NormalizeRequired(gatewayInstanceId, 128);
         m_engineInstanceId = $"engine-{Guid.NewGuid():N}";
         m_leases = leases;
+        m_occupancy = occupancy;
         m_logger = logger;
         m_timeProvider = timeProvider ?? TimeProvider.System;
         DateTimeOffset now = m_timeProvider.GetUtcNow();
@@ -179,6 +186,11 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             stationCommandVerifier ??
                 new StationTxUnavailableCommandSignatureVerifier(),
             new StationTxUnavailableCommandAdapter(),
+            m_timeProvider);
+        m_stationCommandComposition = new StationTxCommandSessionComposition(
+            stationCommandSubmitter,
+            m_stationCommandBoundary,
+            ResolveStationCommandAuthority,
             m_timeProvider);
         m_commandGate = new StationTxCommandGate(
             allowTransmit: false,
@@ -223,6 +235,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         {
             StationTxGateSnapshot gate = m_commandGate.Snapshot;
             StationTxSafetySnapshot safety = m_supervisor.Snapshot;
+            StationTxCommandSessionCompositionDiagnostics commandComposition =
+                m_stationCommandComposition.Snapshot;
             lock (m_stateGate)
             {
                 LifecycleFreshness freshness =
@@ -247,6 +261,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     commandBoundary.ArmingAvailable,
                     commandBoundary.SetTransmitAvailable,
                     m_stationCommandBoundary.AuditCount,
+                    commandComposition,
                     m_gatewayConnected,
                     m_engineConnected,
                     m_browserConnected,
@@ -296,6 +311,21 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
 
     public Task StartAsync(CancellationToken cancellationToken = default) =>
         m_independentWatchdog.StartAsync(cancellationToken);
+
+    internal Task<StationTxCommandSessionCompositionResult>
+        SubmitValidatedBrowserTxIntentAsync(
+            string connectionClientId,
+            long sequence,
+            BrowserTxIntent intent,
+            DateTimeOffset observedAt,
+            CancellationToken cancellationToken = default) =>
+        m_stationCommandComposition.SubmitAsync(
+            new StationTxCommandSessionCompositionRequest(
+                connectionClientId,
+                sequence,
+                intent,
+                observedAt),
+            cancellationToken);
 
     public void ObserveBrowserConnection(
         string connectionClientId,
@@ -929,6 +959,102 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         {
             RecordLocked($"independent-watchdog-disconnected-{reason}");
         }
+    }
+
+    private StationTxCommandAuthorityResolution ResolveStationCommandAuthority(
+        string? requestedConnectionClientId)
+    {
+        DateTimeOffset now = m_timeProvider.GetUtcNow();
+        string? connectionClientId;
+        string? trackedLeaseId;
+        uint clientHandle;
+        bool authenticated;
+        LifecycleFreshness freshness;
+        lock (m_stateGate)
+        {
+            connectionClientId = m_connectionClientId;
+            trackedLeaseId = m_leaseId;
+            clientHandle = m_stationClientHandle;
+            authenticated = m_authenticated;
+            freshness = EvaluateFreshnessLocked(now);
+        }
+
+        if (connectionClientId is null)
+        {
+            return StationTxCommandAuthorityResolution.Rejected(
+                "connection-unavailable",
+                "No current browser connection is bound to this radio session.");
+        }
+        if (requestedConnectionClientId is not null &&
+            !string.Equals(
+                requestedConnectionClientId.Trim(),
+                connectionClientId,
+                StringComparison.Ordinal))
+        {
+            return StationTxCommandAuthorityResolution.Rejected(
+                "connection-mismatch",
+                "The browser connection is no longer current for this radio session.");
+        }
+        if (!freshness.AuthorityFresh)
+        {
+            return StationTxCommandAuthorityResolution.Rejected(
+                $"authority-{freshness.Reason}",
+                "The session-owned station command authority is not fresh.");
+        }
+        if (trackedLeaseId is null)
+        {
+            return StationTxCommandAuthorityResolution.Rejected(
+                "lease-unavailable",
+                "No active TX lease is bound to this radio session.");
+        }
+        if (clientHandle == 0)
+        {
+            return StationTxCommandAuthorityResolution.Rejected(
+                "client-handle-unavailable",
+                "No current FLEX client handle is bound to this radio session.");
+        }
+
+        TxLease? lease = m_leases.GetCurrent(m_radioId);
+        if (lease is null)
+        {
+            return StationTxCommandAuthorityResolution.Rejected(
+                "lease-unavailable",
+                "The current TX lease is unavailable.");
+        }
+        if (!string.Equals(lease.LeaseId, trackedLeaseId, StringComparison.Ordinal) ||
+            !string.Equals(lease.RadioId, m_radioId, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(lease.SessionId, m_sessionId, StringComparison.Ordinal) ||
+            !string.Equals(lease.ClientId, connectionClientId, StringComparison.Ordinal))
+        {
+            return StationTxCommandAuthorityResolution.Rejected(
+                "lease-mismatch",
+                "The current TX lease does not match the exact session and connection.");
+        }
+        if (lease.ExpiresAt <= now)
+        {
+            return StationTxCommandAuthorityResolution.Rejected(
+                "lease-expired",
+                "The current TX lease has expired.");
+        }
+
+        return StationTxCommandAuthorityResolution.Accepted(
+            new StationTxCommandAuthority(
+                StationId: m_gatewayInstanceId,
+                RadioId: m_radioId,
+                SessionId: m_sessionId,
+                BrowserClientId: m_browserClientId,
+                LeaseId: lease.LeaseId,
+                LeaseExpiresAt: lease.ExpiresAt,
+                GatewayInstanceId: m_gatewayInstanceId,
+                EngineInstanceId: m_engineInstanceId,
+                ClientHandle: clientHandle,
+                Authenticated: authenticated,
+                BrowserFresh: freshness.BrowserFresh,
+                EngineFresh: freshness.EngineFresh,
+                GatewayFresh: freshness.GatewayFresh,
+                AuthorityFresh: freshness.AuthorityFresh,
+                Occupancy: m_occupancy.GetSnapshot(m_radioId),
+                Safety: m_supervisor.Snapshot));
     }
 
     private WatchdogIdentity? CreateIndependentWatchdogIdentityLocked()

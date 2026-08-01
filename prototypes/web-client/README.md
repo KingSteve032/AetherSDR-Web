@@ -31,10 +31,12 @@ single-holder TX lease policy without changing the native radio engine.
   Phase 2J adds a station-scoped internal envelope coordinator that accepts only
   a fresh validated MOX/PTT intent, consumes its ID and owner sequence once,
   derives the signing tuple from server authority, and self-verifies the
-  signature before a caller-owned command boundary. Verification, signing, and
-  submission all default disabled; production attaches no boundary or caller
-  and still registers no envelope-submission route, command adapter, arming
-  capability, keying command, or transmit-audio path.
+  signature before a caller-owned command boundary. Phase 2K gives each radio
+  session one internal composition object that attaches that coordinator to the
+  session's existing disabled command boundary and derives the complete command
+  authority from lifecycle-owned state. Verification, signing, and submission
+  all default disabled; no browser command ingress, command adapter, arming
+  capability, keying command, or transmit-audio path is registered.
 - The binary spectrum framing is experimental v0 and is not the future
   AetherD v1 wire format.
 - Production radio integration waits for AetherD RFC steps 3-5: versioned
@@ -236,6 +238,8 @@ also keep the public and internal health contract at
 `txStationCommandSigningKeyConfigured=false`,
 `txStationCommandSigningAvailable=false`,
 `txStationCommandEnvelopeCoordinatorRegistered=true`,
+`txStationCommandSessionCompositionRegistered=true`,
+`txStationCommandSessionCompositionBrowserIngressRegistered=false`,
 `txStationCommandEnvelopeSubmissionEnabled=false`,
 `txStationCommandEnvelopeSigningAvailable=false`,
 `txStationCommandEnvelopeVerificationAvailable=false`,
@@ -324,11 +328,12 @@ method that submits the resulting envelope, so signing readiness alone cannot
 create command reachability.
 
 `StationTxCommandEnvelopeCoordinator` is a third owned configuration object with
-one `SubmissionEnabled` bit, defaulting to false. Its internal submission method
-is not public and is not injected into `RadioSessionRegistry`,
-`StationTxProductionLifecycle`, any browser/HTTP/WebSocket handler,
-AetherRemote, the watchdog, or a timer. Startup resolves the singleton only to
-validate registration and report fail-closed diagnostics.
+one `SubmissionEnabled` bit, defaulting to false. Its submission method remains
+internal. Phase 2K passes the singleton through `RadioSessionRegistry` into one
+session-owned composition object, not into `RadioCoordinator`, the WebSocket
+endpoint, AetherRemote, the watchdog, a timer, or any browser/HTTP handler. The
+composition owns the session's existing command boundary but adds no external
+caller.
 
 An internal request contains one already-validated operator intent and one
 server-owned `StationTxCommandAuthority`. The intent must be a canonical,
@@ -346,10 +351,25 @@ a ready verifier, an enabled caller-owned boundary, a registered adapter, fresh
 arming, and SetTransmit capability. After signing, the coordinator decodes the
 fixed-width P-256 signature and verifies it against the station trust ring before
 calling the boundary, which independently revalidates the envelope, exact
-authority, replay sequence, safety arm, and adapter. Production attaches no
-boundary, so health reports coordinator registered but boundary unattached and
-submission unavailable. `txStationCommandEnvelopeSubmissionRegistered` remains
-false because there is still no externally reachable submission route.
+authority, replay sequence, safety arm, and adapter.
+
+The Phase 2K session composition accepts only the current connection identity,
+the parsed MOX/PTT Boolean intent, its positive JavaScript-safe sequence, and the
+server observation time. It resolves the canonical radio, session, stable
+browser-page identity, exact active connection-owned lease, gateway instance,
+engine instance, and FLEX handle from the production lifecycle. The gateway
+instance remains the station-command identity used by that lifecycle's existing
+boundary. A replaced connection, mismatched or expired lease, stale browser,
+engine, or gateway observation, missing handle, unsupported action, cancellation,
+or authority-resolution fault stops before the coordinator. No caller can
+supply or override an authority field.
+
+Health reports both station-scoped coordinator registration and per-session
+composition registration, while browser ingress remains unregistered. The
+attached production boundary is still disabled, and signer, verifier, adapter,
+arming, and SetTransmit availability remain false under default configuration.
+`txStationCommandEnvelopeSubmissionRegistered` remains false because there is
+still no externally reachable submission route.
 
 Environment-variable form remains disabled by default:
 
