@@ -317,6 +317,31 @@ public sealed class RadioSessionRegistryTests
             Assert.Equal("none", safetyArm.LastOutcome);
             Assert.Equal("connection-unavailable", safetyArm.Reason);
 
+            StationTxCommandTransactionCompositionDiagnostics transaction =
+                lifecycle.StationCommandTransactionComposition;
+            Assert.True(transaction.Registered);
+            Assert.True(transaction.SafetyArmCompositionAttached);
+            Assert.True(transaction.CommandSessionCompositionAttached);
+            Assert.False(transaction.AuthoritySnapshotAvailable);
+            Assert.False(transaction.KeyAvailable);
+            Assert.False(transaction.HeartbeatAvailable);
+            Assert.False(transaction.UnkeyAvailable);
+            Assert.False(transaction.AbortAvailable);
+            Assert.False(transaction.Active);
+            Assert.False(transaction.ReconciliationRequired);
+            Assert.Equal("idle", transaction.State);
+            Assert.Equal(0, transaction.AttemptCount);
+            Assert.Equal(0, transaction.ArmForwardedCount);
+            Assert.Equal(0, transaction.CommandForwardedCount);
+            Assert.Equal(0, transaction.HeartbeatForwardedCount);
+            Assert.Equal(0, transaction.CleanupForwardedCount);
+            Assert.Equal(0, transaction.AcceptedCount);
+            Assert.Equal(0, transaction.RejectedCount);
+            Assert.Equal(0, transaction.UnknownCount);
+            Assert.Equal("none", transaction.LastOperation);
+            Assert.Equal("none", transaction.LastOutcome);
+            Assert.Equal("submission-disabled", transaction.Reason);
+
             Type[] ingressTypes =
             [
                 typeof(RadioSessionRegistry),
@@ -341,7 +366,13 @@ public sealed class RadioSessionRegistryTests
                         parameter.ParameterType ==
                             typeof(StationTxSafetyArmAuthority) ||
                         parameter.ParameterType ==
-                            typeof(StationTxSafetyArmComposition));
+                            typeof(StationTxSafetyArmComposition) ||
+                        parameter.ParameterType ==
+                            typeof(StationTxCommandTransactionComposition) ||
+                        parameter.ParameterType ==
+                            typeof(IStationTxSafetyArmTransactionParticipant) ||
+                        parameter.ParameterType ==
+                            typeof(IStationTxCommandTransactionSubmissionParticipant));
             }
             Assert.DoesNotContain(
                 typeof(StationTxProductionLifecycle)
@@ -356,7 +387,13 @@ public sealed class RadioSessionRegistryTests
                     parameter.ParameterType ==
                         typeof(IStationTxSafetyArmAuthority) ||
                     parameter.ParameterType ==
-                        typeof(StationTxSafetyArmAuthority));
+                        typeof(StationTxSafetyArmAuthority) ||
+                    parameter.ParameterType ==
+                        typeof(StationTxCommandTransactionComposition) ||
+                    parameter.ParameterType ==
+                        typeof(IStationTxSafetyArmTransactionParticipant) ||
+                    parameter.ParameterType ==
+                        typeof(IStationTxCommandTransactionSubmissionParticipant));
             Assert.DoesNotContain(
                 typeof(RadioCoordinator)
                     .GetMethods(

@@ -468,6 +468,32 @@ submission unavailable with zero attempts. The supervisor remains Disarmed, the
 independent watchdog remains command-incapable, and no browser, HTTP, WebSocket,
 AetherRemote, watchdog, reconnect, or timer caller can invoke the composition.
 
+Phase 2P adds one lifecycle-owned `StationTxCommandTransactionComposition`
+above the safety-arm and signed-command compositions. It accepts only a current
+connection identity, one already-validated MOX/PTT Boolean intent with sequence
+and observation time, and a bounded heartbeat timeout. It serializes all
+operations through one lane and resolves lifecycle authority before arming,
+after arming, and before later active-transaction operations. Browser input can
+never supply a radio, session, lease, gateway, engine, FLEX handle, safety
+identity, signature, command ID, or envelope.
+
+A key transaction arms once, verifies that the stable station/radio/session/
+browser/lease-expiry/gateway/engine/FLEX-handle tuple is unchanged and that the
+new safety identity is exact, then submits one signed command. Known rejection
+performs one ownership-safe abort cleanup. Unknown command outcome,
+cancellation, or exception retains the arm and moves diagnostics to
+`reconciling`; no automatic retry or success inference occurs. A second key is
+rejected while a transaction is active.
+
+An unkey transaction requires that exact active transaction, refreshes one
+safety heartbeat, submits one false command, and clears the arm only after
+confirmed acceptance. Known rejection retains the arm. Unknown command or
+cleanup outcome retains it for reconciliation. Explicit heartbeat and abort
+operations remain internal and exact-connection-bound. Production constructs
+the composition for diagnostics only: submission, boundary, gate, and transports
+remain disabled, no operation caller exists, and key, heartbeat, unkey, and
+abort capabilities all remain false with zero attempts.
+
 The independent, station-local supervisor has no key method and an unkey-only
 transport. Its arm is purpose-bound to one engine
 instance, lease, session/browser owner, exact protected FLEX client handle, and

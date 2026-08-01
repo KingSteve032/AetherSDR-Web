@@ -42,8 +42,10 @@ single-holder TX lease policy without changing the native radio engine.
   safety-arm composition around the existing supervisor. Phase 2O attaches a
   lifecycle-owned safety-arm authority that independently evaluates the signed
   boundary, adapter, gate executor, command transport, supervisor, and exact
-  session authority, but production still exposes no operation caller. The gate
-  remains disabled and its production FLEX transport remains unavailable.
+  session authority. Phase 2P adds a lifecycle-owned transaction composition
+  that can sequence one safety arm, one signed command, heartbeat, and cleanup,
+  but production still exposes no operation caller. The gate remains disabled
+  and its production FLEX transport remains unavailable.
   Verification, signing, and submission all
   default disabled; no browser command ingress, arming capability, reachable
   keying command, or transmit-audio path is registered.
@@ -270,6 +272,16 @@ also keep the public and internal health contract at
 `txStationCommandSafetyHeartbeatAvailable=false`,
 `txStationCommandSafetyAbortAvailable=false`,
 `txStationCommandSafetyArmCompositionBrowserIngressRegistered=false`,
+`txStationCommandTransactionCompositionRegistered=true`,
+`txStationCommandTransactionSafetyArmAttached=true`,
+`txStationCommandTransactionCommandCompositionAttached=true`,
+`txStationCommandTransactionKeyAvailable=false`,
+`txStationCommandTransactionHeartbeatAvailable=false`,
+`txStationCommandTransactionUnkeyAvailable=false`,
+`txStationCommandTransactionAbortAvailable=false`,
+`txStationCommandTransactionActive=false`,
+`txStationCommandTransactionReconciliationRequired=false`,
+`txStationCommandTransactionBrowserIngressRegistered=false`,
 `txStationCommandEnvelopeSubmissionEnabled=false`,
 `txStationCommandEnvelopeSigningAvailable=false`,
 `txStationCommandEnvelopeVerificationAvailable=false`,
@@ -465,6 +477,31 @@ disabled, the gate still has `allowTransmit:false`, command and emergency-unkey
 transports remain absent, and the supervisor remains Disarmed. Health and Admin
 therefore report authority attachment and registration as true while arm,
 heartbeat, abort, SetTransmit, boundary execution, and submission remain false.
+
+Phase 2P adds one internal `StationTxCommandTransactionComposition` owned by the
+same lifecycle. A key request can contain only the current connection identity,
+a validated MOX/PTT Boolean intent, its positive sequence and observation time,
+and a bounded heartbeat timeout. The transaction resolves exact lifecycle
+authority, arms once, revalidates the stable station/radio/session/browser/lease/
+gateway/engine/FLEX-handle tuple, then submits one signed command. A known key
+rejection performs one ownership-safe arm cleanup. An unknown command outcome,
+cancellation, or exception retains the arm and marks reconciliation required;
+it is never retried or converted into success.
+
+An unkey transaction requires the existing exact active transaction, refreshes
+its safety heartbeat once, submits one signed false command, and clears the arm
+only after confirmed command acceptance. Known unkey rejection retains the arm;
+unknown unkey or cleanup outcome retains it for reconciliation. Explicit
+heartbeat and abort operations are internal and exact-connection-bound. The
+composition serializes operations, exposes bounded counters and state only, and
+stores no browser-supplied radio authority.
+
+Normal production constructs the transaction composition with both participants
+attached but no lifecycle, registry, coordinator, WebSocket, HTTP, AetherRemote,
+watchdog, reconnect, timer, or browser caller. Submission remains disabled, the
+boundary and gate remain disabled, both transports remain absent, and all key,
+heartbeat, unkey, and abort transaction capabilities remain false with no active
+transaction or reconciliation state.
 
 Environment-variable form remains disabled by default:
 

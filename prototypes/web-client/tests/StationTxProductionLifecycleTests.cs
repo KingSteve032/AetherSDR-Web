@@ -85,6 +85,9 @@ public sealed class StationTxProductionLifecycleTests
         Assert.Equal("none", safetyArm.LastOperation);
         Assert.Equal("none", safetyArm.LastOutcome);
         Assert.Equal("connection-unavailable", safetyArm.Reason);
+        AssertTransactionCompositionDisabled(
+            snapshot.StationCommandTransactionComposition,
+            authoritySnapshotAvailable: false);
         Assert.True(snapshot.GatewayConnected);
         Assert.False(snapshot.EngineConnected);
         Assert.False(snapshot.BrowserConnected);
@@ -213,6 +216,9 @@ public sealed class StationTxProductionLifecycleTests
         Assert.False(safetyArm.HeartbeatAvailable);
         Assert.False(safetyArm.AbortAvailable);
         Assert.Equal("occupancy-stale", safetyArm.Reason);
+        AssertTransactionCompositionDisabled(
+            snapshot.StationCommandTransactionComposition,
+            authoritySnapshotAvailable: true);
         Assert.True(snapshot.StationCommandAdapterRegistered);
         Assert.False(snapshot.StationCommandArmingAvailable);
         Assert.False(snapshot.StationCommandSetTransmitAvailable);
@@ -330,6 +336,9 @@ public sealed class StationTxProductionLifecycleTests
         Assert.Equal(
             "occupancy-stale",
             active.StationCommandSafetyArmComposition.Reason);
+        AssertTransactionCompositionDisabled(
+            active.StationCommandTransactionComposition,
+            authoritySnapshotAvailable: true);
 
         Assert.True(leases.TryRelease(
             "radio-a",
@@ -1045,6 +1054,36 @@ public sealed class StationTxProductionLifecycleTests
         Assert.NotNull(lease);
         await lifecycle.FlushAsync();
         return lease;
+    }
+
+    private static void AssertTransactionCompositionDisabled(
+        StationTxCommandTransactionCompositionDiagnostics transaction,
+        bool authoritySnapshotAvailable)
+    {
+        Assert.True(transaction.Registered);
+        Assert.True(transaction.SafetyArmCompositionAttached);
+        Assert.True(transaction.CommandSessionCompositionAttached);
+        Assert.Equal(
+            authoritySnapshotAvailable,
+            transaction.AuthoritySnapshotAvailable);
+        Assert.False(transaction.KeyAvailable);
+        Assert.False(transaction.HeartbeatAvailable);
+        Assert.False(transaction.UnkeyAvailable);
+        Assert.False(transaction.AbortAvailable);
+        Assert.False(transaction.Active);
+        Assert.False(transaction.ReconciliationRequired);
+        Assert.Equal("idle", transaction.State);
+        Assert.Equal(0, transaction.AttemptCount);
+        Assert.Equal(0, transaction.ArmForwardedCount);
+        Assert.Equal(0, transaction.CommandForwardedCount);
+        Assert.Equal(0, transaction.HeartbeatForwardedCount);
+        Assert.Equal(0, transaction.CleanupForwardedCount);
+        Assert.Equal(0, transaction.AcceptedCount);
+        Assert.Equal(0, transaction.RejectedCount);
+        Assert.Equal(0, transaction.UnknownCount);
+        Assert.Equal("none", transaction.LastOperation);
+        Assert.Equal("none", transaction.LastOutcome);
+        Assert.Equal("coordinator-unattached", transaction.Reason);
     }
 
     private static ManualTimeProvider NewTime() =>

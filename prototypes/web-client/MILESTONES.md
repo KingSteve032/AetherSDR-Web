@@ -1973,6 +1973,69 @@ Milestone state:
   stale; detaching restored a fresh 2D `RX-ONLY / RADIO: LIVE` session. A fresh
   Admin console observation contained zero entries. No TX control, microphone
   permission, radio command, or RF operation was used.
+- Phase 2P adds one lifecycle-owned `StationTxCommandTransactionComposition`
+  above the existing safety-arm and command-session compositions. A key
+  transaction resolves exact lifecycle authority, forwards one arm, revalidates
+  the stable station/radio/session/browser/lease-expiry/gateway/engine/FLEX-
+  handle tuple and Armed safety identity, then forwards one signed command.
+  Known key rejection performs one ownership-safe cleanup; unknown outcome,
+  cancellation, or exception retains the arm for reconciliation and never
+  retries.
+- An unkey transaction requires the exact active transaction, forwards one
+  heartbeat, one false command, and clears the arm only after confirmed
+  acceptance. Known rejection retains the arm. Unknown command or cleanup
+  outcome retains it for reconciliation. Explicit heartbeat and abort operations
+  remain internal, exact-connection-bound, and serialized with command
+  submission.
+- Production constructs the transaction composition with both participants
+  attached but adds no lifecycle, registry, coordinator, WebSocket, HTTP,
+  AetherRemote, watchdog, reconnect, timer, or browser caller. Submission,
+  boundary, gate, and transports remain disabled; key, heartbeat, unkey, and
+  abort remain unavailable; no transaction is active; and reconciliation is not
+  required.
+- The Phase 2P focused transaction suite passes 33 cases. The focused
+  transaction/lifecycle/registry proof passes 72 cases, the combined command and
+  safety stack passes 434 cases, and the Admin diagnostics suite passes 11
+  cases. The complete FlexWeb server suite passes 602 cases and all 124 browser
+  tests pass.
+- The final 2026-08-01 Phase 2P guarded validation passed 602 FlexWeb server
+  tests, 25 independent-watchdog tests, 48 TX-HIL isolation tests, 70
+  AetherRemote tests, and 124 browser tests (869 total), with a zero-warning
+  solution build. Both self-contained production binaries contained no
+  forbidden TX/HIL command surface, and the published watchdog probe remained
+  empty and Disarmed with no command transport or arming capability. Validation
+  log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-transaction-phase2p-validation-flexweb-validation.txt`.
+  No server, Git commit, Git remote, radio command, or RF operation was changed
+  by this validation-only run.
+- Release `20260801-m7-station-command-transaction-phase2p` deployed
+  successfully to the staging FlexWeb host on 2026-08-01 with
+  `20260801-m7-station-command-safety-arm-authority-phase2o` retained for
+  rollback. Internal, public, and post-acceptance health reported the transaction
+  composition and both participants registered while key, heartbeat, unkey,
+  abort, active transaction, reconciliation, browser ingress, boundary,
+  submission, command transport, safety arming, and SetTransmit remained false.
+  The independent watchdog remained supervised and Disarmed with zero registered
+  identities. Deployment log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-transaction-phase2p-flexweb-validation.txt`.
+- Browser Bridge acceptance kept PSOC2 live and receive-only with current
+  spectrum and waterfall, `FLEX-6700`, `RX-ONLY`, and `RADIO: LIVE`. Deep health
+  inspection confirmed transaction registration and both participant attachments
+  true while key, heartbeat, unkey, abort, active state, reconciliation, browser
+  ingress, boundary execution, submission, command transport, SetTransmit, and
+  supervisor arming remained false. MOX, TUNE, and CWX remained hidden and
+  disabled; lease acquisition and validation-only intent controls remained
+  disabled; PC MIC remained a local input meter. The harmless browser-local 2D
+  -> 3D -> 2D renderer transition passed without changing a radio control.
+- Admin showed `DISABLED · DISARMED · NO LEASE`; transaction safety and command
+  participants attached; authority absent; key/heartbeat/unkey/abort unavailable;
+  active `no`; reconciliation `no`; state `idle`; attempts, arm, command,
+  heartbeat, cleanup, accepted, rejected, and unknown all zero; last `none/none`;
+  reason `submission-disabled`; and all TX transports absent. Attaching the
+  debugger temporarily affected the background heartbeat; detaching restored a
+  fresh 2D `RX-ONLY / RADIO: LIVE` session. A fresh Admin console observation
+  contained zero entries. No TX control, microphone permission, radio command,
+  or RF operation was used.
 
 Acceptance criteria:
 

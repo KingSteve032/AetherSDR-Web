@@ -526,6 +526,43 @@ attempt/accepted/rejected counters separately from the composition's bounded
 attempt/forward/accepted/rejected counters. Neither adds lease IDs or ownership
 secrets to Admin text.
 
+Phase 2P adds no wire message and no browser command. Each lifecycle constructs
+one internal `StationTxCommandTransactionComposition` above the existing
+safety-arm and command-session compositions. A typed submit request contains
+only the current connection ID, one parsed MOX/PTT Boolean intent, its positive
+browser sequence, server observation time, and a heartbeat timeout within the
+existing 250 ms through 5 second range. Heartbeat and abort requests contain only
+the exact current connection ID plus a bounded timeout or reason. All authority,
+safety, envelope, signature, command, and FLEX fields remain server-owned.
+
+For a true command, the transaction resolves current authority, forwards one
+arm, re-resolves and compares the stable station/radio/session/browser/lease-
+expiry/gateway/engine/FLEX-handle tuple, requires the new Armed safety identity
+to match, and forwards one signed command. A known command rejection forwards
+one ownership-safe abort cleanup. `adapter_outcome_unknown`, cancellation, or
+exception retains the arm, marks reconciliation required, and never retries.
+
+For a false command, an exact active transaction is required. The transaction
+forwards one heartbeat, one signed unkey, and—only after confirmed acceptance—
+one arm cleanup. Known unkey rejection retains the arm. Unknown command or
+cleanup outcome retains it for reconciliation. Operations are serialized and a
+second key while active is rejected.
+
+Production exposes no operation route. Health reports
+`txStationCommandTransactionCompositionRegistered:true`,
+`txStationCommandTransactionSafetyArmAttached:true`,
+`txStationCommandTransactionCommandCompositionAttached:true`,
+`txStationCommandTransactionKeyAvailable:false`,
+`txStationCommandTransactionHeartbeatAvailable:false`,
+`txStationCommandTransactionUnkeyAvailable:false`,
+`txStationCommandTransactionAbortAvailable:false`,
+`txStationCommandTransactionActive:false`,
+`txStationCommandTransactionReconciliationRequired:false`, and
+`txStationCommandTransactionBrowserIngressRegistered:false`.
+Per-session diagnostics add only bounded state, attempt/forward/outcome counts,
+and a bounded reason; active identity and lease values are not rendered in
+Admin text.
+
 `client.visibility` accepts only a JSON boolean. A hidden browser keeps its
 authenticated WebSocket, radio session, text responses, snapshots, presence,
 and radio-authoritative state, but the gateway does not enqueue spectrum or
