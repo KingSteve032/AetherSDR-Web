@@ -274,6 +274,16 @@ app.MapGet(
                 txStationCommandSafetyAbortAvailable = false,
                 txStationCommandSafetyArmCompositionBrowserIngressRegistered =
                     false,
+                txStationCommandTransactionCompositionRegistered = true,
+                txStationCommandTransactionSafetyArmAttached = true,
+                txStationCommandTransactionCommandCompositionAttached = true,
+                txStationCommandTransactionKeyAvailable = false,
+                txStationCommandTransactionHeartbeatAvailable = false,
+                txStationCommandTransactionUnkeyAvailable = false,
+                txStationCommandTransactionAbortAvailable = false,
+                txStationCommandTransactionActive = false,
+                txStationCommandTransactionReconciliationRequired = false,
+                txStationCommandTransactionBrowserIngressRegistered = false,
                 txStationCommandEnvelopeSubmissionEnabled =
                     commandCoordinator.SubmissionEnabled,
                 txStationCommandEnvelopeSigningAvailable =

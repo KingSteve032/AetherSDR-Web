@@ -59,6 +59,15 @@ internal sealed record StationTxCommandSessionCompositionResult(
     StationTxCommandSessionCompositionDiagnostics Diagnostics,
     StationTxCommandEnvelopeCoordinatorResult? CoordinatorResult);
 
+internal interface IStationTxCommandTransactionSubmissionParticipant
+{
+    StationTxCommandSessionCompositionDiagnostics Snapshot { get; }
+
+    Task<StationTxCommandSessionCompositionResult> SubmitAsync(
+        StationTxCommandSessionCompositionRequest request,
+        CancellationToken cancellationToken = default);
+}
+
 /// <summary>
 /// Per-session composition boundary for a validated browser TX intent. It owns
 /// no key, adapter, arming operation, browser route, or radio transport. The
@@ -66,7 +75,8 @@ internal sealed record StationTxCommandSessionCompositionResult(
 /// its browser sequence, and the server observation time. All command authority
 /// fields are resolved from the owning production lifecycle.
 /// </summary>
-internal sealed class StationTxCommandSessionComposition
+internal sealed class StationTxCommandSessionComposition :
+    IStationTxCommandTransactionSubmissionParticipant
 {
     private const int MaximumConnectionIdLength = 128;
 

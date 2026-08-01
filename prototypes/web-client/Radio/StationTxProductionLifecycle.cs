@@ -25,6 +25,8 @@ public sealed record StationTxLifecycleDiagnostics(
         StationCommandAdapterComposition,
     StationTxCommandSessionCompositionDiagnostics
         StationCommandSessionComposition,
+    StationTxCommandTransactionCompositionDiagnostics
+        StationCommandTransactionComposition,
     StationTxSafetyArmAuthorityDiagnostics
         StationCommandSafetyArmAuthority,
     StationTxSafetyArmCompositionDiagnostics
@@ -114,6 +116,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         m_stationCommandAdapterComposition;
     private readonly StationTxCommandSessionComposition
         m_stationCommandComposition;
+    private readonly StationTxCommandTransactionComposition
+        m_stationCommandTransactionComposition;
     private readonly StationTxSafetyArmAuthority
         m_stationCommandSafetyArmAuthority;
     private readonly StationTxSafetyArmComposition
@@ -240,6 +244,12 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             m_stationCommandBoundary,
             ResolveStationCommandAuthority,
             m_timeProvider);
+        m_stationCommandTransactionComposition =
+            new StationTxCommandTransactionComposition(
+                m_stationCommandSafetyArmComposition,
+                m_stationCommandComposition,
+                ResolveStationCommandAuthority,
+                m_timeProvider);
         m_authenticationMonitor = new StationTxAuthenticationMonitor(m_supervisor);
         m_engineMonitor = new StationTxEngineConnectionMonitor(m_supervisor);
         m_gatewayMonitor = new StationTxGatewayConnectionMonitor(m_supervisor);
@@ -275,6 +285,9 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 m_stationCommandAdapterComposition.Snapshot;
             StationTxCommandSessionCompositionDiagnostics commandComposition =
                 m_stationCommandComposition.Snapshot;
+            StationTxCommandTransactionCompositionDiagnostics
+                transactionComposition =
+                    m_stationCommandTransactionComposition.Snapshot;
             StationTxSafetyArmAuthorityDiagnostics safetyArmAuthority =
                 m_stationCommandSafetyArmAuthority.Snapshot;
             StationTxSafetyArmCompositionDiagnostics safetyArmComposition =
@@ -305,6 +318,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     m_stationCommandBoundary.AuditCount,
                     adapterComposition,
                     commandComposition,
+                    transactionComposition,
                     safetyArmAuthority,
                     safetyArmComposition,
                     m_gatewayConnected,

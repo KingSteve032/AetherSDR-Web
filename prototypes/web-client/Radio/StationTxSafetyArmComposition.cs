@@ -95,6 +95,23 @@ internal sealed record StationTxSafetyArmCompositionResult(
     StationTxSafetyArmCompositionDiagnostics Diagnostics,
     StationTxSafetyResult? SafetyResult);
 
+internal interface IStationTxSafetyArmTransactionParticipant
+{
+    StationTxSafetyArmCompositionDiagnostics Snapshot { get; }
+
+    Task<StationTxSafetyArmCompositionResult> ArmAsync(
+        StationTxSafetyArmCompositionArmRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<StationTxSafetyArmCompositionResult> HeartbeatAsync(
+        StationTxSafetyArmCompositionHeartbeatRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<StationTxSafetyArmCompositionResult> AbortAsync(
+        StationTxSafetyArmCompositionAbortRequest request,
+        CancellationToken cancellationToken = default);
+}
+
 /// <summary>
 /// Per-session composition around the existing unkey-only safety supervisor.
 /// A caller can provide only the current connection identity plus a bounded
@@ -107,7 +124,8 @@ internal sealed record StationTxSafetyArmCompositionResult(
 /// heartbeat, or abort the supervisor. It owns no command transport and
 /// performs no automatic call or retry.
 /// </summary>
-internal sealed class StationTxSafetyArmComposition
+internal sealed class StationTxSafetyArmComposition :
+    IStationTxSafetyArmTransactionParticipant
 {
     private const int MaximumConnectionIdLength = 128;
     private const int MaximumAbortReasonLength = 64;
@@ -197,6 +215,24 @@ internal sealed class StationTxSafetyArmComposition
             }
         }
     }
+
+    Task<StationTxSafetyArmCompositionResult>
+        IStationTxSafetyArmTransactionParticipant.ArmAsync(
+            StationTxSafetyArmCompositionArmRequest request,
+            CancellationToken cancellationToken) =>
+        ArmAsync(request, cancellationToken);
+
+    Task<StationTxSafetyArmCompositionResult>
+        IStationTxSafetyArmTransactionParticipant.HeartbeatAsync(
+            StationTxSafetyArmCompositionHeartbeatRequest request,
+            CancellationToken cancellationToken) =>
+        HeartbeatAsync(request, cancellationToken);
+
+    Task<StationTxSafetyArmCompositionResult>
+        IStationTxSafetyArmTransactionParticipant.AbortAsync(
+            StationTxSafetyArmCompositionAbortRequest request,
+            CancellationToken cancellationToken) =>
+        AbortAsync(request, cancellationToken);
 
     internal Task<StationTxSafetyArmCompositionResult> ArmAsync(
         StationTxSafetyArmCompositionArmRequest request,

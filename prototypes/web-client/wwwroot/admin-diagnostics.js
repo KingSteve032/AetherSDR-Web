@@ -237,6 +237,38 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `last ${String(commandComposition.lastOutcome || "none")} ` +
       `reason ${String(commandComposition.reason || "unknown")}`
     : "command composition not registered";
+  const transaction = lifecycle.stationCommandTransactionComposition;
+  const transactionState = transaction?.registered
+    ? `transaction composition safety ${transaction.safetyArmCompositionAttached
+        ? "attached"
+        : "absent"} ` +
+      `command ${transaction.commandSessionCompositionAttached
+        ? "attached"
+        : "absent"} ` +
+      `authority ${transaction.authoritySnapshotAvailable
+        ? "available"
+        : "absent"} ` +
+      `key ${transaction.keyAvailable ? "available" : "unavailable"} ` +
+      `heartbeat ${transaction.heartbeatAvailable
+        ? "available"
+        : "unavailable"} ` +
+      `unkey ${transaction.unkeyAvailable ? "available" : "unavailable"} ` +
+      `abort ${transaction.abortAvailable ? "available" : "unavailable"} ` +
+      `active ${transaction.active ? "yes" : "no"} ` +
+      `reconcile ${transaction.reconciliationRequired ? "required" : "no"} ` +
+      `state ${String(transaction.state || "unknown")} ` +
+      `attempts ${formatCount(transaction.attemptCount)} ` +
+      `arm ${formatCount(transaction.armForwardedCount)} ` +
+      `command ${formatCount(transaction.commandForwardedCount)} ` +
+      `heartbeat-forwarded ${formatCount(transaction.heartbeatForwardedCount)} ` +
+      `cleanup ${formatCount(transaction.cleanupForwardedCount)} ` +
+      `accepted ${formatCount(transaction.acceptedCount)} ` +
+      `rejected ${formatCount(transaction.rejectedCount)} ` +
+      `unknown ${formatCount(transaction.unknownCount)} ` +
+      `last ${String(transaction.lastOperation || "none")}/` +
+      `${String(transaction.lastOutcome || "none")} ` +
+      `reason ${String(transaction.reason || "unknown")}`
+    : "transaction composition not registered";
   const independent = lifecycle.independentWatchdog;
   const independentState = !independent?.supervisionEnabled
     ? "independent not supervised"
@@ -264,7 +296,7 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `${watchdogState} · ${independentState} · ` +
       `${stationCommandState} · ${adapterCompositionState} · ` +
       `${safetyArmAuthorityState} · ${safetyArmCompositionState} · ` +
-      `${commandCompositionState} · ` +
+      `${commandCompositionState} · ${transactionState} · ` +
       `authority ${authorityReason} · ` +
       `last ${lifecycle.lastObservation || "none"} · ${transportState}`
   };

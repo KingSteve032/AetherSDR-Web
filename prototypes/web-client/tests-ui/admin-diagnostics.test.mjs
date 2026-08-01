@@ -111,6 +111,30 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       lastOutcome: "none",
       reason: "submission-disabled"
     },
+    stationCommandTransactionComposition: {
+      registered: true,
+      safetyArmCompositionAttached: true,
+      commandSessionCompositionAttached: true,
+      authoritySnapshotAvailable: false,
+      keyAvailable: false,
+      heartbeatAvailable: false,
+      unkeyAvailable: false,
+      abortAvailable: false,
+      active: false,
+      reconciliationRequired: false,
+      state: "idle",
+      attemptCount: 0,
+      armForwardedCount: 0,
+      commandForwardedCount: 0,
+      heartbeatForwardedCount: 0,
+      cleanupForwardedCount: 0,
+      acceptedCount: 0,
+      rejectedCount: 0,
+      unknownCount: 0,
+      lastOperation: "none",
+      lastOutcome: "none",
+      reason: "submission-disabled"
+    },
     browserObservationSequence: 4,
     lastBrowserObservedAt: "2026-07-31T02:29:59Z",
     engineObservationSequence: 7,
@@ -158,7 +182,11 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       "forwarded 0 last none/none reason connection-unavailable · command composition " +
       "coordinator attached boundary attached " +
       "authority absent submission unavailable attempts 0 forwarded 0 " +
-      "last none reason submission-disabled · authority no-active-lease · " +
+      "last none reason submission-disabled · transaction composition safety attached " +
+      "command attached authority absent key unavailable heartbeat unavailable unkey unavailable " +
+      "abort unavailable active no reconcile no state idle attempts 0 arm 0 command 0 " +
+      "heartbeat-forwarded 0 cleanup 0 accepted 0 rejected 0 unknown 0 last none/none " +
+      "reason submission-disabled · authority no-active-lease · " +
       "last gateway-heartbeat · TX transports absent"
   });
   assert.deepEqual(formatTxLifecycle(null, now), {
@@ -244,6 +272,30 @@ test("admin diagnostics keep ready signature verification separate from commands
       lastOutcome: "none",
       reason: "submission-disabled"
     },
+    stationCommandTransactionComposition: {
+      registered: true,
+      safetyArmCompositionAttached: true,
+      commandSessionCompositionAttached: true,
+      authoritySnapshotAvailable: false,
+      keyAvailable: false,
+      heartbeatAvailable: false,
+      unkeyAvailable: false,
+      abortAvailable: false,
+      active: false,
+      reconciliationRequired: false,
+      state: "idle",
+      attemptCount: 0,
+      armForwardedCount: 0,
+      commandForwardedCount: 0,
+      heartbeatForwardedCount: 0,
+      cleanupForwardedCount: 0,
+      acceptedCount: 0,
+      rejectedCount: 0,
+      unknownCount: 0,
+      lastOperation: "none",
+      lastOutcome: "none",
+      reason: "submission-disabled"
+    },
     authorityFresh: false,
     authorityReason: "no-active-lease",
     independentWatchdog: {
@@ -268,6 +320,9 @@ test("admin diagnostics keep ready signature verification separate from commands
   assert.match(
     result.detail,
     /command composition coordinator attached boundary attached authority absent submission unavailable attempts 0 forwarded 0 last none reason submission-disabled/);
+  assert.match(
+    result.detail,
+    /transaction composition safety attached command attached authority absent key unavailable heartbeat unavailable unkey unavailable abort unavailable active no reconcile no state idle attempts 0 arm 0 command 0 heartbeat-forwarded 0 cleanup 0 accepted 0 rejected 0 unknown 0 last none\/none reason submission-disabled/);
   assert.match(result.detail, /TX transports absent/);
 });
 
@@ -341,6 +396,30 @@ test("admin diagnostics surface lease holder expiry and browser TX intent outcom
       lastOutcome: "none",
       reason: "submission-disabled"
     },
+    stationCommandTransactionComposition: {
+      registered: true,
+      safetyArmCompositionAttached: true,
+      commandSessionCompositionAttached: true,
+      authoritySnapshotAvailable: true,
+      keyAvailable: false,
+      heartbeatAvailable: false,
+      unkeyAvailable: false,
+      abortAvailable: false,
+      active: false,
+      reconciliationRequired: false,
+      state: "idle",
+      attemptCount: 0,
+      armForwardedCount: 0,
+      commandForwardedCount: 0,
+      heartbeatForwardedCount: 0,
+      cleanupForwardedCount: 0,
+      acceptedCount: 0,
+      rejectedCount: 0,
+      unknownCount: 0,
+      lastOperation: "none",
+      lastOutcome: "none",
+      reason: "submission-disabled"
+    },
     browserObservationSequence: 12,
     lastBrowserObservedAt: "2026-07-31T15:59:59Z",
     engineObservationSequence: 13,
@@ -400,6 +479,9 @@ test("admin diagnostics surface lease holder expiry and browser TX intent outcom
   assert.match(
     result.detail,
     /command composition coordinator attached boundary attached authority available submission unavailable attempts 0 forwarded 0 last none reason submission-disabled/);
+  assert.match(
+    result.detail,
+    /transaction composition safety attached command attached authority available key unavailable heartbeat unavailable unkey unavailable abort unavailable active no reconcile no state idle attempts 0 arm 0 command 0 heartbeat-forwarded 0 cleanup 0 accepted 0 rejected 0 unknown 0 last none\/none reason submission-disabled/);
   assert.match(result.detail, /TX transports absent$/);
 });
 
