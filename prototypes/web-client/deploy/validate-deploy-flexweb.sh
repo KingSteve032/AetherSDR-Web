@@ -166,6 +166,8 @@ expected = {
     "txStationCommandProtocolVersion": 1,
     "txStationCommandBoundaryRegistered": True,
     "txStationCommandBoundaryEnabled": False,
+    "txStationCommandTrustVerificationEnabled": False,
+    "txStationCommandTrustedKeyCount": 0,
     "txStationCommandSignatureVerificationAvailable": False,
     "txStationCommandAdapterRegistered": False,
     "txStationCommandArmingAvailable": False,

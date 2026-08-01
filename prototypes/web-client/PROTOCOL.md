@@ -317,11 +317,29 @@ signature.
 
 Production capability negotiation reports protocol version 1 and
 `boundaryRegistered:true`, while `boundaryEnabled`,
-`signatureVerificationAvailable`, `commandAdapterRegistered`,
-`armingAvailable`, and `setTransmitAvailable` remain false. The production
-boundary has no configured public key and uses an unavailable adapter. The
-independent watchdog and remote gateway have no reference to the adapter
-interface and cannot bypass the safety-supervisor validation.
+`commandAdapterRegistered`, `armingAvailable`, and `setTransmitAvailable`
+remain false. Phase 2H adds a station-scoped trust ring that may independently
+make `signatureVerificationAvailable:true` after reviewed configuration loads at
+least one exact ECDSA P-256 public key. This readiness bit does not make an
+envelope reachable and is not combined with the disabled boundary or unavailable
+adapter to manufacture command capability.
+
+`StationTxCommandTrust` accepts at most four exact key ID/path entries. Key IDs
+are case-sensitive canonical ASCII tokens. Each absolute path must contain no
+relative segments and must name a bounded regular, non-symlink UTF-8 file in a
+regular, non-symlink containing directory. On Unix, neither the file nor that
+directory may be writable by group or other users. The file must contain exactly
+one `PUBLIC KEY` PEM block whose decoded SubjectPublicKeyInfo is ECDSA P-256;
+private keys, other curves, duplicate IDs or paths, extra blocks or trailing
+data, malformed UTF-8, unknown configuration properties, and oversized files
+fail startup. Invalid key IDs are rejected without reflecting their untrusted
+text into errors. Multiple keys support a bounded rotation window; envelope `keyId` selects exactly one verifier and an
+unknown or mismatched key still fails signature validation.
+
+Default production configuration keeps trust verification disabled with zero
+keys, so `signatureVerificationAvailable` is false. The independent watchdog and
+remote gateway have no reference to the adapter interface or an envelope-submit
+method and cannot bypass the safety-supervisor validation.
 
 `client.visibility` accepts only a JSON boolean. A hidden browser keeps its
 authenticated WebSocket, radio session, text responses, snapshots, presence,

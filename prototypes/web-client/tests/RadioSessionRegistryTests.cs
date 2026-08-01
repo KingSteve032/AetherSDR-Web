@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
 using AetherSDR.Web.Radio;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.FileProviders;
@@ -129,6 +130,72 @@ public sealed class RadioSessionRegistryTests
         finally
         {
             await registry.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task SessionInheritsReadyTrustVerifierWithoutCommandCapability()
+    {
+        string directory = Path.Combine(
+            Path.GetTempPath(),
+            $"aethersdr-session-command-trust-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        string keyPath = Path.Combine(directory, "station-command.pem");
+        using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        File.WriteAllText(keyPath, key.ExportSubjectPublicKeyInfoPem());
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(
+                directory,
+                UnixFileMode.UserRead |
+                UnixFileMode.UserWrite |
+                UnixFileMode.UserExecute);
+            File.SetUnixFileMode(
+                keyPath,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+
+        using StationTxCommandTrustRegistry trust = new(
+            Options.Create(new StationTxCommandTrustSettings
+            {
+                VerificationEnabled = true,
+                Keys =
+                [
+                    new StationTxCommandTrustKeySettings
+                    {
+                        KeyId = "station-key-a",
+                        PublicKeyPath = keyPath
+                    }
+                ]
+            }),
+            NullLogger<StationTxCommandTrustRegistry>.Instance);
+        (RadioSessionRegistry registry, _, _) = CreateRegistry(
+            stationCommandTrust: trust);
+        await registry.StartAsync(CancellationToken.None);
+        try
+        {
+            RadioSession session = await registry.GetDefaultAsync(
+                CreateUser("operator-a"),
+                BrowserA,
+                CancellationToken.None);
+
+            await session.TxLifecycle.FlushAsync();
+            StationTxLifecycleDiagnostics lifecycle =
+                Assert.IsType<StationTxLifecycleDiagnostics>(
+                    session.GetDiagnostics().TxLifecycle);
+            Assert.True(lifecycle.StationCommandSignatureVerificationAvailable);
+            Assert.False(lifecycle.StationCommandBoundaryEnabled);
+            Assert.False(lifecycle.StationCommandAdapterRegistered);
+            Assert.False(lifecycle.StationCommandArmingAvailable);
+            Assert.False(lifecycle.StationCommandSetTransmitAvailable);
+            Assert.Equal(0, lifecycle.StationCommandAuditCount);
+            Assert.Equal("Disabled", lifecycle.GateState);
+            Assert.Equal("Disarmed", lifecycle.SafetyState);
+        }
+        finally
+        {
+            await registry.StopAsync(CancellationToken.None);
+            Directory.Delete(directory, recursive: true);
         }
     }
 
@@ -616,7 +683,8 @@ public sealed class RadioSessionRegistryTests
         RadioSelectionManager Catalog,
         RadioAccessPolicyStore Policies) CreateRegistry(
             bool browserTxLeaseEnabled = false,
-            StationTxIndependentWatchdogRegistry? independentWatchdogs = null)
+            StationTxIndependentWatchdogRegistry? independentWatchdogs = null,
+            StationTxCommandTrustRegistry? stationCommandTrust = null)
     {
         IOptions<RadioSettings> options = Options.Create(
             new RadioSettings
@@ -644,7 +712,8 @@ public sealed class RadioSessionRegistryTests
             NullLoggerFactory.Instance,
             NullLogger<RadioSessionRegistry>.Instance,
             remoteSettings: null,
-            independentWatchdogs);
+            independentWatchdogs,
+            stationCommandTrust);
         return (registry, catalog, policies);
     }
 

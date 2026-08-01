@@ -93,6 +93,36 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
   });
 });
 
+test("admin diagnostics keep ready signature verification separate from commands", () => {
+  const result = formatTxLifecycle({
+    registered: true,
+    gateState: "Disabled",
+    safetyState: "Disarmed",
+    commandTransportAvailable: false,
+    emergencyUnkeyTransportAvailable: false,
+    stationCommandProtocolVersion: 1,
+    stationCommandBoundaryRegistered: true,
+    stationCommandBoundaryEnabled: false,
+    stationCommandSignatureVerificationAvailable: true,
+    stationCommandAdapterRegistered: false,
+    stationCommandArmingAvailable: false,
+    stationCommandSetTransmitAvailable: false,
+    stationCommandAuditCount: 0,
+    authorityFresh: false,
+    authorityReason: "no-active-lease",
+    independentWatchdog: {
+      supervisionEnabled: false
+    },
+    lastObservation: "registered-disabled"
+  });
+
+  assert.equal(result.value, "DISABLED · DISARMED · NO LEASE");
+  assert.match(
+    result.detail,
+    /command boundary v1 disabled signature available adapter absent arming absent set-transmit absent audit 0/);
+  assert.match(result.detail, /TX transports absent/);
+});
+
 test("admin diagnostics surface lease holder expiry and browser TX intent outcome", () => {
   const now = Date.parse("2026-07-31T16:00:00Z");
   const result = formatTxLifecycle({

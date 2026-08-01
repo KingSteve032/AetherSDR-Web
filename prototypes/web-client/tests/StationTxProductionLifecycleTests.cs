@@ -61,6 +61,30 @@ public sealed class StationTxProductionLifecycleTests
     }
 
     [Fact]
+    public async Task ReadySignatureVerifierDoesNotEnableCommands()
+    {
+        TxLeaseManager leases = new();
+        RadioTxOccupancyRegistry occupancy = new();
+        await using StationTxProductionLifecycle lifecycle = Create(
+            leases,
+            occupancy,
+            stationCommandVerifier: new AlwaysAvailableSignatureVerifier());
+
+        await lifecycle.FlushAsync();
+        StationTxLifecycleDiagnostics snapshot = lifecycle.Snapshot;
+
+        Assert.True(snapshot.StationCommandBoundaryRegistered);
+        Assert.False(snapshot.StationCommandBoundaryEnabled);
+        Assert.True(snapshot.StationCommandSignatureVerificationAvailable);
+        Assert.False(snapshot.StationCommandAdapterRegistered);
+        Assert.False(snapshot.StationCommandArmingAvailable);
+        Assert.False(snapshot.StationCommandSetTransmitAvailable);
+        Assert.Equal(0, snapshot.StationCommandAuditCount);
+        Assert.Equal("Disabled", snapshot.GateState);
+        Assert.Equal("Disarmed", snapshot.SafetyState);
+    }
+
+    [Fact]
     public async Task ExactBrowserEngineAndLeaseObservationsNeverEnableKeying()
     {
         TxLeaseManager leases = new();
@@ -838,7 +862,8 @@ public sealed class StationTxProductionLifecycleTests
         TxLeaseManager leases,
         RadioTxOccupancyRegistry occupancy,
         TimeProvider? timeProvider = null,
-        IStationTxIndependentWatchdogFactory? independentWatchdogFactory = null) =>
+        IStationTxIndependentWatchdogFactory? independentWatchdogFactory = null,
+        IStationTxCommandSignatureVerifier? stationCommandVerifier = null) =>
         new(
             "radio-a",
             "session-a",
@@ -848,7 +873,19 @@ public sealed class StationTxProductionLifecycleTests
             occupancy,
             NullLogger<StationTxProductionLifecycle>.Instance,
             timeProvider,
-            independentWatchdogFactory);
+            independentWatchdogFactory,
+            stationCommandVerifier);
+
+    private sealed class AlwaysAvailableSignatureVerifier :
+        IStationTxCommandSignatureVerifier
+    {
+        public bool IsAvailable => true;
+
+        public bool Verify(
+            string keyId,
+            ReadOnlySpan<byte> payload,
+            ReadOnlySpan<byte> signature) => true;
+    }
 
     private sealed class FakeIndependentWatchdogFactory :
         IStationTxIndependentWatchdogFactory
