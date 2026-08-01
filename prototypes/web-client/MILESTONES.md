@@ -2097,6 +2097,46 @@ Milestone state:
   absent. A fresh Admin console observation contained zero entries. Detaching the
   debugger restored a fresh receive-only radio session. No TX control,
   microphone permission, radio command, or RF operation was used.
+- Phase 2R adds a lifecycle-owned `BrowserTxTransactionIngress` that requires an
+  exact server validation result paired with the parsed browser request. It
+  requires the validation-only outcome and current intent-validation capability,
+  bounds validation evidence to two seconds with one second of future clock skew,
+  accepts only Boolean `mox.set` and `ptt.set`, derives the five-second heartbeat
+  bound server-side, rejects unsupported or mismatched requests before the
+  transaction boundary, forwards at most once, and preserves accepted,
+  rejected, and unknown outcomes without retry.
+- Production constructs the Phase 2R ingress execution-disabled. It is visible
+  only through health and Admin diagnostics; `RadioWebSocketEndpoint` remains on
+  the existing validation-only `EvaluateBrowserTxIntent` path. Registry,
+  coordinator, HTTP, AetherRemote, watchdog, reconnect, and timer types receive
+  none of the ingress request/result types. Key, unkey, transaction, boundary,
+  submission, transport, SetTransmit, and safety-arming availability remain
+  false.
+- The focused Phase 2R ingress and lifecycle proof passes 36 cases. The complete
+  FlexWeb server suite passes 638 cases and all 123 browser tests pass.
+- The final 2026-08-01 Phase 2R guarded gate passed 638 FlexWeb server tests, 25
+  independent-watchdog tests, 48 TX-HIL isolation tests, 70 AetherRemote tests,
+  and 123 browser tests (904 total), with a zero-warning solution build. The
+  production web and watchdog artifacts contained no forbidden TX/HIL command
+  surface, and the watchdog probe remained empty and Disarmed with no command
+  transport or arming capability. Validation log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-browser-tx-transaction-ingress-phase2r-validation-flexweb-validation.txt`.
+- Staging release
+  `20260801-m7-browser-tx-transaction-ingress-phase2r-final` was activated with
+  `20260801-m7-browser-tx-transaction-ingress-phase2r` retained for rollback.
+  Internal and public health reported the ingress registered, execution disabled,
+  transaction boundary attached, key/unkey unavailable, and WebSocket, HTTP,
+  AetherRemote, watchdog, reconnect, and timer callers absent. Transaction,
+  boundary, submission, transport, SetTransmit, and safety-arming capabilities
+  remained false.
+- Browser Bridge acceptance recovered `FLEX-6700` as `RX-ONLY / RADIO: LIVE` in
+  the fixed 2D display. MOX, TUNE, and CWX remained hidden and disabled; lease
+  acquisition and validation-only intent controls remained disabled. Admin
+  showed `browser transaction ingress execution disabled`, boundary attached,
+  key/unkey unavailable, attempts/forwarded/accepted/rejected/unknown all zero,
+  last `none`, reason `execution-disabled`, and all TX transports absent. A fresh
+  Admin console capture contained zero entries. No TX control, microphone
+  permission, radio command, or RF operation was used.
 
 Acceptance criteria:
 

@@ -569,9 +569,29 @@ Health reports
 `txStationCommandTransactionReconciliationRequired:false`,
 `txStationCommandTransactionBrowserIngressRegistered:false`, and
 `txStationCommandTransactionLifecycleBrowserIngressRegistered:false`.
-Per-session diagnostics add only bounded state, attempt/forward/outcome counts,
-and a bounded reason; active identity and lease values are not rendered in
-Admin text.
+
+Phase 2R adds an internal `BrowserTxTransactionIngressRequest` containing the
+current connection ID, the already parsed `BrowserTxRequest`, and the exact
+server-produced `BrowserTxIntentResult`. The adapter requires `Validated:true`,
+`Ok:false`, the exact `transport-unavailable` validation-only outcome, current
+intent-validation capability, and exact sequence, intent ID, and action equality.
+Validation older than two seconds or more than one second in the future is
+rejected. Only Boolean `mox.set` and `ptt.set` are accepted. The transaction
+observation time comes from the server validation result and the heartbeat
+timeout is fixed server-side at five seconds. TUNE, microphone, CW, missing
+values, mismatches, and unavailable key or unkey capability are rejected without
+forwarding. A forwarded request is sent
+once; accepted, rejected, and unknown transaction outcomes are preserved with no
+retry.
+
+Production sets ingress execution false and does not provide a WebSocket, HTTP,
+AetherRemote, watchdog, reconnect, or timer caller. Health reports
+`txBrowserTxTransactionIngressRegistered:true`,
+`txBrowserTxTransactionIngressExecutionEnabled:false`,
+`txBrowserTxTransactionIngressBoundaryAttached:true`, key and unkey availability
+false, and every caller-registration field false. Per-session diagnostics add
+only bounded state, attempt/forward/outcome counts, and a bounded reason; active
+identity and lease values are not rendered in Admin text.
 
 `client.visibility` accepts only a JSON boolean. A hidden browser keeps its
 authenticated WebSocket, radio session, text responses, snapshots, presence,

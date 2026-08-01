@@ -55,7 +55,10 @@ public sealed class StationTxCommandTransactionLifecycleBoundaryTests
             typeof(StationTxCommandTransactionRequest),
             typeof(StationTxCommandTransactionHeartbeatRequest),
             typeof(StationTxCommandTransactionAbortRequest),
-            typeof(StationTxCommandTransactionResult)
+            typeof(StationTxCommandTransactionResult),
+            typeof(BrowserTxTransactionIngress),
+            typeof(BrowserTxTransactionIngressRequest),
+            typeof(BrowserTxTransactionIngressResult)
         ];
         Type[] externalTypes =
         [
@@ -82,6 +85,29 @@ public sealed class StationTxCommandTransactionLifecycleBoundaryTests
                     .SelectMany(method => method.GetParameters()),
                 parameter => forbiddenTypes.Contains(parameter.ParameterType));
         }
+    }
+
+    [Fact]
+    public async Task ProductionIngressIsRegisteredDisabledAndIdle()
+    {
+        ManualTimeProvider time = new(Start);
+        await using StationTxProductionLifecycle lifecycle = Create(time);
+
+        BrowserTxTransactionIngressDiagnostics ingress =
+            lifecycle.Snapshot.BrowserTxTransactionIngress;
+
+        Assert.True(ingress.Registered);
+        Assert.False(ingress.ExecutionEnabled);
+        Assert.True(ingress.TransactionBoundaryAttached);
+        Assert.False(ingress.KeyAvailable);
+        Assert.False(ingress.UnkeyAvailable);
+        Assert.Equal(0, ingress.AttemptCount);
+        Assert.Equal(0, ingress.ForwardedCount);
+        Assert.Equal(0, ingress.AcceptedCount);
+        Assert.Equal(0, ingress.RejectedCount);
+        Assert.Equal(0, ingress.UnknownCount);
+        Assert.Equal("none", ingress.LastOutcome);
+        Assert.Equal("execution-disabled", ingress.LastReason);
     }
 
     [Fact]
