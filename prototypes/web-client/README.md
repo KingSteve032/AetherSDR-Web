@@ -21,9 +21,11 @@ single-holder TX lease policy without changing the native radio engine.
   own 24 kHz stereo `remote_audio_rx` stream. The stream never carries
   microphone or transmit audio.
 - Transmit is fail-closed. Phase 2F can validate a deliberate MOX, PTT, TUNE,
-  microphone, or CW intent against exact ownership, but no keying or transmit-
-  audio request can reach a radio. A validated request terminates at the
-  unavailable production transport.
+  microphone, or CW intent against exact ownership. Phase 2G additionally
+  validates deterministic ECDSA-signed station-local command envelopes against
+  exact station/radio/session/browser/lease/engine/FLEX-handle authority and a
+  freshly Armed safety identity. Production still registers no signing key,
+  command adapter, arming capability, keying command, or transmit-audio path.
 - The binary spectrum framing is experimental v0 and is not the future
   AetherD v1 wire format.
 - Production radio integration waits for AetherD RFC steps 3-5: versioned

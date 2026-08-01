@@ -91,13 +91,13 @@ test("station enrollment IDs and labels are constrained", () => {
 test("Admin page revisions load connection diagnostics and styles together", () => {
   assert.match(
     adminHtml,
-    /src="\/admin-page\.js\?v=m7-tx-intent-validation-1"/);
+    /src="\/admin-page\.js\?v=m7-station-command-boundary-1"/);
   assert.match(
     adminHtml,
     /href="\/portal\.css\?v=m6-wan-soak-1"/);
   assert.match(
     adminPageSource,
-    /admin-diagnostics\.js\?v=tx-intent-validation-1/);
+    /admin-diagnostics\.js\?v=station-command-boundary-1/);
   assert.match(adminHtml, /id="admin-station-list"/);
   assert.match(adminHtml, /id="summary-external-clients"/);
   assert.match(adminHtml, /id="admin-enrollment-form"/);

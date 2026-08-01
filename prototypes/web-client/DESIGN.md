@@ -270,6 +270,26 @@ metering remains browser-only and no microphone samples enter the TX protocol.
 Admin diagnostics show the lease holder name, expiry or revocation reason, and
 latest validated/denied intent outcome without exposing the opaque lease ID.
 
+Phase 2G seals a separate station-local command boundary without registering a
+radio command adapter. It uses a deterministic version-1 signing payload and
+ECDSA P-256 verification over the exact command ID, monotonic sequence, bounded
+issue/expiry times, station, radio, web session, browser client, lease, gateway
+instance, engine instance, protected FLEX handle, action, and enabled value.
+The boundary revalidates fresh authentication, lifecycle authority,
+radio-authoritative idle occupancy, exclusive Local PTT authority, and an exact
+freshly Armed safety-supervisor identity before an adapter can be called. Replay,
+clock, signature, identity, lease, occupancy, and supervisor failures consume no
+radio command path. Audit records are bounded and store only a short lease
+fingerprint, never the opaque lease secret or signature.
+
+Production constructs this boundary disabled with no verification key, no
+adapter, no arming capability, and no set-transmit capability. It has no browser,
+HTTP, WebSocket, AetherRemote, watchdog, or timer entry point. Health and Admin
+diagnostics expose only those fail-closed capability bits. Unit tests may use an
+in-memory recording adapter to prove that only a fully signed and exactly bound
+command reaches the adapter interface; this adapter is never registered in a
+production publish.
+
 The next safety layer is an independent, station-local supervisor with no key
 method and an unkey-only transport. Its arm is purpose-bound to one engine
 instance, lease, session/browser owner, exact protected FLEX client handle, and

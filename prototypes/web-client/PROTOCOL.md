@@ -293,6 +293,36 @@ state. `keyingAvailable`,
 `snapshot.canTransmit` remains false, and production still has no key, unkey,
 TUNE, CW, or microphone-audio radio path.
 
+Phase 2G adds an internal station-local command envelope protocol version 1. It
+is not a browser, HTTP, WebSocket, or AetherRemote wire contract. The signed
+payload is deterministic binary data with length-prefixed UTF-8 identifiers and
+big-endian integers. It binds, in order: protocol version, signing key ID,
+canonical command UUID, positive monotonic sequence, issue and expiry times,
+station ID, radio ID, web session ID, browser client ID, opaque lease ID,
+gateway instance ID, engine instance ID, protected FLEX client handle,
+`SetTransmit`, and the Boolean enabled value. The signature is ECDSA P-256 with
+SHA-256 in fixed-width IEEE P1363 form and is represented as base64url only at
+the object boundary.
+
+An envelope may live for at most 15 seconds, may be issued at most 5 seconds in
+the future, and may be at most 30 seconds old. Before any adapter invocation the
+station revalidates the exact station/radio/session/browser/lease/gateway/engine/
+handle binding, lease expiry, fresh authentication and lifecycle observations,
+fresh radio-authoritative idle occupancy, exclusive Local PTT authority for the
+protected handle, and an exact freshly Armed safety-supervisor record. Sequence
+values are consumed only after all validation and capability checks succeed;
+replays and stale values fail closed. Audit history is capped at 256 records and
+contains a short SHA-256 lease fingerprint rather than the lease secret or
+signature.
+
+Production capability negotiation reports protocol version 1 and
+`boundaryRegistered:true`, while `boundaryEnabled`,
+`signatureVerificationAvailable`, `commandAdapterRegistered`,
+`armingAvailable`, and `setTransmitAvailable` remain false. The production
+boundary has no configured public key and uses an unavailable adapter. The
+independent watchdog and remote gateway have no reference to the adapter
+interface and cannot bypass the safety-supervisor validation.
+
 `client.visibility` accepts only a JSON boolean. A hidden browser keeps its
 authenticated WebSocket, radio session, text responses, snapshots, presence,
 and radio-authoritative state, but the gateway does not enqueue spectrum or
