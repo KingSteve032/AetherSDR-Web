@@ -34,8 +34,11 @@ single-holder TX lease policy without changing the native radio engine.
   signature before a caller-owned command boundary. Phase 2K gives each radio
   session one internal composition object that attaches that coordinator to the
   session's existing disabled command boundary and derives the complete command
-  authority from lifecycle-owned state. Verification, signing, and submission
-  all default disabled; no browser command ingress, command adapter, arming
+  authority from lifecycle-owned state. Phase 2L replaces the placeholder
+  adapter with a typed per-session adapter composition that independently
+  rechecks exact authority before an optional internal executor. Production
+  supplies no executor. Verification, signing, and submission all default
+  disabled; no browser command ingress, registered command adapter, arming
   capability, keying command, or transmit-audio path is registered.
 - The binary spectrum framing is experimental v0 and is not the future
   AetherD v1 wire format.
@@ -240,6 +243,10 @@ also keep the public and internal health contract at
 `txStationCommandEnvelopeCoordinatorRegistered=true`,
 `txStationCommandSessionCompositionRegistered=true`,
 `txStationCommandSessionCompositionBrowserIngressRegistered=false`,
+`txStationCommandAdapterCompositionRegistered=true`,
+`txStationCommandAdapterExecutorAttached=false`,
+`txStationCommandAdapterExecutorRegistered=false`,
+`txStationCommandAdapterCompositionBrowserIngressRegistered=false`,
 `txStationCommandEnvelopeSubmissionEnabled=false`,
 `txStationCommandEnvelopeSigningAvailable=false`,
 `txStationCommandEnvelopeVerificationAvailable=false`,
@@ -370,6 +377,24 @@ attached production boundary is still disabled, and signer, verifier, adapter,
 arming, and SetTransmit availability remain false under default configuration.
 `txStationCommandEnvelopeSubmissionRegistered` remains false because there is
 still no externally reachable submission route.
+
+Phase 2L adds one `StationTxCommandAdapterComposition` beneath each session's
+signed command boundary. It implements the existing internal adapter contract,
+but production creates it with no `IStationTxCommandAdapterExecutor`. Health and
+Admin therefore distinguish composition registration from executor attachment
+and actual adapter registration: the composition is present, while executor,
+adapter, arming, and SetTransmit remain absent. Neither `RadioSessionRegistry`
+nor `RadioCoordinator` nor the WebSocket endpoint accepts the executor type.
+
+Before forwarding a future already validated command, the adapter composition
+re-resolves current server-owned authority and independently requires exact
+station/radio/session/browser/lease/gateway/engine/FLEX-handle identity, a
+non-expired command and lease, current authentication and observations, fresh
+idle radio occupancy, exclusive Local PTT authority for that handle, and a
+matching freshly Armed safety identity. Mismatch, stale state, absent executor,
+executor capability loss, cancellation, rejection, unknown outcome, or exception
+never triggers a retry. Phase 2L registers no production executor and does not
+import the HIL-only radio command transport into the normal build.
 
 Environment-variable form remains disabled by default:
 

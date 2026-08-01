@@ -30,6 +30,19 @@ public sealed class StationTxProductionLifecycleTests
         Assert.False(snapshot.StationCommandArmingAvailable);
         Assert.False(snapshot.StationCommandSetTransmitAvailable);
         Assert.Equal(0, snapshot.StationCommandAuditCount);
+        StationTxCommandAdapterCompositionDiagnostics adapterComposition =
+            snapshot.StationCommandAdapterComposition;
+        Assert.True(adapterComposition.Registered);
+        Assert.False(adapterComposition.ExecutorAttached);
+        Assert.False(adapterComposition.ExecutorRegistered);
+        Assert.False(adapterComposition.AuthoritySnapshotAvailable);
+        Assert.False(adapterComposition.CommandAdapterRegistered);
+        Assert.False(adapterComposition.ArmingAvailable);
+        Assert.False(adapterComposition.SetTransmitAvailable);
+        Assert.Equal(0, adapterComposition.AttemptCount);
+        Assert.Equal(0, adapterComposition.ForwardedCount);
+        Assert.Equal("none", adapterComposition.LastOutcome);
+        Assert.Equal("executor-unattached", adapterComposition.Reason);
         Assert.True(snapshot.GatewayConnected);
         Assert.False(snapshot.EngineConnected);
         Assert.False(snapshot.BrowserConnected);
@@ -80,8 +93,71 @@ public sealed class StationTxProductionLifecycleTests
         Assert.False(snapshot.StationCommandArmingAvailable);
         Assert.False(snapshot.StationCommandSetTransmitAvailable);
         Assert.Equal(0, snapshot.StationCommandAuditCount);
+        Assert.True(snapshot.StationCommandAdapterComposition.Registered);
+        Assert.False(
+            snapshot.StationCommandAdapterComposition.ExecutorAttached);
+        Assert.False(
+            snapshot.StationCommandAdapterComposition.CommandAdapterRegistered);
+        Assert.Equal(
+            "executor-unattached",
+            snapshot.StationCommandAdapterComposition.Reason);
         Assert.Equal("Disabled", snapshot.GateState);
         Assert.Equal("Disarmed", snapshot.SafetyState);
+    }
+
+    [Fact]
+    public async Task AttachedExecutorStillCannotArmOrSetTransmit()
+    {
+        ManualTimeProvider time = NewTime();
+        TxLeaseManager leases = new(time);
+        RadioTxOccupancyRegistry occupancy = new(time);
+        ReadyAdapterExecutor executor = new();
+        await using StationTxProductionLifecycle lifecycle = Create(
+            leases,
+            occupancy,
+            time,
+            stationCommandAdapterExecutor: executor);
+        leases.Changed += lifecycle.ObserveLeaseChange;
+
+        lifecycle.ObserveBrowserConnection(
+            "connection-a",
+            connected: true,
+            authenticated: true);
+        lifecycle.ObserveEngineConnection(
+            connected: true,
+            clientHandle: 0x1234abcd);
+        Assert.True(leases.TryAcquire(
+            "radio-a",
+            "session-a",
+            "connection-a",
+            "operator-a",
+            "Operator A",
+            TimeSpan.FromSeconds(5),
+            out TxLease? lease,
+            out string? error), error);
+        Assert.NotNull(lease);
+
+        await lifecycle.FlushAsync();
+        StationTxLifecycleDiagnostics snapshot = lifecycle.Snapshot;
+        StationTxCommandAdapterCompositionDiagnostics adapter =
+            snapshot.StationCommandAdapterComposition;
+
+        Assert.True(adapter.Registered);
+        Assert.True(adapter.ExecutorAttached);
+        Assert.True(adapter.ExecutorRegistered);
+        Assert.True(adapter.ExecutorArmingAvailable);
+        Assert.True(adapter.ExecutorSetTransmitAvailable);
+        Assert.True(adapter.AuthoritySnapshotAvailable);
+        Assert.True(adapter.CommandAdapterRegistered);
+        Assert.False(adapter.ArmingAvailable);
+        Assert.False(adapter.SetTransmitAvailable);
+        Assert.Equal("safety-not-armed", adapter.Reason);
+        Assert.True(snapshot.StationCommandAdapterRegistered);
+        Assert.False(snapshot.StationCommandArmingAvailable);
+        Assert.False(snapshot.StationCommandSetTransmitAvailable);
+        Assert.False(snapshot.StationCommandBoundaryEnabled);
+        Assert.Equal("Disarmed", snapshot.SafetyState);
+        Assert.Equal(0, executor.ExecuteCount);
     }
 
     [Fact]
@@ -138,6 +214,17 @@ public sealed class StationTxProductionLifecycleTests
         Assert.True(active.GatewayFresh);
         Assert.True(active.AuthorityFresh);
         Assert.Equal("fresh", active.AuthorityReason);
+        Assert.True(
+            active.StationCommandAdapterComposition.AuthoritySnapshotAvailable);
+        Assert.False(active.StationCommandAdapterComposition.ExecutorAttached);
+        Assert.False(
+            active.StationCommandAdapterComposition.CommandAdapterRegistered);
+        Assert.False(active.StationCommandAdapterComposition.ArmingAvailable);
+        Assert.False(
+            active.StationCommandAdapterComposition.SetTransmitAvailable);
+        Assert.Equal(
+            "executor-unattached",
+            active.StationCommandAdapterComposition.Reason);
 
         Assert.True(leases.TryRelease(
             "radio-a",
@@ -863,7 +950,8 @@ public sealed class StationTxProductionLifecycleTests
         RadioTxOccupancyRegistry occupancy,
         TimeProvider? timeProvider = null,
         IStationTxIndependentWatchdogFactory? independentWatchdogFactory = null,
-        IStationTxCommandSignatureVerifier? stationCommandVerifier = null) =>
+        IStationTxCommandSignatureVerifier? stationCommandVerifier = null,
+        IStationTxCommandAdapterExecutor? stationCommandAdapterExecutor = null) =>
         new(
             "radio-a",
             "session-a",
@@ -874,7 +962,29 @@ public sealed class StationTxProductionLifecycleTests
             NullLogger<StationTxProductionLifecycle>.Instance,
             timeProvider,
             independentWatchdogFactory,
-            stationCommandVerifier);
+            stationCommandVerifier,
+            stationCommandSubmitter: null,
+            stationCommandAdapterExecutor: stationCommandAdapterExecutor);
+
+    private sealed class ReadyAdapterExecutor : IStationTxCommandAdapterExecutor
+    {
+        public StationTxCommandAdapterExecutorCapabilities Capabilities { get; } =
+            new(
+                Registered: true,
+                ArmingAvailable: true,
+                SetTransmitAvailable: true,
+                Reason: "ready");
+
+        public int ExecuteCount { get; private set; }
+
+        public Task<StationTxTransportResult> ExecuteAsync(
+            StationTxValidatedCommand command,
+            CancellationToken cancellationToken)
+        {
+            ExecuteCount++;
+            return Task.FromResult(StationTxTransportResult.Ok);
+        }
+    }
 
     private sealed class AlwaysAvailableSignatureVerifier :
         IStationTxCommandSignatureVerifier

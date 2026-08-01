@@ -21,6 +21,8 @@ public sealed record StationTxLifecycleDiagnostics(
     bool StationCommandArmingAvailable,
     bool StationCommandSetTransmitAvailable,
     int StationCommandAuditCount,
+    StationTxCommandAdapterCompositionDiagnostics
+        StationCommandAdapterComposition,
     StationTxCommandSessionCompositionDiagnostics
         StationCommandSessionComposition,
     bool GatewayConnected,
@@ -103,6 +105,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     private readonly CancellationTokenSource m_watchdogCancellation = new();
     private readonly StationTxCommandGate m_commandGate;
     private readonly StationTxCommandBoundary m_stationCommandBoundary;
+    private readonly StationTxCommandAdapterComposition
+        m_stationCommandAdapterComposition;
     private readonly StationTxCommandSessionComposition
         m_stationCommandComposition;
     private readonly StationTxSafetySupervisor m_supervisor;
@@ -159,7 +163,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         TimeProvider? timeProvider = null,
         IStationTxIndependentWatchdogFactory? independentWatchdogFactory = null,
         IStationTxCommandSignatureVerifier? stationCommandVerifier = null,
-        IStationTxCommandEnvelopeSubmitter? stationCommandSubmitter = null)
+        IStationTxCommandEnvelopeSubmitter? stationCommandSubmitter = null,
+        IStationTxCommandAdapterExecutor? stationCommandAdapterExecutor = null)
     {
         ArgumentNullException.ThrowIfNull(leases);
         ArgumentNullException.ThrowIfNull(occupancy);
@@ -180,12 +185,17 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
 
         StationTxUnavailableCommandTransport commandTransport = new();
         StationTxUnavailableEmergencyUnkeyTransport emergencyTransport = new();
+        m_stationCommandAdapterComposition =
+            new StationTxCommandAdapterComposition(
+                stationCommandAdapterExecutor,
+                ResolveStationCommandAuthority,
+                m_timeProvider);
         m_stationCommandBoundary = new StationTxCommandBoundary(
             enabled: false,
             m_gatewayInstanceId,
             stationCommandVerifier ??
                 new StationTxUnavailableCommandSignatureVerifier(),
-            new StationTxUnavailableCommandAdapter(),
+            m_stationCommandAdapterComposition,
             m_timeProvider);
         m_stationCommandComposition = new StationTxCommandSessionComposition(
             stationCommandSubmitter,
@@ -235,6 +245,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         {
             StationTxGateSnapshot gate = m_commandGate.Snapshot;
             StationTxSafetySnapshot safety = m_supervisor.Snapshot;
+            StationTxCommandAdapterCompositionDiagnostics adapterComposition =
+                m_stationCommandAdapterComposition.Snapshot;
             StationTxCommandSessionCompositionDiagnostics commandComposition =
                 m_stationCommandComposition.Snapshot;
             lock (m_stateGate)
@@ -261,6 +273,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     commandBoundary.ArmingAvailable,
                     commandBoundary.SetTransmitAvailable,
                     m_stationCommandBoundary.AuditCount,
+                    adapterComposition,
                     commandComposition,
                     m_gatewayConnected,
                     m_engineConnected,

@@ -189,6 +189,14 @@ public sealed class RadioSessionRegistryTests
             Assert.False(lifecycle.StationCommandArmingAvailable);
             Assert.False(lifecycle.StationCommandSetTransmitAvailable);
             Assert.Equal(0, lifecycle.StationCommandAuditCount);
+            Assert.True(lifecycle.StationCommandAdapterComposition.Registered);
+            Assert.False(
+                lifecycle.StationCommandAdapterComposition.ExecutorAttached);
+            Assert.False(
+                lifecycle.StationCommandAdapterComposition.CommandAdapterRegistered);
+            Assert.Equal(
+                "executor-unattached",
+                lifecycle.StationCommandAdapterComposition.Reason);
             Assert.Equal("Disabled", lifecycle.GateState);
             Assert.Equal("Disarmed", lifecycle.SafetyState);
         }
@@ -200,7 +208,7 @@ public sealed class RadioSessionRegistryTests
     }
 
     [Fact]
-    public async Task SessionAttachesDisabledCommandCompositionWithoutBrowserIngress()
+    public async Task SessionAttachesDisabledAdapterAndCommandCompositionWithoutBrowserIngress()
     {
         using StationTxCommandSigningAuthority signing = new(
             Options.Create(new StationTxCommandSigningSettings()),
@@ -231,6 +239,22 @@ public sealed class RadioSessionRegistryTests
             StationTxLifecycleDiagnostics lifecycle =
                 Assert.IsType<StationTxLifecycleDiagnostics>(
                     session.GetDiagnostics().TxLifecycle);
+            StationTxCommandAdapterCompositionDiagnostics adapterComposition =
+                lifecycle.StationCommandAdapterComposition;
+            Assert.True(adapterComposition.Registered);
+            Assert.False(adapterComposition.ExecutorAttached);
+            Assert.False(adapterComposition.ExecutorRegistered);
+            Assert.False(adapterComposition.ExecutorArmingAvailable);
+            Assert.False(adapterComposition.ExecutorSetTransmitAvailable);
+            Assert.False(adapterComposition.AuthoritySnapshotAvailable);
+            Assert.False(adapterComposition.CommandAdapterRegistered);
+            Assert.False(adapterComposition.ArmingAvailable);
+            Assert.False(adapterComposition.SetTransmitAvailable);
+            Assert.Equal(0, adapterComposition.AttemptCount);
+            Assert.Equal(0, adapterComposition.ForwardedCount);
+            Assert.Equal("none", adapterComposition.LastOutcome);
+            Assert.Equal("executor-unattached", adapterComposition.Reason);
+
             StationTxCommandSessionCompositionDiagnostics composition =
                 lifecycle.StationCommandSessionComposition;
             Assert.True(composition.Registered);
@@ -251,6 +275,15 @@ public sealed class RadioSessionRegistryTests
             Assert.Equal("none", composition.LastOutcome);
             Assert.Equal("submission-disabled", composition.Reason);
 
+            Assert.DoesNotContain(
+                typeof(RadioSessionRegistry)
+                    .GetConstructors(
+                        System.Reflection.BindingFlags.Public |
+                        System.Reflection.BindingFlags.NonPublic |
+                        System.Reflection.BindingFlags.Instance)
+                    .SelectMany(constructor => constructor.GetParameters()),
+                parameter => parameter.ParameterType ==
+                    typeof(IStationTxCommandAdapterExecutor));
             Assert.DoesNotContain(
                 typeof(RadioCoordinator)
                     .GetMethods(

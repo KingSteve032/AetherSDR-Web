@@ -395,6 +395,31 @@ WebSocket, AetherRemote, watchdog, or timer submission caller, so the external
 envelope-submission route remains absent and no FLEX command or RF path can be
 invoked.
 
+Phase 2L adds one `StationTxCommandAdapterComposition` beneath each session's
+signed command boundary. It implements `IStationTxCommandAdapter`, but delegates
+only to an optional internal `IStationTxCommandAdapterExecutor`. Production
+constructs the composition without an executor. The composition is therefore
+observable while `IsRegistered`, arming, and SetTransmit remain false. The
+session registry, radio coordinator, WebSocket endpoint, AetherRemote, watchdog,
+and timers do not accept the executor type.
+
+The adapter composition treats the validated command as a request, not as fresh
+authority. Immediately before any future delegation it re-resolves the current
+lifecycle-owned authority and independently checks the exact station, canonical
+radio, web session, stable browser identity, active lease and expiry, gateway,
+engine, FLEX handle, authentication/freshness flags, fresh idle occupancy,
+exclusive Local PTT owner, and matching Armed safety identity. The command also
+must remain inside its signed lifetime. Any mismatch, missing executor,
+capability loss, cancellation, rejection, unknown outcome, or exception stops
+without retry. Diagnostics publish only attachment/readiness and bounded
+attempt/forward/outcome counts.
+
+Phase 2L does not define an executor implementation, does not attach the disabled
+`StationTxCommandGate` as an executor, and does not move the HIL-only radio
+command transport into the normal production build. Health distinguishes
+adapter-composition registration from executor attachment and actual adapter
+registration; the latter two remain false.
+
 The next safety layer is an independent, station-local supervisor with no key
 method and an unkey-only transport. Its arm is purpose-bound to one engine
 instance, lease, session/browser owner, exact protected FLEX client handle, and
