@@ -41,6 +41,14 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
     safetyState: "Disarmed",
     commandTransportAvailable: false,
     emergencyUnkeyTransportAvailable: false,
+    stationCommandProtocolVersion: 1,
+    stationCommandBoundaryRegistered: true,
+    stationCommandBoundaryEnabled: false,
+    stationCommandSignatureVerificationAvailable: false,
+    stationCommandAdapterRegistered: false,
+    stationCommandArmingAvailable: false,
+    stationCommandSetTransmitAvailable: false,
+    stationCommandAuditCount: 0,
     browserObservationSequence: 4,
     lastBrowserObservedAt: "2026-07-31T02:29:59Z",
     engineObservationSequence: 7,
@@ -74,7 +82,9 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       "browser 4/fresh (1s ago) · engine 7/fresh (3s ago) · " +
       "gateway 9/fresh (2s ago) · lease 2 (10s ago) · " +
       "watchdog 3 (1s ago) · independent disarmed pid 4242 " +
-      "host watchdog seq 0 restarts 1 · authority no-active-lease · " +
+      "host watchdog seq 0 restarts 1 · command boundary v1 disabled " +
+      "signature absent adapter absent arming absent set-transmit absent " +
+      "audit 0 · authority no-active-lease · " +
       "last gateway-heartbeat · TX transports absent"
   });
   assert.deepEqual(formatTxLifecycle(null, now), {

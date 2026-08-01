@@ -22,6 +22,14 @@ public sealed class StationTxProductionLifecycleTests
         Assert.False(snapshot.ProductionTransmitEnabled);
         Assert.False(snapshot.CommandTransportAvailable);
         Assert.False(snapshot.EmergencyUnkeyTransportAvailable);
+        Assert.Equal(1, snapshot.StationCommandProtocolVersion);
+        Assert.True(snapshot.StationCommandBoundaryRegistered);
+        Assert.False(snapshot.StationCommandBoundaryEnabled);
+        Assert.False(snapshot.StationCommandSignatureVerificationAvailable);
+        Assert.False(snapshot.StationCommandAdapterRegistered);
+        Assert.False(snapshot.StationCommandArmingAvailable);
+        Assert.False(snapshot.StationCommandSetTransmitAvailable);
+        Assert.Equal(0, snapshot.StationCommandAuditCount);
         Assert.True(snapshot.GatewayConnected);
         Assert.False(snapshot.EngineConnected);
         Assert.False(snapshot.BrowserConnected);

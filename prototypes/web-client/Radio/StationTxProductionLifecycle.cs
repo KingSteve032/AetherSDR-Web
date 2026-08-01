@@ -13,6 +13,14 @@ public sealed record StationTxLifecycleDiagnostics(
     bool ProductionTransmitEnabled,
     bool CommandTransportAvailable,
     bool EmergencyUnkeyTransportAvailable,
+    int StationCommandProtocolVersion,
+    bool StationCommandBoundaryRegistered,
+    bool StationCommandBoundaryEnabled,
+    bool StationCommandSignatureVerificationAvailable,
+    bool StationCommandAdapterRegistered,
+    bool StationCommandArmingAvailable,
+    bool StationCommandSetTransmitAvailable,
+    int StationCommandAuditCount,
     bool GatewayConnected,
     bool EngineConnected,
     bool BrowserConnected,
@@ -91,6 +99,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     private readonly TimeProvider m_timeProvider;
     private readonly CancellationTokenSource m_watchdogCancellation = new();
     private readonly StationTxCommandGate m_commandGate;
+    private readonly StationTxCommandBoundary m_stationCommandBoundary;
     private readonly StationTxSafetySupervisor m_supervisor;
     private readonly StationTxAuthenticationMonitor m_authenticationMonitor;
     private readonly StationTxEngineConnectionMonitor m_engineMonitor;
@@ -163,6 +172,12 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
 
         StationTxUnavailableCommandTransport commandTransport = new();
         StationTxUnavailableEmergencyUnkeyTransport emergencyTransport = new();
+        m_stationCommandBoundary = new StationTxCommandBoundary(
+            enabled: false,
+            m_gatewayInstanceId,
+            new StationTxUnavailableCommandSignatureVerifier(),
+            new StationTxUnavailableCommandAdapter(),
+            m_timeProvider);
         m_commandGate = new StationTxCommandGate(
             allowTransmit: false,
             m_radioId,
@@ -210,6 +225,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             {
                 LifecycleFreshness freshness =
                     EvaluateFreshnessLocked(m_timeProvider.GetUtcNow());
+                StationTxCommandCapabilities commandBoundary =
+                    m_stationCommandBoundary.Capabilities;
                 return new StationTxLifecycleDiagnostics(
                     m_radioId,
                     m_sessionId,
@@ -220,6 +237,14 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     ProductionTransmitEnabled: false,
                     CommandTransportAvailable: false,
                     EmergencyUnkeyTransportAvailable: false,
+                    commandBoundary.ProtocolVersion,
+                    commandBoundary.BoundaryRegistered,
+                    commandBoundary.BoundaryEnabled,
+                    commandBoundary.SignatureVerificationAvailable,
+                    commandBoundary.CommandAdapterRegistered,
+                    commandBoundary.ArmingAvailable,
+                    commandBoundary.SetTransmitAvailable,
+                    m_stationCommandBoundary.AuditCount,
                     m_gatewayConnected,
                     m_engineConnected,
                     m_browserConnected,

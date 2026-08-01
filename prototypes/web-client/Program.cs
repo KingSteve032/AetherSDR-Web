@@ -192,6 +192,14 @@ app.MapGet(
                     RadioBrowserTxProtocol.Version,
                 txBrowserIntentValidationRegistered = true,
                 txBrowserIntentCommandTransportRegistered = false,
+                txStationCommandProtocolVersion =
+                    StationTxCommandBoundary.ProtocolVersion,
+                txStationCommandBoundaryRegistered = true,
+                txStationCommandBoundaryEnabled = false,
+                txStationCommandSignatureVerificationAvailable = false,
+                txStationCommandAdapterRegistered = false,
+                txStationCommandArmingAvailable = false,
+                txStationCommandSetTransmitAvailable = false,
                 txIndependentWatchdogHostPackaged = true,
                 txIndependentWatchdogSupervisionRegistered =
                     watchdog.SupervisionRegistered,

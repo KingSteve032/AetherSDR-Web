@@ -108,6 +108,24 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `(${formatAge(lifecycle.lastBrowserTxIntentAt, now)}) ` +
       `${String(lifecycle.lastBrowserTxIntentReason || "").slice(0, 160)}`.trim()
     : "";
+  const stationCommandState = lifecycle.stationCommandBoundaryRegistered
+    ? `command boundary v${formatCount(
+        lifecycle.stationCommandProtocolVersion)} ` +
+      `${lifecycle.stationCommandBoundaryEnabled ? "enabled" : "disabled"} ` +
+      `signature ${lifecycle.stationCommandSignatureVerificationAvailable
+        ? "available"
+        : "absent"} ` +
+      `adapter ${lifecycle.stationCommandAdapterRegistered
+        ? "registered"
+        : "absent"} ` +
+      `arming ${lifecycle.stationCommandArmingAvailable
+        ? "available"
+        : "absent"} ` +
+      `set-transmit ${lifecycle.stationCommandSetTransmitAvailable
+        ? "available"
+        : "absent"} ` +
+      `audit ${formatCount(lifecycle.stationCommandAuditCount)}`
+    : "command boundary not registered";
   const independent = lifecycle.independentWatchdog;
   const independentState = !independent?.supervisionEnabled
     ? "independent not supervised"
@@ -133,6 +151,7 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `${leaseState} · ` +
       `${intentState ? `${intentState} · ` : ""}` +
       `${watchdogState} · ${independentState} · ` +
+      `${stationCommandState} · ` +
       `authority ${authorityReason} · ` +
       `last ${lifecycle.lastObservation || "none"} · ${transportState}`
   };

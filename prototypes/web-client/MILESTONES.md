@@ -1400,6 +1400,47 @@ Milestone state:
   remained empty and Disarmed. Validation log:
   `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260731-m7-browser-tx-intent-validation-phase2f-validation-final-flexweb-validation.txt`.
   No server, Git commit, or Git remote was changed.
+- Phase 2G adds a sealed station-local command boundary protocol version 1 while
+  keeping production command-incapable. Its deterministic ECDSA P-256/SHA-256
+  payload binds the command UUID, monotonic sequence, bounded issue/expiry time,
+  station, radio, session, browser client, opaque lease, gateway instance,
+  engine instance, protected FLEX handle, action, and enabled value. Invalid
+  signatures, malformed identities, wrong station/radio/session/browser/lease/
+  gateway/engine/handle, expired or future envelopes, and stale sequence fail
+  before an adapter can be called.
+- Adapter admission additionally requires current authentication and lifecycle
+  freshness, a live lease through the envelope expiry, fresh radio-authoritative
+  idle occupancy, exclusive Local PTT authority for the protected handle, and a
+  freshly Armed safety-supervisor record with the exact same ownership tuple.
+  The browser, AetherRemote, and independent watchdog have no entry point to the
+  adapter interface. Bounded audit records retain outcome and reason with only a
+  short lease fingerprint; raw lease IDs and signatures are not retained.
+- Every production session constructs the boundary disabled with no signature
+  verifier, no command adapter, no arming capability, and no set-transmit
+  capability. Health and Admin diagnostics expose those exact false capability
+  bits. The final Phase 2G proof suite passed 28 focused boundary tests. The
+  guarded validation passed 330 FlexWeb server tests, 25 independent-watchdog
+  tests, 48 TX-HIL isolation tests, 70 AetherRemote tests, and 123 browser tests
+  (596 total), with a zero-warning solution build and production binary
+  inspection confirming no forbidden TX/HIL command surface. Validation log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-station-command-boundary-phase2g-validation-r2-flexweb-validation.txt`.
+  No production keying, unkeying, TUNE, CW, microphone-audio, or RF test path
+  was added or run.
+- Release `20260801-m7-station-command-boundary-phase2g` deployed successfully
+  on 2026-08-01 with the accepted Phase 2F release retained for rollback. Public
+  health reported protocol version 1, a registered but disabled station command
+  boundary, and false signature-verification, adapter, arming, set-transmit,
+  watchdog-command, and production-command capabilities. Browser Bridge kept
+  PSOC2 `RADIO: LIVE` and `RX-ONLY`, preserved the 2D -> 3D -> 2D display
+  transition, kept the validation panel hidden, kept MOX/CWX hidden and disabled,
+  exposed no PTT, and left TUNE disabled. Admin rendered
+  `command boundary v1 disabled`, `signature absent`, `adapter absent`,
+  `arming absent`, `set-transmit absent`, `audit 0`, and
+  `DISABLED · DISARMED · NO LEASE`; the Admin console was empty. Radio debugger
+  attachment produced one fixed six-entry WebSocket retry burst while the page
+  stayed live, with no additional errors during a second ten-second steady-state
+  interval. One managed gateway PID owned the active release and public health
+  remained fail-closed.
 
 Acceptance criteria:
 
