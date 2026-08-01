@@ -261,8 +261,14 @@ app.MapGet(
                 txStationCommandAdapterCompositionBrowserIngressRegistered =
                     false,
                 txStationCommandSafetyArmCompositionRegistered = true,
-                txStationCommandSafetyArmAuthorityAttached = false,
-                txStationCommandSafetyArmAuthorityRegistered = false,
+                txStationCommandSafetyArmAuthorityAttached = true,
+                txStationCommandSafetyArmAuthorityRegistered = true,
+                txStationCommandSafetyArmAuthorityBoundaryEnabled = false,
+                txStationCommandSafetyArmAuthorityCommandTransportAvailable =
+                    false,
+                txStationCommandSafetyArmAuthoritySetTransmitAvailable = false,
+                txStationCommandSafetyArmAuthorityBrowserIngressRegistered =
+                    false,
                 txStationCommandSafetyArmAvailable = false,
                 txStationCommandSafetyHeartbeatAvailable = false,
                 txStationCommandSafetyAbortAvailable = false,

@@ -449,9 +449,22 @@ exact transmit owner. External, ambiguous, stale, expired, replaced, or
 mismatched authority stops before the supervisor. An idle abort clears only the
 matching arm without a radio command.
 
-Production attaches no arm authority. Diagnostics therefore report the
-composition registered but authority attachment/registration, arm, heartbeat,
-and abort unavailable with zero attempts. The supervisor remains Disarmed, the
+Phase 2O attaches one lifecycle-owned `StationTxSafetyArmAuthority`. Its
+capability snapshot reads the signed command boundary, adapter composition, gate
+executor, command gate, supervisor, and a newly resolved lifecycle authority.
+It independently compares the complete station/radio/session/browser/lease/
+gateway/engine/FLEX-handle tuple before any authorization. Arm requires the full
+normal command path plus idle/Local-PTT readiness. Heartbeat requires that path
+to remain ready and the safety identity to remain exact and fresh. Abort remains
+independent of normal command-path availability so a later capability loss
+cannot remove the ownership-safe abort decision; it still requires the exact
+active arm and idle or exact single-owner AetherSDR TX state.
+
+Production reports the authority attached and registered, but the signed
+boundary is disabled, the gate has `allowTransmit:false`, command and emergency
+unkey transports are absent, and no operation caller exists. Diagnostics
+therefore keep arm, heartbeat, abort, boundary execution, SetTransmit, and
+submission unavailable with zero attempts. The supervisor remains Disarmed, the
 independent watchdog remains command-incapable, and no browser, HTTP, WebSocket,
 AetherRemote, watchdog, reconnect, or timer caller can invoke the composition.
 
