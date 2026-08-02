@@ -26,6 +26,9 @@ public sealed class StationTxCommandTransactionLifecycleBoundaryTests
             method => method.ReturnType ==
                 typeof(Task<StationTxCommandSessionCompositionResult>));
 
+        AssertIngressMethod(
+            methods,
+            "ExecuteBrowserTxTransactionIngressAsync");
         AssertTransactionMethod(
             methods,
             "ExecuteStationCommandTransactionAsync",
@@ -41,9 +44,13 @@ public sealed class StationTxCommandTransactionLifecycleBoundaryTests
 
         Assert.DoesNotContain(
             methods.Where(method => method.IsPublic),
-            method => method.Name.Contains(
-                "StationCommand",
-                StringComparison.Ordinal));
+            method =>
+                method.Name.Contains(
+                    "StationCommand",
+                    StringComparison.Ordinal) ||
+                method.Name.Contains(
+                    "TransactionIngress",
+                    StringComparison.Ordinal));
     }
 
     [Fact]
@@ -108,6 +115,67 @@ public sealed class StationTxCommandTransactionLifecycleBoundaryTests
         Assert.Equal(0, ingress.UnknownCount);
         Assert.Equal("none", ingress.LastOutcome);
         Assert.Equal("execution-disabled", ingress.LastReason);
+    }
+
+    [Fact]
+    public async Task LifecycleIngressStopsBeforeTransactionWhileDisabled()
+    {
+        ManualTimeProvider time = new(Start);
+        await using StationTxProductionLifecycle lifecycle = Create(time);
+        BrowserTxIntent intent = new(
+            "intent-000000000000000000000000000001",
+            BrowserTxIntentKind.Mox,
+            "mox.set",
+            Enabled: true,
+            Text: null);
+        BrowserTxRequest request = new(
+            RequestId: 1,
+            BrowserTxRequestKind.Intent,
+            Sequence: 1,
+            Seconds: null,
+            LeaseId: "lease-a",
+            intent);
+        BrowserTxIntentResult validation = new(
+            Ok: false,
+            Validated: true,
+            Outcome: "transport-unavailable",
+            Error: "Production transport is unavailable.",
+            request.Sequence,
+            intent.IntentId,
+            intent.Action,
+            time.GetUtcNow(),
+            new BrowserTxCapability(
+                RadioBrowserTxProtocol.Version,
+                LeaseConfigured: true,
+                Authenticated: true,
+                RoleAuthorized: true,
+                ConnectionCurrent: true,
+                RadioConnected: true,
+                OccupancyAllowsLease: true,
+                LeaseHeldByBrowser: true,
+                LeaseAvailable: false,
+                IntentValidationAvailable: true,
+                KeyingAvailable: false,
+                MicrophoneAvailable: false,
+                TuneAvailable: false,
+                CwAvailable: false,
+                State: "intent-validation-ready",
+                Message: "Validated only."));
+
+        BrowserTxTransactionIngressResult result =
+            await lifecycle.ExecuteBrowserTxTransactionIngressAsync(
+                new BrowserTxTransactionIngressRequest(
+                    "connection-a",
+                    request,
+                    validation));
+
+        Assert.Equal(BrowserTxTransactionIngressOutcome.Rejected, result.Outcome);
+        Assert.Equal("ingress-disabled", result.Code);
+        Assert.Equal(1, result.Diagnostics.AttemptCount);
+        Assert.Equal(0, result.Diagnostics.ForwardedCount);
+        Assert.Equal(
+            0,
+            lifecycle.Snapshot.StationCommandTransactionComposition.AttemptCount);
     }
 
     [Fact]
@@ -194,6 +262,24 @@ public sealed class StationTxCommandTransactionLifecycleBoundaryTests
         Assert.Equal(0, diagnostics.AttemptCount);
         Assert.Equal(0, diagnostics.ArmForwardedCount);
         Assert.Equal(0, diagnostics.CommandForwardedCount);
+    }
+
+    private static void AssertIngressMethod(
+        IEnumerable<System.Reflection.MethodInfo> methods,
+        string name)
+    {
+        System.Reflection.MethodInfo method = Assert.Single(
+            methods,
+            candidate => candidate.Name == name);
+        Assert.False(method.IsPublic);
+        Assert.Equal(
+            typeof(Task<BrowserTxTransactionIngressResult>),
+            method.ReturnType);
+        Assert.Equal(
+            [typeof(BrowserTxTransactionIngressRequest), typeof(CancellationToken)],
+            method.GetParameters()
+                .Select(parameter => parameter.ParameterType)
+                .ToArray());
     }
 
     private static void AssertTransactionMethod(

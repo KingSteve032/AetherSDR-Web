@@ -530,6 +530,18 @@ sets execution disabled, so a valid request records `ingress-disabled` with zero
 transaction forwards. `RadioWebSocketEndpoint` remains validation-only and never
 receives this adapter or its request/result types.
 
+Phase 2S adds one `StationTxProductionReadinessPolicy` shared by health and every
+session lifecycle. It evaluates the existing transmit, browser-lease, command
+coordinator, signing, verification, boundary, adapter, gate, command transport,
+emergency-unkey transport, safety-arm authority, and independent-watchdog
+prerequisites in deterministic order. The result contains one readiness boolean,
+the first blocking reason, and the complete deduplicated missing-prerequisite
+list. It never owns authority or calls a radio. The lifecycle now exposes one
+internal typed operation that accepts only `BrowserTxTransactionIngressRequest`
+and delegates to the Phase 2R ingress; no external production type receives that
+operation or its request/result types. Production ingress execution remains
+false, the WebSocket remains validation-only, and readiness remains blocked.
+
 Environment-variable form remains disabled by default:
 
 ```bash

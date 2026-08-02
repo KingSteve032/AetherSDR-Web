@@ -219,6 +219,30 @@ app.MapGet(
                 stationTxCommandSigningAuthority.Snapshot;
             StationTxCommandEnvelopeCoordinatorDiagnostics commandCoordinator =
                 stationTxCommandEnvelopeCoordinator.Snapshot;
+            StationTxProductionReadinessDiagnostics productionReadiness =
+                StationTxProductionReadinessPolicy.Evaluate(new(
+                    radioSettings.AllowTransmit,
+                    radioSettings.BrowserTxLeaseEnabled,
+                    CommandCoordinatorAttached: commandCoordinator.Registered,
+                    commandCoordinator.SubmissionEnabled,
+                    commandCoordinator.SigningAvailable,
+                    commandCoordinator.SignatureVerificationAvailable,
+                    CommandBoundaryEnabled: false,
+                    CommandAdapterRegistered: true,
+                    GateTransmitEnabled: false,
+                    CommandTransportAvailable: false,
+                    SetTransmitAvailable: false,
+                    EmergencyUnkeyTransportAvailable: false,
+                    SafetyArmAuthorityRegistered: true,
+                    WatchdogSupervisionEnabled:
+                        watchdog.SupervisionRegistered,
+                    WatchdogProcessRunning:
+                        watchdog.RunningProcessCount > 0,
+                    WatchdogIpcConnected:
+                        watchdog.ConnectedProcessCount > 0,
+                    WatchdogCommandTransportAvailable:
+                        watchdog.CommandTransportAvailable,
+                    WatchdogArmingAvailable: watchdog.ArmingAvailable));
             return Results.Ok(new
             {
                 status = "ok",
@@ -299,6 +323,14 @@ app.MapGet(
                 txBrowserTxTransactionIngressWatchdogCallerRegistered = false,
                 txBrowserTxTransactionIngressReconnectCallerRegistered = false,
                 txBrowserTxTransactionIngressTimerCallerRegistered = false,
+                txProductionReadinessPolicyRegistered =
+                    productionReadiness.Registered,
+                txProductionReadinessReady = productionReadiness.Ready,
+                txProductionReadinessReason = productionReadiness.Reason,
+                txProductionReadinessMissingPrerequisites =
+                    productionReadiness.MissingPrerequisites,
+                txProductionReadinessLifecycleIngressRegistered = true,
+                txProductionReadinessWebSocketCallerRegistered = false,
                 txStationCommandEnvelopeSubmissionEnabled =
                     commandCoordinator.SubmissionEnabled,
                 txStationCommandEnvelopeSigningAvailable =

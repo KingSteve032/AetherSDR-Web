@@ -16,6 +16,30 @@ import {
   shortId
 } from "../wwwroot/admin-diagnostics.js";
 
+const productionReadinessMissing = [
+  "transmit-disabled",
+  "browser-tx-lease-disabled",
+  "command-submission-disabled",
+  "command-signing-unavailable",
+  "command-verification-unavailable",
+  "command-boundary-disabled",
+  "command-gate-transmit-disabled",
+  "command-transport-unavailable",
+  "set-transmit-unavailable",
+  "emergency-unkey-transport-unavailable",
+  "watchdog-unkey-transport-unavailable",
+  "watchdog-arming-unavailable"
+];
+const productionReadiness = {
+  registered: true,
+  ready: false,
+  reason: "transmit-disabled",
+  missingPrerequisites: productionReadinessMissing
+};
+const productionReadinessText =
+  `production readiness blocked reason transmit-disabled missing 12 ` +
+  `[${productionReadinessMissing.join(",")}]`;
+
 test("admin diagnostics format radio ownership identifiers", () => {
   assert.equal(formatHexId(0x452b3521), "0x452b3521");
   assert.equal(formatHexId(0), "—");
@@ -149,6 +173,7 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       lastOutcome: "none",
       lastReason: "execution-disabled"
     },
+    productionReadiness,
     browserObservationSequence: 4,
     lastBrowserObservedAt: "2026-07-31T02:29:59Z",
     engineObservationSequence: 7,
@@ -202,7 +227,8 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       "heartbeat-forwarded 0 cleanup 0 accepted 0 rejected 0 unknown 0 last none/none " +
       "reason submission-disabled · browser transaction ingress execution disabled boundary " +
       "attached key unavailable unkey unavailable attempts 0 forwarded 0 accepted 0 rejected 0 " +
-      "unknown 0 last none reason execution-disabled · authority no-active-lease · " +
+      "unknown 0 last none reason execution-disabled · " +
+      `${productionReadinessText} · authority no-active-lease · ` +
       "last gateway-heartbeat · TX transports absent"
   });
   assert.deepEqual(formatTxLifecycle(null, now), {
@@ -326,6 +352,7 @@ test("admin diagnostics keep ready signature verification separate from commands
       lastOutcome: "none",
       lastReason: "execution-disabled"
     },
+    productionReadiness,
     authorityFresh: false,
     authorityReason: "no-active-lease",
     independentWatchdog: {
@@ -356,6 +383,7 @@ test("admin diagnostics keep ready signature verification separate from commands
   assert.match(
     result.detail,
     /browser transaction ingress execution disabled boundary attached key unavailable unkey unavailable attempts 0 forwarded 0 accepted 0 rejected 0 unknown 0 last none reason execution-disabled/);
+  assert.ok(result.detail.includes(productionReadinessText));
   assert.match(result.detail, /TX transports absent/);
 });
 
@@ -467,6 +495,7 @@ test("admin diagnostics surface lease holder expiry and browser TX intent outcom
       lastOutcome: "none",
       lastReason: "execution-disabled"
     },
+    productionReadiness,
     browserObservationSequence: 12,
     lastBrowserObservedAt: "2026-07-31T15:59:59Z",
     engineObservationSequence: 13,
@@ -532,6 +561,7 @@ test("admin diagnostics surface lease holder expiry and browser TX intent outcom
   assert.match(
     result.detail,
     /browser transaction ingress execution disabled boundary attached key unavailable unkey unavailable attempts 0 forwarded 0 accepted 0 rejected 0 unknown 0 last none reason execution-disabled/);
+  assert.ok(result.detail.includes(productionReadinessText));
   assert.match(result.detail, /TX transports absent$/);
 });
 
