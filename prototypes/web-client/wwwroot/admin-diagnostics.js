@@ -348,11 +348,24 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `[${readinessMissing}]`
     : "production readiness policy not registered";
   const activation = lifecycle.productionActivation;
+  const activationConfiguration = activation?.configuration;
+  const activationMissing = Array.isArray(
+    activationConfiguration?.missingPrerequisites)
+    ? activationConfiguration.missingPrerequisites
+      .map(value => String(value))
+      .join(",")
+    : "unknown";
   const activationState = activation?.registered
-    ? `production activation composition evaluation ` +
-      `${activation.readinessEvaluationAttached ? "attached" : "absent"} ` +
+    ? `production activation composition config ` +
+      `${activation.configurationInterlockAttached ? "attached" : "absent"} ` +
+      `request ${activation.activationRequested ? "present" : "absent"} ` +
+      `configuration ${activation.configurationValid ? "valid" : "invalid"} ` +
+      `evaluation ${activation.readinessEvaluationAttached ? "attached" : "absent"} ` +
       `activation ${activation.activationAvailable ? "available" : "unavailable"} ` +
-      `reason ${String(activation.reason || "unknown")}`
+      `reason ${String(activation.reason || "unknown")} ` +
+      `static-missing ${formatCount(
+        activationConfiguration?.missingPrerequisites?.length)} ` +
+      `[${activationMissing}]`
     : "production activation composition not registered";
   const independent = lifecycle.independentWatchdog;
   const independentState = !independent?.supervisionEnabled

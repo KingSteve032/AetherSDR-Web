@@ -80,6 +80,23 @@ StationTxEmergencyUnkeyTransportRegistrationDiagnostics
     stationTxEmergencyUnkeyTransportRegistration =
         StationTxEmergencyUnkeyTransportSettingsValidator.CreateDiagnostics(
             stationTxEmergencyUnkeyTransportSettings);
+StationTxProductionActivationSettings stationTxProductionActivationSettings =
+    builder.Configuration
+        .GetSection(StationTxProductionActivationSettings.SectionName)
+        .Get<StationTxProductionActivationSettings>(options =>
+            options.ErrorOnUnknownConfiguration = true) ??
+    new StationTxProductionActivationSettings();
+StationTxProductionActivationConfigurationDiagnostics
+    stationTxProductionActivationConfiguration =
+        StationTxProductionActivationConfigurationInterlock.ValidateOrThrow(
+            stationTxProductionActivationSettings,
+            radioSettings,
+            stationTxCommandTrustSettings,
+            stationTxCommandSigningSettings,
+            stationTxCommandEnvelopeCoordinatorSettings,
+            stationTxCommandTransportSettings,
+            stationTxEmergencyUnkeyTransportSettings,
+            independentTxWatchdogSettings);
 ReverseProxySettings reverseProxySettings =
     builder.Configuration
         .GetSection(ReverseProxySettings.SectionName)
@@ -100,6 +117,9 @@ builder.Services.AddSingleton(
     Options.Create(stationTxCommandTransportSettings));
 builder.Services.AddSingleton(
     Options.Create(stationTxEmergencyUnkeyTransportSettings));
+builder.Services.AddSingleton(
+    Options.Create(stationTxProductionActivationSettings));
+builder.Services.AddSingleton(stationTxProductionActivationConfiguration);
 builder.Services.AddSingleton<StationTxIndependentWatchdogRegistry>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
@@ -244,8 +264,8 @@ app.MapGet(
                 stationTxCommandSigningAuthority.Snapshot;
             StationTxCommandEnvelopeCoordinatorDiagnostics commandCoordinator =
                 stationTxCommandEnvelopeCoordinator.Snapshot;
-            StationTxProductionReadinessDiagnostics productionReadiness =
-                StationTxProductionReadinessPolicy.Evaluate(new(
+            StationTxProductionReadinessInputs productionReadinessInputs =
+                new(
                     radioSettings.AllowTransmit,
                     radioSettings.BrowserTxLeaseEnabled,
                     CommandCoordinatorAttached: commandCoordinator.Registered,
@@ -267,7 +287,15 @@ app.MapGet(
                         watchdog.ConnectedProcessCount > 0,
                     WatchdogCommandTransportAvailable:
                         watchdog.CommandTransportAvailable,
-                    WatchdogArmingAvailable: watchdog.ArmingAvailable));
+                    WatchdogArmingAvailable: watchdog.ArmingAvailable);
+            StationTxProductionActivationCompositionDiagnostics
+                productionActivation =
+                    new StationTxProductionActivationComposition(
+                        () => stationTxProductionActivationConfiguration,
+                        () => productionReadinessInputs)
+                    .Snapshot;
+            StationTxProductionReadinessDiagnostics productionReadiness =
+                productionActivation.Readiness;
             return Results.Ok(new
             {
                 status = "ok",
@@ -387,9 +415,26 @@ app.MapGet(
                     productionReadiness.MissingPrerequisites,
                 txProductionReadinessLifecycleIngressRegistered = true,
                 txProductionReadinessWebSocketCallerRegistered = false,
-                txProductionActivationCompositionRegistered = true,
-                txProductionActivationAvailable = productionReadiness.Ready,
-                txProductionActivationReason = productionReadiness.Reason,
+                txProductionActivationConfigurationRegistered =
+                    stationTxProductionActivationConfiguration.Registered,
+                txProductionActivationRequested =
+                    stationTxProductionActivationConfiguration
+                        .ActivationRequested,
+                txProductionActivationConfigurationValid =
+                    stationTxProductionActivationConfiguration
+                        .ConfigurationValid,
+                txProductionActivationConfigurationReason =
+                    stationTxProductionActivationConfiguration.Reason,
+                txProductionActivationConfigurationMissingPrerequisites =
+                    stationTxProductionActivationConfiguration
+                        .MissingPrerequisites,
+                txProductionActivationCompositionRegistered =
+                    productionActivation.Registered,
+                txProductionActivationConfigurationInterlockAttached =
+                    productionActivation.ConfigurationInterlockAttached,
+                txProductionActivationAvailable =
+                    productionActivation.ActivationAvailable,
+                txProductionActivationReason = productionActivation.Reason,
                 txProductionActivationCallerRegistered = false,
                 txStationCommandEnvelopeSubmissionEnabled =
                     commandCoordinator.SubmissionEnabled,

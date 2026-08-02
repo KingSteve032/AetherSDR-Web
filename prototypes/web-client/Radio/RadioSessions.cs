@@ -277,7 +277,9 @@ public sealed class RadioSessionRegistry(
     IOptions<StationTxCommandTransportSettings>?
         stationTxCommandTransportSettings = null,
     IOptions<StationTxEmergencyUnkeyTransportSettings>?
-        stationTxEmergencyUnkeyTransportSettings = null)
+        stationTxEmergencyUnkeyTransportSettings = null,
+    StationTxProductionActivationConfigurationDiagnostics?
+        stationTxProductionActivationConfiguration = null)
     : BackgroundService
 {
     // Mobile browsers suspend WebSockets as soon as the operator changes apps
@@ -760,6 +762,8 @@ public sealed class RadioSessionRegistry(
                     settings.Value.AllowTransmit && !isRemote,
                 BrowserTxLeaseConfigured:
                     sessionSettings.BrowserTxLeaseEnabled),
+            productionActivationConfiguration:
+                stationTxProductionActivationConfiguration,
             productionCommandTransport: productionCommandTransport,
             productionEmergencyUnkeyTransport: emergencyUnkeyTransport,
             independentWatchdogRadioHost: endpoint.Host,
