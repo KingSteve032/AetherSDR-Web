@@ -644,6 +644,28 @@ exact handle. SmartSDR, Maestro, hardware PTT, ambiguous/stale ownership, or a
 replaced handle is never globally unkeyed. A newly started supervisor begins
 disarmed and never infers ownership of an already-active transmission.
 
+Phase 3B closes the cross-process cleanup gap after an accepted independent-
+watchdog deadline unkey. Each active transaction captures the exact watchdog
+host instance and cumulative accepted-unkey count that existed before keying.
+Only a later accepted `deadline-unkey-accepted` result from that same watchdog
+host, with a strictly greater count, the exact radio/session/connection/lease/
+gateway/engine/FLEX-handle identity, and fresh radio-authoritative idle may enter
+cleanup. Stale counts, a restarted watchdog, identity mismatch, non-idle or stale
+radio state, and incomplete watchdog authority leave the transaction active in
+explicit reconciliation.
+
+The cleanup participant is lifecycle-only and executes while the transaction's
+single-operation lock is held. It owns no radio command transport. It first
+proves that any remaining gate intent and local safety arm belong to the same
+active transaction, then asks the gate to consume the already-observed idle state
+and asks the local supervisor to reset from that same fresh idle evidence.
+Neither operation can key or unkey. The transaction is cleared only after a
+second fresh-idle check plus fully empty `Idle` gate and `Disarmed` safety
+snapshots. Lease release may arrive before this reconciliation; the lifecycle
+retains the exact registered watchdog identity long enough to reconcile, then
+disconnects and resets the watchdog registration. No browser command, heartbeat,
+retry, or inferred success is introduced.
+
 A separate engine-connection monitor has no radio command transport. It binds
 to the active supervisor arm's exact engine instance, lease, and protected FLEX
 handle, and may signal `station-engine-connection-lost` only after observing

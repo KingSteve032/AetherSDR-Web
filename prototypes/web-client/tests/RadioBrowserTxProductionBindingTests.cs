@@ -138,6 +138,102 @@ public sealed class RadioBrowserTxProductionBindingTests
         Assert.Equal(RadioTxOccupancyState.Idle, occupancy.GetSnapshot("radio-a").State);
     }
 
+    [Fact]
+    public async Task WatchdogDeadlineUnkeyAndLeaseReleaseClearTheBoundTransaction()
+    {
+        TxLeaseManager leases = new();
+        RadioTxOccupancyRegistry occupancy = new();
+        ObserveIdle(occupancy);
+        RecordingProductionTransport transport = new(occupancy);
+        AvailableEmergencyTransport emergency = new();
+        AvailableWatchdogFactory watchdogFactory = new();
+        CompleteSubmitter submitter = new();
+
+        await using StationTxProductionLifecycle lifecycle = new(
+            "radio-a",
+            "session-a",
+            "browser-page-a",
+            "gateway-a",
+            leases,
+            occupancy,
+            NullLogger<StationTxProductionLifecycle>.Instance,
+            independentWatchdogFactory: watchdogFactory,
+            stationCommandVerifier: new AlwaysAvailableVerifier(),
+            stationCommandSubmitter: submitter,
+            productionReadinessConfiguration: new(
+                AllowTransmitConfigured: true,
+                BrowserTxLeaseConfigured: true),
+            productionCommandTransport: transport,
+            productionEmergencyUnkeyTransport: emergency,
+            independentWatchdogLocalFlexEligible: true,
+            productionActivationConfiguration: CompleteConfiguration());
+        await lifecycle.StartAsync();
+
+        using RadioCoordinator coordinator = new(
+            NullLogger<RadioCoordinator>.Instance,
+            Options.Create(new RadioSettings
+            {
+                Mode = "FlexRx",
+                RadioId = "radio-a",
+                SessionId = "session-a",
+                BrowserTxLeaseEnabled = true,
+                AllowTransmit = true
+            }),
+            leases,
+            txOccupancyRegistry: occupancy,
+            txLifecycle: lifecycle);
+        RadioClientConnection connection = coordinator.Register(CreateUser());
+        coordinator.SetRadioConnection(
+            connected: true,
+            radioModel: "FLEX-TEST",
+            serial: "TEST-SERIAL",
+            stationClientHandle: StationHandle);
+        await lifecycle.FlushAsync();
+
+        Assert.True(coordinator.TryAcquireTxLease(
+            connection,
+            TimeSpan.FromSeconds(10),
+            authenticated: true,
+            out TxLease? lease,
+            out string? acquireError), acquireError);
+        Assert.NotNull(lease);
+        await coordinator.FlushTxLifecycleAsync();
+
+        BrowserTxIntentResult key = await coordinator.ExecuteBrowserTxIntentAsync(
+            connection,
+            Request(lease!.LeaseId, sequence: 1, enabled: true),
+            authenticated: true);
+        Assert.True(key.Ok, key.Error);
+        Assert.Equal([true], transport.EnabledValues);
+        Assert.True(lifecycle.Snapshot.StationCommandTransactionComposition.Active);
+        Assert.True(watchdogFactory.Watchdog.Snapshot.Armed);
+
+        ObserveIdle(occupancy);
+        watchdogFactory.Watchdog.CompleteDeadlineUnkey();
+        Assert.True(coordinator.ReleaseTxLease(connection, lease.LeaseId));
+        await coordinator.FlushTxLifecycleAsync();
+
+        StationTxLifecycleDiagnostics reconciled = lifecycle.Snapshot;
+        Assert.Equal(RadioTxOccupancyState.Idle, occupancy.GetSnapshot("radio-a").State);
+        Assert.Equal("Idle", reconciled.GateState);
+        Assert.False(reconciled.GateHasActiveIntent);
+        Assert.Equal("Disarmed", reconciled.SafetyState);
+        Assert.False(reconciled.SafetyActive);
+        Assert.False(reconciled.StationCommandTransactionComposition.Active);
+        Assert.False(
+            reconciled.StationCommandTransactionComposition
+                .ReconciliationRequired);
+        Assert.Equal(
+            "independent_watchdog_unkey_reconciled",
+            reconciled.StationCommandTransactionComposition.LastOutcome);
+        Assert.Equal(1, watchdogFactory.Watchdog.DeadlineUnkeyAcceptedCount);
+        Assert.Equal([true], transport.EnabledValues);
+        Assert.Equal(0, emergency.RequestCount);
+        Assert.False(reconciled.LeaseActive);
+        Assert.False(reconciled.IndependentWatchdog.Registered);
+        Assert.False(reconciled.IndependentWatchdog.LeaseBound);
+    }
+
     private static BrowserTxRequest Request(
         string leaseId,
         long sequence,
@@ -280,6 +376,7 @@ public sealed class RadioBrowserTxProductionBindingTests
     private sealed class AvailableEmergencyTransport :
         IStationTxProductionEmergencyUnkeyTransport
     {
+        public int RequestCount { get; private set; }
         public bool IsConnected => true;
         public StationTxProductionEmergencyUnkeyTransportDiagnostics Snapshot =>
             new(
@@ -292,9 +389,9 @@ public sealed class RadioBrowserTxProductionBindingTests
                 Available: true,
                 UnkeyAvailable: true,
                 CommandTimeoutMilliseconds: 2000,
-                AttemptCount: 0,
-                ForwardedCount: 0,
-                AcceptedCount: 0,
+                AttemptCount: RequestCount,
+                ForwardedCount: RequestCount,
+                AcceptedCount: RequestCount,
                 RejectedCount: 0,
                 UnknownCount: 0,
                 LastOutcome: "none",
@@ -303,8 +400,12 @@ public sealed class RadioBrowserTxProductionBindingTests
 
         public Task<StationTxTransportResult> RequestUnkeyAsync(
             uint expectedProtectedClientHandle,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(StationTxTransportResult.Ok);
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            RequestCount++;
+            return Task.FromResult(StationTxTransportResult.Ok);
+        }
     }
 
     private sealed class AlwaysAvailableVerifier :
@@ -408,6 +509,7 @@ public sealed class RadioBrowserTxProductionBindingTests
         private WatchdogIdentity? m_identity;
         private long m_sequence;
         public int SafetyHeartbeatCount { get; private set; }
+        public int DeadlineUnkeyAcceptedCount { get; private set; }
 
         public StationTxIndependentWatchdogDiagnostics Snapshot { get; private set; } =
             CreateSnapshot(
@@ -452,7 +554,10 @@ public sealed class RadioBrowserTxProductionBindingTests
                 leaseBound: true,
                 armed: Snapshot.Armed,
                 sequence: ++m_sequence,
-                observation: "heartbeat");
+                observation: "heartbeat",
+                unkeyAcceptedCount: Snapshot.UnkeyAcceptedCount,
+                lastUnkeyOutcome: Snapshot.LastUnkeyOutcome,
+                lastUnkeyReason: Snapshot.LastUnkeyReason);
             return Task.FromResult(Snapshot);
         }
 
@@ -487,6 +592,22 @@ public sealed class RadioBrowserTxProductionBindingTests
                 observation: "safety-heartbeat",
                 heartbeatTimeout);
             return Task.FromResult(Snapshot);
+        }
+
+        public void CompleteDeadlineUnkey()
+        {
+            Assert.NotNull(m_identity);
+            Assert.True(Snapshot.Armed);
+            DeadlineUnkeyAcceptedCount++;
+            Snapshot = CreateSnapshot(
+                registered: true,
+                leaseBound: true,
+                armed: false,
+                sequence: ++m_sequence,
+                observation: "deadline-unkey-accepted",
+                unkeyAcceptedCount: 1,
+                lastUnkeyOutcome: "accepted",
+                lastUnkeyReason: "deadline-unkey-accepted");
         }
 
         public Task<StationTxIndependentWatchdogDiagnostics> DisarmAsync(
@@ -525,7 +646,10 @@ public sealed class RadioBrowserTxProductionBindingTests
             bool armed,
             long sequence,
             string observation,
-            TimeSpan? heartbeatTimeout = null) =>
+            TimeSpan? heartbeatTimeout = null,
+            long unkeyAcceptedCount = 0,
+            string lastUnkeyOutcome = "none",
+            string lastUnkeyReason = "none") =>
             new(
                 SupervisionEnabled: true,
                 ProcessRunning: true,
@@ -554,6 +678,12 @@ public sealed class RadioBrowserTxProductionBindingTests
                     : null,
                 HeartbeatTimeoutMilliseconds: heartbeatTimeout.HasValue
                     ? (int)heartbeatTimeout.Value.TotalMilliseconds
-                    : null);
+                    : null,
+                UnkeyAttemptCount: unkeyAcceptedCount,
+                UnkeyAcceptedCount: unkeyAcceptedCount,
+                UnkeyRejectedCount: 0,
+                UnkeyUnknownCount: 0,
+                LastUnkeyOutcome: lastUnkeyOutcome,
+                LastUnkeyReason: lastUnkeyReason);
     }
 }

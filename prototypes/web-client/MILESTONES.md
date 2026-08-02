@@ -2548,6 +2548,39 @@ Milestone state:
   and stale-session recovery pair; fresh stabilized radio and Admin captures
   each contained zero console entries. No microphone permission, browser TX
   intent, safety heartbeat, radio command, or live RF/HIL operation was used.
+- The 2026-08-02 operator-authorized production browser MOX check used the
+  reviewed PSOC2 FLEX-6700 station at 14.317874 MHz after the operator confirmed
+  the frequency clear, RF path safe, local/camera observation available, and
+  remote emergency-off ready. The exact browser lease, session, engine, and FLEX
+  handle were fresh; one browser key command was accepted and radio-confirmed.
+  The immediate second click occurred before the control transitioned and sent
+  no browser unkey. The independent watchdog then issued one accepted deadline
+  unkey and the radio returned to authoritative idle, but the web process left
+  the local command transaction and safety arm stale. Primary command counts
+  were key 1/unkey 0; watchdog unkey count was 1 accepted. The lease was released,
+  the complete pre-TX environment backup was restored, the service was restarted,
+  activation returned to `activation-not-requested`, browser keying became
+  unavailable, and no further RF test was run.
+- Phase 3B adds serialized lifecycle-only reconciliation for that exact failure.
+  An active transaction records the watchdog host and accepted-unkey baseline.
+  Cleanup requires a later accepted `deadline-unkey-accepted` count from the same
+  host, the exact watchdog identity tuple, and fresh radio idle. While holding
+  the transaction operation lock, a command-incapable participant verifies that
+  the gate intent and local arm belong to the same transaction, consumes idle in
+  the gate, resets the local supervisor from idle, rechecks fresh idle, and
+  clears the transaction only after both gate and safety snapshots are empty.
+  Stale evidence, watchdog replacement, identity mismatch, or non-idle/stale
+  radio state remains reconciliation-required and invokes no cleanup participant.
+- The 2026-08-02 Phase 3B automated gate passed targeted formatter verification,
+  a zero-warning solution build, 745 FlexWeb server tests, 57 independent-
+  watchdog tests, 48 TX-HIL isolation tests, 70 AetherRemote tests, and 127
+  browser tests (1,047 total). The regression proof reproduces accepted browser
+  key, accepted watchdog deadline unkey, radio idle, and lease release; it clears
+  gate, local safety, and transaction state without a primary or emergency
+  command. Negative cases prove pre-existing watchdog counts and non-idle radio
+  evidence remain fail-closed. Production TX remained disabled throughout this
+  automated validation, and the live MOX scenario has not yet been repeated
+  against the fix.
 - The 2026-08-02 live no-RF station check built the merged TX-HIL tool with zero
   warnings, observed the reviewed radio freshly idle with zero TX occupants and
   no external GUI client, and found the HIL GUI profile recalling 1 W. The

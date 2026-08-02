@@ -1,3 +1,5 @@
+using AetherSDR.TxWatchdog.Protocol;
+
 namespace AetherSDR.Web.Radio;
 
 public sealed record StationTxCommandTransactionCompositionDiagnostics(
@@ -59,6 +61,27 @@ internal sealed record StationTxCommandTransactionAbortRequest(
     string ConnectionClientId,
     string Reason);
 
+internal sealed record StationTxCommandTransactionIdleReconciliation(
+    string Reason,
+    WatchdogIdentity Identity,
+    StationTxIndependentWatchdogDiagnostics IndependentWatchdog,
+    RadioTxOccupancySnapshot Occupancy);
+
+internal sealed record StationTxCommandIdleReconciliationResult(
+    bool Success,
+    string Code,
+    string Message,
+    RadioTxOccupancySnapshot Occupancy,
+    StationTxGateSnapshot Gate,
+    StationTxSafetySnapshot Safety);
+
+internal interface IStationTxCommandIdleReconciliationParticipant
+{
+    Task<StationTxCommandIdleReconciliationResult> ReconcileAsync(
+        StationTxCommandAuthority authority,
+        CancellationToken cancellationToken = default);
+}
+
 internal sealed record StationTxCommandTransactionResult(
     StationTxCommandTransactionOutcome Outcome,
     string Code,
@@ -102,6 +125,10 @@ internal sealed class StationTxCommandTransactionComposition
         m_authorityResolver;
     private readonly IStationTxCommandRadioConfirmationParticipant?
         m_radioConfirmation;
+    private readonly IStationTxCommandIdleReconciliationParticipant?
+        m_idleReconciliation;
+    private readonly Func<StationTxIndependentWatchdogDiagnostics>?
+        m_independentWatchdogSnapshot;
     private readonly TimeProvider m_timeProvider;
 
     private StationTxCommandTransactionState m_state =
@@ -124,13 +151,19 @@ internal sealed class StationTxCommandTransactionComposition
         IStationTxCommandTransactionSubmissionParticipant? commandComposition,
         Func<string?, StationTxCommandAuthorityResolution> authorityResolver,
         TimeProvider? timeProvider = null,
-        IStationTxCommandRadioConfirmationParticipant? radioConfirmation = null)
+        IStationTxCommandRadioConfirmationParticipant? radioConfirmation = null,
+        Func<StationTxIndependentWatchdogDiagnostics>?
+            independentWatchdogSnapshot = null,
+        IStationTxCommandIdleReconciliationParticipant?
+            idleReconciliation = null)
     {
         ArgumentNullException.ThrowIfNull(authorityResolver);
         m_safetyArmComposition = safetyArmComposition;
         m_commandComposition = commandComposition;
         m_authorityResolver = authorityResolver;
         m_radioConfirmation = radioConfirmation;
+        m_independentWatchdogSnapshot = independentWatchdogSnapshot;
+        m_idleReconciliation = idleReconciliation;
         m_timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -457,6 +490,100 @@ internal sealed class StationTxCommandTransactionComposition
                 "The exact station TX safety arm was cleared.",
                 now,
                 cleanupResult: result);
+        }
+        finally
+        {
+            m_operationGate.Release();
+        }
+    }
+
+    internal async Task<bool> ReconcileRadioConfirmedIdleAsync(
+        StationTxCommandTransactionIdleReconciliation reconciliation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(reconciliation);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await m_operationGate.WaitAsync(cancellationToken);
+        try
+        {
+            DateTimeOffset now = m_timeProvider.GetUtcNow();
+            ActiveTransaction? active = GetActive();
+            if (active is null)
+            {
+                return false;
+            }
+
+            TransactionFailure? failure =
+                ValidateRadioConfirmedIdleEvidence(
+                    active,
+                    reconciliation,
+                    now);
+            if (failure is not null)
+            {
+                MarkReconciliationRequired(failure.Code, now);
+                return false;
+            }
+            if (m_idleReconciliation is null)
+            {
+                MarkReconciliationRequired(
+                    "idle_reconciliation_participant_unattached",
+                    now);
+                return false;
+            }
+
+            StationTxCommandIdleReconciliationResult cleanup;
+            try
+            {
+                cleanup = await m_idleReconciliation.ReconcileAsync(
+                    active.Authority,
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                MarkReconciliationRequired(
+                    "idle_reconciliation_cancelled",
+                    now);
+                throw;
+            }
+            catch
+            {
+                MarkReconciliationRequired(
+                    "idle_reconciliation_exception",
+                    now);
+                return false;
+            }
+            if (!cleanup.Success)
+            {
+                MarkReconciliationRequired(cleanup.Code, now);
+                return false;
+            }
+
+            DateTimeOffset completedAt = m_timeProvider.GetUtcNow();
+            failure = ValidateRadioConfirmedIdleCleanup(
+                active,
+                cleanup,
+                completedAt);
+            if (failure is not null)
+            {
+                MarkReconciliationRequired(failure.Code, completedAt);
+                return false;
+            }
+
+            lock (m_gate)
+            {
+                if (!Equals(m_active, active))
+                {
+                    return false;
+                }
+
+                m_active = null;
+                m_state = StationTxCommandTransactionState.Idle;
+                m_lastOperation = "reconcile";
+                m_lastOutcome = NormalizeOutcome(reconciliation.Reason);
+                m_lastObservedAt = completedAt;
+            }
+            return true;
         }
         finally
         {
@@ -1156,6 +1283,181 @@ internal sealed class StationTxCommandTransactionComposition
         return null;
     }
 
+    private static TransactionFailure?
+        ValidateRadioConfirmedIdleEvidence(
+            ActiveTransaction active,
+            StationTxCommandTransactionIdleReconciliation reconciliation,
+            DateTimeOffset now)
+    {
+        string reason = reconciliation.Reason?.Trim() ?? string.Empty;
+        WatchdogIdentity identity = reconciliation.Identity;
+        StationTxIndependentWatchdogDiagnostics watchdog =
+            reconciliation.IndependentWatchdog;
+        RadioTxOccupancySnapshot occupancy = reconciliation.Occupancy;
+
+        if (reason.Length is 0 or > 96 || reason.Any(char.IsControl))
+        {
+            return new(
+                "idle_reconciliation_reason_invalid",
+                "The lifecycle idle-reconciliation reason is invalid.");
+        }
+        if (active.WatchdogHostInstanceId is null ||
+            !string.Equals(
+                active.WatchdogHostInstanceId,
+                watchdog.HostInstanceId,
+                StringComparison.Ordinal))
+        {
+            return new(
+                "idle_reconciliation_watchdog_host_mismatch",
+                "The watchdog host does not match the active transaction.");
+        }
+        if (!watchdog.SupervisionEnabled ||
+            !watchdog.ProcessRunning ||
+            !watchdog.IpcConnected ||
+            !watchdog.Registered ||
+            !watchdog.Connected ||
+            !watchdog.LeaseBound)
+        {
+            return new(
+                "idle_reconciliation_watchdog_authority_incomplete",
+                "The exact independent watchdog authority is incomplete.");
+        }
+        if (watchdog.Armed ||
+            !string.Equals(watchdog.State, "Disarmed", StringComparison.Ordinal))
+        {
+            return new(
+                "idle_reconciliation_watchdog_not_disarmed",
+                "The independent watchdog is not radio-confirmed disarmed.");
+        }
+        if (watchdog.UnkeyAcceptedCount <=
+                active.WatchdogUnkeyAcceptedCount)
+        {
+            return new(
+                "idle_reconciliation_watchdog_evidence_not_new",
+                "The accepted watchdog unkey does not postdate the active transaction.");
+        }
+        if (!string.Equals(
+                watchdog.LastUnkeyOutcome,
+                "accepted",
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                watchdog.LastUnkeyReason,
+                "deadline-unkey-accepted",
+                StringComparison.Ordinal))
+        {
+            return new(
+                "idle_reconciliation_watchdog_unkey_unconfirmed",
+                "The watchdog did not report an accepted deadline unkey.");
+        }
+        if (!string.Equals(
+                identity.RadioId,
+                active.Authority.RadioId,
+                StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(
+                identity.SessionId,
+                active.Authority.SessionId,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                identity.ConnectionClientId,
+                active.ConnectionClientId,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                identity.ConnectionClientId,
+                active.Authority.BrowserClientId,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                identity.LeaseId,
+                active.Authority.LeaseId,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                identity.GatewayInstanceId,
+                active.Authority.GatewayInstanceId,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                identity.EngineInstanceId,
+                active.Authority.EngineInstanceId,
+                StringComparison.Ordinal) ||
+            identity.StationClientHandle != active.Authority.ClientHandle)
+        {
+            return new(
+                "idle_reconciliation_watchdog_identity_mismatch",
+                "The watchdog identity does not match the active transaction.");
+        }
+        if (!IsFreshIdleForAuthority(occupancy, active.Authority, now))
+        {
+            return new(
+                "idle_reconciliation_radio_not_fresh_idle",
+                "Fresh radio-authoritative idle is required for reconciliation.");
+        }
+        return null;
+    }
+
+    private static TransactionFailure?
+        ValidateRadioConfirmedIdleCleanup(
+            ActiveTransaction active,
+            StationTxCommandIdleReconciliationResult cleanup,
+            DateTimeOffset now)
+    {
+        if (!IsFreshIdleForAuthority(
+                cleanup.Occupancy,
+                active.Authority,
+                now))
+        {
+            return new(
+                "idle_reconciliation_radio_not_fresh_idle",
+                "Fresh radio-authoritative idle was lost during reconciliation.");
+        }
+
+        StationTxGateSnapshot gate = cleanup.Gate;
+        if (!string.Equals(
+                gate.RadioId,
+                active.Authority.RadioId,
+                StringComparison.OrdinalIgnoreCase) ||
+            gate.State != StationTxGateState.Idle ||
+            gate.HasActiveIntent ||
+            gate.LeaseId is not null ||
+            gate.SessionId is not null ||
+            gate.BrowserClientId is not null ||
+            gate.ClientHandle != 0)
+        {
+            return new(
+                "idle_reconciliation_gate_not_clean",
+                "The station command gate has not cleared its exact TX intent.");
+        }
+
+        StationTxSafetySnapshot safety = cleanup.Safety;
+        if (!string.Equals(
+                safety.RadioId,
+                active.Authority.RadioId,
+                StringComparison.OrdinalIgnoreCase) ||
+            safety.State != StationTxSafetyState.Disarmed ||
+            safety.Active ||
+            safety.EngineInstanceId is not null ||
+            safety.LeaseId is not null ||
+            safety.SessionId is not null ||
+            safety.BrowserClientId is not null ||
+            safety.ProtectedClientHandle != 0)
+        {
+            return new(
+                "idle_reconciliation_safety_not_clean",
+                "The local safety supervisor has not cleared its exact arm.");
+        }
+        return null;
+    }
+
+    private static bool IsFreshIdleForAuthority(
+        RadioTxOccupancySnapshot occupancy,
+        StationTxCommandAuthority authority,
+        DateTimeOffset now) =>
+        string.Equals(
+            occupancy.RadioId,
+            authority.RadioId,
+            StringComparison.OrdinalIgnoreCase) &&
+        occupancy.State == RadioTxOccupancyState.Idle &&
+        occupancy.ObservedAt is not null &&
+        occupancy.FreshUntil is not null &&
+        occupancy.FreshUntil > now;
+
     private static TransactionFailure? ValidateKeyPreparation(
         StationTxSafetyArmCompositionDiagnostics safety,
         StationTxCommandSessionCompositionDiagnostics command)
@@ -1396,6 +1698,19 @@ internal sealed class StationTxCommandTransactionComposition
         }
     }
 
+    private StationTxIndependentWatchdogDiagnostics?
+        GetIndependentWatchdogSnapshot()
+    {
+        try
+        {
+            return m_independentWatchdogSnapshot?.Invoke();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private StationTxCommandAuthorityResolution ResolveAuthority(
         string? connectionClientId)
     {
@@ -1478,6 +1793,8 @@ internal sealed class StationTxCommandTransactionComposition
         StationTxCommandTransactionState state,
         DateTimeOffset now)
     {
+        StationTxIndependentWatchdogDiagnostics? watchdog =
+            GetIndependentWatchdogSnapshot();
         lock (m_gate)
         {
             m_active = new ActiveTransaction(
@@ -1486,6 +1803,8 @@ internal sealed class StationTxCommandTransactionComposition
                 request.Intent.IntentId,
                 request.Sequence,
                 request.HeartbeatTimeout,
+                watchdog?.HostInstanceId,
+                watchdog?.UnkeyAcceptedCount ?? 0,
                 ReconciliationRequired: false);
             m_state = state;
             m_lastObservedAt = now;
@@ -1681,6 +2000,8 @@ internal sealed class StationTxCommandTransactionComposition
         string KeyIntentId,
         long KeySequence,
         TimeSpan HeartbeatTimeout,
+        string? WatchdogHostInstanceId,
+        long WatchdogUnkeyAcceptedCount,
         bool ReconciliationRequired);
 
     private sealed record TransactionFailure(string Code, string Message);

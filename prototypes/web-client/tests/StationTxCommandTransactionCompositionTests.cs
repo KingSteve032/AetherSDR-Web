@@ -1,3 +1,4 @@
+using AetherSDR.TxWatchdog.Protocol;
 using AetherSDR.Web.Radio;
 
 namespace AetherSDR.Web.Tests;
@@ -566,6 +567,91 @@ public sealed class StationTxCommandTransactionCompositionTests
     }
 
     [Fact]
+    public async Task RadioConfirmedWatchdogUnkeyClearsTheStaleTransactionWithoutAnotherCommand()
+    {
+        Fixture fixture = new();
+        await fixture.ArmKeyAsync();
+        fixture.SetArmed(false);
+        fixture.Watchdog = fixture.WatchdogSnapshot(
+            unkeyAcceptedCount: 1,
+            lastUnkeyOutcome: "accepted",
+            lastUnkeyReason: "deadline-unkey-accepted");
+
+        bool reconciled = await fixture.Subject.ReconcileRadioConfirmedIdleAsync(
+            fixture.IdleReconciliationEvidence());
+
+        Assert.True(reconciled);
+        Assert.Equal(1, fixture.Command.SubmitCalls);
+        Assert.Equal(0, fixture.Safety.AbortCalls);
+        Assert.Equal(1, fixture.IdleReconciliation.Calls);
+        StationTxCommandTransactionCompositionDiagnostics snapshot =
+            fixture.Subject.Snapshot;
+        Assert.False(snapshot.Active);
+        Assert.False(snapshot.ReconciliationRequired);
+        Assert.Equal("idle", snapshot.State);
+        Assert.Equal("reconcile", snapshot.LastOperation);
+        Assert.Equal(
+            "independent_watchdog_unkey_reconciled",
+            snapshot.LastOutcome);
+    }
+
+    [Fact]
+    public async Task WatchdogEvidenceMustPostdateTheActiveTransaction()
+    {
+        Fixture fixture = new();
+        fixture.Watchdog = fixture.WatchdogSnapshot(
+            unkeyAcceptedCount: 1,
+            lastUnkeyOutcome: "accepted",
+            lastUnkeyReason: "deadline-unkey-accepted");
+        await fixture.ArmKeyAsync();
+        fixture.SetArmed(false);
+
+        bool reconciled = await fixture.Subject.ReconcileRadioConfirmedIdleAsync(
+            fixture.IdleReconciliationEvidence());
+
+        Assert.False(reconciled);
+        StationTxCommandTransactionCompositionDiagnostics snapshot =
+            fixture.Subject.Snapshot;
+        Assert.True(snapshot.Active);
+        Assert.True(snapshot.ReconciliationRequired);
+        Assert.Equal("reconciling", snapshot.State);
+        Assert.Equal(
+            "idle_reconciliation_watchdog_evidence_not_new",
+            snapshot.LastOutcome);
+        Assert.Equal(1, fixture.Command.SubmitCalls);
+        Assert.Equal(0, fixture.Safety.AbortCalls);
+        Assert.Equal(0, fixture.IdleReconciliation.Calls);
+    }
+
+    [Fact]
+    public async Task WatchdogUnkeyWithoutFreshRadioIdleNeverInvokesCleanup()
+    {
+        Fixture fixture = new();
+        await fixture.ArmKeyAsync();
+        fixture.SetOccupancy(RadioTxOccupancyState.AetherOwned);
+        fixture.Watchdog = fixture.WatchdogSnapshot(
+            unkeyAcceptedCount: 1,
+            lastUnkeyOutcome: "accepted",
+            lastUnkeyReason: "deadline-unkey-accepted");
+
+        bool reconciled = await fixture.Subject.ReconcileRadioConfirmedIdleAsync(
+            fixture.IdleReconciliationEvidence());
+
+        Assert.False(reconciled);
+        StationTxCommandTransactionCompositionDiagnostics snapshot =
+            fixture.Subject.Snapshot;
+        Assert.True(snapshot.Active);
+        Assert.True(snapshot.ReconciliationRequired);
+        Assert.Equal("reconciling", snapshot.State);
+        Assert.Equal(
+            "idle_reconciliation_radio_not_fresh_idle",
+            snapshot.LastOutcome);
+        Assert.Equal(0, fixture.IdleReconciliation.Calls);
+        Assert.Equal(1, fixture.Command.SubmitCalls);
+        Assert.Equal(0, fixture.Safety.AbortCalls);
+    }
+
+    [Fact]
     public async Task RejectedAbortRetainsArmForReconciliation()
     {
         Fixture fixture = new();
@@ -678,12 +764,16 @@ public sealed class StationTxCommandTransactionCompositionTests
             Authority = CreateAuthority(armed: false);
             Safety = new FakeSafetyParticipant(this);
             Command = new FakeCommandParticipant(this);
+            IdleReconciliation = new FakeIdleReconciliationParticipant(this);
+            Watchdog = WatchdogSnapshot();
             Subject = new StationTxCommandTransactionComposition(
                 safetyAttached ? Safety : null,
                 commandAttached ? Command : null,
                 ResolveAuthority,
                 Time,
-                radioConfirmation);
+                radioConfirmation,
+                () => Watchdog,
+                IdleReconciliation);
         }
 
         public ManualTimeProvider Time { get; }
@@ -691,6 +781,8 @@ public sealed class StationTxCommandTransactionCompositionTests
         public StationTxCommandAuthorityResolution? AuthorityFailure { get; set; }
         public FakeSafetyParticipant Safety { get; }
         public FakeCommandParticipant Command { get; }
+        public FakeIdleReconciliationParticipant IdleReconciliation { get; }
+        public StationTxIndependentWatchdogDiagnostics Watchdog { get; set; }
         public StationTxCommandTransactionComposition Subject { get; }
 
         public StationTxCommandTransactionRequest Request(
@@ -713,6 +805,51 @@ public sealed class StationTxCommandTransactionCompositionTests
 
         public StationTxCommandTransactionAbortRequest AbortRequest() =>
             new(ConnectionId, "operator-abort");
+
+        public StationTxCommandTransactionIdleReconciliation
+            IdleReconciliationEvidence() =>
+            new(
+                "independent_watchdog_unkey_reconciled",
+                new WatchdogIdentity(
+                    "RADIO-A",
+                    "session-a",
+                    "browser-page-a",
+                    "gateway-a",
+                    "engine-a",
+                    ConnectionId,
+                    "lease-a",
+                    0x1234abcdu),
+                Watchdog,
+                Authority.Occupancy);
+
+        public StationTxIndependentWatchdogDiagnostics WatchdogSnapshot(
+            long unkeyAcceptedCount = 0,
+            string lastUnkeyOutcome = "none",
+            string lastUnkeyReason = "none") =>
+            new(
+                SupervisionEnabled: true,
+                ProcessRunning: true,
+                ProcessId: 1234,
+                HostInstanceId: "watchdog-a",
+                ProcessStartedAt: Now,
+                State: "Disarmed",
+                Reason: "ready",
+                IpcConnected: true,
+                Registered: true,
+                Connected: true,
+                LeaseBound: true,
+                LastSequence: 1,
+                RestartCount: 0,
+                LastObservation: "ready",
+                LastObservedAt: Now,
+                LastError: null,
+                RadioCommandTransportAvailable: true,
+                ArmingAvailable: true,
+                Armed: false,
+                UnkeyAttemptCount: unkeyAcceptedCount,
+                UnkeyAcceptedCount: unkeyAcceptedCount,
+                LastUnkeyOutcome: lastUnkeyOutcome,
+                LastUnkeyReason: lastUnkeyReason);
 
         public async Task ArmKeyAsync()
         {
@@ -769,12 +906,31 @@ public sealed class StationTxCommandTransactionCompositionTests
             };
         }
 
+        public void SetOccupancy(RadioTxOccupancyState state)
+        {
+            Authority = Authority with
+            {
+                Occupancy = Authority.Occupancy with
+                {
+                    State = state,
+                    Occupants = state == RadioTxOccupancyState.Idle
+                        ? []
+                        : [new RadioTxOccupant(
+                            0x1234abcdu,
+                            "AetherSDR-Web",
+                            "station-a",
+                            "LOCAL",
+                            AetherOwned: true)]
+                }
+            };
+        }
+
         private StationTxCommandAuthority CreateAuthority(bool armed) =>
             new(
                 StationId: "station-a",
                 RadioId: "RADIO-A",
                 SessionId: "session-a",
-                BrowserClientId: "browser-a",
+                BrowserClientId: ConnectionId,
                 LeaseId: "lease-a",
                 LeaseExpiresAt: Now.AddMinutes(1),
                 GatewayInstanceId: "gateway-a",
@@ -809,7 +965,7 @@ public sealed class StationTxCommandTransactionCompositionTests
                 EngineInstanceId: armed ? Authority?.EngineInstanceId ?? "engine-a" : null,
                 LeaseId: armed ? "lease-a" : null,
                 SessionId: armed ? "session-a" : null,
-                BrowserClientId: armed ? "browser-a" : null,
+                BrowserClientId: armed ? ConnectionId : null,
                 ProtectedClientHandle: armed ? 0x1234abcdu : 0,
                 ArmedAt: armed ? Now : null,
                 LastHeartbeatAt: armed ? Now : null,
@@ -817,6 +973,40 @@ public sealed class StationTxCommandTransactionCompositionTests
                 UnkeyDeadlineAt: null,
                 UnkeyAttempts: 0,
                 SawProtectedTransmit: false);
+    }
+
+    private sealed class FakeIdleReconciliationParticipant(Fixture fixture) :
+        IStationTxCommandIdleReconciliationParticipant
+    {
+        public int Calls { get; private set; }
+        public StationTxCommandIdleReconciliationResult? Result { get; set; }
+
+        public Task<StationTxCommandIdleReconciliationResult> ReconcileAsync(
+            StationTxCommandAuthority authority,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Calls++;
+            Assert.Equal(fixture.Authority.RadioId, authority.RadioId);
+            Assert.Equal(fixture.Authority.LeaseId, authority.LeaseId);
+            return Task.FromResult(Result ?? new(
+                Success: true,
+                Code: "idle_reconciliation_complete",
+                Message: "complete",
+                fixture.Authority.Occupancy,
+                new StationTxGateSnapshot(
+                    "RADIO-A",
+                    StationTxGateState.Idle,
+                    "radio-returned-idle",
+                    LeaseId: null,
+                    SessionId: null,
+                    BrowserClientId: null,
+                    ClientHandle: 0,
+                    IntentCreatedAt: null,
+                    DeadlineAt: null,
+                    UnkeyAttempts: 0),
+                fixture.Authority.Safety));
+        }
     }
 
     private sealed class FakeSafetyParticipant(Fixture fixture) :
