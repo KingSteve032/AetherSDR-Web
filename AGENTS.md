@@ -52,9 +52,10 @@ Primary components:
 - `prototypes/web-client/` — ASP.NET Core station engine/web gateway, browser
   client, server tests, browser tests, deployment helpers, and the isolated TX
   hardware-in-the-loop harness.
-- `prototypes/tx-watchdog/` — command-incapable independent TX watchdog
-  protocol, process host, deterministic process-boundary tests, and supervised
-  local-IPC integration. It has no production radio transport or arming surface.
+- `prototypes/tx-watchdog/` — independent TX watchdog protocol, process host,
+  deterministic process-boundary tests, supervised local-IPC integration, and a
+  disabled-by-default unkey-only FLEX adapter. It has no key capability, no
+  arming request, and no arbitrary radio-command surface.
 - `AetherRemote/src/AetherRemote.Protocol/` — versioned station/broker protocol
   contracts and validation.
 - `AetherRemote/src/AetherRemote.Agent/` — station-local remote connectivity and
@@ -195,9 +196,12 @@ Currently:
   `EnableTxHil=true` or the standalone HIL project;
 - the production browser does not receive a reachable keying path merely because
   the dormant production primitive exists;
-- production publish verification must require exactly the approved primary key
-  and unkey strings while proving that HIL process, CW-ID, TX-audio creation, and
-  watchdog radio-command paths are absent;
+- Phase 2U includes separate reviewed emergency and watchdog `xmit 0` primitives
+  behind disabled configuration, exact allowlists, and no arm/caller surface;
+- production publish verification must require exactly one web `xmit 1`, one
+  deduplicated web `xmit 0` plus both reviewed web transport type markers, one
+  watchdog `xmit 0`, and zero watchdog `xmit 1`, while proving that HIL process,
+  CW-ID, and TX-audio creation paths are absent;
 - do not register HIL transports, gates, or operations in production dependency
   injection or browser routing.
 

@@ -48,7 +48,7 @@ public sealed class WatchdogProcessBoundaryTests
                 restarted.Snapshot.HostInstanceId);
             Assert.Equal("Disarmed", restarted.Snapshot.State);
             Assert.Equal(
-                "command-incapable-skeleton",
+                "unkey-transport-disabled-disarmed",
                 restarted.Snapshot.Reason);
             Assert.False(restarted.Snapshot.RadioCommandTransportAvailable);
             Assert.False(restarted.Snapshot.ArmingAvailable);

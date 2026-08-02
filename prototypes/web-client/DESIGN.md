@@ -220,12 +220,12 @@ or heartbeat observation cannot recreate the released lease. Session disposal
 stops the child and removes it from aggregate health.
 
 The gateway parses child responses with the same strict 4096-character boundary
-as requests. Every accepted response must remain exactly `Disarmed` with reason
-`command-incapable-skeleton`, unavailable command transport, unavailable arming,
-and internally consistent registration fields. The watchdog still has no FLEX
-reference, socket, key, unkey, emergency transport, arming operation, timer, or
-operator-facing control. Phase 2E proves supervision and fail-closed authority
-revocation only; it is not production emergency-unkey integration.
+as requests. Every accepted response must remain exactly `Disarmed`, report one
+of the exact disabled/ready unkey-transport reasons, keep arming unavailable, and
+carry internally consistent registration fields. Through Phase 2U the watchdog
+may own a disabled-by-default unkey-only FLEX client, but the protocol still has
+no arm or unkey request, no key or arbitrary-command method, no authority timer,
+and no operator-facing control.
 
 The first browser-integration increment exposes only a separately configured
 ownership lease. `Radio:BrowserTxLeaseEnabled` defaults to false and is distinct
@@ -464,11 +464,12 @@ active arm and idle or exact single-owner AetherSDR TX state.
 
 Production reports the authority attached and registered, but the signed
 boundary is disabled, the gate has `allowTransmit:false`, command and emergency
-unkey transports are absent, and no operation caller exists. Diagnostics
-therefore keep arm, heartbeat, abort, boundary execution, SetTransmit, and
-submission unavailable with zero attempts. The supervisor remains Disarmed, the
-independent watchdog remains command-incapable, and no browser, HTTP, WebSocket,
-AetherRemote, watchdog, reconnect, or timer caller can invoke the composition.
+unkey transports default unavailable, and no operation caller exists.
+Diagnostics therefore keep arm, heartbeat, abort, boundary execution,
+SetTransmit, and submission unavailable with zero attempts. Both supervisors
+remain Disarmed; the independent watchdog may report a configured unkey-only
+transport but has no invocation request. No browser, HTTP, WebSocket,
+AetherRemote, reconnect, or timer caller can invoke the composition.
 
 Phase 2P adds one lifecycle-owned `StationTxCommandTransactionComposition`
 above the safety-arm and signed-command compositions. It accepts only a current
@@ -548,13 +549,27 @@ cancellation, and bounds untrusted result text.
 
 The primary adapter is registered in the lifecycle but the Phase 2T command gate
 is still constructed transmit-disabled. Browser ingress remains execution-
-disabled and callerless, signing/submission/boundary prerequisites remain
-disabled, and the independent emergency-unkey path remains absent. Normal web
-artifact inspection now requires exactly one reviewed `xmit 1` and one reviewed
-`xmit 0`; it still rejects HIL process, CWX, and TX-audio surfaces, and the
-watchdog artifact still contains no radio command. Thus source and binary contain
-the approved dormant primitive without creating an executable production TX
-path.
+disabled and callerless, and signing/submission/boundary prerequisites remain
+disabled.
+
+Phase 2U adds two separate unkey-only transports. The per-session emergency
+adapter shares the exact-handle FLEX router but exposes only
+`RequestUnkeyAsync(expectedProtectedClientHandle)`. The independent watchdog
+adapter owns a minimal TCP client with no arbitrary-command or key method; its
+only encoded command is `xmit 0`. The web process supplies the watchdog endpoint
+only after global enablement, exact radio allowlisting, and local `FlexRx`
+eligibility all match. Neither transport owns authority. The in-process
+supervisor and watchdog process both remain Disarmed, the watchdog protocol adds
+no arm or unkey request, and no browser, HTTP, reconnect, timer, or AetherRemote
+caller receives either transport.
+
+Normal web artifact inspection now requires exactly one reviewed `xmit 1`, one
+runtime-deduplicated reviewed `xmit 0`, and type markers for both the primary and
+emergency transports. The watchdog artifact requires exactly one reviewed
+`xmit 0` and zero `xmit 1`; both artifacts still reject HIL process, CWX, and
+TX-audio surfaces. Thus source and binary contain the approved dormant
+primary and safety primitives without creating an executable production TX or
+unkey path.
 
 The independent, station-local supervisor has no key method and an unkey-only
 transport. Its arm is purpose-bound to one engine

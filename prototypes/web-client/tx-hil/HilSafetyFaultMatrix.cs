@@ -517,6 +517,7 @@ internal static class HilSafetyFaultMatrix
         public Queue<StationTxTransportResult> Results { get; } = new();
 
         public Task<StationTxTransportResult> RequestUnkeyAsync(
+            uint expectedProtectedClientHandle,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();

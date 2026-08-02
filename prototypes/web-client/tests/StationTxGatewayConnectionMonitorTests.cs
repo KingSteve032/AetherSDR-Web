@@ -289,6 +289,7 @@ public sealed class StationTxGatewayConnectionMonitorTests
         public List<bool> Commands { get; } = [];
 
         public Task<StationTxTransportResult> RequestUnkeyAsync(
+            uint expectedProtectedClientHandle,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();

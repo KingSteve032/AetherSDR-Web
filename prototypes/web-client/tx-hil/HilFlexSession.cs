@@ -958,6 +958,7 @@ internal sealed class HilEmergencyUnkeyTransport(HilFlexSession observer)
     public bool IsConnected => observer.IsConnected;
 
     public Task<StationTxTransportResult> RequestUnkeyAsync(
+        uint expectedProtectedClientHandle,
         CancellationToken cancellationToken) =>
         observer.RequestEmergencyUnkeyAsync(cancellationToken);
 }

@@ -1020,7 +1020,9 @@ public sealed class StationTxProductionLifecycleTests
             expectedClientHandle: 1,
             CancellationToken.None);
         StationTxTransportResult emergencyUnkey =
-            await emergency.RequestUnkeyAsync(CancellationToken.None);
+            await emergency.RequestUnkeyAsync(
+                expectedProtectedClientHandle: 1,
+                CancellationToken.None);
 
         Assert.False(command.IsConnected);
         Assert.Equal(0u, command.ClientHandle);
@@ -1277,7 +1279,7 @@ public sealed class StationTxProductionLifecycleTests
                 HostInstanceId: "fake-watchdog",
                 ProcessStartedAt: DateTimeOffset.UtcNow,
                 State: "Disarmed",
-                Reason: "command-incapable-skeleton",
+                Reason: "unkey-transport-disabled-disarmed",
                 ipcConnected,
                 registered,
                 connected,

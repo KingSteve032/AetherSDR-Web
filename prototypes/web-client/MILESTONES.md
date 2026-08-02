@@ -2228,6 +2228,53 @@ Milestone state:
   remained blocked at `transmit-disabled`; the Phase 2R ingress remained
   execution-disabled. A fresh Admin console capture contained zero entries. No
   TX control, microphone permission, radio command, or RF operation was used.
+- Phase 2U adds a separate production emergency-unkey transport and a separate
+  independent-watchdog unkey transport after explicit maintainer approval. Both
+  own only `xmit 0`, default disabled, require exact bounded radio allowlists,
+  and add no key or arbitrary-command method. Remote and simulation sessions are
+  ineligible.
+- The in-process emergency interface now carries the exact protected FLEX
+  handle. The safety supervisor passes its arm-record handle, and the shared
+  router rejects a replaced connection under the control-session lock before a
+  command write. The adapter forwards at most once and preserves accepted,
+  known-rejected, and unknown outcomes without retry.
+- The watchdog process accepts only a strict optional IPv4 endpoint argument
+  set. Its purpose-built TCP client waits for a valid FLEX session handle and can
+  encode only `C1|xmit 0`. Protocol version 1 still exposes only status,
+  register, heartbeat, and disconnect; no arm or unkey request exists. A process
+  with the adapter configured still starts empty and `Disarmed`, reports arming
+  unavailable, and cannot invoke the transport in Phase 2U.
+- Phase 2U health and Admin diagnostics distinguish registration,
+  configuration, channel/handle observation, live availability, arming, bounded
+  counters, and caller absence for both unkey transports. The command gate stays
+  transmit-disabled, browser transaction ingress stays execution-disabled and
+  callerless, and production defaults remain RX-only.
+- The focused independent-watchdog proof passes 44 cases. The focused emergency
+  transport, watchdog-client, safety, lifecycle, and registry proof passes 68
+  cases. The complete FlexWeb server suite passes 693 cases and the combined
+  Admin controls and diagnostics proof passes 25 cases.
+- The final 2026-08-02 Phase 2U guarded gate passed 693 FlexWeb server tests, 44
+  independent-watchdog tests, 48 TX-HIL isolation tests, 70 AetherRemote tests,
+  and 123 browser tests (978 total), with a zero-warning solution build. The web
+  artifact contained one reviewed key string, one runtime-deduplicated unkey
+  string, and both reviewed primary/emergency transport type markers. The
+  watchdog artifact contained one unkey string, zero key strings, and no HIL,
+  CWX, or TX-audio surface. The local watchdog probe began empty, Disarmed,
+  transport-disabled, and unarmed. Validation log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260802-m7-unkey-only-emergency-watchdog-phase2u-validation-flexweb-validation.txt`.
+- Immutable staging release
+  `20260802-m7-unkey-only-emergency-watchdog-phase2u` was activated with
+  `20260802-m7-production-command-transport-phase2t` retained for rollback.
+  Internal and public health reported both unkey transports registered,
+  configured disabled, allowlist counts zero, timeout 2000 ms, availability and
+  unkey false, WebSocket callers absent, and watchdog arming false. Production
+  transmit, browser lease, ingress execution, transaction key/unkey, signed
+  boundary, command submission, and supervisor arming remained false.
+  Deployment log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260802-m7-unkey-only-emergency-watchdog-phase2u-flexweb-validation.txt`.
+- Browser Bridge acceptance remains pending because the local browser extension
+  was disconnected after deployment. No browser TX control, radio command, or RF
+  operation was used.
 
 Acceptance criteria:
 

@@ -4,15 +4,24 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
-        if (args.Length != 1 ||
-            !string.Equals(args[0], "--stdio", StringComparison.Ordinal))
+        if (!WatchdogProgramOptions.TryParse(
+                args,
+                out WatchdogProgramOptions? options,
+                out string error))
         {
             await Console.Error.WriteLineAsync(
-                "Usage: AetherSDR.TxWatchdog --stdio");
+                $"{WatchdogProgramOptions.Usage} ({error})");
             return 2;
         }
 
-        WatchdogHostEngine engine = new();
+        IWatchdogUnkeyTransport unkeyTransport =
+            options!.UnkeyTransport.Enabled
+                ? new FlexWatchdogUnkeyTransport(options.UnkeyTransport)
+                : new UnavailableWatchdogUnkeyTransport();
+        WatchdogHostEngine engine = new(
+            timeProvider: null,
+            hostInstanceId: null,
+            unkeyTransport);
         try
         {
             await WatchdogStdioServer.RunAsync(

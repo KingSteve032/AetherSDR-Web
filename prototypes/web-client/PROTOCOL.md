@@ -636,12 +636,35 @@ reason `transport-disabled`, and WebSocket caller false. The compatibility field
 Each session snapshot includes bounded production-transport registration,
 eligibility, allowlist, channel/handle availability, attempt/forward/key/unkey/
 accepted/rejected/unknown counters, last operation/outcome/reason, and no radio
-allowlist values or command text. The command gate remains transmit-disabled,
-browser ingress remains execution-disabled and callerless, and emergency-unkey
-and independent-watchdog command transports remain absent. The normal web binary
-contains exactly one reviewed `xmit 1` and one reviewed `xmit 0`; those strings
-are forbidden in the watchdog binary, and HIL process, CWX, and TX-audio markers
-remain forbidden in both production artifacts.
+allowlist values or command text.
+
+Phase 2U adds no browser wire message and no watchdog request kind. The internal
+emergency interface becomes
+`RequestUnkeyAsync(ExpectedProtectedClientHandle, CancellationToken)` and has no
+key or Boolean transmit method. `StationTxEmergencyUnkeyTransport` has its own
+disabled `Enabled`, bounded exact `AllowedRadioIds`, and bounded command timeout.
+Health reports registration true, configured enabled false, allowlist count zero,
+timeout 2000, availability/unkey false, reason `transport-disabled`, and
+WebSocket caller false. Each session adds bounded emergency eligibility,
+channel/handle state, attempt/forward/outcome counters, and reason.
+
+`IndependentTxWatchdog` adds disabled radio-command transport configuration with
+an exact radio allowlist and bounded timeout. Only an eligible local `FlexRx`
+session may launch the child with the strict `--unkey-enabled`, radio ID, IPv4
+host, port, and timeout arguments. The child TCP adapter has one operation and
+one encoded command, `C1|xmit 0`; it waits for a valid FLEX session handle and
+accepts only the matching `R1` response. The watchdog protocol remains version 1
+with only `status`, `register`, `heartbeat`, and `disconnect`. Its snapshot may
+report either `unkey-transport-disabled-disarmed` with transport false or
+`unkey-transport-ready-disarmed` with transport true, but state must remain
+`Disarmed`, arming must remain false, and no command request exists.
+
+The command gate remains transmit-disabled and browser ingress remains
+execution-disabled and callerless. The normal web binary contains exactly one
+reviewed `xmit 1`, one runtime-deduplicated reviewed `xmit 0`, and type markers
+for both the primary and emergency transports. The watchdog binary contains
+exactly one reviewed `xmit 0` and zero `xmit 1`; HIL process, CWX, and TX-audio
+markers remain forbidden in both production artifacts.
 
 `client.visibility` accepts only a JSON boolean. A hidden browser keeps its
 authenticated WebSocket, radio session, text responses, snapshots, presence,

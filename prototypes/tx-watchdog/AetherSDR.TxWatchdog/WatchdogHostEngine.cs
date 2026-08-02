@@ -6,6 +6,7 @@ public sealed class WatchdogHostEngine
 {
     private readonly object m_gate = new();
     private readonly TimeProvider m_timeProvider;
+    private readonly IWatchdogUnkeyTransport m_unkeyTransport;
     private readonly string m_hostInstanceId;
     private readonly DateTimeOffset m_startedAt;
 
@@ -18,8 +19,21 @@ public sealed class WatchdogHostEngine
     public WatchdogHostEngine(
         TimeProvider? timeProvider = null,
         string? hostInstanceId = null)
+        : this(
+            timeProvider,
+            hostInstanceId,
+            new UnavailableWatchdogUnkeyTransport())
+    {
+    }
+
+    internal WatchdogHostEngine(
+        TimeProvider? timeProvider,
+        string? hostInstanceId,
+        IWatchdogUnkeyTransport unkeyTransport)
     {
         m_timeProvider = timeProvider ?? TimeProvider.System;
+        m_unkeyTransport = unkeyTransport ??
+            throw new ArgumentNullException(nameof(unkeyTransport));
         m_hostInstanceId = NormalizeHostInstanceId(hostInstanceId) ??
             $"watchdog-{Guid.NewGuid():N}";
         m_startedAt = m_timeProvider.GetUtcNow();
@@ -173,8 +187,10 @@ public sealed class WatchdogHostEngine
             m_hostInstanceId,
             m_startedAt,
             State: "Disarmed",
-            Reason: "command-incapable-skeleton",
-            RadioCommandTransportAvailable: false,
+            Reason: m_unkeyTransport.IsAvailable
+                ? "unkey-transport-ready-disarmed"
+                : "unkey-transport-disabled-disarmed",
+            RadioCommandTransportAvailable: m_unkeyTransport.IsAvailable,
             ArmingAvailable: false,
             Registered: m_identity is not null,
             Connected: m_connected,

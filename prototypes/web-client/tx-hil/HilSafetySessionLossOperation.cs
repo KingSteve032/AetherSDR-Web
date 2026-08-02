@@ -1283,10 +1283,13 @@ internal sealed class HilSafetySessionLossOperation(
         public int CommandCount { get; private set; }
 
         public async Task<StationTxTransportResult> RequestUnkeyAsync(
+            uint expectedProtectedClientHandle,
             CancellationToken cancellationToken)
         {
             CommandCount++;
-            return await inner.RequestUnkeyAsync(cancellationToken);
+            return await inner.RequestUnkeyAsync(
+                expectedProtectedClientHandle,
+                cancellationToken);
         }
     }
 

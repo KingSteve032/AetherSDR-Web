@@ -91,10 +91,33 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `${String(productionTransport.lastOutcome || "none")} ` +
       `reason ${String(productionTransport.lastReason || "unknown")}`
     : "production command transport not registered";
-  const transportState =
-    `emergency unkey ${lifecycle.emergencyUnkeyTransportAvailable
-      ? "available"
-      : "absent"}`;
+  const emergencyTransport = lifecycle.productionEmergencyUnkeyTransport;
+  const transportState = emergencyTransport?.registered
+    ? `emergency unkey transport config ${emergencyTransport.configuredEnabled
+        ? "enabled"
+        : "disabled"} ` +
+      `eligible ${emergencyTransport.localFlexEligible ? "yes" : "no"} ` +
+      `radio ${emergencyTransport.radioAllowed ? "allowed" : "blocked"} ` +
+      `channel ${emergencyTransport.commandChannelAttached
+        ? "attached"
+        : "absent"} ` +
+      `handle ${emergencyTransport.clientHandleAvailable
+        ? "available"
+        : "absent"} ` +
+      `available ${emergencyTransport.available ? "yes" : "no"} ` +
+      `unkey ${emergencyTransport.unkeyAvailable
+        ? "available"
+        : "unavailable"} ` +
+      `attempts ${formatCount(emergencyTransport.attemptCount)} ` +
+      `forwarded ${formatCount(emergencyTransport.forwardedCount)} ` +
+      `accepted ${formatCount(emergencyTransport.acceptedCount)} ` +
+      `rejected ${formatCount(emergencyTransport.rejectedCount)} ` +
+      `unknown ${formatCount(emergencyTransport.unknownCount)} ` +
+      `last ${String(emergencyTransport.lastOutcome || "none")} ` +
+      `reason ${String(emergencyTransport.lastReason || "unknown")}`
+    : `emergency unkey ${lifecycle.emergencyUnkeyTransportAvailable
+        ? "available"
+        : "absent"}`;
   const authorityReason = String(
     lifecycle.authorityReason || "unknown");
   const authorityState = lifecycle.authorityFresh
@@ -332,7 +355,11 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
         `pid ${Number.isInteger(independent.processId) ? independent.processId : "?"} ` +
         `host ${shortId(independent.hostInstanceId)} ` +
         `seq ${formatCount(independent.lastSequence)} ` +
-        `restarts ${formatCount(independent.restartCount)}`
+        `restarts ${formatCount(independent.restartCount)} ` +
+        `unkey-transport ${independent.radioCommandTransportAvailable
+          ? "available"
+          : "disabled"} ` +
+        `arming ${independent.armingAvailable ? "available" : "unavailable"}`
       : `independent degraded (${independent.reason || "unavailable"})`;
   return {
     value: `${gate} · ${safety} · ${authorityState}`,

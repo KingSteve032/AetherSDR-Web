@@ -775,11 +775,11 @@ message as an immediate remote-power-off incident.
   idle confirmed
 - Session-loss final restoration: 100 W, DAX on, PC mic route, VOX off, CWX
   30 WPM/QSK-on/5 ms, no leaked 14.257 MHz resources, and manifest consumed
-- Production web publish: exactly one reviewed dormant `xmit 1` and one reviewed
-  dormant `xmit 0` from the disabled Phase 2T primary transport; zero
-  `cwx send "KC4CAW" 1`, HIL operation classes, process-child surfaces, and
-  TX-audio-stream creation strings. The production watchdog publish contains
-  zero `xmit 1` and zero `xmit 0`.
+- Production web publish: exactly one reviewed dormant `xmit 1`, one runtime-
+  deduplicated dormant `xmit 0`, and both primary/emergency transport type
+  markers; zero `cwx send "KC4CAW" 1`, HIL operation classes, process-child
+  surfaces, and TX-audio-stream creation strings. The production watchdog
+  publish contains zero `xmit 1` and exactly one dormant unkey-only `xmit 0`.
 - Standalone HIL executable: exactly one `xmit 1`, one `xmit 0`, and one exact
   `cwx send "KC4CAW" 1`; no TX-audio-stream creation command
 - Live normal RF acceptance on 2026-07-30 at 14.250 MHz: exact client handle

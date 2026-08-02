@@ -226,6 +226,14 @@ expected = {
     "txProductionCommandTransportSetTransmitAvailable": False,
     "txProductionCommandTransportReason": "transport-disabled",
     "txProductionCommandTransportWebSocketCallerRegistered": False,
+    "txProductionEmergencyUnkeyTransportRegistered": True,
+    "txProductionEmergencyUnkeyTransportConfiguredEnabled": False,
+    "txProductionEmergencyUnkeyTransportAllowedRadioCount": 0,
+    "txProductionEmergencyUnkeyTransportCommandTimeoutMilliseconds": 2000,
+    "txProductionEmergencyUnkeyTransportAvailable": False,
+    "txProductionEmergencyUnkeyTransportUnkeyAvailable": False,
+    "txProductionEmergencyUnkeyTransportReason": "transport-disabled",
+    "txProductionEmergencyUnkeyTransportWebSocketCallerRegistered": False,
     "txProductionReadinessPolicyRegistered": True,
     "txProductionReadinessReady": False,
     "txProductionReadinessReason": "transmit-disabled",
@@ -237,6 +245,12 @@ expected = {
     "txStationCommandSetTransmitAvailable": False,
     "txIndependentWatchdogHostPackaged": True,
     "txIndependentWatchdogSupervisionRegistered": True,
+    "txIndependentWatchdogUnkeyTransportRegistered": True,
+    "txIndependentWatchdogUnkeyTransportConfiguredEnabled": False,
+    "txIndependentWatchdogUnkeyTransportAllowedRadioCount": 0,
+    "txIndependentWatchdogUnkeyTransportCommandTimeoutMilliseconds": 2000,
+    "txIndependentWatchdogUnkeyTransportAvailable": False,
+    "txIndependentWatchdogUnkeyTransportWebSocketCallerRegistered": False,
     "txIndependentWatchdogCommandTransportRegistered": False,
     "txIndependentWatchdogArmingAvailable": False,
     "txCommandTransportRegistered": True,
@@ -329,7 +343,7 @@ for key, value in expected.items():
 snapshot = payload.get("snapshot") or {}
 expected_snapshot = {
     "state": "Disarmed",
-    "reason": "command-incapable-skeleton",
+    "reason": "unkey-transport-disabled-disarmed",
     "radioCommandTransportAvailable": False,
     "armingAvailable": False,
     "registered": False,
@@ -357,15 +371,16 @@ assert_forbidden_string_absent() {
   fi
 }
 
-assert_string_occurs_once() {
+assert_string_occurs() {
   local needle="$1"
-  local ascii_file="$2"
-  local utf16_file="$3"
+  local expected_count="$2"
+  local ascii_file="$3"
+  local utf16_file="$4"
   local count
   count="$({ grep -Fo -- "${needle}" "${ascii_file}" || true; \
              grep -Fo -- "${needle}" "${utf16_file}" || true; } | wc -l)"
-  if [[ "${count}" -ne 1 ]]; then
-    echo "Production publish contained ${count} copies of reviewed string ${needle}; expected exactly one." >&2
+  if [[ "${count}" -ne "${expected_count}" ]]; then
+    echo "Production publish contained ${count} copies of reviewed string ${needle}; expected exactly ${expected_count}." >&2
     exit 1
   fi
 }
@@ -408,7 +423,7 @@ node --check "${REPO_ROOT}/prototypes/web-client/wwwroot/admin-page.js"
 node --check "${REPO_ROOT}/prototypes/web-client/wwwroot/tx-controls.js"
 node --test "${UI_TEST_DIR}"/*.test.mjs
 
-echo "Publishing RX-only-default FlexWeb artifact with disabled production TX transport..."
+echo "Publishing RX-only-default FlexWeb artifact with disabled production TX and emergency-unkey transports..."
 publish_dir="${work_dir}/publish"
 archive="${work_dir}/${release_name}.tar.gz"
 mkdir -p -- "${publish_dir}"
@@ -421,7 +436,7 @@ dotnet publish "${WEB_PROJECT}" \
 
 watchdog_publish_dir="${publish_dir}/watchdog"
 mkdir -p -- "${watchdog_publish_dir}"
-echo "Publishing command-incapable independent watchdog artifact..."
+echo "Publishing Disarmed independent watchdog artifact with disabled unkey transport..."
 dotnet publish "${WATCHDOG_PROJECT}" \
   --configuration Release \
   --runtime linux-x64 \
@@ -519,12 +534,17 @@ watchdog_utf16_strings="${work_dir}/watchdog-production-utf16.txt"
   strings -el "${watchdog_binary}"
   strings -el "${watchdog_managed_binary}"
 } > "${watchdog_utf16_strings}"
-assert_string_occurs_once 'xmit 1' "${ascii_strings}" "${utf16_strings}"
-assert_string_occurs_once 'xmit 0' "${ascii_strings}" "${utf16_strings}"
+assert_string_occurs 'xmit 1' 1 "${ascii_strings}" "${utf16_strings}"
+assert_string_occurs 'xmit 0' 1 "${ascii_strings}" "${utf16_strings}"
+if ! grep -F -- 'StationTxProductionCommandTransport' "${utf16_strings}" >/dev/null ||
+   ! grep -F -- 'StationTxProductionEmergencyUnkeyTransport' "${utf16_strings}" >/dev/null; then
+  echo "Production web artifact is missing a reviewed primary or emergency transport type marker." >&2
+  exit 1
+fi
 assert_forbidden_string_absent \
   'xmit 1' "${watchdog_ascii_strings}" "${watchdog_utf16_strings}"
-assert_forbidden_string_absent \
-  'xmit 0' "${watchdog_ascii_strings}" "${watchdog_utf16_strings}"
+assert_string_occurs \
+  'xmit 0' 1 "${watchdog_ascii_strings}" "${watchdog_utf16_strings}"
 for forbidden in \
   'cwx send' \
   'HilGatewayAuthorityChild' \
@@ -559,7 +579,7 @@ if transport != expected:
         f"Published StationTxCommandTransport defaults were {transport!r}; expected {expected!r}")
 PY
 
-echo "Production web artifact contains exactly the reviewed disabled key/unkey transport strings; watchdog and all other TX/HIL surfaces remain absent."
+echo "Production web artifact contains one reviewed key string and one deduplicated unkey string with both reviewed transport type markers; the watchdog contains one reviewed unkey string, zero key strings, and all other TX/HIL surfaces remain absent."
 
 watchdog_status="$(
   printf '%s\n' \
