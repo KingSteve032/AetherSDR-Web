@@ -687,6 +687,17 @@ adds `txProductionActivationCompositionRegistered:true`,
 `txProductionActivationCallerRegistered:false` for the default production
 configuration.
 
+Phase 2X adds no browser wire message. Configuration adds the nested
+`StationTxProductionActivation` object with one Boolean `Enabled` field. Health
+adds configuration registration, request, validity, reason, and the deterministic
+missing-prerequisite list, plus confirmation that the configuration interlock is
+attached to the activation composition. Lifecycle `productionActivation` adds
+`configurationInterlockAttached`, `activationRequested`, `configurationValid`,
+and the complete nested configuration result. Default reason becomes
+`activation-not-requested`; the nested readiness result still reports
+`transmit-disabled`. An invalid requested configuration fails startup before any
+listener or session is created.
+
 The command gate remains transmit-disabled and browser ingress remains
 execution-disabled and callerless. The normal web binary contains exactly one
 reviewed `xmit 1`, one runtime-deduplicated reviewed `xmit 0`, and type markers

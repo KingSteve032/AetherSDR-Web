@@ -583,6 +583,17 @@ availability and preserve the policy's exact first blocking reason. Production
 health declares the composition registered, activation unavailable, reason
 `transmit-disabled`, and no registered activation caller.
 
+Phase 2X inserts a feature-owned static configuration interlock ahead of that
+composition. `StationTxProductionActivation:Enabled` is a request to assemble
+reviewed configuration, not an execution switch. When requested, startup
+requires local `FlexRx` mode, explicit transmit and browser-lease opt-ins,
+configured trust and signing keys, envelope submission, allowlisted primary and
+emergency transports, and supervised watchdog unkey plus arming. Missing fields
+fail startup in deterministic order. The default unrequested state is valid and
+keeps the activation composition unavailable at `activation-not-requested` while
+retaining the nested dynamic readiness result for diagnosis. No caller, command,
+lease, gate, transport, watchdog operation, or radio authority is added.
+
 Normal web artifact inspection now requires exactly one reviewed `xmit 1`, one
 runtime-deduplicated reviewed `xmit 0`, and type markers for both the primary and
 emergency transports. The watchdog artifact requires exactly one reviewed

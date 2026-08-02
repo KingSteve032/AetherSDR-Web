@@ -10,6 +10,7 @@ Radio__Host=10.2.0.12
 Radio__TcpPort=4992
 Radio__AllowTransmit=false
 Radio__BrowserTxLeaseEnabled=false
+StationTxProductionActivation__Enabled=false
 StationTxCommandTrust__VerificationEnabled=false
 StationTxCommandSigning__SigningEnabled=false
 StationTxCommandEnvelopeCoordinator__SubmissionEnabled=false

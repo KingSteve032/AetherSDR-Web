@@ -239,9 +239,14 @@ expected = {
     "txProductionReadinessReason": "transmit-disabled",
     "txProductionReadinessLifecycleIngressRegistered": True,
     "txProductionReadinessWebSocketCallerRegistered": False,
+    "txProductionActivationConfigurationRegistered": True,
+    "txProductionActivationRequested": False,
+    "txProductionActivationConfigurationValid": True,
+    "txProductionActivationConfigurationReason": "activation-not-requested",
     "txProductionActivationCompositionRegistered": True,
+    "txProductionActivationConfigurationInterlockAttached": True,
     "txProductionActivationAvailable": False,
-    "txProductionActivationReason": "transmit-disabled",
+    "txProductionActivationReason": "activation-not-requested",
     "txProductionActivationCallerRegistered": False,
     "txStationCommandEnvelopeSubmissionRegistered": False,
     "txStationCommandAdapterRegistered": True,
@@ -299,6 +304,33 @@ if not required_missing.issubset(set(missing)):
 if len(missing) != len(set(missing)):
     raise SystemExit(
         f"{source} production readiness repeated a missing prerequisite: {missing!r}")
+activation_missing = payload.get(
+    "txProductionActivationConfigurationMissingPrerequisites")
+if not isinstance(activation_missing, list) or not activation_missing:
+    raise SystemExit(
+        f"{source} activation configuration prerequisites were not a non-empty list")
+required_activation_missing = {
+    "transmit-disabled",
+    "browser-tx-lease-disabled",
+    "command-trust-verification-disabled",
+    "command-trust-key-unconfigured",
+    "command-signing-disabled",
+    "command-signing-key-unconfigured",
+    "command-submission-disabled",
+    "command-transport-disabled",
+    "command-transport-allowlist-empty",
+    "emergency-unkey-transport-disabled",
+    "emergency-unkey-transport-allowlist-empty",
+    "watchdog-unkey-transport-disabled",
+    "watchdog-unkey-transport-allowlist-empty",
+    "watchdog-arming-disabled",
+}
+if not required_activation_missing.issubset(set(activation_missing)):
+    raise SystemExit(
+        f"{source} activation configuration omitted fail-closed prerequisites: {activation_missing!r}")
+if len(activation_missing) != len(set(activation_missing)):
+    raise SystemExit(
+        f"{source} activation configuration repeated a prerequisite: {activation_missing!r}")
 state = payload.get("txIndependentWatchdogState")
 if state not in {
         "supervised-empty-disarmed",

@@ -599,6 +599,18 @@ publishes the same evaluated readiness through both `ProductionReadiness` and
 composition as attached but activation unavailable at `transmit-disabled`.
 No browser or other production caller is registered.
 
+Phase 2X adds one feature-owned `StationTxProductionActivation` configuration
+object with a single `Enabled` request switch. Startup evaluates that request
+against every currently configurable static prerequisite: local `FlexRx` mode,
+transmit and browser-lease opt-ins, trust and signing keys, envelope submission,
+primary and emergency transports with allowlists, and supervised watchdog unkey
+plus arming. The request is rejected before the app starts when any prerequisite
+is missing. With the default `Enabled:false`, the configuration is valid but no
+activation is requested; individual dormant components remain independently
+testable. The interlock owns no command or activation operation, and the dynamic
+readiness policy still decides whether attached infrastructure is actually
+available.
+
 The normal web artifact now contains exactly one reviewed `xmit 1` and one
 runtime-deduplicated reviewed `xmit 0`, plus type markers for both the primary
 and emergency transports that reference that unkey command. The independent
@@ -612,6 +624,7 @@ deployed default is still RX-only.
 Environment-variable form remains disabled by default:
 
 ```bash
+StationTxProductionActivation__Enabled=false
 StationTxCommandEnvelopeCoordinator__SubmissionEnabled=false
 StationTxCommandTransport__Enabled=false
 StationTxCommandTransport__AllowedRadioIds__0=REVIEWED-RADIO-ID

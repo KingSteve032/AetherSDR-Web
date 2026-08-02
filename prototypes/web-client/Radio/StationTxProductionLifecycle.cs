@@ -206,7 +206,9 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             productionEmergencyUnkeyTransport = null,
         string independentWatchdogRadioHost = "",
         int independentWatchdogRadioPort = 0,
-        bool independentWatchdogLocalFlexEligible = false)
+        bool independentWatchdogLocalFlexEligible = false,
+        StationTxProductionActivationConfigurationDiagnostics?
+            productionActivationConfiguration = null)
     {
         ArgumentNullException.ThrowIfNull(leases);
         ArgumentNullException.ThrowIfNull(occupancy);
@@ -312,8 +314,13 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     request,
                     cancellationToken),
             m_timeProvider);
+        StationTxProductionActivationConfigurationDiagnostics
+            activationConfiguration =
+                productionActivationConfiguration ??
+                StationTxProductionActivationConfigurationInterlock.Dormant;
         m_productionActivationComposition =
             new StationTxProductionActivationComposition(
+                () => activationConfiguration,
                 ResolveProductionReadinessInputs);
         m_authenticationMonitor = new StationTxAuthenticationMonitor(m_supervisor);
         m_engineMonitor = new StationTxEngineConnectionMonitor(m_supervisor);

@@ -39,16 +39,47 @@ const productionReadiness = {
 const productionReadinessText =
   `production readiness blocked reason transmit-disabled missing 12 ` +
   `[${productionReadinessMissing.join(",")}]`;
+const productionActivationConfigurationMissing = [
+  "local-flex-mode-required",
+  "transmit-disabled",
+  "browser-tx-lease-disabled",
+  "command-trust-verification-disabled",
+  "command-trust-key-unconfigured",
+  "command-signing-disabled",
+  "command-signing-key-unconfigured",
+  "command-submission-disabled",
+  "command-transport-disabled",
+  "command-transport-allowlist-empty",
+  "emergency-unkey-transport-disabled",
+  "emergency-unkey-transport-allowlist-empty",
+  "watchdog-supervision-disabled",
+  "watchdog-unkey-transport-disabled",
+  "watchdog-unkey-transport-allowlist-empty",
+  "watchdog-arming-disabled"
+];
+const productionActivationConfiguration = {
+  registered: true,
+  activationRequested: false,
+  configurationValid: true,
+  reason: "activation-not-requested",
+  missingPrerequisites: productionActivationConfigurationMissing
+};
 const productionActivation = {
   registered: true,
+  configurationInterlockAttached: true,
   readinessEvaluationAttached: true,
+  activationRequested: false,
+  configurationValid: true,
   activationAvailable: false,
-  reason: "transmit-disabled",
+  reason: "activation-not-requested",
+  configuration: productionActivationConfiguration,
   readiness: productionReadiness
 };
 const productionActivationText =
-  "production activation composition evaluation attached activation unavailable " +
-  "reason transmit-disabled";
+  "production activation composition config attached request absent " +
+  "configuration valid evaluation attached activation unavailable " +
+  "reason activation-not-requested static-missing 16 " +
+  `[${productionActivationConfigurationMissing.join(",")}]`;
 const productionCommandTransport = {
   registered: true,
   configuredEnabled: false,

@@ -2362,6 +2362,46 @@ Milestone state:
   during deployment cutover; fresh post-stabilization radio and Admin captures
   contained zero errors. No browser TX control, microphone permission, radio
   command, or live RF/HIL operation was used.
+- Phase 2X adds the feature-owned `StationTxProductionActivation` configuration
+  object with one disabled-by-default `Enabled` request switch. Startup projects
+  all currently configurable static TX prerequisites into one deterministic
+  interlock. An explicit request fails before application startup when local
+  `FlexRx` mode, transmit/browser lease opt-ins, command trust and signing keys,
+  envelope submission, allowlisted primary/emergency transports, or supervised
+  watchdog unkey and arming are incomplete. The unrequested default remains
+  valid, exposes its complete static missing-prerequisite list, and adds no
+  activation, browser, lease, command, gate, transport, watchdog operation, or
+  radio-authority method.
+- The 2026-08-02 Phase 2X automated and guarded validation gates passed a
+  zero-warning solution build plus 715 FlexWeb server tests, 57 independent-
+  watchdog tests, 48 TX-HIL isolation tests, 70 AetherRemote tests, and 123
+  browser tests (1,013 total). Production artifact inspection retained exactly
+  one reviewed key string and one runtime-deduplicated unkey string with both
+  reviewed transport markers; the watchdog retained one unkey string and zero
+  key strings, with no additional TX/HIL, CWX, or TX-audio surface. Validation
+  log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260802-m7-production-tx-activation-config-interlock-phase2x-validation-flexweb-validation.txt`.
+- Immutable staging release
+  `20260802-m7-production-tx-activation-config-interlock-phase2x` was activated
+  with `20260802-m7-production-tx-activation-composition-phase2w` retained for
+  rollback. Internal and public health reported activation configuration
+  registered, request absent, configuration valid, reason
+  `activation-not-requested`, interlock attached, activation unavailable, and
+  activation caller absent. Dynamic readiness remained blocked at
+  `transmit-disabled`; browser ingress, boundary, gate, primary/emergency
+  transports, and watchdog arming remained disabled or unavailable. Deployment
+  log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260802-m7-production-tx-activation-config-interlock-phase2x-flexweb-validation.txt`.
+- Browser Bridge acceptance recovered the live RX-only session after deployment.
+  TUNE, OPERATE, ACQUIRE LEASE, and VALIDATE ONLY remained disabled. All three
+  rendered canvases used the fixed 2D path with no WebGL context. Admin showed
+  `DISABLED · DISARMED · NO LEASE`, the configuration interlock attached,
+  activation request absent, configuration valid, activation unavailable at
+  `activation-not-requested`, and the expected 14 static staged prerequisites.
+  The initial cutover capture contained only stale-session 502/404 responses;
+  fresh post-stabilization radio and Admin captures contained zero entries. No
+  browser TX control, microphone permission, radio command, or live RF/HIL
+  operation was used.
 
 Acceptance criteria:
 

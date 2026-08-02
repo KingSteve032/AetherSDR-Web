@@ -27,25 +27,28 @@ public sealed class StationTxProductionActivationCompositionTests
     public void DisabledInputsRemainAttachedButActivationUnavailable()
     {
         StationTxProductionActivationComposition composition = new(
+            () => Configuration(requested: false, configured: false),
             () => Inputs(allReady: false));
 
         StationTxProductionActivationCompositionDiagnostics snapshot =
             composition.Snapshot;
 
         Assert.True(snapshot.Registered);
+        Assert.True(snapshot.ConfigurationInterlockAttached);
         Assert.True(snapshot.ReadinessEvaluationAttached);
+        Assert.False(snapshot.ActivationRequested);
+        Assert.True(snapshot.ConfigurationValid);
         Assert.False(snapshot.ActivationAvailable);
-        Assert.Equal("transmit-disabled", snapshot.Reason);
+        Assert.Equal("activation-not-requested", snapshot.Reason);
         Assert.False(snapshot.Readiness.Ready);
-        Assert.Equal(
-            snapshot.Readiness.Reason,
-            snapshot.Reason);
+        Assert.Equal("transmit-disabled", snapshot.Readiness.Reason);
     }
 
     [Fact]
     public void CompleteInfrastructureReportsAvailabilityWithoutAnActionSurface()
     {
         StationTxProductionActivationComposition composition = new(
+            () => Configuration(requested: true, configured: true),
             () => Inputs(allReady: true));
 
         StationTxProductionActivationCompositionDiagnostics snapshot =
@@ -61,6 +64,7 @@ public sealed class StationTxProductionActivationCompositionTests
     {
         bool ready = false;
         StationTxProductionActivationComposition composition = new(
+            () => Configuration(requested: true, configured: true),
             () => Inputs(ready));
 
         Assert.False(composition.Snapshot.ActivationAvailable);
@@ -89,9 +93,12 @@ public sealed class StationTxProductionActivationCompositionTests
             lifecycle.Snapshot.ProductionActivation;
 
         Assert.True(activation.Registered);
+        Assert.True(activation.ConfigurationInterlockAttached);
         Assert.True(activation.ReadinessEvaluationAttached);
+        Assert.False(activation.ActivationRequested);
+        Assert.True(activation.ConfigurationValid);
         Assert.False(activation.ActivationAvailable);
-        Assert.Equal("transmit-disabled", activation.Reason);
+        Assert.Equal("activation-not-requested", activation.Reason);
         StationTxProductionReadinessDiagnostics nextReadiness =
             lifecycle.Snapshot.ProductionActivation.Readiness;
         Assert.Equal(activation.Readiness.Reason, nextReadiness.Reason);
@@ -101,6 +108,27 @@ public sealed class StationTxProductionActivationCompositionTests
         Assert.False(
             lifecycle.Snapshot.BrowserTxTransactionIngress.ExecutionEnabled);
     }
+
+    private static StationTxProductionActivationConfigurationDiagnostics
+        Configuration(bool requested, bool configured) =>
+        StationTxProductionActivationConfigurationInterlock.Evaluate(new(
+            ActivationRequested: requested,
+            LocalFlexModeConfigured: configured,
+            AllowTransmitConfigured: configured,
+            BrowserTxLeaseConfigured: configured,
+            CommandTrustVerificationEnabled: configured,
+            CommandTrustKeyConfigured: configured,
+            CommandSigningEnabled: configured,
+            CommandSigningKeyConfigured: configured,
+            CommandSubmissionEnabled: configured,
+            CommandTransportEnabled: configured,
+            CommandTransportAllowlistConfigured: configured,
+            EmergencyUnkeyTransportEnabled: configured,
+            EmergencyUnkeyTransportAllowlistConfigured: configured,
+            WatchdogSupervisionEnabled: configured,
+            WatchdogCommandTransportEnabled: configured,
+            WatchdogRadioAllowlistConfigured: configured,
+            WatchdogArmingEnabled: configured));
 
     private static StationTxProductionReadinessInputs Inputs(bool allReady) =>
         new(
