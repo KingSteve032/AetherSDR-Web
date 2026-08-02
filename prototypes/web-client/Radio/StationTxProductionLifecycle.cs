@@ -87,12 +87,13 @@ public sealed record StationTxLifecycleDiagnostics(
 /// <summary>
 /// Production registration boundary for the accepted station TX gate,
 /// safety, and command transaction state machines. The reviewed primary FLEX
-/// command and emergency-unkey transports may be registered here, but both
-/// default disabled, the command gate remains transmit-disabled, the safety
-/// supervisor remains Disarmed, and the only
-/// internal command operation surface delegates through the transaction
-/// composition. No browser, HTTP, WebSocket, AetherRemote, watchdog, reconnect,
-/// or timer caller reaches that surface.
+/// command and emergency-unkey transports may be registered here, but all TX
+/// execution defaults disabled and both supervisors begin Disarmed. Phase 2Z
+/// may bind the boundary, gate, browser ingress, and browser keying capability
+/// on only as one complete reviewed set. The sole browser operation path still
+/// delegates through validation, transaction sequencing, radio confirmation,
+/// and the independent watchdog; HTTP, AetherRemote, reconnect, and ordinary
+/// timer callers remain absent.
 ///
 /// Real gateway, engine, browser/authentication, and lease observations are
 /// serialized here so diagnostics and future reviewed transport integration
@@ -140,6 +141,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         m_productionReadinessConfiguration;
     private readonly StationTxProductionActivationPlanner
         m_productionActivationPlanner;
+    private readonly StationTxProductionActivationBindingDiagnostics
+        m_productionActivationBinding;
     private readonly StationTxProductionActivationComposition
         m_productionActivationComposition;
     private readonly StationTxSafetyArmAuthority
@@ -228,6 +231,19 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         m_productionReadinessConfiguration =
             productionReadinessConfiguration ??
             StationTxProductionReadinessConfiguration.Disabled;
+        StationTxProductionActivationConfigurationDiagnostics
+            activationConfiguration =
+                productionActivationConfiguration ??
+                StationTxProductionActivationConfigurationInterlock.Dormant;
+        m_productionActivationPlanner =
+            new StationTxProductionActivationPlanner(
+                () => activationConfiguration);
+        m_productionActivationBinding =
+            StationTxProductionActivationBinder.Bind(
+                m_productionActivationPlanner.Snapshot,
+                independentWatchdogLocalFlexEligible,
+                m_productionReadinessConfiguration.AllowTransmitConfigured,
+                m_productionReadinessConfiguration.BrowserTxLeaseConfigured);
         DateTimeOffset now = m_timeProvider.GetUtcNow();
         m_lastGatewayObservedAt = now;
         m_lastObservedAt = now;
@@ -239,7 +255,9 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             productionEmergencyUnkeyTransport ??
             new StationTxUnavailableEmergencyUnkeyTransport();
         m_commandGate = new StationTxCommandGate(
-            allowTransmit: false,
+            allowTransmit:
+                m_productionActivationBinding.Binding
+                    .CommandGateTransmitEnabled,
             m_radioId,
             leases,
             occupancy,
@@ -258,7 +276,9 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 ResolveStationCommandAuthority,
                 m_timeProvider);
         m_stationCommandBoundary = new StationTxCommandBoundary(
-            enabled: false,
+            enabled:
+                m_productionActivationBinding.Binding
+                    .CommandBoundaryEnabled,
             m_gatewayInstanceId,
             stationCommandVerifier ??
                 new StationTxUnavailableCommandSignatureVerifier(),
@@ -307,26 +327,25 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 coordinatedSafety,
                 m_stationCommandComposition,
                 ResolveStationCommandAuthority,
-                m_timeProvider);
+                m_timeProvider,
+                new StationTxCommandGateRadioConfirmation(
+                    m_commandGate,
+                    m_timeProvider));
         m_browserTxTransactionIngress = new BrowserTxTransactionIngress(
-            executionEnabled: false,
+            executionEnabled:
+                m_productionActivationBinding.Binding
+                    .BrowserTransactionIngressExecutionEnabled,
             () => m_stationCommandTransactionComposition.Snapshot,
             (request, cancellationToken) =>
                 m_stationCommandTransactionComposition.SubmitAsync(
                     request,
                     cancellationToken),
             m_timeProvider);
-        StationTxProductionActivationConfigurationDiagnostics
-            activationConfiguration =
-                productionActivationConfiguration ??
-                StationTxProductionActivationConfigurationInterlock.Dormant;
-        m_productionActivationPlanner =
-            new StationTxProductionActivationPlanner(
-                () => activationConfiguration);
         m_productionActivationComposition =
             new StationTxProductionActivationComposition(
                 () => activationConfiguration,
                 () => m_productionActivationPlanner.Snapshot,
+                () => m_productionActivationBinding,
                 ResolveProductionReadinessInputs);
         m_authenticationMonitor = new StationTxAuthenticationMonitor(m_supervisor);
         m_engineMonitor = new StationTxEngineConnectionMonitor(m_supervisor);
@@ -389,7 +408,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     m_gatewayInstanceId,
                     m_engineInstanceId,
                     Registered: true,
-                    ProductionTransmitEnabled: false,
+                    ProductionTransmitEnabled:
+                        m_productionActivationBinding.BindingApplied,
                     CommandTransportAvailable: productionTransport.Available,
                     EmergencyUnkeyTransportAvailable:
                         emergencyTransport.Available,
@@ -1266,7 +1286,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                    StringComparison.Ordinal) &&
                string.Equals(
                    identity.BrowserClientId,
-                   authority.BrowserClientId,
+                   m_browserClientId,
                    StringComparison.Ordinal) &&
                string.Equals(
                    identity.GatewayInstanceId,
@@ -1279,6 +1299,10 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                string.Equals(
                    identity.ConnectionClientId,
                    connectionClientId,
+                   StringComparison.Ordinal) &&
+               string.Equals(
+                   identity.ConnectionClientId,
+                   authority.BrowserClientId,
                    StringComparison.Ordinal) &&
                string.Equals(
                    identity.LeaseId,
@@ -1370,7 +1394,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 StationId: m_gatewayInstanceId,
                 RadioId: m_radioId,
                 SessionId: m_sessionId,
-                BrowserClientId: m_browserClientId,
+                BrowserClientId: connectionClientId,
                 LeaseId: lease.LeaseId,
                 LeaseExpiresAt: lease.ExpiresAt,
                 GatewayInstanceId: m_gatewayInstanceId,

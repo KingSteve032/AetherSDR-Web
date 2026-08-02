@@ -7,7 +7,8 @@ internal enum BrowserTxRequestKind
     Acquire,
     Renew,
     Release,
-    Intent
+    Intent,
+    Heartbeat
 }
 
 internal enum BrowserTxIntentKind
@@ -45,9 +46,17 @@ internal sealed record BrowserTxIntentResult(
     DateTimeOffset ObservedAt,
     BrowserTxCapability Capability);
 
+internal sealed record BrowserTxHeartbeatResult(
+    bool Ok,
+    string Outcome,
+    string? Error,
+    long Sequence,
+    DateTimeOffset ObservedAt,
+    BrowserTxCapability Capability);
+
 internal static class RadioBrowserTxProtocol
 {
-    public const int Version = 1;
+    public const int Version = 2;
     public const long MaximumSafeInteger = 9_007_199_254_740_991;
     public const int MaximumIntentIdLength = 64;
     public const int MaximumCwTextLength = 32;
@@ -74,6 +83,16 @@ internal static class RadioBrowserTxProtocol
         };
 
     private static readonly HashSet<string> ReleaseProperties =
+        new(StringComparer.Ordinal)
+        {
+            "id",
+            "cmd",
+            "protocolVersion",
+            "sequence",
+            "leaseId"
+        };
+
+    private static readonly HashSet<string> HeartbeatProperties =
         new(StringComparer.Ordinal)
         {
             "id",
@@ -152,6 +171,12 @@ internal static class RadioBrowserTxProtocol
                 sequence,
                 out request,
                 out error),
+            "tx.heartbeat" => TryParseHeartbeat(
+                root,
+                requestId,
+                sequence,
+                out request,
+                out error),
             _ => Fail("unknown-tx-command", out request, out error)
         };
     }
@@ -221,6 +246,30 @@ internal static class RadioBrowserTxProtocol
         request = new BrowserTxRequest(
             requestId,
             BrowserTxRequestKind.Release,
+            sequence,
+            Seconds: null,
+            leaseId,
+            Intent: null);
+        error = string.Empty;
+        return true;
+    }
+
+    private static bool TryParseHeartbeat(
+        JsonElement root,
+        long requestId,
+        long sequence,
+        out BrowserTxRequest? request,
+        out string error)
+    {
+        if (!HasOnlyUniqueProperties(root, HeartbeatProperties) ||
+            !TryReadLeaseId(root, out string leaseId))
+        {
+            return Fail("invalid-tx-heartbeat", out request, out error);
+        }
+
+        request = new BrowserTxRequest(
+            requestId,
+            BrowserTxRequestKind.Heartbeat,
             sequence,
             Seconds: null,
             leaseId,

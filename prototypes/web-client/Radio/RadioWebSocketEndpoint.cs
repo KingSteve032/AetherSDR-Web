@@ -574,136 +574,158 @@ public static class RadioWebSocketEndpoint
         switch (request.Kind)
         {
             case BrowserTxRequestKind.Acquire:
-            {
-                bool acquired = coordinator.TryAcquireTxLease(
-                    connection,
-                    TimeSpan.FromSeconds(request.Seconds!.Value),
-                    authenticated,
-                    out TxLease? lease,
-                    out string? error);
-                if (acquired && lease is not null)
                 {
-                    await coordinator.FlushTxLifecycleAsync(cancellationToken);
-                    if (!coordinator.TryConfirmTxLease(
-                            connection,
-                            lease.LeaseId,
-                            out TxLease? confirmed,
-                            out string? confirmationError))
-                    {
-                        acquired = false;
-                        lease = null;
-                        error = confirmationError ??
-                            "The TX lease was revoked during lifecycle registration.";
-                    }
-                    else
-                    {
-                        lease = confirmed;
-                    }
-                }
-                coordinator.SendJson(connection, new
-                {
-                    id = request.RequestId,
-                    protocolVersion = RadioBrowserTxProtocol.Version,
-                    sequence = request.Sequence,
-                    ok = acquired,
-                    error,
-                    lease,
-                    capability = coordinator.GetBrowserTxCapability(
+                    bool acquired = coordinator.TryAcquireTxLease(
                         connection,
-                        authenticated)
-                });
-                break;
-            }
+                        TimeSpan.FromSeconds(request.Seconds!.Value),
+                        authenticated,
+                        out TxLease? lease,
+                        out string? error);
+                    if (acquired && lease is not null)
+                    {
+                        await coordinator.FlushTxLifecycleAsync(cancellationToken);
+                        if (!coordinator.TryConfirmTxLease(
+                                connection,
+                                lease.LeaseId,
+                                out TxLease? confirmed,
+                                out string? confirmationError))
+                        {
+                            acquired = false;
+                            lease = null;
+                            error = confirmationError ??
+                                "The TX lease was revoked during lifecycle registration.";
+                        }
+                        else
+                        {
+                            lease = confirmed;
+                        }
+                    }
+                    coordinator.SendJson(connection, new
+                    {
+                        id = request.RequestId,
+                        protocolVersion = RadioBrowserTxProtocol.Version,
+                        sequence = request.Sequence,
+                        ok = acquired,
+                        error,
+                        lease,
+                        capability = coordinator.GetBrowserTxCapability(
+                            connection,
+                            authenticated)
+                    });
+                    break;
+                }
             case BrowserTxRequestKind.Renew:
-            {
-                bool renewed = coordinator.TryRenewTxLease(
-                    connection,
-                    request.LeaseId!,
-                    TimeSpan.FromSeconds(request.Seconds!.Value),
-                    authenticated,
-                    out TxLease? lease,
-                    out string? error);
-                if (renewed && lease is not null)
                 {
-                    await coordinator.FlushTxLifecycleAsync(cancellationToken);
-                    if (!coordinator.TryConfirmTxLease(
+                    bool renewed = coordinator.TryRenewTxLease(
+                        connection,
+                        request.LeaseId!,
+                        TimeSpan.FromSeconds(request.Seconds!.Value),
+                        authenticated,
+                        out TxLease? lease,
+                        out string? error);
+                    if (renewed && lease is not null)
+                    {
+                        await coordinator.FlushTxLifecycleAsync(cancellationToken);
+                        if (!coordinator.TryConfirmTxLease(
+                                connection,
+                                lease.LeaseId,
+                                out TxLease? confirmed,
+                                out string? confirmationError))
+                        {
+                            renewed = false;
+                            lease = null;
+                            error = confirmationError ??
+                                "The TX lease was revoked during lifecycle renewal.";
+                        }
+                        else
+                        {
+                            lease = confirmed;
+                        }
+                    }
+                    coordinator.SendJson(connection, new
+                    {
+                        id = request.RequestId,
+                        protocolVersion = RadioBrowserTxProtocol.Version,
+                        sequence = request.Sequence,
+                        ok = renewed,
+                        error,
+                        lease,
+                        capability = coordinator.GetBrowserTxCapability(
                             connection,
-                            lease.LeaseId,
-                            out TxLease? confirmed,
-                            out string? confirmationError))
-                    {
-                        renewed = false;
-                        lease = null;
-                        error = confirmationError ??
-                            "The TX lease was revoked during lifecycle renewal.";
-                    }
-                    else
-                    {
-                        lease = confirmed;
-                    }
+                            authenticated)
+                    });
+                    break;
                 }
-                coordinator.SendJson(connection, new
-                {
-                    id = request.RequestId,
-                    protocolVersion = RadioBrowserTxProtocol.Version,
-                    sequence = request.Sequence,
-                    ok = renewed,
-                    error,
-                    lease,
-                    capability = coordinator.GetBrowserTxCapability(
-                        connection,
-                        authenticated)
-                });
-                break;
-            }
             case BrowserTxRequestKind.Release:
-            {
-                bool released = coordinator.ReleaseTxLease(
-                    connection,
-                    request.LeaseId!,
-                    authenticated,
-                    out string? error);
-                if (released)
+                {
+                    bool released = coordinator.ReleaseTxLease(
+                        connection,
+                        request.LeaseId!,
+                        authenticated,
+                        out string? error);
+                    if (released)
+                    {
+                        await coordinator.FlushTxLifecycleAsync(cancellationToken);
+                    }
+                    coordinator.SendJson(connection, new
+                    {
+                        id = request.RequestId,
+                        protocolVersion = RadioBrowserTxProtocol.Version,
+                        sequence = request.Sequence,
+                        ok = released,
+                        error,
+                        capability = coordinator.GetBrowserTxCapability(
+                            connection,
+                            authenticated)
+                    });
+                    break;
+                }
+            case BrowserTxRequestKind.Intent:
                 {
                     await coordinator.FlushTxLifecycleAsync(cancellationToken);
+                    BrowserTxIntentResult result =
+                        await coordinator.ExecuteBrowserTxIntentAsync(
+                            connection,
+                            request,
+                            authenticated,
+                            cancellationToken);
+                    coordinator.SendJson(connection, new
+                    {
+                        id = request.RequestId,
+                        protocolVersion = RadioBrowserTxProtocol.Version,
+                        result.Sequence,
+                        result.Ok,
+                        result.Validated,
+                        result.Outcome,
+                        result.Error,
+                        result.IntentId,
+                        result.Action,
+                        result.ObservedAt,
+                        result.Capability
+                    });
+                    break;
                 }
-                coordinator.SendJson(connection, new
+            case BrowserTxRequestKind.Heartbeat:
                 {
-                    id = request.RequestId,
-                    protocolVersion = RadioBrowserTxProtocol.Version,
-                    sequence = request.Sequence,
-                    ok = released,
-                    error,
-                    capability = coordinator.GetBrowserTxCapability(
-                        connection,
-                        authenticated)
-                });
-                break;
-            }
-            case BrowserTxRequestKind.Intent:
-            {
-                await coordinator.FlushTxLifecycleAsync(cancellationToken);
-                BrowserTxIntentResult result =
-                    coordinator.EvaluateBrowserTxIntent(
-                        connection,
-                        request,
-                        authenticated);
-                coordinator.SendJson(connection, new
-                {
-                    id = request.RequestId,
-                    protocolVersion = RadioBrowserTxProtocol.Version,
-                    result.Sequence,
-                    result.Ok,
-                    result.Validated,
-                    result.Outcome,
-                    result.Error,
-                    result.IntentId,
-                    result.Action,
-                    result.ObservedAt,
-                    result.Capability
-                });
-                break;
-            }
+                    BrowserTxHeartbeatResult result =
+                        await coordinator.HeartbeatBrowserTxAsync(
+                            connection,
+                            request,
+                            authenticated,
+                            cancellationToken);
+                    coordinator.SendJson(connection, new
+                    {
+                        id = request.RequestId,
+                        protocolVersion = RadioBrowserTxProtocol.Version,
+                        result.Sequence,
+                        result.Ok,
+                        result.Outcome,
+                        result.Error,
+                        result.ObservedAt,
+                        result.Capability
+                    });
+                    break;
+                }
             default:
                 throw new InvalidOperationException(
                     "An unsupported parsed TX request was received.");

@@ -34,7 +34,7 @@ public sealed class RadioBrowserTxIntentTests
         Assert.True(result.Validated);
         Assert.Equal("transport-unavailable", result.Outcome);
         Assert.Contains(
-            "transport is unavailable",
+            "station transaction boundary",
             result.Error,
             StringComparison.OrdinalIgnoreCase);
         Assert.Equal(lease.LeaseId, fixture.Leases.GetCurrent("radio-a")?.LeaseId);
@@ -139,7 +139,7 @@ public sealed class RadioBrowserTxIntentTests
             authenticated: true);
 
         Assert.False(result.Validated);
-        Assert.Equal("occupancy-not-idle", result.Outcome);
+        Assert.Equal("occupancy-not-authorized", result.Outcome);
         Assert.False(result.Capability.OccupancyAllowsLease);
         Assert.False(result.Capability.KeyingAvailable);
         Assert.Equal(lease.LeaseId, fixture.Leases.GetCurrent("radio-a")?.LeaseId);
@@ -171,7 +171,7 @@ public sealed class RadioBrowserTxIntentTests
 
         Assert.False(renewed);
         Assert.Null(renewedLease);
-        Assert.Contains("idle", error, StringComparison.OrdinalIgnoreCase);
+        Assert.False(string.IsNullOrWhiteSpace(error));
         Assert.Null(fixture.Leases.GetCurrent("radio-a"));
         Assert.False(fixture.Lifecycle.Snapshot.LeaseActive);
         Assert.Equal(

@@ -1,5 +1,6 @@
-export const txProtocolVersion = 1;
+export const txProtocolVersion = 2;
 export const txLeaseSeconds = 10;
+export const txHeartbeatMilliseconds = 2_000;
 export const txPendingRequestLimit = 16;
 export const txIntentActions = Object.freeze([
   "mox.set",
@@ -69,7 +70,8 @@ export function txControlAvailability(capabilityValue) {
     canReleaseLease: capability.leaseHeldByBrowser,
     canValidateIntent:
       capability.leaseHeldByBrowser &&
-      capability.intentValidationAvailable,
+      capability.intentValidationAvailable &&
+      !capability.keyingAvailable,
     enableMox: capability.keyingAvailable,
     enablePtt: capability.keyingAvailable,
     enableTune: capability.tuneAvailable,
@@ -103,6 +105,8 @@ export class BrowserTxController {
     this.sequence = 0;
     this.pending = new Map();
     this.renewTimer = null;
+    this.heartbeatTimer = null;
+    this.transmitting = false;
     this.lastResult = null;
   }
 
@@ -112,15 +116,18 @@ export class BrowserTxController {
       lease: this.lease ? { ...this.lease } : null,
       sequence: this.sequence,
       pendingCount: this.pending.size,
+      transmitting: this.transmitting,
       lastResult: this.lastResult ? { ...this.lastResult } : null
     };
   }
 
   applyWelcome(capability) {
     this.#cancelRenewal();
+    this.#cancelHeartbeat();
     this.pending.clear();
     this.sequence = 0;
     this.lease = null;
+    this.transmitting = false;
     this.capability = normalizeTxCapability(capability);
     this.lastResult = {
       outcome: "connected",
@@ -132,9 +139,11 @@ export class BrowserTxController {
 
   resetForDisconnect() {
     this.#cancelRenewal();
+    this.#cancelHeartbeat();
     this.pending.clear();
     this.sequence = 0;
     this.lease = null;
+    this.transmitting = false;
     this.capability = { ...emptyCapability };
     this.lastResult = {
       outcome: "disconnected",
@@ -172,6 +181,8 @@ export class BrowserTxController {
       return false;
     }
     const leaseId = this.lease.leaseId;
+    this.transmitting = false;
+    this.#cancelHeartbeat();
     this.#clearLease();
     this.capability = {
       ...this.capability,
@@ -201,7 +212,10 @@ export class BrowserTxController {
       intentId,
       action,
       values
-    }, intentId);
+    }, intentId, {
+      action,
+      enabled: typeof values.enabled === "boolean" ? values.enabled : null
+    });
   }
 
   handleMessage(message) {
@@ -228,6 +242,8 @@ export class BrowserTxController {
       this.capability = normalizeTxCapability(message.capability);
       if (message.event === "tx.lease.released" ||
           !this.capability.leaseHeldByBrowser) {
+        this.transmitting = false;
+        this.#cancelHeartbeat();
         this.#clearLease();
       }
       this.lastResult = {
@@ -265,7 +281,32 @@ export class BrowserTxController {
       this.lease = normalizeLease(message.lease);
       this.#scheduleRenewal();
     } else if (pending.kind === "release" && message.ok === true) {
+      this.transmitting = false;
+      this.#cancelHeartbeat();
       this.#clearLease();
+    } else if (pending.kind === "intent" && message.ok === true) {
+      if (pending.enabled === true) {
+        this.transmitting = true;
+        this.#scheduleHeartbeat();
+      } else if (pending.enabled === false) {
+        this.transmitting = false;
+        this.#cancelHeartbeat();
+      }
+    } else if (pending.kind === "heartbeat" && message.ok === true) {
+      this.#scheduleHeartbeat();
+    } else if (pending.kind === "heartbeat" &&
+        message.ok !== true &&
+        this.transmitting) {
+      this.transmitting = false;
+      this.#cancelHeartbeat();
+      this.#clearLease();
+      this.capability = {
+        ...this.capability,
+        leaseHeldByBrowser: false,
+        leaseAvailable: false,
+        intentValidationAvailable: false,
+        keyingAvailable: false
+      };
     } else if (message.ok !== true &&
         (pending.kind === "renew" ||
           (pending.kind === "intent" && message.validated !== true) ||
@@ -292,7 +333,7 @@ export class BrowserTxController {
     return true;
   }
 
-  #sendRequest(kind, fields, intentId = null) {
+  #sendRequest(kind, fields, intentId = null, metadata = {}) {
     if (this.pending.size >= txPendingRequestLimit) {
       this.lastResult = {
         kind,
@@ -316,7 +357,7 @@ export class BrowserTxController {
       sequence,
       ...fields
     };
-    this.pending.set(id, { kind, sequence, intentId });
+    this.pending.set(id, { kind, sequence, intentId, ...metadata });
     try {
       if (this.send(message) === false) {
         throw new Error("The radio session is not connected.");
@@ -334,6 +375,30 @@ export class BrowserTxController {
     }
     this.#notify();
     return true;
+  }
+
+  #scheduleHeartbeat() {
+    this.#cancelHeartbeat();
+    if (!this.transmitting ||
+        !this.lease ||
+        !this.capability.leaseHeldByBrowser ||
+        !this.capability.keyingAvailable) {
+      return;
+    }
+    this.heartbeatTimer = this.schedule(() => {
+      this.heartbeatTimer = null;
+      if (!this.transmitting || !this.lease) {
+        return;
+      }
+      if (!this.#sendRequest("heartbeat", {
+        cmd: "tx.heartbeat",
+        leaseId: this.lease.leaseId
+      })) {
+        this.transmitting = false;
+        this.#clearLease();
+        this.#notify();
+      }
+    }, txHeartbeatMilliseconds);
   }
 
   #scheduleRenewal() {
@@ -384,7 +449,16 @@ export class BrowserTxController {
 
   #clearLease() {
     this.#cancelRenewal();
+    this.#cancelHeartbeat();
+    this.transmitting = false;
     this.lease = null;
+  }
+
+  #cancelHeartbeat() {
+    if (this.heartbeatTimer !== null) {
+      this.cancel(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
   }
 
   #cancelRenewal() {

@@ -78,9 +78,11 @@ internal sealed record StationTxCommandGateCapabilities(
 
 /// <summary>
 /// Station-local, browser-inaccessible TX command gate. Production registers
-/// this state machine only through the fail-closed lifecycle boundary with
-/// transmit disabled. Reviewed command primitives may be present behind disabled
-/// configuration, but no production caller can reach a keying command.
+/// this state machine only through the fail-closed lifecycle boundary and
+/// defaults transmit disabled. Phase 2Z may enable it only as one member of the
+/// complete reviewed per-session activation binding; every operation still
+/// requires the exact lease, Local PTT authority, FLEX handle, and fresh
+/// radio-authoritative occupancy.
 /// </summary>
 internal sealed class StationTxCommandGate : IAsyncDisposable
 {

@@ -3209,6 +3209,14 @@ public sealed class RadioCoordinator : IDisposable
                 StringComparison.Ordinal);
         bool anotherLeaseHeld = current is not null && !leaseHeldByBrowser;
         StationTxLifecycleDiagnostics? lifecycle = m_txLifecycle?.Snapshot;
+        bool bindingApplied =
+            lifecycle?.ProductionActivation.ActivationBindingApplied == true;
+        bool watchdogModeMatchesBinding = lifecycle is not null &&
+            (bindingApplied
+                ? lifecycle.IndependentWatchdog.RadioCommandTransportAvailable &&
+                    lifecycle.IndependentWatchdog.ArmingAvailable
+                : !lifecycle.IndependentWatchdog.RadioCommandTransportAvailable &&
+                    !lifecycle.IndependentWatchdog.ArmingAvailable);
         bool exactLifecycleAuthority =
             current is not null &&
             lifecycle is not null &&
@@ -3234,17 +3242,31 @@ public sealed class RadioCoordinator : IDisposable
             lifecycle.IndependentWatchdog.Registered &&
             lifecycle.IndependentWatchdog.Connected &&
             lifecycle.IndependentWatchdog.LeaseBound &&
-            !lifecycle.IndependentWatchdog.RadioCommandTransportAvailable &&
-            !lifecycle.IndependentWatchdog.ArmingAvailable;
+            watchdogModeMatchesBinding;
+        bool exactActiveOwnership =
+            lifecycle is not null &&
+            occupancy.HasExclusiveAetherTransmitOwnership(
+                lifecycle.StationClientHandle) &&
+            lifecycle.StationCommandTransactionComposition.Active &&
+            lifecycle.BrowserTxTransactionIngress.UnkeyAvailable;
+        bool occupancyAllowsIntent =
+            occupancy.BrowserLeaseAllowed || exactActiveOwnership;
         bool intentValidationAvailable =
             m_browserTxLeaseEnabled &&
             authenticated &&
             roleAuthorized &&
             connectionCurrent &&
             snapshot.Connected &&
-            occupancy.BrowserLeaseAllowed &&
+            occupancyAllowsIntent &&
             leaseHeldByBrowser &&
             exactLifecycleAuthority;
+        bool keyingAvailable =
+            intentValidationAvailable &&
+            lifecycle?.ProductionActivation.ActivationAvailable == true &&
+            lifecycle.ProductionActivation.Binding.Binding
+                .BrowserKeyingCapabilityEnabled &&
+            (lifecycle.BrowserTxTransactionIngress.KeyAvailable ||
+                lifecycle.BrowserTxTransactionIngress.UnkeyAvailable);
         bool leaseAvailable =
             m_browserTxLeaseEnabled &&
             authenticated &&
@@ -3274,15 +3296,23 @@ public sealed class RadioCoordinator : IDisposable
                             : !snapshot.Connected
                                 ? (
                                     "radio-disconnected",
-                                    "The radio must be connected before a browser TX lease can be acquired.")
-                                : !occupancy.BrowserLeaseAllowed
+                                    "The radio must be connected before browser TX authority is available.")
+                                : leaseHeldByBrowser && keyingAvailable
                                     ? (
-                                        $"occupancy-{occupancy.StateName}",
-                                        "Fresh radio-authoritative idle occupancy is required before lease acquisition.")
+                                        exactActiveOwnership
+                                            ? "transmit-active"
+                                            : "keying-ready",
+                                        exactActiveOwnership
+                                            ? "This browser owns the active protected TX transaction; heartbeat and unkey are available."
+                                            : "Exact station authority is ready for a deliberate browser key request.")
                                     : leaseHeldByBrowser && intentValidationAvailable
                                         ? (
-                                            "intent-validation-ready",
-                                            "Exact TX authority is validated; production radio command transport remains unavailable.")
+                                            bindingApplied
+                                                ? "activation-blocked"
+                                                : "intent-validation-ready",
+                                            bindingApplied
+                                                ? $"Production TX activation is blocked: {lifecycle?.ProductionActivation.Reason ?? "unavailable"}."
+                                                : "Exact TX authority may be validated; production activation is not applied.")
                                         : leaseHeldByBrowser
                                             ? (
                                                 "lease-held-by-browser",
@@ -3291,9 +3321,15 @@ public sealed class RadioCoordinator : IDisposable
                                                 ? (
                                                     "lease-held-by-other",
                                                     $"TX is held by {current!.DisplayName}.")
-                                                : (
-                                                    "lease-available",
-                                                    "The browser may acquire the ownership lease, but keying remains unavailable.");
+                                                : !occupancy.BrowserLeaseAllowed
+                                                    ? (
+                                                        $"occupancy-{occupancy.StateName}",
+                                                        "Fresh radio-authoritative idle occupancy is required before lease acquisition.")
+                                                    : (
+                                                        "lease-available",
+                                                        bindingApplied
+                                                            ? "The browser may acquire the ownership lease for production TX."
+                                                            : "The browser may acquire the ownership lease, but activation is not applied.");
 
         return new BrowserTxCapability(
             RadioBrowserTxProtocol.Version,
@@ -3306,7 +3342,7 @@ public sealed class RadioCoordinator : IDisposable
             leaseHeldByBrowser,
             leaseAvailable,
             intentValidationAvailable,
-            KeyingAvailable: false,
+            KeyingAvailable: keyingAvailable,
             MicrophoneAvailable: false,
             TuneAvailable: false,
             CwAvailable: false,
@@ -3377,13 +3413,24 @@ public sealed class RadioCoordinator : IDisposable
     {
         BrowserTxCapability capability =
             GetBrowserTxCapability(connection, authenticated);
+        StationTxLifecycleDiagnostics? lifecycle = m_txLifecycle?.Snapshot;
+        RadioTxOccupancySnapshot occupancy =
+            m_txOccupancyRegistry.GetSnapshot(m_radioSettings.RadioId);
+        bool retainedActiveAuthority =
+            lifecycle is not null &&
+            lifecycle.StationCommandTransactionComposition.Active &&
+            lifecycle.BrowserTxTransactionIngress.UnkeyAvailable &&
+            occupancy.HasExclusiveAetherTransmitOwnership(
+                lifecycle.StationClientHandle);
+        bool occupancyAllowsRenewal =
+            capability.OccupancyAllowsLease || retainedActiveAuthority;
         bool supervisedAuthorityRequired = m_txLifecycle is not null;
         if (!capability.LeaseConfigured ||
             !capability.Authenticated ||
             !capability.RoleAuthorized ||
             !capability.ConnectionCurrent ||
             !capability.RadioConnected ||
-            !capability.OccupancyAllowsLease ||
+            !occupancyAllowsRenewal ||
             !capability.LeaseHeldByBrowser ||
             (supervisedAuthorityRequired &&
                 !capability.IntentValidationAvailable))
@@ -3475,7 +3522,8 @@ public sealed class RadioCoordinator : IDisposable
     internal BrowserTxIntentResult EvaluateBrowserTxIntent(
         RadioClientConnection connection,
         BrowserTxRequest request,
-        bool authenticated)
+        bool authenticated,
+        bool recordResult = true)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(request);
@@ -3492,13 +3540,16 @@ public sealed class RadioCoordinator : IDisposable
             string outcome,
             string error)
         {
-            m_txLifecycle?.ObserveBrowserTxIntent(
-                connection.ClientId,
-                request.Sequence,
-                intent.Action,
-                outcome,
-                error,
-                observedAt);
+            if (recordResult)
+            {
+                m_txLifecycle?.ObserveBrowserTxIntent(
+                    connection.ClientId,
+                    request.Sequence,
+                    intent.Action,
+                    outcome,
+                    error,
+                    observedAt);
+            }
             return new BrowserTxIntentResult(
                 Ok: false,
                 validated,
@@ -3565,16 +3616,26 @@ public sealed class RadioCoordinator : IDisposable
                 "lease-invalid",
                 leaseError ?? "A current TX lease held by this browser is required.");
         }
-        if (!capability.OccupancyAllowsLease)
+        StationTxLifecycleDiagnostics? lifecycle = m_txLifecycle?.Snapshot;
+        RadioTxOccupancySnapshot occupancy =
+            m_txOccupancyRegistry.GetSnapshot(m_radioSettings.RadioId);
+        bool ownershipSafeUnkey =
+            intent.Kind is BrowserTxIntentKind.Mox or BrowserTxIntentKind.Ptt &&
+            intent.Enabled == false &&
+            lifecycle is not null &&
+            lifecycle.StationCommandTransactionComposition.Active &&
+            lifecycle.BrowserTxTransactionIngress.UnkeyAvailable &&
+            occupancy.HasExclusiveAetherTransmitOwnership(
+                lifecycle.StationClientHandle);
+        if (!occupancy.BrowserLeaseAllowed && !ownershipSafeUnkey)
         {
             return Result(
                 validated: false,
-                "occupancy-not-idle",
-                capability.Message);
+                "occupancy-not-authorized",
+                "Fresh idle occupancy is required to key; only the exact protected AetherSDR owner may unkey an active transmission.");
         }
         if (!capability.IntentValidationAvailable)
         {
-            StationTxLifecycleDiagnostics? lifecycle = m_txLifecycle?.Snapshot;
             string reason = lifecycle is null
                 ? "lifecycle-unavailable"
                 : $"lifecycle-{lifecycle.AuthorityReason}";
@@ -3587,8 +3648,163 @@ public sealed class RadioCoordinator : IDisposable
         return Result(
             validated: true,
             "transport-unavailable",
-            "The deliberate TX intent was validated, but production radio command transport is unavailable.");
+            "The deliberate TX intent was validated for the station transaction boundary.");
     }
+
+    internal async Task<BrowserTxIntentResult> ExecuteBrowserTxIntentAsync(
+        RadioClientConnection connection,
+        BrowserTxRequest request,
+        bool authenticated,
+        CancellationToken cancellationToken = default)
+    {
+        BrowserTxIntentResult validation = EvaluateBrowserTxIntent(
+            connection,
+            request,
+            authenticated,
+            recordResult: false);
+        BrowserTxIntent intent = request.Intent ??
+            throw new ArgumentException(
+                "A parsed browser TX intent is required.",
+                nameof(request));
+
+        if (!validation.Validated || m_txLifecycle is null)
+        {
+            RecordBrowserTxResult(connection, validation);
+            return validation;
+        }
+
+        StationTxLifecycleDiagnostics lifecycle = m_txLifecycle.Snapshot;
+        bool bindingAllowsBrowserKeying =
+            lifecycle.ProductionActivation.ActivationBindingApplied &&
+            lifecycle.ProductionActivation.Binding.Binding
+                .BrowserKeyingCapabilityEnabled;
+        if (!bindingAllowsBrowserKeying)
+        {
+            RecordBrowserTxResult(connection, validation);
+            return validation;
+        }
+        if (!validation.Capability.KeyingAvailable)
+        {
+            BrowserTxIntentResult unavailable = validation with
+            {
+                Outcome = "activation-unavailable",
+                Error = validation.Capability.Message,
+                Capability = GetBrowserTxCapability(connection, authenticated)
+            };
+            RecordBrowserTxResult(connection, unavailable);
+            return unavailable;
+        }
+
+        BrowserTxTransactionIngressResult ingress =
+            await m_txLifecycle.ExecuteBrowserTxTransactionIngressAsync(
+                new BrowserTxTransactionIngressRequest(
+                    connection.ClientId,
+                    request,
+                    validation),
+                cancellationToken);
+        BrowserTxIntentResult result = new(
+            Ok: ingress.Success,
+            Validated: true,
+            Outcome: ingress.Code,
+            Error: ingress.Success ? null : ingress.Message,
+            request.Sequence,
+            intent.IntentId,
+            intent.Action,
+            DateTimeOffset.UtcNow,
+            GetBrowserTxCapability(connection, authenticated));
+        RecordBrowserTxResult(connection, result);
+        return result;
+    }
+
+    internal async Task<BrowserTxHeartbeatResult> HeartbeatBrowserTxAsync(
+        RadioClientConnection connection,
+        BrowserTxRequest request,
+        bool authenticated,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(request);
+        DateTimeOffset observedAt = DateTimeOffset.UtcNow;
+        BrowserTxCapability capability =
+            GetBrowserTxCapability(connection, authenticated);
+
+        BrowserTxHeartbeatResult Fail(string outcome, string error) =>
+            new(
+                Ok: false,
+                outcome,
+                error,
+                request.Sequence,
+                observedAt,
+                GetBrowserTxCapability(connection, authenticated));
+
+        if (request.Kind != BrowserTxRequestKind.Heartbeat)
+        {
+            return Fail(
+                "heartbeat-required",
+                "A parsed TX heartbeat request is required.");
+        }
+        if (!authenticated ||
+            !capability.Authenticated ||
+            !capability.RoleAuthorized ||
+            !capability.ConnectionCurrent ||
+            !capability.RadioConnected)
+        {
+            return Fail("heartbeat-authority-unavailable", capability.Message);
+        }
+        if (!m_txLeaseManager.TryValidate(
+                m_radioSettings.RadioId,
+                request.LeaseId ?? string.Empty,
+                m_radioSettings.SessionId,
+                connection.ClientId,
+                out _,
+                out string? leaseError))
+        {
+            return Fail(
+                "lease-invalid",
+                leaseError ?? "A current TX lease held by this browser is required.");
+        }
+        if (m_txLifecycle is null)
+        {
+            return Fail(
+                "lifecycle-unavailable",
+                "The station TX lifecycle is unavailable.");
+        }
+
+        StationTxLifecycleDiagnostics lifecycle = m_txLifecycle.Snapshot;
+        if (!lifecycle.ProductionActivation.ActivationBindingApplied ||
+            !lifecycle.StationCommandTransactionComposition.Active ||
+            !lifecycle.StationCommandTransactionComposition.HeartbeatAvailable)
+        {
+            return Fail(
+                "transaction-heartbeat-unavailable",
+                lifecycle.StationCommandTransactionComposition.Reason);
+        }
+
+        StationTxCommandTransactionResult heartbeat =
+            await m_txLifecycle.HeartbeatStationCommandTransactionAsync(
+                new StationTxCommandTransactionHeartbeatRequest(
+                    connection.ClientId,
+                    BrowserTxTransactionIngress.HeartbeatTimeout),
+                cancellationToken);
+        return new BrowserTxHeartbeatResult(
+            heartbeat.Success,
+            heartbeat.Code,
+            heartbeat.Success ? null : heartbeat.Message,
+            request.Sequence,
+            DateTimeOffset.UtcNow,
+            GetBrowserTxCapability(connection, authenticated));
+    }
+
+    private void RecordBrowserTxResult(
+        RadioClientConnection connection,
+        BrowserTxIntentResult result) =>
+        m_txLifecycle?.ObserveBrowserTxIntent(
+            connection.ClientId,
+            result.Sequence,
+            result.Action,
+            result.Outcome,
+            result.Error ?? result.Outcome,
+            result.ObservedAt);
 
     private void HandleTxLeaseChange(TxLeaseChange change)
     {

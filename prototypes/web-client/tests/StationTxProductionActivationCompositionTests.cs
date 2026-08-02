@@ -32,6 +32,7 @@ public sealed class StationTxProductionActivationCompositionTests
         StationTxProductionActivationComposition composition = new(
             () => configuration,
             () => planner.Snapshot,
+            () => Bind(planner.Snapshot, eligible: false),
             () => Inputs(allReady: false));
 
         StationTxProductionActivationCompositionDiagnostics snapshot =
@@ -40,11 +41,13 @@ public sealed class StationTxProductionActivationCompositionTests
         Assert.True(snapshot.Registered);
         Assert.True(snapshot.ConfigurationInterlockAttached);
         Assert.True(snapshot.ActivationPlanAttached);
+        Assert.True(snapshot.ActivationBindingAttached);
         Assert.True(snapshot.ReadinessEvaluationAttached);
         Assert.False(snapshot.ActivationRequested);
         Assert.True(snapshot.ConfigurationValid);
         Assert.False(snapshot.ActivationPlanAvailable);
         Assert.False(snapshot.ActivationPlanApplied);
+        Assert.False(snapshot.ActivationBindingApplied);
         Assert.False(snapshot.ActivationAvailable);
         Assert.Equal("activation-not-requested", snapshot.Reason);
         Assert.False(snapshot.Readiness.Ready);
@@ -52,7 +55,7 @@ public sealed class StationTxProductionActivationCompositionTests
     }
 
     [Fact]
-    public void CompleteInfrastructureStillRequiresASeparatelyAppliedPlan()
+    public void CompleteInfrastructureAndAppliedBindingReportAvailability()
     {
         StationTxProductionActivationConfigurationDiagnostics configuration =
             Configuration(requested: true, configured: true);
@@ -60,20 +63,22 @@ public sealed class StationTxProductionActivationCompositionTests
         StationTxProductionActivationComposition composition = new(
             () => configuration,
             () => planner.Snapshot,
+            () => Bind(planner.Snapshot, eligible: true),
             () => Inputs(allReady: true));
 
         StationTxProductionActivationCompositionDiagnostics snapshot =
             composition.Snapshot;
 
         Assert.True(snapshot.ActivationPlanAvailable);
-        Assert.False(snapshot.ActivationPlanApplied);
-        Assert.False(snapshot.ActivationAvailable);
-        Assert.Equal("activation-plan-ready-not-applied", snapshot.Reason);
+        Assert.True(snapshot.ActivationPlanApplied);
+        Assert.True(snapshot.ActivationBindingApplied);
+        Assert.True(snapshot.ActivationAvailable);
+        Assert.Equal("ready", snapshot.Reason);
         Assert.True(snapshot.Readiness.Ready);
     }
 
     [Fact]
-    public void SnapshotReevaluatesCurrentInfrastructureWithoutApplyingThePlan()
+    public void SnapshotReevaluatesCurrentInfrastructureAfterBinding()
     {
         bool ready = false;
         StationTxProductionActivationConfigurationDiagnostics configuration =
@@ -82,6 +87,7 @@ public sealed class StationTxProductionActivationCompositionTests
         StationTxProductionActivationComposition composition = new(
             () => configuration,
             () => planner.Snapshot,
+            () => Bind(planner.Snapshot, eligible: true),
             () => Inputs(ready));
 
         Assert.False(composition.Snapshot.Readiness.Ready);
@@ -90,10 +96,8 @@ public sealed class StationTxProductionActivationCompositionTests
         ready = true;
 
         Assert.True(composition.Snapshot.Readiness.Ready);
-        Assert.False(composition.Snapshot.ActivationAvailable);
-        Assert.Equal(
-            "activation-plan-ready-not-applied",
-            composition.Snapshot.Reason);
+        Assert.True(composition.Snapshot.ActivationAvailable);
+        Assert.Equal("ready", composition.Snapshot.Reason);
     }
 
     [Fact]
@@ -106,6 +110,7 @@ public sealed class StationTxProductionActivationCompositionTests
         StationTxProductionActivationComposition composition = new(
             () => configuration,
             () => dormantPlanner.Snapshot,
+            () => Bind(dormantPlanner.Snapshot, eligible: false),
             () => Inputs(allReady: true));
 
         StationTxProductionActivationCompositionDiagnostics snapshot =
@@ -113,6 +118,7 @@ public sealed class StationTxProductionActivationCompositionTests
 
         Assert.False(snapshot.ActivationPlanAvailable);
         Assert.False(snapshot.ActivationPlanApplied);
+        Assert.False(snapshot.ActivationBindingApplied);
         Assert.False(snapshot.ActivationAvailable);
         Assert.Equal("activation-plan-configuration-mismatch", snapshot.Reason);
     }
@@ -138,11 +144,13 @@ public sealed class StationTxProductionActivationCompositionTests
         Assert.True(activation.Registered);
         Assert.True(activation.ConfigurationInterlockAttached);
         Assert.True(activation.ActivationPlanAttached);
+        Assert.True(activation.ActivationBindingAttached);
         Assert.True(activation.ReadinessEvaluationAttached);
         Assert.False(activation.ActivationRequested);
         Assert.True(activation.ConfigurationValid);
         Assert.False(activation.ActivationPlanAvailable);
         Assert.False(activation.ActivationPlanApplied);
+        Assert.False(activation.ActivationBindingApplied);
         Assert.False(activation.ActivationAvailable);
         Assert.Equal("activation-not-requested", activation.Reason);
         StationTxProductionReadinessDiagnostics nextReadiness =
@@ -154,6 +162,15 @@ public sealed class StationTxProductionActivationCompositionTests
         Assert.False(
             lifecycle.Snapshot.BrowserTxTransactionIngress.ExecutionEnabled);
     }
+
+    private static StationTxProductionActivationBindingDiagnostics Bind(
+        StationTxProductionActivationPlanDiagnostics plan,
+        bool eligible) =>
+        StationTxProductionActivationBinder.Bind(
+            plan,
+            localFlexSessionEligible: eligible,
+            allowTransmitConfigured: eligible,
+            browserTxLeaseConfigured: eligible);
 
     private static StationTxProductionActivationConfigurationDiagnostics
         Configuration(bool requested, bool configured) =>

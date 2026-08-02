@@ -12,7 +12,7 @@ public sealed class RadioBrowserTxProtocolTests
     {
         BrowserTxRequest request = Parse(
             """
-            {"id":1,"cmd":"tx.acquire","protocolVersion":1,"sequence":1,"seconds":10}
+            {"id":1,"cmd":"tx.acquire","protocolVersion":2,"sequence":1,"seconds":10}
             """);
 
         Assert.Equal(1, request.RequestId);
@@ -24,14 +24,14 @@ public sealed class RadioBrowserTxProtocolTests
     }
 
     [Theory]
-    [InlineData("""{"id":1,"cmd":"tx.acquire","protocolVersion":1,"sequence":1}""")]
-    [InlineData("""{"id":1,"cmd":"tx.acquire","protocolVersion":1,"sequence":1,"seconds":0}""")]
-    [InlineData("""{"id":1,"cmd":"tx.acquire","protocolVersion":1,"sequence":1,"seconds":16}""")]
-    [InlineData("""{"id":1,"cmd":"tx.acquire","protocolVersion":2,"sequence":1,"seconds":10}""")]
-    [InlineData("""{"id":0,"cmd":"tx.acquire","protocolVersion":1,"sequence":1,"seconds":10}""")]
-    [InlineData("""{"id":9007199254740992,"cmd":"tx.acquire","protocolVersion":1,"sequence":1,"seconds":10}""")]
-    [InlineData("""{"id":1,"cmd":"tx.acquire","protocolVersion":1,"sequence":0,"seconds":10}""")]
-    [InlineData("""{"id":1,"cmd":"tx.acquire","protocolVersion":1,"sequence":9007199254740992,"seconds":10}""")]
+    [InlineData("""{"id":1,"cmd":"tx.acquire","protocolVersion":2,"sequence":1}""")]
+    [InlineData("""{"id":1,"cmd":"tx.acquire","protocolVersion":2,"sequence":1,"seconds":0}""")]
+    [InlineData("""{"id":1,"cmd":"tx.acquire","protocolVersion":2,"sequence":1,"seconds":16}""")]
+    [InlineData("""{"id":1,"cmd":"tx.acquire","protocolVersion":1,"sequence":1,"seconds":10}""")]
+    [InlineData("""{"id":0,"cmd":"tx.acquire","protocolVersion":2,"sequence":1,"seconds":10}""")]
+    [InlineData("""{"id":9007199254740992,"cmd":"tx.acquire","protocolVersion":2,"sequence":1,"seconds":10}""")]
+    [InlineData("""{"id":1,"cmd":"tx.acquire","protocolVersion":2,"sequence":0,"seconds":10}""")]
+    [InlineData("""{"id":1,"cmd":"tx.acquire","protocolVersion":2,"sequence":9007199254740992,"seconds":10}""")]
     public void AcquireRejectsMissingDefaultedOrOutOfRangeFields(string json)
     {
         Assert.False(TryParse(json, out _, out _));
@@ -42,7 +42,7 @@ public sealed class RadioBrowserTxProtocolTests
     {
         Assert.False(TryParse(
             """
-            {"id":1,"cmd":"tx.acquire","protocolVersion":1,"sequence":1,"seconds":10,"extra":true}
+            {"id":1,"cmd":"tx.acquire","protocolVersion":2,"sequence":1,"seconds":10,"extra":true}
             """,
             out _,
             out string unknownError));
@@ -50,7 +50,7 @@ public sealed class RadioBrowserTxProtocolTests
 
         Assert.False(TryParse(
             """
-            {"id":1,"cmd":"tx.acquire","protocolVersion":1,"sequence":1,"sequence":2,"seconds":10}
+            {"id":1,"cmd":"tx.acquire","protocolVersion":2,"sequence":1,"sequence":2,"seconds":10}
             """,
             out _,
             out string duplicateError));
@@ -58,22 +58,38 @@ public sealed class RadioBrowserTxProtocolTests
     }
 
     [Fact]
-    public void RenewAndReleaseRequireTheExactOpaqueLeaseId()
+    public void RenewReleaseAndHeartbeatRequireTheExactOpaqueLeaseId()
     {
         BrowserTxRequest renew = Parse(
-            $$"""{"id":2,"cmd":"tx.renew","protocolVersion":1,"sequence":2,"seconds":10,"leaseId":"{{LeaseId}}"}""");
+            $$"""{"id":2,"cmd":"tx.renew","protocolVersion":2,"sequence":2,"seconds":10,"leaseId":"{{LeaseId}}"}""");
         BrowserTxRequest release = Parse(
-            $$"""{"id":3,"cmd":"tx.release","protocolVersion":1,"sequence":3,"leaseId":"{{LeaseId}}"}""");
+            $$"""{"id":3,"cmd":"tx.release","protocolVersion":2,"sequence":3,"leaseId":"{{LeaseId}}"}""");
+        BrowserTxRequest heartbeat = Parse(
+            $$"""{"id":4,"cmd":"tx.heartbeat","protocolVersion":2,"sequence":4,"leaseId":"{{LeaseId}}"}""");
 
         Assert.Equal(BrowserTxRequestKind.Renew, renew.Kind);
         Assert.Equal(LeaseId, renew.LeaseId);
         Assert.Equal(BrowserTxRequestKind.Release, release.Kind);
         Assert.Equal(LeaseId, release.LeaseId);
+        Assert.Equal(BrowserTxRequestKind.Heartbeat, heartbeat.Kind);
+        Assert.Equal(LeaseId, heartbeat.LeaseId);
+        Assert.Null(heartbeat.Intent);
 
         Assert.False(TryParse(
-            $$"""{"id":4,"cmd":"tx.release","protocolVersion":1,"sequence":4,"leaseId":"{{LeaseId.ToUpperInvariant()}}"}""",
+            $$"""{"id":5,"cmd":"tx.heartbeat","protocolVersion":2,"sequence":5,"leaseId":"{{LeaseId.ToUpperInvariant()}}"}""",
             out _,
-            out _));
+            out string error));
+        Assert.Equal("invalid-tx-heartbeat", error);
+    }
+
+    [Fact]
+    public void HeartbeatRejectsAdditionalProperties()
+    {
+        Assert.False(TryParse(
+            $$"""{"id":4,"cmd":"tx.heartbeat","protocolVersion":2,"sequence":4,"leaseId":"{{LeaseId}}","enabled":true}""",
+            out _,
+            out string error));
+        Assert.Equal("invalid-tx-heartbeat", error);
     }
 
     [Theory]
@@ -201,7 +217,7 @@ public sealed class RadioBrowserTxProtocolTests
     }
 
     private static string IntentJson(string action, string values) =>
-        $$"""{"id":4,"cmd":"tx.intent","protocolVersion":1,"sequence":4,"leaseId":"{{LeaseId}}","intentId":"intent-000000000000000000000000000001","action":"{{action}}","values":{{values}}}""";
+        $$"""{"id":4,"cmd":"tx.intent","protocolVersion":2,"sequence":4,"leaseId":"{{LeaseId}}","intentId":"intent-000000000000000000000000000001","action":"{{action}}","values":{{values}}}""";
 
     private static RadioClientConnection NewConnection() =>
         new(

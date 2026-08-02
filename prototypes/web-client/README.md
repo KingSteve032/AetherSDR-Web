@@ -48,8 +48,9 @@ single-holder TX lease policy without changing the native radio engine.
   only a typed lifecycle boundary that delegates key/unkey, heartbeat, and abort
   through that transaction composition. Phase 2R adds a typed browser-intent
   ingress adapter that accepts only an exact server-validation result paired
-  with a Boolean `mox.set` or `ptt.set` request, but production constructs it
-  execution-disabled and exposes no caller. Phase 2T registers the reviewed
+  with a Boolean `mox.set` or `ptt.set` request. Phase 2Z conditionally attaches
+  the WebSocket caller and enables that ingress only through one complete
+  reviewed per-session activation binding. Phase 2T registers the reviewed
   primary FLEX key/unkey transport behind disabled configuration and an exact
   radio allowlist. Phase 2U adds separate in-process emergency and independent-
   watchdog unkey-only transports behind their own disabled configuration and
@@ -58,9 +59,11 @@ single-holder TX lease policy without changing the native radio engine.
   switch. Only the lifecycle-owned safety transaction participant can reach it;
   the browser and ordinary registration heartbeats cannot arm or renew it. The
   gate remains transmit-disabled and both supervisors remain Disarmed by
-  default. Verification, signing, and submission all
-  default disabled; no browser command ingress, arming capability, reachable
-  keying command, or transmit-audio path is registered.
+  default. Verification, signing, submission, activation, transports, and
+  watchdog arming all default disabled; the default deployment therefore has no
+  reachable keying command or transmit-audio path. An eligible local session may
+  receive browser MOX/PTT only after the complete Phase 2Z activation binding and
+  dynamic station authority are both proven.
 - The binary spectrum framing is experimental v0 and is not the future
   AetherD v1 wire format.
 - Production radio integration waits for AetherD RFC steps 3-5: versioned
@@ -541,10 +544,12 @@ validation older than two seconds or more than one second in the future; accepts
 only Boolean `mox.set`/`ptt.set`; rejects TUNE, microphone, CW, missing values,
 mismatches, and unavailable key/unkey transaction capability; and supplies the
 fixed server-owned five-second heartbeat bound. It forwards at most once and preserves
-accepted, rejected, and unknown transaction outcomes without retry. Production
-sets execution disabled, so a valid request records `ingress-disabled` with zero
-transaction forwards. `RadioWebSocketEndpoint` remains validation-only and never
-receives this adapter or its request/result types.
+accepted, rejected, and unknown transaction outcomes without command retry.
+Production defaults execution disabled, so an unbound valid request records
+`ingress-disabled` with zero transaction forwards. Phase 2Z lets the WebSocket
+supply the typed request only after the same coordinator has produced an exact
+current validation result and the complete activation binding is applied; the
+endpoint never receives radio authority fields or direct gate/transport types.
 
 Phase 2S adds one `StationTxProductionReadinessPolicy` shared by health and every
 session lifecycle. It evaluates the existing transmit, browser-lease, command
@@ -555,8 +560,10 @@ the first blocking reason, and the complete deduplicated missing-prerequisite
 list. It never owns authority or calls a radio. The lifecycle now exposes one
 internal typed operation that accepts only `BrowserTxTransactionIngressRequest`
 and delegates to the Phase 2R ingress; no external production type receives that
-operation or its request/result types. Production ingress execution remains
-false, the WebSocket remains validation-only, and readiness remains blocked.
+operation or its request/result types. At the Phase 2S checkpoint, production
+ingress execution remained false, the WebSocket remained validation-only, and
+readiness remained blocked. Phase 2Z later attaches the conditional caller
+without exposing the internal transaction types.
 
 Phase 2T adds `StationTxProductionCommandTransport` to normal local FLEX
 sessions. Its single owned `StationTxCommandTransport` configuration defaults
@@ -615,21 +622,28 @@ Phase 2Y adds `StationTxProductionActivationPlanner`, a snapshot-only bridge
 from that validated request to one immutable four-switch plan: command boundary,
 command-gate transmit, browser transaction ingress execution, and browser
 keying-capability projection. A valid request makes the complete plan available
-as one unit; an absent or invalid request keeps every planned switch false. The
-plan is deliberately reported as unapplied, is passed to no executable
-component, has no apply or operation method, and therefore cannot change any
-hardcoded production disable point. Activation remains unavailable even when a
-unit test supplies otherwise-complete dynamic readiness.
+as one unit; an absent or invalid request keeps every planned switch false.
+
+Phase 2Z adds a per-session `StationTxProductionActivationBinder`. Only a local
+`FlexRx` session with the reviewed master request, `Radio:AllowTransmit`, and
+`Radio:BrowserTxLeaseEnabled` may apply all four switches together. Remote,
+simulation, absent, invalid, or partially enabled sessions bind all four off.
+The WebSocket then delegates only strict `mox.set` and `ptt.set` Boolean intents
+through the existing transaction ingress, signed station command boundary,
+command gate, primary transport, safety arm, and independent watchdog. No direct
+browser-to-radio command path is added.
 
 The normal web artifact now contains exactly one reviewed `xmit 1` and one
 runtime-deduplicated reviewed `xmit 0`, plus type markers for both the primary
 and emergency transports that reference that unkey command. The independent
 watchdog artifact contains exactly one reviewed `xmit 0` and no `xmit 1`.
 Production artifact inspection requires that exact binary shape while continuing
-to reject HIL markers, CWX send, TX-audio creation, and process-child surfaces. All three transport settings default disabled, the Phase 2T gate
-remains constructed with `allowTransmit:false`, browser ingress remains
-execution-disabled and callerless, and both supervisors remain Disarmed, so the
-deployed default is still RX-only.
+to reject HIL markers, CWX send, TX-audio creation, and process-child surfaces.
+All activation and transport settings still default disabled. In that default,
+the binder constructs the command boundary, gate, browser ingress, and browser
+keying capability off, both supervisors remain Disarmed, and the deployed service
+is RX-only. Only one complete reviewed activation configuration can bind all
+four runtime switches on for an eligible local session.
 
 Environment-variable form remains disabled by default:
 
@@ -649,33 +663,45 @@ IndependentTxWatchdog__RadioCommandTimeoutMilliseconds=2000
 ```
 
 The allowlist examples are inert while their corresponding enable flags are
-false. Enabling a transport is a separate reviewed deployment action and does
-not by itself arm either supervisor, enable the command gate, or add browser
-execution. Watchdog arming additionally requires its separate reviewed switch
-and the complete lifecycle-owned transaction authority.
+false. A production activation additionally requires reviewed local FLEX mode,
+`Radio__AllowTransmit=true`, `Radio__BrowserTxLeaseEnabled=true`, command trust
+verification and at least one public key, private signing configuration,
+envelope submission, allowlisted primary and emergency transports, supervised
+watchdog unkey transport, and watchdog arming. Startup rejects the master
+activation request unless that entire static set is present. Runtime readiness
+still requires the exact connected radio/session/browser/engine/FLEX-handle
+identity and independent watchdog process before the browser receives keying
+capability.
 
-`Radio:BrowserTxLeaseEnabled` remains false by default. When deliberately enabled
-for validation, the radio page reveals a **TX AUTHORITY** panel that can acquire,
-automatically renew, and release the single physical-radio lease. Its messages
-use protocol version 1, JavaScript-safe request and monotonic sequence numbers
-bound to the current WebSocket, and an opaque lease secret returned only to the
-holder. The browser bounds unanswered TX requests to 16. Disconnect or reconnect
-clears that secret locally; rejected or unconfirmed renewal and unsupported
-lease-event versions also discard it. The server refuses renewal after idle
-occupancy or exact supervised lifecycle authority is lost and releases that
-exact lease as `renewal-authority-lost`. Server expiry and disconnect release
-remain authoritative.
+`Radio:BrowserTxLeaseEnabled` remains false by default. When deliberately enabled,
+the radio page reveals a **TX AUTHORITY** panel that can acquire, automatically
+renew, and release the single physical-radio lease. Browser TX protocol version
+2 uses JavaScript-safe request and monotonic sequence numbers bound to the
+current WebSocket, plus an opaque lease secret returned only to the holder. The
+browser bounds unanswered TX requests to 16. Disconnect, reconnect, rejected or
+unconfirmed renewal, unsupported protocol, or active-heartbeat failure discards
+local authority. Renewal is allowed while idle or while fresh radio state proves
+the same protected AetherSDR handle is the sole active owner; every other
+non-idle, external, stale, or ambiguous state revokes the lease.
 
-The same panel can submit validation-only `mox.set`, `ptt.set`, `tune.set`,
-`microphone.set`, and `cw.send` intents. A valid result says
-`transport-unavailable`: the server proved the exact authenticated connection,
-role, lease, idle occupancy, lifecycle/FLEX identity, and registered Disarmed
-watchdog epoch, then stopped without invoking a command gate or radio transport.
-The actual MOX, TUNE, and CWX controls remain hidden and disabled because the
-server reports their executable capabilities false. PC MIC remains a local input
-meter and no samples are transmitted. Admin shows the lease holder name, expiry
-or revocation reason, and latest validation/denial outcome without exposing the
-opaque lease ID.
+With the Phase 2Z binding applied and dynamic readiness complete, deliberate
+`mox.set` and `ptt.set` requests can key and unkey through the station-local
+transaction. After radio-confirmed key, the browser sends `tx.heartbeat` every
+two seconds; each accepted heartbeat renews the purpose-bound safety transaction
+for no more than five seconds. Ordinary WebSocket pings, reconnects, timers,
+status messages, or lease renewal are not TX heartbeats. Missing authority or a
+heartbeat failure stops the browser loop and leaves the independent watchdog to
+perform an ownership-safe unkey. Only the exact protected AetherSDR owner may
+unkey an active transmission.
+
+When live keying capability is present, the older **VALIDATE ONLY** selector is
+disabled so it cannot be mistaken for a dry run while `tx.intent` is executable;
+only the deliberate MOX/PTT control remains available. `tune.set`,
+`microphone.set`, and `cw.send` remain validation-only in Phase 2Z; TUNE,
+microphone transmit, and CW controls stay unavailable. PC MIC remains a local
+input meter and no samples are transmitted. Admin shows the lease holder,
+activation binding, transaction/heartbeat state, expiry or revocation reason,
+and latest outcome without exposing the opaque lease ID.
 
 The user service needs lingering to start at boot without an interactive SSH
 login:

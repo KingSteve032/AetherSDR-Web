@@ -48,7 +48,7 @@ import {
 import {
   BrowserTxController,
   txControlAvailability
-} from "./tx-controls.js?v=tx-intent-validation-1";
+} from "./tx-controls.js?v=production-tx-activation-binding-1";
 
 const controlRole = "Aether.Control";
 const adminRole = "Aether.Admin";
@@ -1658,20 +1658,35 @@ function renderTxControls() {
     !requestPending;
   elements.txIntentAction.disabled = !validationEnabled;
   elements.txIntentValidate.disabled = !validationEnabled;
+  const selectedAction = elements.txIntentAction.value.split(":", 1)[0];
+  const liveIntentSelected =
+    capability.keyingAvailable &&
+    (selectedAction === "mox.set" || selectedAction === "ptt.set");
+  elements.txIntentValidate.textContent = liveIntentSelected
+    ? "SEND INTENT"
+    : "VALIDATE ONLY";
   const cwSelected =
     elements.txIntentAction.value === "cw.send:text";
   elements.txIntentCwText.hidden = !cwSelected;
   elements.txIntentCwText.disabled = !validationEnabled || !cwSelected;
 
   elements.txMox.hidden = !availability.enableMox;
-  elements.txMox.disabled = !availability.enableMox;
+  elements.txMox.disabled = !availability.enableMox || requestPending;
+  elements.txMox.classList.toggle("active", snapshot.transmitting === true);
+  elements.txMox.setAttribute(
+    "aria-pressed",
+    String(snapshot.transmitting === true));
   elements.txTune.hidden = !availability.enableTune;
   elements.txTune.disabled = !availability.enableTune;
   elements.txCwx.hidden = !availability.enableCw;
   elements.txCwx.disabled = !availability.enableCw;
-  elements.txLockNote.textContent = validationEnabled
-    ? "Exact deliberate intent may be validated. No radio command transport is connected."
-    : "No browser transmit path is connected.";
+  elements.txLockNote.textContent = availability.enableMox
+    ? snapshot.transmitting
+      ? "Protected browser TX is active. Heartbeat and deliberate unkey remain required."
+      : "Exact deliberate MOX/PTT intent can reach the station-local TX gate."
+    : validationEnabled
+      ? "Exact deliberate intent may be validated. Production activation is not available."
+      : "No browser transmit path is connected.";
 }
 
 function showTxFeedback(message) {
@@ -1681,8 +1696,9 @@ function showTxFeedback(message) {
   }
 
   if (result.kind === "acquire" && message.ok === true) {
-    showToast(
-      "TX ownership lease acquired. Radio command transport remains unavailable.");
+    showToast(message.capability?.keyingAvailable
+      ? "TX ownership lease acquired. Deliberate MOX/PTT is ready."
+      : "TX ownership lease acquired. Production activation remains unavailable.");
     return;
   }
   if (result.kind === "renew" && message.ok === true) {
@@ -1690,6 +1706,17 @@ function showTxFeedback(message) {
   }
   if (result.kind === "release" && message.ok === true) {
     showToast("TX ownership lease released.");
+    return;
+  }
+  if (result.kind === "heartbeat") {
+    return;
+  }
+  if (result.kind === "intent" && message.ok === true) {
+    showToast(result.action === "mox.set" || result.action === "ptt.set"
+      ? state.tx?.transmitting
+        ? "Browser transmit keyed through the protected station gate."
+        : "Browser transmit unkeyed and returned to radio-confirmed idle."
+      : "TX intent accepted.");
     return;
   }
   if (result.validated && result.outcome === "transport-unavailable") {
