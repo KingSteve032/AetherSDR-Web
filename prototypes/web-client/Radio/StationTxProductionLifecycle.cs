@@ -330,6 +330,12 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 m_timeProvider,
                 new StationTxCommandGateRadioConfirmation(
                     m_commandGate,
+                    m_timeProvider),
+                () => m_independentWatchdog.Snapshot,
+                new StationTxCommandIdleReconciliationParticipant(
+                    m_commandGate,
+                    m_supervisor,
+                    m_occupancy,
                     m_timeProvider));
         m_browserTxTransactionIngress = new BrowserTxTransactionIngress(
             executionEnabled:
@@ -1030,6 +1036,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     {
         try
         {
+            await SynchronizeIndependentWatchdogAsync();
             string? releaseReason = null;
             lock (m_stateGate)
             {
@@ -1087,6 +1094,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     {
         StationTxIndependentWatchdogDiagnostics initial =
             await m_independentWatchdog.RefreshAsync();
+        await ReconcileAcceptedIndependentWatchdogUnkeyAsync(initial);
         if (!initial.SupervisionEnabled)
         {
             return;
@@ -1217,6 +1225,76 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             RecordLocked("independent-watchdog-heartbeat");
         }
     }
+
+    private async Task ReconcileAcceptedIndependentWatchdogUnkeyAsync(
+        StationTxIndependentWatchdogDiagnostics watchdog)
+    {
+        if (!watchdog.SupervisionEnabled ||
+            watchdog.Armed ||
+            !string.Equals(
+                watchdog.State,
+                "Disarmed",
+                StringComparison.Ordinal) ||
+            watchdog.UnkeyAcceptedCount <= 0 ||
+            !string.Equals(
+                watchdog.LastUnkeyOutcome,
+                "accepted",
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                watchdog.LastUnkeyReason,
+                "deadline-unkey-accepted",
+                StringComparison.Ordinal) ||
+            !m_stationCommandTransactionComposition.Snapshot.Active)
+        {
+            return;
+        }
+
+        WatchdogIdentity? identity;
+        lock (m_stateGate)
+        {
+            identity = m_independentWatchdogIdentity;
+        }
+        if (identity is null)
+        {
+            return;
+        }
+
+        DateTimeOffset now = m_timeProvider.GetUtcNow();
+        RadioTxOccupancySnapshot occupancy =
+            m_occupancy.GetSnapshot(m_radioId);
+        if (!IsFreshIdleOccupancy(occupancy, now))
+        {
+            lock (m_stateGate)
+            {
+                RecordLocked(
+                    "independent-watchdog-unkey-awaiting-radio-idle");
+            }
+            return;
+        }
+
+        bool reconciled =
+            await m_stationCommandTransactionComposition
+                .ReconcileRadioConfirmedIdleAsync(
+                    new StationTxCommandTransactionIdleReconciliation(
+                        "independent_watchdog_unkey_reconciled",
+                        identity,
+                        watchdog,
+                        occupancy));
+        lock (m_stateGate)
+        {
+            RecordLocked(reconciled
+                ? "independent-watchdog-unkey-reconciled"
+                : "independent-watchdog-transaction-reconciliation-required");
+        }
+    }
+
+    private static bool IsFreshIdleOccupancy(
+        RadioTxOccupancySnapshot occupancy,
+        DateTimeOffset now) =>
+        occupancy.State == RadioTxOccupancyState.Idle &&
+        occupancy.ObservedAt is not null &&
+        occupancy.FreshUntil is not null &&
+        occupancy.FreshUntil > now;
 
     private static bool IndependentAuthorityAccepted(
         StationTxIndependentWatchdogDiagnostics snapshot) =>
