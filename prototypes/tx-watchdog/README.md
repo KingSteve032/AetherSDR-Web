@@ -1,52 +1,55 @@
 # Independent TX Watchdog
 
-`AetherSDR.TxWatchdog` is the independent process boundary for the future
-station-local transmit safety supervisor. Phase 2D introduced the standalone
-host; Phase 2E supervises one host per active web radio session. Phase 2U adds a
-disabled-by-default, unkey-only FLEX transport primitive. It has no key method,
-no arbitrary-command method, no arming operation, no lease operation, and no
-persistence.
+`AetherSDR.TxWatchdog` is the independent process boundary for the station-local
+transmit safety supervisor. Phase 2D introduced the standalone host; Phase 2E
+supervises one host per active web radio session; Phase 2U added a reviewed,
+disabled-by-default, unkey-only FLEX transport; and Phase 2V adds a separately
+disabled arm/heartbeat/disarm state machine.
 
-The executable currently proves only these boundaries:
+The executable has no key method and no arbitrary-command method. Its only radio
+command literal is `xmit 0`.
 
-- it runs as a process separate from the web gateway;
-- it accepts a bounded newline-delimited JSON protocol over standard input and
-  returns one JSON response per line on standard output;
-- it tracks one exact radio/session/browser/gateway/engine/connection/lease/
-  FLEX-handle identity with a strictly increasing observation sequence;
-- it starts empty and `Disarmed` on every process start;
-- disconnect requires an exact re-registration before another heartbeat;
-- malformed, oversized, unknown, stale, and mismatched messages are rejected;
-- process restart never restores or infers prior identity or authority;
-- the optional radio adapter can encode only `xmit 0`, and the protocol has no
-  request that can invoke it in Phase 2U.
+## Safety boundary
 
-Phase 2U still does **not** move emergency reconciliation or radio authority into
-the process. The production gateway launches the host as a private supervised
-child inside the same least-privileged service cgroup and communicates only
-through redirected standard input/output. An exact local `FlexRx` endpoint is
-passed only when the watchdog transport setting is enabled and the physical
-radio is allowlisted. Even then, the host remains Disarmed and the protocol has
-no arm or unkey request. The lease ID is only an exact identity binding; the host
-has no lease acquire, renew, release, or restore operation.
+The process:
 
-Complete authority registers one process epoch. Exact observations heartbeat
-that epoch. Authority loss or disconnect replaces it with a new empty Disarmed
-process. Child exit, malformed response, timeout, request mismatch, or identity
-mismatch is reported immediately to the in-process lifecycle so only its tracked
-lease is revoked. Restart is asynchronous and never replays the old identity.
-A replacement ready response is diagnostic only.
+- runs separately from the web gateway;
+- accepts bounded newline-delimited JSON over standard input and returns one
+  response per request;
+- tracks one exact radio/session/browser/gateway/engine/connection/lease/FLEX-
+  handle identity with a strictly increasing sequence;
+- starts empty and `Disarmed` on every process start;
+- cannot infer or restore a prior arm after restart;
+- requires separate unkey-transport and arming switches;
+- accepts an arm only after exact authority registration;
+- uses a 250-5000 ms server-owned heartbeat timeout;
+- preserves an active arm across controlling-connection loss until its deadline;
+- performs at most one timeout unkey attempt and never retries automatically;
+- clears an arm only after command acceptance and fresh radio-confirmed idle;
+- enters `ReconciliationRequired` after a known rejection, missing idle
+  confirmation, or another unknown unkey outcome;
+- rejects stale, mismatched, malformed, oversized, or unknown messages.
 
-## Protocol
+Before the TCP adapter sends `xmit 0`, it opens its own FLEX control connection,
+subscribes using the fixed `sub client all` and `sub tx all` commands, and
+requires fresh interlock state naming the exact protected FLEX handle as the
+current TX owner. Idle state completes without sending a command. A different,
+ambiguous, missing, or unconfirmed owner sends no command. After `xmit 0`, both
+the matching command response and a fresh `READY` or `RECEIVE` interlock status
+are required; command acceptance without idle confirmation is an unknown outcome.
 
-Run the local stdio host with the transport disabled:
+The watchdog does not acquire, renew, release, or restore a browser TX lease.
+The lease ID in its identity is only an exact safety binding.
+
+## Configuration
+
+Transport and arming disabled:
 
 ```bash
 AetherSDR.TxWatchdog --stdio
 ```
 
-The reviewed but still callerless unkey adapter can be configured only with the
-strict argument shape below:
+Reviewed unkey transport present but arming disabled:
 
 ```bash
 AetherSDR.TxWatchdog --stdio --unkey-enabled \
@@ -56,30 +59,74 @@ AetherSDR.TxWatchdog --stdio --unkey-enabled \
   --command-timeout-ms 2000
 ```
 
-The host accepts only a unicast IPv4 endpoint, a bounded timeout, and an exact
-radio ID. This configuration exposes no key or general command interface.
+Reviewed unkey transport and arming enabled:
 
-Each request is one JSON line, at most 4096 characters. Protocol version 1
-supports only `status`, `register`, `heartbeat`, and `disconnect`. Registration,
-heartbeat, and disconnect carry the same exact identity and a positive,
-strictly increasing sequence. Status carries no identity or sequence.
+```bash
+AetherSDR.TxWatchdog --stdio --unkey-enabled --arming-enabled \
+  --radio-id REVIEWED-RADIO-ID \
+  --radio-host 192.0.2.10 \
+  --radio-port 4992 \
+  --command-timeout-ms 2000
+```
+
+`--arming-enabled` is invalid without `--unkey-enabled`. The endpoint must be a
+unicast IPv4 FLEX endpoint, the timeout is bounded, and the radio ID is supplied
+only after the gateway's exact allowlist and local-FLEX checks succeed.
+
+## Protocol
+
+Protocol version 2 supports only:
+
+- `status`
+- `register`
+- `arm`
+- `heartbeat`
+- `disarm`
+- `disconnect`
+
+There is no `key`, `unkey`, arbitrary command, lease, retry, or reset request.
+All authority-bearing requests carry the same exact identity and a positive,
+strictly increasing sequence. `arm` requires
+`heartbeatTimeoutMilliseconds`. An armed `heartbeat` also requires a fresh
+bounded timeout. Ordinary registration heartbeats while Disarmed carry no
+safety timeout and cannot arm or renew the deadline.
 
 Example status request:
 
 ```json
-{"protocolVersion":1,"requestId":"status-1","type":"status"}
+{"protocolVersion":2,"requestId":"status-1","type":"status"}
 ```
 
-A new process responds with a new host instance ID and an empty Disarmed
-snapshot. Gateway response parsing requires the exact state `Disarmed` and a
-matching request ID. A disabled adapter reports
-`unkey-transport-disabled-disarmed` with
-`radioCommandTransportAvailable=false`; a configured adapter reports
-`unkey-transport-ready-disarmed` with that field true. In both cases
-`armingAvailable` is false, registration/connection/lease binding begin false,
-and `lastSequence` is zero. After registration the response may report
-`leaseBound=true`, but it never echoes the opaque lease ID or the full authority
-identity.
+Example arm request shape:
+
+```json
+{
+  "protocolVersion": 2,
+  "requestId": "arm-2",
+  "type": "arm",
+  "sequence": 2,
+  "identity": {
+    "radioId": "REVIEWED-RADIO-ID",
+    "sessionId": "session-id",
+    "browserClientId": "browser-id",
+    "gatewayInstanceId": "gateway-id",
+    "engineInstanceId": "engine-id",
+    "connectionClientId": "connection-id",
+    "leaseId": "opaque-lease-id",
+    "stationClientHandle": 305419896
+  },
+  "heartbeatTimeoutMilliseconds": 1000
+}
+```
+
+Responses expose bounded state only: arm/deadline timestamps, transport and
+arming availability, one-shot unkey counters, and the last bounded outcome and
+reason. The opaque lease and full authority identity are never serialized in a
+snapshot.
+
+With production defaults, a new process reports `Disarmed`,
+`unkey-transport-disabled-disarmed`, transport unavailable, arming unavailable,
+not armed, and zero unkey attempts.
 
 ## Validation
 
@@ -91,9 +138,9 @@ dotnet test \
   -c Release
 ```
 
-The full FlexWeb validation gate also publishes a self-contained Linux artifact,
-scans both the web and watchdog binaries for exact reviewed command counts,
-executes a status request against the published watchdog, and verifies supervised
-Disarmed process counts after deployment. The watchdog artifact must contain
-exactly one `xmit 0`, zero `xmit 1`, and no HIL/CWX/TX-audio surfaces. With
-production browser TX leases disabled, no child may report a registered identity.
+The full FlexWeb validation gate publishes the watchdog and web gateway, inspects
+both managed/native artifact layers, and runs a protocol-v2 status probe. The
+watchdog artifact must contain exactly one `xmit 0`, zero `xmit 1`, and no
+HIL/CWX/TX-audio surfaces. Default deployment health must report arming disabled,
+zero armed processes, zero reconciliation-required processes, zero unkey
+attempts, and no browser caller.

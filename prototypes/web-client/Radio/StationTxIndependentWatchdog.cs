@@ -16,6 +16,7 @@ public sealed class IndependentTxWatchdogSettings
     public int RequestTimeoutMilliseconds { get; set; } = 2000;
     public int RestartDelayMilliseconds { get; set; } = 1000;
     public bool RadioCommandTransportEnabled { get; set; }
+    public bool ArmingEnabled { get; set; }
     public string[] AllowedRadioIds { get; set; } = [];
     public int RadioCommandTimeoutMilliseconds { get; set; } = 2000;
 }
@@ -38,7 +39,18 @@ public sealed record StationTxIndependentWatchdogDiagnostics(
     DateTimeOffset? LastObservedAt,
     string? LastError,
     bool RadioCommandTransportAvailable,
-    bool ArmingAvailable);
+    bool ArmingAvailable,
+    bool Armed = false,
+    DateTimeOffset? ArmedAt = null,
+    DateTimeOffset? LastSafetyHeartbeatAt = null,
+    DateTimeOffset? HeartbeatDeadlineAt = null,
+    int? HeartbeatTimeoutMilliseconds = null,
+    long UnkeyAttemptCount = 0,
+    long UnkeyAcceptedCount = 0,
+    long UnkeyRejectedCount = 0,
+    long UnkeyUnknownCount = 0,
+    string LastUnkeyOutcome = "none",
+    string LastUnkeyReason = "none");
 
 public sealed record StationTxIndependentWatchdogAggregate(
     bool SupervisionRegistered,
@@ -49,7 +61,10 @@ public sealed record StationTxIndependentWatchdogAggregate(
     long RestartCount,
     bool CommandTransportAvailable,
     bool ArmingAvailable,
-    string State);
+    string State,
+    int ArmedProcessCount = 0,
+    int ReconciliationRequiredCount = 0,
+    long UnkeyAttemptCount = 0);
 
 internal enum StationTxIndependentWatchdogEventKind
 {
@@ -76,6 +91,32 @@ internal interface IStationTxIndependentWatchdog : IAsyncDisposable
     Task<StationTxIndependentWatchdogDiagnostics> HeartbeatAsync(
         WatchdogIdentity identity,
         CancellationToken cancellationToken = default);
+
+    Task<StationTxIndependentWatchdogDiagnostics> ArmAsync(
+        WatchdogIdentity identity,
+        TimeSpan heartbeatTimeout,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(Snapshot);
+
+    Task<StationTxIndependentWatchdogDiagnostics> SafetyHeartbeatAsync(
+        WatchdogIdentity identity,
+        TimeSpan heartbeatTimeout,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(Snapshot);
+
+    Task<StationTxIndependentWatchdogDiagnostics> DisarmAsync(
+        WatchdogIdentity identity,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(Snapshot);
+
+    Task<StationTxIndependentWatchdogDiagnostics> DisconnectAsync(
+        WatchdogIdentity identity,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(Snapshot);
+
+    Task<StationTxIndependentWatchdogDiagnostics> RefreshAsync(
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(Snapshot);
 
     Task<StationTxIndependentWatchdogDiagnostics> DisconnectAndResetAsync(
         WatchdogIdentity identity,
@@ -182,13 +223,30 @@ public sealed class StationTxIndependentWatchdogRegistry :
                 snapshots.Sum(snapshot => snapshot.RestartCount),
                 CommandTransportAvailable: snapshots.Any(
                     snapshot => snapshot.RadioCommandTransportAvailable),
-                ArmingAvailable: false,
+                ArmingAvailable: snapshots.Any(
+                    snapshot => snapshot.ArmingAvailable),
                 State: snapshots.Length == 0
                     ? "supervised-empty-disarmed"
-                    : snapshots.All(snapshot => snapshot.ProcessRunning &&
-                        snapshot.IpcConnected)
-                        ? "supervised-disarmed"
-                        : "supervised-degraded-disarmed");
+                    : snapshots.Any(snapshot =>
+                        string.Equals(
+                            snapshot.State,
+                            "ReconciliationRequired",
+                            StringComparison.Ordinal))
+                        ? "supervised-reconciliation-required"
+                        : snapshots.Any(snapshot => snapshot.Armed)
+                            ? "supervised-armed"
+                            : snapshots.All(snapshot => snapshot.ProcessRunning &&
+                                snapshot.IpcConnected)
+                                ? "supervised-disarmed"
+                                : "supervised-degraded-disarmed",
+                ArmedProcessCount: snapshots.Count(snapshot => snapshot.Armed),
+                ReconciliationRequiredCount: snapshots.Count(snapshot =>
+                    string.Equals(
+                        snapshot.State,
+                        "ReconciliationRequired",
+                        StringComparison.Ordinal)),
+                UnkeyAttemptCount: snapshots.Sum(
+                    snapshot => snapshot.UnkeyAttemptCount));
         }
     }
 
@@ -220,7 +278,7 @@ public sealed class StationTxIndependentWatchdogRegistry :
         return client;
     }
 
-    private IndependentTxWatchdogLaunchCommand ResolveCommand(
+    internal IndependentTxWatchdogLaunchCommand ResolveCommand(
         StationTxIndependentWatchdogOwner owner)
     {
         string configured = m_settings.ExecutablePath.Trim();
@@ -249,12 +307,14 @@ public sealed class StationTxIndependentWatchdogRegistry :
             m_settings.AllowedRadioIds.Contains(
                 owner.RadioId,
                 StringComparer.Ordinal);
+        bool enableArming = enableUnkeyTransport && m_settings.ArmingEnabled;
         if (!enableUnkeyTransport)
         {
             return new IndependentTxWatchdogLaunchCommand(
                 executable,
                 ["--stdio"],
-                ExpectRadioCommandTransportAvailable: false);
+                ExpectRadioCommandTransportAvailable: false,
+                ExpectArmingAvailable: false);
         }
         if (!IPAddress.TryParse(owner.RadioHost, out IPAddress? address) ||
             address.AddressFamily !=
@@ -265,22 +325,33 @@ public sealed class StationTxIndependentWatchdogRegistry :
                 "IndependentTxWatchdog radio command transport requires an exact IPv4 FLEX endpoint.");
         }
 
+        List<string> arguments =
+        [
+            "--stdio",
+            "--unkey-enabled"
+        ];
+        if (enableArming)
+        {
+            arguments.Add("--arming-enabled");
+        }
+        arguments.AddRange(
+        [
+            "--radio-id",
+            owner.RadioId,
+            "--radio-host",
+            address.ToString(),
+            "--radio-port",
+            owner.RadioPort.ToString(CultureInfo.InvariantCulture),
+            "--command-timeout-ms",
+            m_settings.RadioCommandTimeoutMilliseconds.ToString(
+                CultureInfo.InvariantCulture)
+        ]);
+
         return new IndependentTxWatchdogLaunchCommand(
             executable,
-            [
-                "--stdio",
-                "--unkey-enabled",
-                "--radio-id",
-                owner.RadioId,
-                "--radio-host",
-                address.ToString(),
-                "--radio-port",
-                owner.RadioPort.ToString(CultureInfo.InvariantCulture),
-                "--command-timeout-ms",
-                m_settings.RadioCommandTimeoutMilliseconds.ToString(
-                    CultureInfo.InvariantCulture)
-            ],
-            ExpectRadioCommandTransportAvailable: true);
+            arguments,
+            ExpectRadioCommandTransportAvailable: true,
+            ExpectArmingAvailable: enableArming);
     }
 
     private static IndependentTxWatchdogSettings Validate(
@@ -331,6 +402,11 @@ public sealed class StationTxIndependentWatchdogRegistry :
             throw new InvalidOperationException(
                 "IndependentTxWatchdog:AllowedRadioIds is required when the radio command transport is enabled.");
         }
+        if (settings.ArmingEnabled && !settings.RadioCommandTransportEnabled)
+        {
+            throw new InvalidOperationException(
+                "IndependentTxWatchdog:ArmingEnabled requires the unkey-only radio command transport.");
+        }
         settings.AllowedRadioIds = [.. normalized];
         return settings;
     }
@@ -339,7 +415,8 @@ public sealed class StationTxIndependentWatchdogRegistry :
 internal sealed record IndependentTxWatchdogLaunchCommand(
     string FileName,
     IReadOnlyList<string> Arguments,
-    bool ExpectRadioCommandTransportAvailable);
+    bool ExpectRadioCommandTransportAvailable,
+    bool ExpectArmingAvailable = false);
 
 internal sealed class StationTxIndependentWatchdogClient :
     IStationTxIndependentWatchdog
@@ -365,6 +442,18 @@ internal sealed class StationTxIndependentWatchdogClient :
     private bool m_connected;
     private bool m_leaseBound;
     private bool m_radioCommandTransportAvailable;
+    private bool m_armingAvailable;
+    private bool m_armed;
+    private DateTimeOffset? m_armedAt;
+    private DateTimeOffset? m_lastSafetyHeartbeatAt;
+    private DateTimeOffset? m_heartbeatDeadlineAt;
+    private int? m_heartbeatTimeoutMilliseconds;
+    private long m_unkeyAttemptCount;
+    private long m_unkeyAcceptedCount;
+    private long m_unkeyRejectedCount;
+    private long m_unkeyUnknownCount;
+    private string m_lastUnkeyOutcome = "none";
+    private string m_lastUnkeyReason = "none";
     private long m_lastSequence;
     private long m_restartCount;
     private string m_state = "Disarmed";
@@ -417,7 +506,18 @@ internal sealed class StationTxIndependentWatchdogClient :
                     m_lastObservedAt,
                     m_lastError,
                     m_radioCommandTransportAvailable,
-                    ArmingAvailable: false);
+                    m_armingAvailable,
+                    m_armed,
+                    m_armedAt,
+                    m_lastSafetyHeartbeatAt,
+                    m_heartbeatDeadlineAt,
+                    m_heartbeatTimeoutMilliseconds,
+                    m_unkeyAttemptCount,
+                    m_unkeyAcceptedCount,
+                    m_unkeyRejectedCount,
+                    m_unkeyUnknownCount,
+                    m_lastUnkeyOutcome,
+                    m_lastUnkeyReason);
             }
         }
     }
@@ -477,6 +577,7 @@ internal sealed class StationTxIndependentWatchdogClient :
         SendAuthorityAsync(
             WatchdogRequestKind.Register,
             identity,
+            heartbeatTimeoutMilliseconds: null,
             resetAfter: false,
             cancellationToken);
 
@@ -486,8 +587,55 @@ internal sealed class StationTxIndependentWatchdogClient :
         SendAuthorityAsync(
             WatchdogRequestKind.Heartbeat,
             identity,
+            heartbeatTimeoutMilliseconds: null,
             resetAfter: false,
             cancellationToken);
+
+    public Task<StationTxIndependentWatchdogDiagnostics> ArmAsync(
+        WatchdogIdentity identity,
+        TimeSpan heartbeatTimeout,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorityAsync(
+            WatchdogRequestKind.Arm,
+            identity,
+            ToHeartbeatTimeoutMilliseconds(heartbeatTimeout),
+            resetAfter: false,
+            cancellationToken);
+
+    public Task<StationTxIndependentWatchdogDiagnostics> SafetyHeartbeatAsync(
+        WatchdogIdentity identity,
+        TimeSpan heartbeatTimeout,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorityAsync(
+            WatchdogRequestKind.Heartbeat,
+            identity,
+            ToHeartbeatTimeoutMilliseconds(heartbeatTimeout),
+            resetAfter: false,
+            cancellationToken);
+
+    public Task<StationTxIndependentWatchdogDiagnostics> DisarmAsync(
+        WatchdogIdentity identity,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorityAsync(
+            WatchdogRequestKind.Disarm,
+            identity,
+            heartbeatTimeoutMilliseconds: null,
+            resetAfter: false,
+            cancellationToken);
+
+    public Task<StationTxIndependentWatchdogDiagnostics> DisconnectAsync(
+        WatchdogIdentity identity,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorityAsync(
+            WatchdogRequestKind.Disconnect,
+            identity,
+            heartbeatTimeoutMilliseconds: null,
+            resetAfter: false,
+            cancellationToken);
+
+    public Task<StationTxIndependentWatchdogDiagnostics> RefreshAsync(
+        CancellationToken cancellationToken = default) =>
+        RefreshSnapshotAsync(cancellationToken);
 
     public Task<StationTxIndependentWatchdogDiagnostics> DisconnectAndResetAsync(
         WatchdogIdentity identity,
@@ -495,6 +643,7 @@ internal sealed class StationTxIndependentWatchdogClient :
         SendAuthorityAsync(
             WatchdogRequestKind.Disconnect,
             identity,
+            heartbeatTimeoutMilliseconds: null,
             resetAfter: true,
             cancellationToken);
 
@@ -502,6 +651,7 @@ internal sealed class StationTxIndependentWatchdogClient :
         SendAuthorityAsync(
         WatchdogRequestKind kind,
         WatchdogIdentity identity,
+        int? heartbeatTimeoutMilliseconds,
         bool resetAfter,
         CancellationToken cancellationToken)
     {
@@ -551,23 +701,26 @@ internal sealed class StationTxIndependentWatchdogClient :
                 $"{kind.ToString().ToLowerInvariant()}-{sequence}",
                 kind,
                 sequence,
-                identity);
+                identity,
+                heartbeatTimeoutMilliseconds);
             WatchdogResponse response = await SendLockedAsync(
                 request,
                 cancellationToken);
             if (!response.Ok)
             {
-                eventToPublish = await FaultProcessLockedAsync(
-                    $"watchdog-rejected-{response.Error ?? "unknown"}",
-                    restart: true,
-                    cancellationToken);
+                ApplySnapshotLocked(response.Snapshot);
+                lock (m_stateGate)
+                {
+                    m_lastError =
+                        $"watchdog-rejected-{response.Error ?? "unknown"}";
+                }
                 return Snapshot;
             }
 
             ApplySnapshotLocked(response.Snapshot);
             m_identity = identity;
             m_lastSequence = response.Snapshot.LastSequence;
-            if (resetAfter)
+            if (resetAfter && !response.Snapshot.Armed)
             {
                 await StopProcessLockedAsync();
                 ClearAuthorityLocked("disconnect-reset-disarmed");
@@ -588,6 +741,10 @@ internal sealed class StationTxIndependentWatchdogClient :
             if (exception is OperationCanceledException &&
                 cancellationToken.IsCancellationRequested)
             {
+                eventToPublish = await FaultProcessLockedAsync(
+                    "watchdog-ipc-cancelled-ambiguous",
+                    restart: true,
+                    CancellationToken.None);
                 throw;
             }
             m_logger.LogError(
@@ -606,6 +763,101 @@ internal sealed class StationTxIndependentWatchdogClient :
             await PublishAsync(eventToPublish);
         }
         return Snapshot;
+    }
+
+    private async Task<StationTxIndependentWatchdogDiagnostics>
+        RefreshSnapshotAsync(CancellationToken cancellationToken)
+    {
+        StationTxIndependentWatchdogEvent? eventToPublish = null;
+        await m_ioGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (!m_settings.Enabled || Volatile.Read(ref m_disposed) != 0)
+            {
+                return Snapshot;
+            }
+            if (m_process is null || m_process.HasExited || !m_ipcConnected)
+            {
+                eventToPublish = await StartProcessLockedAsync(cancellationToken);
+                if (eventToPublish?.Kind ==
+                    StationTxIndependentWatchdogEventKind.Lost)
+                {
+                    return Snapshot;
+                }
+            }
+
+            WatchdogResponse response = await SendLockedAsync(
+                new WatchdogRequest(
+                    WatchdogProtocol.Version,
+                    $"status-{Guid.NewGuid():N}",
+                    WatchdogRequestKind.Status,
+                    Sequence: null,
+                    Identity: null,
+                    HeartbeatTimeoutMilliseconds: null),
+                cancellationToken);
+            if (!response.Ok)
+            {
+                eventToPublish = await FaultProcessLockedAsync(
+                    $"watchdog-status-rejected-{response.Error ?? "unknown"}",
+                    restart: true,
+                    cancellationToken);
+                return Snapshot;
+            }
+
+            string previousState;
+            lock (m_stateGate)
+            {
+                previousState = m_state;
+            }
+            ApplySnapshotLocked(response.Snapshot);
+            if (string.Equals(
+                    response.Snapshot.State,
+                    "ReconciliationRequired",
+                    StringComparison.Ordinal) &&
+                !string.Equals(
+                    previousState,
+                    "ReconciliationRequired",
+                    StringComparison.Ordinal))
+            {
+                eventToPublish = LostEvent(
+                    "watchdog-unkey-reconciliation-required");
+            }
+            return Snapshot;
+        }
+        catch (Exception exception) when (
+            exception is IOException or InvalidOperationException or
+                OperationCanceledException or TimeoutException)
+        {
+            if (exception is OperationCanceledException &&
+                cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            eventToPublish = await FaultProcessLockedAsync(
+                "watchdog-status-fault",
+                restart: true,
+                CancellationToken.None);
+        }
+        finally
+        {
+            m_ioGate.Release();
+            await PublishAsync(eventToPublish);
+        }
+        return Snapshot;
+    }
+
+    private static int ToHeartbeatTimeoutMilliseconds(TimeSpan timeout)
+    {
+        if (timeout < TimeSpan.FromMilliseconds(
+                WatchdogProtocol.MinimumHeartbeatTimeoutMilliseconds) ||
+            timeout > TimeSpan.FromMilliseconds(
+                WatchdogProtocol.MaximumHeartbeatTimeoutMilliseconds))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(timeout),
+                "The independent watchdog heartbeat timeout is outside the bounded safety range.");
+        }
+        return checked((int)timeout.TotalMilliseconds);
     }
 
     private async Task<StationTxIndependentWatchdogEvent?> StartProcessLockedAsync(
@@ -680,7 +932,9 @@ internal sealed class StationTxIndependentWatchdogClient :
             response.Snapshot.State != "Disarmed" ||
             response.Snapshot.RadioCommandTransportAvailable !=
                 m_command.ExpectRadioCommandTransportAvailable ||
-            response.Snapshot.ArmingAvailable ||
+            response.Snapshot.ArmingAvailable !=
+                m_command.ExpectArmingAvailable ||
+            response.Snapshot.Armed ||
             response.Snapshot.Registered ||
             response.Snapshot.Connected ||
             response.Snapshot.LeaseBound ||
@@ -937,6 +1191,12 @@ internal sealed class StationTxIndependentWatchdogClient :
                 m_processRunning = false;
                 m_ipcConnected = false;
                 m_radioCommandTransportAvailable = false;
+                m_armingAvailable = false;
+                m_armed = false;
+                m_armedAt = null;
+                m_lastSafetyHeartbeatAt = null;
+                m_heartbeatDeadlineAt = null;
+                m_heartbeatTimeoutMilliseconds = null;
             }
         }
     }
@@ -954,6 +1214,19 @@ internal sealed class StationTxIndependentWatchdogClient :
             m_leaseBound = snapshot.LeaseBound;
             m_radioCommandTransportAvailable =
                 snapshot.RadioCommandTransportAvailable;
+            m_armingAvailable = snapshot.ArmingAvailable;
+            m_armed = snapshot.Armed;
+            m_armedAt = snapshot.ArmedAt;
+            m_lastSafetyHeartbeatAt = snapshot.LastHeartbeatAt;
+            m_heartbeatDeadlineAt = snapshot.HeartbeatDeadlineAt;
+            m_heartbeatTimeoutMilliseconds =
+                snapshot.HeartbeatTimeoutMilliseconds;
+            m_unkeyAttemptCount = snapshot.UnkeyAttemptCount;
+            m_unkeyAcceptedCount = snapshot.UnkeyAcceptedCount;
+            m_unkeyRejectedCount = snapshot.UnkeyRejectedCount;
+            m_unkeyUnknownCount = snapshot.UnkeyUnknownCount;
+            m_lastUnkeyOutcome = snapshot.LastUnkeyOutcome;
+            m_lastUnkeyReason = snapshot.LastUnkeyReason;
             m_lastSequence = snapshot.LastSequence;
             m_lastObservation = snapshot.LastObservation;
             m_lastObservedAt = snapshot.LastObservedAt ?? DateTimeOffset.UtcNow;

@@ -244,13 +244,20 @@ expected = {
     "txStationCommandArmingAvailable": False,
     "txStationCommandSetTransmitAvailable": False,
     "txIndependentWatchdogHostPackaged": True,
+    "txIndependentWatchdogProtocolVersion": 2,
     "txIndependentWatchdogSupervisionRegistered": True,
+    "txIndependentWatchdogArmedProcessCount": 0,
+    "txIndependentWatchdogReconciliationRequiredCount": 0,
+    "txIndependentWatchdogUnkeyAttemptCount": 0,
     "txIndependentWatchdogUnkeyTransportRegistered": True,
     "txIndependentWatchdogUnkeyTransportConfiguredEnabled": False,
     "txIndependentWatchdogUnkeyTransportAllowedRadioCount": 0,
     "txIndependentWatchdogUnkeyTransportCommandTimeoutMilliseconds": 2000,
     "txIndependentWatchdogUnkeyTransportAvailable": False,
     "txIndependentWatchdogUnkeyTransportWebSocketCallerRegistered": False,
+    "txIndependentWatchdogArmingRegistered": True,
+    "txIndependentWatchdogArmingConfiguredEnabled": False,
+    "txIndependentWatchdogArmingWebSocketCallerRegistered": False,
     "txIndependentWatchdogCommandTransportRegistered": False,
     "txIndependentWatchdogArmingAvailable": False,
     "txCommandTransportRegistered": True,
@@ -301,6 +308,9 @@ count_fields = [
     "txIndependentWatchdogConnectedProcessCount",
     "txIndependentWatchdogRegisteredIdentityCount",
     "txIndependentWatchdogRestartCount",
+    "txIndependentWatchdogArmedProcessCount",
+    "txIndependentWatchdogReconciliationRequiredCount",
+    "txIndependentWatchdogUnkeyAttemptCount",
 ]
 for key in count_fields:
     value = payload.get(key)
@@ -332,7 +342,7 @@ try:
 except (KeyError, json.JSONDecodeError) as exc:
     raise SystemExit(f"{source} did not return valid watchdog JSON: {exc}")
 expected = {
-    "protocolVersion": 1,
+    "protocolVersion": 2,
     "requestId": "artifact-status",
     "ok": True,
 }
@@ -351,6 +361,17 @@ expected_snapshot = {
     "leaseBound": False,
     "lastSequence": 0,
     "lastObservation": "process-started-disarmed",
+    "armed": False,
+    "armedAt": None,
+    "lastHeartbeatAt": None,
+    "heartbeatDeadlineAt": None,
+    "heartbeatTimeoutMilliseconds": None,
+    "unkeyAttemptCount": 0,
+    "unkeyAcceptedCount": 0,
+    "unkeyRejectedCount": 0,
+    "unkeyUnknownCount": 0,
+    "lastUnkeyOutcome": "none",
+    "lastUnkeyReason": "none",
 }
 for key, value in expected_snapshot.items():
     if snapshot.get(key) != value:
@@ -583,7 +604,7 @@ echo "Production web artifact contains one reviewed key string and one deduplica
 
 watchdog_status="$(
   printf '%s\n' \
-    '{"protocolVersion":1,"requestId":"artifact-status","type":"status"}' |
+    '{"protocolVersion":2,"requestId":"artifact-status","type":"status"}' |
     "${watchdog_binary}" --stdio
 )"
 assert_watchdog_disarmed \
@@ -648,7 +669,7 @@ active_release="$(ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
 ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
   'systemctl --user is-active --quiet aethersdr-web.service'
 remote_watchdog_status="$(ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
-  'test -x /home/flexweb/aethersdr/current/watchdog/AetherSDR.TxWatchdog && printf '\''%s\n'\'' '\''{"protocolVersion":1,"requestId":"artifact-status","type":"status"}'\'' | /home/flexweb/aethersdr/current/watchdog/AetherSDR.TxWatchdog --stdio')"
+  'test -x /home/flexweb/aethersdr/current/watchdog/AetherSDR.TxWatchdog && printf '\''%s\n'\'' '\''{"protocolVersion":2,"requestId":"artifact-status","type":"status"}'\'' | /home/flexweb/aethersdr/current/watchdog/AetherSDR.TxWatchdog --stdio')"
 assert_watchdog_disarmed \
   "${remote_watchdog_status}" "deployed independent watchdog artifact"
 

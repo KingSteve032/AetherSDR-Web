@@ -17,6 +17,7 @@ public sealed class WatchdogUnkeyTransportTests
             out string error), error);
         Assert.NotNull(options);
         Assert.False(options.UnkeyTransport.Enabled);
+        Assert.False(options.ArmingEnabled);
         Assert.Null(options.UnkeyTransport.Address);
     }
 
@@ -44,6 +45,37 @@ public sealed class WatchdogUnkeyTransportTests
         Assert.Equal(IPAddress.Parse("192.0.2.15"), options.UnkeyTransport.Address);
         Assert.Equal(4992, options.UnkeyTransport.Port);
         Assert.Equal(TimeSpan.FromMilliseconds(750), options.UnkeyTransport.CommandTimeout);
+        Assert.False(options.ArmingEnabled);
+    }
+
+    [Fact]
+    public void ProgramOptionsRequireAnExplicitArmingFlag()
+    {
+        Assert.True(WatchdogProgramOptions.TryParse(
+            [
+                "--stdio",
+                "--unkey-enabled",
+                "--arming-enabled",
+                "--radio-id",
+                "radio-a",
+                "--radio-host",
+                "192.0.2.15",
+                "--radio-port",
+                "4992",
+                "--command-timeout-ms",
+                "750"
+            ],
+            out WatchdogProgramOptions? options,
+            out string error), error);
+        Assert.NotNull(options);
+        Assert.True(options.UnkeyTransport.Enabled);
+        Assert.True(options.ArmingEnabled);
+
+        Assert.False(WatchdogProgramOptions.TryParse(
+            ["--stdio", "--arming-enabled"],
+            out _,
+            out string missingTransportError));
+        Assert.Equal("invalid-arguments", missingTransportError);
     }
 
     [Theory]
@@ -89,7 +121,7 @@ public sealed class WatchdogUnkeyTransportTests
         WatchdogSnapshot snapshot = engine.Snapshot;
 
         Assert.Equal("Disarmed", snapshot.State);
-        Assert.Equal("unkey-transport-ready-disarmed", snapshot.Reason);
+        Assert.Equal("watchdog-arming-disabled-disarmed", snapshot.Reason);
         Assert.True(snapshot.RadioCommandTransportAvailable);
         Assert.False(snapshot.ArmingAvailable);
         Assert.False(snapshot.Registered);
@@ -99,13 +131,15 @@ public sealed class WatchdogUnkeyTransportTests
     }
 
     [Fact]
-    public void WatchdogProtocolHasNoArmOrUnkeyRequestKind()
+    public void WatchdogProtocolHasArmAndDisarmButNoKeyOrUnkeyRequestKind()
     {
         string[] names = Enum.GetNames<WatchdogRequestKind>();
+        Assert.Contains(nameof(WatchdogRequestKind.Arm), names);
+        Assert.Contains(nameof(WatchdogRequestKind.Disarm), names);
         Assert.DoesNotContain(names, name =>
-            name.Contains("arm", StringComparison.OrdinalIgnoreCase));
+            string.Equals(name, "Key", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(names, name =>
-            name.Contains("unkey", StringComparison.OrdinalIgnoreCase));
+            string.Equals(name, "Unkey", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -201,6 +235,63 @@ public sealed class WatchdogUnkeyTransportTests
         using TcpListener listener = new(IPAddress.Loopback, 0);
         listener.Start();
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        Task<string[]> server = Task.Run(async () =>
+        {
+            using TcpClient accepted = await listener.AcceptTcpClientAsync();
+            await using NetworkStream stream = accepted.GetStream();
+            using StreamReader reader = new(
+                stream,
+                Encoding.ASCII,
+                detectEncodingFromByteOrderMarks: false,
+                leaveOpen: true);
+            await using StreamWriter writer = new(
+                stream,
+                Encoding.ASCII,
+                leaveOpen: true)
+            {
+                AutoFlush = true,
+                NewLine = "\n"
+            };
+            await writer.WriteLineAsync("H12345678");
+            string clientSubscription =
+                await reader.ReadLineAsync() ?? string.Empty;
+            string txSubscription =
+                await reader.ReadLineAsync() ?? string.Empty;
+            await writer.WriteLineAsync("R1|0|");
+            await writer.WriteLineAsync("R2|0|");
+            await writer.WriteLineAsync(
+                "S1|client 0x11111111 connected local_ptt=1");
+            await writer.WriteLineAsync(
+                "S1|interlock state=TRANSMITTING tx_client_handle=0x11111111 source=SW");
+            string command = await reader.ReadLineAsync() ?? string.Empty;
+            await writer.WriteLineAsync("R3|0|");
+            await writer.WriteLineAsync(
+                "S1|interlock state=READY tx_client_handle=0 source=SW");
+            return new[] { clientSubscription, txSubscription, command };
+        });
+        FlexWatchdogUnkeyTransport transport = new(new(
+            Enabled: true,
+            RadioId: "RADIO-A",
+            Address: IPAddress.Loopback,
+            Port: port,
+            CommandTimeout: TimeSpan.FromSeconds(2)));
+
+        WatchdogUnkeyTransportResult result =
+            await transport.RequestUnkeyAsync(0x11111111, CancellationToken.None);
+        string[] commands = await server.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(result.Success);
+        Assert.Equal(
+            ["C1|sub client all", "C2|sub tx all", "C3|xmit 0"],
+            commands);
+    }
+
+    [Fact]
+    public async Task AcceptedCommandWithoutIdleConfirmationIsUnknown()
+    {
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         Task<string> server = Task.Run(async () =>
         {
             using TcpClient accepted = await listener.AcceptTcpClientAsync();
@@ -219,8 +310,16 @@ public sealed class WatchdogUnkeyTransportTests
                 NewLine = "\n"
             };
             await writer.WriteLineAsync("H12345678");
-            string command = await reader.ReadLineAsync() ?? string.Empty;
+            _ = await reader.ReadLineAsync();
+            _ = await reader.ReadLineAsync();
             await writer.WriteLineAsync("R1|0|");
+            await writer.WriteLineAsync("R2|0|");
+            await writer.WriteLineAsync(
+                "S1|client 0x11111111 connected local_ptt=1");
+            await writer.WriteLineAsync(
+                "S1|interlock state=TRANSMITTING tx_client_handle=0x11111111 source=SW");
+            string command = await reader.ReadLineAsync() ?? string.Empty;
+            await writer.WriteLineAsync("R3|0|");
             return command;
         });
         FlexWatchdogUnkeyTransport transport = new(new(
@@ -234,8 +333,110 @@ public sealed class WatchdogUnkeyTransportTests
             await transport.RequestUnkeyAsync(0x11111111, CancellationToken.None);
         string command = await server.WaitAsync(TimeSpan.FromSeconds(2));
 
+        Assert.Equal("C3|xmit 0", command);
+        Assert.Equal(WatchdogUnkeyTransportOutcome.Unknown, result.Outcome);
+        Assert.Equal(1, transport.Snapshot.UnknownCount);
+        Assert.Equal("command-outcome-unknown", transport.Snapshot.LastReason);
+    }
+
+    [Fact]
+    public async Task IdleRadioCompletesWithoutSendingUnkey()
+    {
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        Task<string?[]> server = Task.Run(async () =>
+        {
+            using TcpClient accepted = await listener.AcceptTcpClientAsync();
+            await using NetworkStream stream = accepted.GetStream();
+            using StreamReader reader = new(
+                stream,
+                Encoding.ASCII,
+                detectEncodingFromByteOrderMarks: false,
+                leaveOpen: true);
+            await using StreamWriter writer = new(
+                stream,
+                Encoding.ASCII,
+                leaveOpen: true)
+            {
+                AutoFlush = true,
+                NewLine = "\n"
+            };
+            await writer.WriteLineAsync("H12345678");
+            string? clientSubscription = await reader.ReadLineAsync();
+            string? txSubscription = await reader.ReadLineAsync();
+            await writer.WriteLineAsync("R1|0|");
+            await writer.WriteLineAsync("R2|0|");
+            await writer.WriteLineAsync(
+                "S1|interlock state=READY tx_client_handle=0");
+            string? unkey = await reader.ReadLineAsync();
+            return new[] { clientSubscription, txSubscription, unkey };
+        });
+        FlexWatchdogUnkeyTransport transport = new(new(
+            Enabled: true,
+            RadioId: "RADIO-A",
+            Address: IPAddress.Loopback,
+            Port: port,
+            CommandTimeout: TimeSpan.FromSeconds(2)));
+
+        WatchdogUnkeyTransportResult result =
+            await transport.RequestUnkeyAsync(0x11111111, CancellationToken.None);
+        string?[] commands = await server.WaitAsync(TimeSpan.FromSeconds(2));
+
         Assert.True(result.Success);
-        Assert.Equal("C1|xmit 0", command);
+        Assert.Equal("C1|sub client all", commands[0]);
+        Assert.Equal("C2|sub tx all", commands[1]);
+        Assert.Null(commands[2]);
+    }
+
+    [Fact]
+    public async Task DifferentFreshTxOwnerRejectsBeforeSendingUnkey()
+    {
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        Task<string?> server = Task.Run(async () =>
+        {
+            using TcpClient accepted = await listener.AcceptTcpClientAsync();
+            await using NetworkStream stream = accepted.GetStream();
+            using StreamReader reader = new(
+                stream,
+                Encoding.ASCII,
+                detectEncodingFromByteOrderMarks: false,
+                leaveOpen: true);
+            await using StreamWriter writer = new(
+                stream,
+                Encoding.ASCII,
+                leaveOpen: true)
+            {
+                AutoFlush = true,
+                NewLine = "\n"
+            };
+            await writer.WriteLineAsync("H12345678");
+            _ = await reader.ReadLineAsync();
+            _ = await reader.ReadLineAsync();
+            await writer.WriteLineAsync("R1|0|");
+            await writer.WriteLineAsync("R2|0|");
+            await writer.WriteLineAsync(
+                "S1|client 0x11111111 connected local_ptt=1");
+            await writer.WriteLineAsync(
+                "S1|interlock state=TRANSMITTING tx_client_handle=0x22222222 source=SW");
+            return await reader.ReadLineAsync();
+        });
+        FlexWatchdogUnkeyTransport transport = new(new(
+            Enabled: true,
+            RadioId: "RADIO-A",
+            Address: IPAddress.Loopback,
+            Port: port,
+            CommandTimeout: TimeSpan.FromSeconds(2)));
+
+        WatchdogUnkeyTransportResult result =
+            await transport.RequestUnkeyAsync(0x11111111, CancellationToken.None);
+        string? unkey = await server.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(WatchdogUnkeyTransportOutcome.Rejected, result.Outcome);
+        Assert.Null(unkey);
+        Assert.Equal(1, transport.Snapshot.RejectedCount);
     }
 
     private static WatchdogUnkeyTransportConfiguration EnabledConfiguration() =>
@@ -254,9 +455,11 @@ public sealed class WatchdogUnkeyTransportTests
 
         public Task<WatchdogFlexUnkeyResponse> SendUnkeyAsync(
             WatchdogUnkeyTransportConfiguration configuration,
+            uint expectedProtectedClientHandle,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            Assert.NotEqual(0u, expectedProtectedClientHandle);
             SendCount++;
             if (Failure is not null)
             {

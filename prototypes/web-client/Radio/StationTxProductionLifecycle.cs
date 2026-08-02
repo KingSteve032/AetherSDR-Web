@@ -272,6 +272,23 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 m_supervisor,
                 ResolveStationCommandAuthority,
                 m_timeProvider);
+        m_independentWatchdog = independentWatchdogFactory?.Create(
+            new StationTxIndependentWatchdogOwner(
+                m_radioId,
+                m_sessionId,
+                m_browserClientId,
+                m_gatewayInstanceId,
+                m_engineInstanceId,
+                independentWatchdogRadioHost,
+                independentWatchdogRadioPort,
+                independentWatchdogLocalFlexEligible),
+            ObserveIndependentWatchdogEventAsync) ??
+            new StationTxUnavailableIndependentWatchdog();
+        StationTxIndependentSafetyArmParticipant coordinatedSafety = new(
+            m_stationCommandSafetyArmComposition,
+            m_independentWatchdog,
+            ResolveStationCommandAuthority,
+            ResolveRegisteredIndependentWatchdogIdentity);
         m_stationCommandComposition = new StationTxCommandSessionComposition(
             stationCommandSubmitter,
             m_stationCommandBoundary,
@@ -279,7 +296,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             m_timeProvider);
         m_stationCommandTransactionComposition =
             new StationTxCommandTransactionComposition(
-                m_stationCommandSafetyArmComposition,
+                coordinatedSafety,
                 m_stationCommandComposition,
                 ResolveStationCommandAuthority,
                 m_timeProvider);
@@ -294,18 +311,6 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         m_authenticationMonitor = new StationTxAuthenticationMonitor(m_supervisor);
         m_engineMonitor = new StationTxEngineConnectionMonitor(m_supervisor);
         m_gatewayMonitor = new StationTxGatewayConnectionMonitor(m_supervisor);
-        m_independentWatchdog = independentWatchdogFactory?.Create(
-            new StationTxIndependentWatchdogOwner(
-                m_radioId,
-                m_sessionId,
-                m_browserClientId,
-                m_gatewayInstanceId,
-                m_engineInstanceId,
-                independentWatchdogRadioHost,
-                independentWatchdogRadioPort,
-                independentWatchdogLocalFlexEligible),
-            ObserveIndependentWatchdogEventAsync) ??
-            new StationTxUnavailableIndependentWatchdog();
 
         m_observations = Channel.CreateBounded<LifecycleObservation>(
             new BoundedChannelOptions(ObservationCapacity)
@@ -1021,9 +1026,23 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     private async Task SynchronizeIndependentWatchdogAsync()
     {
         StationTxIndependentWatchdogDiagnostics initial =
-            m_independentWatchdog.Snapshot;
+            await m_independentWatchdog.RefreshAsync();
         if (!initial.SupervisionEnabled)
         {
+            return;
+        }
+        if (string.Equals(
+                initial.State,
+                "ReconciliationRequired",
+                StringComparison.Ordinal))
+        {
+            lock (m_stateGate)
+            {
+                m_independentWatchdogIdentity = null;
+                RecordLocked("independent-watchdog-reconciliation-required");
+            }
+            ReleaseTrackedLease(
+                "independent-watchdog-reconciliation-required");
             return;
         }
 
@@ -1033,6 +1052,40 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         {
             current = m_independentWatchdogIdentity;
             candidate = CreateIndependentWatchdogIdentityLocked();
+        }
+
+        if (initial.Armed)
+        {
+            if (current is not null &&
+                m_supervisor.Snapshot.State == StationTxSafetyState.Disarmed)
+            {
+                StationTxIndependentWatchdogDiagnostics disarmed =
+                    await m_independentWatchdog.DisarmAsync(current);
+                if (disarmed.Armed)
+                {
+                    lock (m_stateGate)
+                    {
+                        RecordLocked(
+                            "independent-watchdog-disarm-reconciliation-required");
+                    }
+                    return;
+                }
+                initial = disarmed;
+            }
+            else
+            {
+                if (candidate is null && current is not null && initial.Connected)
+                {
+                    await m_independentWatchdog.DisconnectAsync(current);
+                    lock (m_stateGate)
+                    {
+                        m_independentWatchdogIdentity = null;
+                        RecordLocked(
+                            "independent-watchdog-disconnected-armed");
+                    }
+                }
+                return;
+            }
         }
 
         if (candidate is null)
@@ -1113,9 +1166,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         snapshot.Registered &&
         snapshot.Connected &&
         snapshot.LeaseBound &&
-        string.Equals(snapshot.State, "Disarmed", StringComparison.Ordinal) &&
-        !snapshot.RadioCommandTransportAvailable &&
-        !snapshot.ArmingAvailable;
+        !snapshot.Armed &&
+        string.Equals(snapshot.State, "Disarmed", StringComparison.Ordinal);
 
     private async Task DisconnectIndependentWatchdogAsync(string reason)
     {
@@ -1130,11 +1182,71 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             return;
         }
 
+        StationTxIndependentWatchdogDiagnostics snapshot =
+            m_independentWatchdog.Snapshot;
+        if (snapshot.Armed)
+        {
+            await m_independentWatchdog.DisconnectAsync(identity);
+            lock (m_stateGate)
+            {
+                RecordLocked(
+                    $"independent-watchdog-disconnected-armed-{reason}");
+            }
+            return;
+        }
+
         await m_independentWatchdog.DisconnectAndResetAsync(identity);
         lock (m_stateGate)
         {
             RecordLocked($"independent-watchdog-disconnected-{reason}");
         }
+    }
+
+    private WatchdogIdentity? ResolveRegisteredIndependentWatchdogIdentity(
+        StationTxCommandAuthority authority)
+    {
+        WatchdogIdentity? identity;
+        string? connectionClientId;
+        lock (m_stateGate)
+        {
+            identity = m_independentWatchdogIdentity;
+            connectionClientId = m_connectionClientId;
+        }
+        if (identity is null || connectionClientId is null)
+        {
+            return null;
+        }
+        return string.Equals(
+                   identity.RadioId,
+                   authority.RadioId,
+                   StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(
+                   identity.SessionId,
+                   authority.SessionId,
+                   StringComparison.Ordinal) &&
+               string.Equals(
+                   identity.BrowserClientId,
+                   authority.BrowserClientId,
+                   StringComparison.Ordinal) &&
+               string.Equals(
+                   identity.GatewayInstanceId,
+                   authority.GatewayInstanceId,
+                   StringComparison.Ordinal) &&
+               string.Equals(
+                   identity.EngineInstanceId,
+                   authority.EngineInstanceId,
+                   StringComparison.Ordinal) &&
+               string.Equals(
+                   identity.ConnectionClientId,
+                   connectionClientId,
+                   StringComparison.Ordinal) &&
+               string.Equals(
+                   identity.LeaseId,
+                   authority.LeaseId,
+                   StringComparison.Ordinal) &&
+               identity.StationClientHandle == authority.ClientHandle
+            ? identity
+            : null;
     }
 
     private StationTxCommandAuthorityResolution ResolveStationCommandAuthority(

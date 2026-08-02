@@ -53,9 +53,12 @@ single-holder TX lease policy without changing the native radio engine.
   primary FLEX key/unkey transport behind disabled configuration and an exact
   radio allowlist. Phase 2U adds separate in-process emergency and independent-
   watchdog unkey-only transports behind their own disabled configuration and
-  exact allowlists. The gate remains transmit-disabled, both supervisors remain
-  Disarmed, and no unkey transport has an arm or browser caller.
-  Verification, signing, and submission all
+  exact allowlists. Phase 2V adds protocol-v2 watchdog arm, safety-heartbeat,
+  disarm, and one-shot timeout-unkey behavior behind a separate disabled arming
+  switch. Only the lifecycle-owned safety transaction participant can reach it;
+  the browser and ordinary registration heartbeats cannot arm or renew it. The
+  gate remains transmit-disabled and both supervisors remain Disarmed by
+  default. Verification, signing, and submission all
   default disabled; no browser command ingress, arming capability, reachable
   keying command, or transmit-audio path is registered.
 - The binary spectrum framing is experimental v0 and is not the future
@@ -573,9 +576,17 @@ rejection versus unknown network outcome. The independent watchdog binary gains
 a separate purpose-built TCP client whose only encoded command is `xmit 0`.
 The web process supplies that process with a radio endpoint only when watchdog
 transport enablement, exact radio allowlisting, and local `FlexRx` eligibility
-all match. The watchdog protocol still exposes only status, register, heartbeat,
-and disconnect; it has no arm or unkey request, starts empty and Disarmed, and
-reports arming unavailable.
+all match. Phase 2V upgrades the watchdog protocol to version 2 with strict status,
+register, arm, heartbeat, disarm, and disconnect operations. There is still no
+key, unkey, lease, retry, or arbitrary-command request. Arming requires a
+separate `ArmingEnabled` setting, exact lifecycle-owned identity, and a bounded
+250-5000 ms safety heartbeat. Disconnect preserves an active arm until its
+deadline. Expiry causes at most one unkey attempt, and the TCP observer sends
+`xmit 0` only after fresh FLEX client/interlock status names the exact protected
+handle as current TX owner. Idle state sends no command. A sent command clears
+the arm only after the matching command response and fresh radio-confirmed idle;
+rejection, missing idle confirmation, or another unknown outcome enters
+reconciliation without retry.
 
 The normal web artifact now contains exactly one reviewed `xmit 1` and one
 runtime-deduplicated reviewed `xmit 0`, plus type markers for both the primary
@@ -598,6 +609,7 @@ StationTxEmergencyUnkeyTransport__Enabled=false
 StationTxEmergencyUnkeyTransport__AllowedRadioIds__0=REVIEWED-RADIO-ID
 StationTxEmergencyUnkeyTransport__CommandTimeoutMilliseconds=2000
 IndependentTxWatchdog__RadioCommandTransportEnabled=false
+IndependentTxWatchdog__ArmingEnabled=false
 IndependentTxWatchdog__AllowedRadioIds__0=REVIEWED-RADIO-ID
 IndependentTxWatchdog__RadioCommandTimeoutMilliseconds=2000
 ```
@@ -605,7 +617,8 @@ IndependentTxWatchdog__RadioCommandTimeoutMilliseconds=2000
 The allowlist examples are inert while their corresponding enable flags are
 false. Enabling a transport is a separate reviewed deployment action and does
 not by itself arm either supervisor, enable the command gate, or add browser
-execution.
+execution. Watchdog arming additionally requires its separate reviewed switch
+and the complete lifecycle-owned transaction authority.
 
 `Radio:BrowserTxLeaseEnabled` remains false by default. When deliberately enabled
 for validation, the radio page reveals a **TX AUTHORITY** panel that can acquire,

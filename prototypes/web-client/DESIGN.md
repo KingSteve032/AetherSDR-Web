@@ -208,24 +208,27 @@ continues receive startup. A missing or invalid child degrades watchdog health
 and is retried, but it does not block receive-only operation.
 
 The gateway registers the child only after the exact browser, gateway, engine,
-FLEX handle, and opaque lease identity are all current. Browser activity,
-station-engine heartbeat, and gateway heartbeat advance the same exact child
-epoch. Lease release or incomplete authority sends an exact disconnect and
-replaces the child with a new empty process. Child exit, malformed response,
-request-ID mismatch, stale or mismatched identity, timeout, or rejected request
-publishes a loss event immediately; the in-process lifecycle releases only its
-tracked physical-radio lease before the bounded restart delay. A restarted child
-has a new host instance, sequence zero, and no registered identity. A later ready
-or heartbeat observation cannot recreate the released lease. Session disposal
-stops the child and removes it from aggregate health.
+FLEX handle, and opaque lease identity are all current. Ordinary browser,
+station-engine, and gateway observations can heartbeat only a Disarmed
+registration; they cannot arm or renew a safety deadline. Phase 2V's
+lifecycle-owned transaction participant alone may send an exact arm, safety
+heartbeat, or disarm. Authority loss sends an exact disconnect. A Disarmed child
+may be reset, but an armed child remains alive and disconnected until its
+heartbeat deadline so controlling-process loss cannot erase the safety arm.
+Child exit, malformed response, request-ID mismatch, stale or mismatched
+identity, timeout, or reconciliation-required outcome publishes a loss event and
+revokes only the tracked physical-radio lease.
 
 The gateway parses child responses with the same strict 4096-character boundary
-as requests. Every accepted response must remain exactly `Disarmed`, report one
-of the exact disabled/ready unkey-transport reasons, keep arming unavailable, and
-carry internally consistent registration fields. Through Phase 2U the watchdog
-may own a disabled-by-default unkey-only FLEX client, but the protocol still has
-no arm or unkey request, no key or arbitrary-command method, no authority timer,
-and no operator-facing control.
+as requests. Protocol version 2 permits only `Disarmed`, `Armed`, `Unkeying`, or
+`ReconciliationRequired` with internally consistent registration, deadline, and
+bounded one-shot outcome fields. The process has no key, unkey, lease, reset,
+retry, or arbitrary-command request. Its optional TCP adapter sends the fixed
+`xmit 0` only after fresh client/interlock status names the exact protected
+handle as current TX owner; idle or mismatched ownership sends no command. After
+dispatch, the arm clears only when the matching response and a fresh radio-idle
+interlock observation both arrive. Missing idle confirmation is an unknown
+outcome and remains reconciliation-required.
 
 The first browser-integration increment exposes only a separately configured
 ownership lease. `Radio:BrowserTxLeaseEnabled` defaults to false and is distinct
@@ -556,20 +559,28 @@ Phase 2U adds two separate unkey-only transports. The per-session emergency
 adapter shares the exact-handle FLEX router but exposes only
 `RequestUnkeyAsync(expectedProtectedClientHandle)`. The independent watchdog
 adapter owns a minimal TCP client with no arbitrary-command or key method; its
-only encoded command is `xmit 0`. The web process supplies the watchdog endpoint
-only after global enablement, exact radio allowlisting, and local `FlexRx`
-eligibility all match. Neither transport owns authority. The in-process
-supervisor and watchdog process both remain Disarmed, the watchdog protocol adds
-no arm or unkey request, and no browser, HTTP, reconnect, timer, or AetherRemote
-caller receives either transport.
+only encoded radio command is `xmit 0`. The web process supplies the watchdog
+endpoint only after global enablement, exact radio allowlisting, and local
+`FlexRx` eligibility all match.
+
+Phase 2V adds a separate disabled arming switch and protocol-v2 one-shot deadline
+controller. `StationTxIndependentSafetyArmParticipant` wraps the existing
+lifecycle safety participant inside the transaction composition. It resolves the
+exact watchdog identity from current lifecycle authority, arms the independent
+process before the local supervisor, renews it only from transaction safety
+heartbeats, and disarms it only after local radio-confirmed Disarmed state. A
+local-arm failure attempts to clear the independent arm; a rejected or unknown
+independent unkey remains reconciliation-required. No browser, HTTP, WebSocket,
+AetherRemote, reconnect, or ordinary lifecycle heartbeat receives these methods.
 
 Normal web artifact inspection now requires exactly one reviewed `xmit 1`, one
 runtime-deduplicated reviewed `xmit 0`, and type markers for both the primary and
 emergency transports. The watchdog artifact requires exactly one reviewed
 `xmit 0` and zero `xmit 1`; both artifacts still reject HIL process, CWX, and
 TX-audio surfaces. Thus source and binary contain the approved dormant
-primary and safety primitives without creating an executable production TX or
-unkey path.
+primary and safety primitives. Default configuration still creates no executable
+production TX or unkey path because the primary gate, unkey transports, watchdog
+arming, signing, submission, and browser ingress execution all remain disabled.
 
 The independent, station-local supervisor has no key method and an unkey-only
 transport. Its arm is purpose-bound to one engine

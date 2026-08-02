@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace AetherSDR.TxWatchdog;
 
@@ -101,7 +102,11 @@ internal sealed class UnavailableWatchdogUnkeyTransport :
             "The independent watchdog unkey transport is disabled."));
 }
 
-internal sealed record WatchdogFlexUnkeyResponse(uint Code, string Body)
+internal sealed record WatchdogFlexUnkeyResponse(
+    uint Code,
+    string Body,
+    bool CommandSent = true,
+    bool AlreadyIdle = false)
 {
     public bool IsSuccess => Code == 0;
 }
@@ -110,6 +115,7 @@ internal interface IWatchdogFlexUnkeyChannel
 {
     Task<WatchdogFlexUnkeyResponse> SendUnkeyAsync(
         WatchdogUnkeyTransportConfiguration configuration,
+        uint expectedProtectedClientHandle,
         CancellationToken cancellationToken);
 }
 
@@ -213,6 +219,7 @@ internal sealed class FlexWatchdogUnkeyTransport : IWatchdogUnkeyTransport
             WatchdogFlexUnkeyResponse response =
                 await m_channel.SendUnkeyAsync(
                     m_configuration,
+                    expectedProtectedClientHandle,
                     cancellationToken);
             return response.IsSuccess
                 ? Record(
@@ -361,19 +368,41 @@ internal sealed class FlexWatchdogUnkeyTransport : IWatchdogUnkeyTransport
 }
 
 /// <summary>
-/// Minimal FLEX TCP client with one operation and one encoded command. It does
-/// not expose status subscriptions, keying, arbitrary command text, retries, or
-/// reconnect behavior.
+/// Minimal FLEX TCP observer with one purpose-bound operation. It uses only two
+/// fixed status subscriptions and one fixed unkey command. Before sending the
+/// command it requires fresh radio interlock state naming the exact protected
+/// handle as TX owner and a fresh client-roster observation showing that handle
+/// still connected. Idle or mismatched ownership sends no command.
 /// </summary>
 internal sealed class TcpWatchdogFlexUnkeyChannel : IWatchdogFlexUnkeyChannel
 {
     private const int MaximumLineCharacters = 4096;
-    private const int MaximumResponseLines = 128;
+    private const int MaximumResponseLines = 256;
+    private const string ClientSubscription = "sub client all";
+    private const string TxSubscription = "sub tx all";
+
+    private static readonly Regex ClientStatus = new(
+        @"^client\s+(?<id>(?:0x)?[0-9a-fA-F]+)" +
+        @"(?:\s+(?<action>connected|disconnected))?" +
+        @"(?:\s+.*)?$",
+        RegexOptions.Compiled |
+        RegexOptions.CultureInvariant |
+        RegexOptions.IgnoreCase);
+    private static readonly Regex InterlockField = new(
+        @"(?<key>[A-Za-z0-9_]+)=(?<value>\S+)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public async Task<WatchdogFlexUnkeyResponse> SendUnkeyAsync(
         WatchdogUnkeyTransportConfiguration configuration,
+        uint expectedProtectedClientHandle,
         CancellationToken cancellationToken)
     {
+        if (expectedProtectedClientHandle == 0)
+        {
+            throw new InvalidOperationException(
+                "An exact non-zero protected FLEX handle is required.");
+        }
+
         IPAddress address = configuration.Address ??
             throw new InvalidOperationException(
                 "The watchdog unkey radio address is unavailable.");
@@ -405,10 +434,46 @@ internal sealed class TcpWatchdogFlexUnkeyChannel : IWatchdogFlexUnkeyChannel
 
         await WaitForSessionHandleAsync(reader, timeout.Token);
         await writer.WriteLineAsync(
-            $"C1|{FlexWatchdogUnkeyTransport.UnkeyCommand}".AsMemory(),
+            $"C1|{ClientSubscription}".AsMemory(),
+            timeout.Token);
+        await writer.WriteLineAsync(
+            $"C2|{TxSubscription}".AsMemory(),
             timeout.Token);
         await writer.FlushAsync(timeout.Token);
-        return await WaitForResponseAsync(reader, timeout.Token);
+
+        OwnershipObservation ownership = await WaitForOwnershipAsync(
+            reader,
+            expectedProtectedClientHandle,
+            timeout.Token);
+        if (ownership.AlreadyIdle)
+        {
+            return new WatchdogFlexUnkeyResponse(
+                Code: 0,
+                Body: "radio-already-idle",
+                CommandSent: false,
+                AlreadyIdle: true);
+        }
+
+        await writer.WriteLineAsync(
+            $"C3|{FlexWatchdogUnkeyTransport.UnkeyCommand}".AsMemory(),
+            timeout.Token);
+        await writer.FlushAsync(timeout.Token);
+        try
+        {
+            WatchdogFlexUnkeyResponse response =
+                await WaitForUnkeyConfirmationAsync(
+                    reader,
+                    expectedSequence: 3,
+                    expectedProtectedClientHandle,
+                    timeout.Token);
+            return response with { CommandSent = true };
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw new IOException(
+                "The FLEX unkey outcome could not be confirmed after dispatch.",
+                exception);
+        }
     }
 
     private static async Task WaitForSessionHandleAsync(
@@ -419,11 +484,7 @@ internal sealed class TcpWatchdogFlexUnkeyChannel : IWatchdogFlexUnkeyChannel
         {
             string line = await ReadBoundedLineAsync(reader, cancellationToken);
             if (line.StartsWith('H') &&
-                uint.TryParse(
-                    line.AsSpan(1),
-                    NumberStyles.HexNumber,
-                    CultureInfo.InvariantCulture,
-                    out uint handle) &&
+                TryParseFlexUInt(line.AsSpan(1), out uint handle) &&
                 handle != 0)
             {
                 return;
@@ -434,49 +495,287 @@ internal sealed class TcpWatchdogFlexUnkeyChannel : IWatchdogFlexUnkeyChannel
             "The FLEX radio did not provide a valid control-session handle.");
     }
 
-    private static async Task<WatchdogFlexUnkeyResponse> WaitForResponseAsync(
+    private static async Task<OwnershipObservation> WaitForOwnershipAsync(
         StreamReader reader,
+        uint expectedProtectedClientHandle,
         CancellationToken cancellationToken)
     {
+        bool clientSubscriptionAccepted = false;
+        bool txSubscriptionAccepted = false;
+        bool protectedClientObserved = false;
+        string interlockState = string.Empty;
+        uint? txClientHandle = null;
+
         for (int index = 0; index < MaximumResponseLines; index++)
         {
             string line = await ReadBoundedLineAsync(reader, cancellationToken);
-            if (!line.StartsWith('R'))
+            if (TryParseResponseLine(
+                    line,
+                    out uint responseSequence,
+                    out uint responseCode,
+                    out string responseBody))
+            {
+                if (responseSequence is not (1 or 2))
+                {
+                    throw new InvalidOperationException(
+                        "The FLEX radio returned an unexpected ownership-observer response.");
+                }
+                if (responseCode != 0)
+                {
+                    throw new InvalidOperationException(
+                        $"The FLEX ownership subscription was rejected with 0x{responseCode:x8}: {responseBody}");
+                }
+                clientSubscriptionAccepted |= responseSequence == 1;
+                txSubscriptionAccepted |= responseSequence == 2;
+            }
+            else if (TryParseClientStatus(
+                         line,
+                         out uint clientHandle,
+                         out string action))
+            {
+                if (clientHandle == expectedProtectedClientHandle)
+                {
+                    protectedClientObserved = !string.Equals(
+                        action,
+                        "disconnected",
+                        StringComparison.OrdinalIgnoreCase);
+                }
+            }
+            else if (TryParseInterlockStatus(
+                         line,
+                         ref interlockState,
+                         ref txClientHandle))
+            {
+            }
+
+            if (!clientSubscriptionAccepted ||
+                !txSubscriptionAccepted ||
+                interlockState.Length == 0)
             {
                 continue;
             }
-
-            int firstSeparator = line.IndexOf('|');
-            int secondSeparator = firstSeparator < 0
-                ? -1
-                : line.IndexOf('|', firstSeparator + 1);
-            if (firstSeparator <= 1 || secondSeparator < 0 ||
-                !uint.TryParse(
-                    line.AsSpan(1, firstSeparator - 1),
-                    NumberStyles.Integer,
-                    CultureInfo.InvariantCulture,
-                    out uint sequence) ||
-                sequence != 1 ||
-                !uint.TryParse(
-                    line.AsSpan(
-                        firstSeparator + 1,
-                        secondSeparator - firstSeparator - 1),
-                    NumberStyles.HexNumber,
-                    CultureInfo.InvariantCulture,
-                    out uint code))
+            if (IsIdleState(interlockState))
+            {
+                return new OwnershipObservation(AlreadyIdle: true);
+            }
+            if (txClientHandle.HasValue &&
+                txClientHandle.Value != expectedProtectedClientHandle)
             {
                 throw new InvalidOperationException(
-                    "The FLEX radio returned an invalid unkey response.");
+                    "Fresh FLEX interlock state names a different TX owner; no unkey command was sent.");
+            }
+            if (protectedClientObserved &&
+                txClientHandle == expectedProtectedClientHandle)
+            {
+                return new OwnershipObservation(AlreadyIdle: false);
+            }
+        }
+
+        throw new InvalidOperationException(
+            "Fresh exact FLEX TX ownership could not be proven; no unkey command was sent.");
+    }
+
+    private static async Task<WatchdogFlexUnkeyResponse>
+        WaitForUnkeyConfirmationAsync(
+            StreamReader reader,
+            uint expectedSequence,
+            uint expectedProtectedClientHandle,
+            CancellationToken cancellationToken)
+    {
+        bool responseReceived = false;
+        bool idleObserved = false;
+        uint responseCode = 0;
+        string responseBody = string.Empty;
+        string interlockState = string.Empty;
+        uint? txClientHandle = null;
+
+        for (int index = 0; index < MaximumResponseLines; index++)
+        {
+            string line = await ReadBoundedLineAsync(reader, cancellationToken);
+            if (TryParseResponseLine(
+                    line,
+                    out uint sequence,
+                    out uint code,
+                    out string body))
+            {
+                if (sequence != expectedSequence || responseReceived)
+                {
+                    throw new InvalidOperationException(
+                        "The FLEX radio returned an unexpected unkey response sequence.");
+                }
+                responseReceived = true;
+                responseCode = code;
+                responseBody = body;
+                if (responseCode != 0)
+                {
+                    return new WatchdogFlexUnkeyResponse(
+                        responseCode,
+                        responseBody);
+                }
+            }
+            else if (TryParseInterlockStatus(
+                         line,
+                         ref interlockState,
+                         ref txClientHandle))
+            {
+                if (IsIdleState(interlockState))
+                {
+                    idleObserved = true;
+                }
+                else if (txClientHandle.HasValue &&
+                    txClientHandle.Value != expectedProtectedClientHandle)
+                {
+                    throw new InvalidOperationException(
+                        "Fresh FLEX interlock state named a different TX owner after the unkey command was sent.");
+                }
             }
 
-            return new WatchdogFlexUnkeyResponse(
-                code,
-                line[(secondSeparator + 1)..]);
+            if (responseReceived && responseCode == 0 && idleObserved)
+            {
+                return new WatchdogFlexUnkeyResponse(
+                    responseCode,
+                    responseBody);
+            }
         }
 
         throw new IOException(
-            "The FLEX radio returned no matching unkey response.");
+            "The FLEX radio did not confirm idle after accepting the unkey command.");
     }
+
+    private static bool TryParseResponseLine(
+        string line,
+        out uint sequence,
+        out uint code,
+        out string body)
+    {
+        sequence = 0;
+        code = 0;
+        body = string.Empty;
+        if (!line.StartsWith('R'))
+        {
+            return false;
+        }
+
+        int firstSeparator = line.IndexOf('|');
+        int secondSeparator = firstSeparator < 0
+            ? -1
+            : line.IndexOf('|', firstSeparator + 1);
+        if (firstSeparator <= 1 || secondSeparator < 0 ||
+            !uint.TryParse(
+                line.AsSpan(1, firstSeparator - 1),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out sequence) ||
+            !uint.TryParse(
+                line.AsSpan(
+                    firstSeparator + 1,
+                    secondSeparator - firstSeparator - 1),
+                NumberStyles.HexNumber,
+                CultureInfo.InvariantCulture,
+                out code))
+        {
+            throw new InvalidOperationException(
+                "The FLEX radio returned an invalid command response.");
+        }
+        body = line[(secondSeparator + 1)..];
+        return true;
+    }
+
+    private static bool TryParseClientStatus(
+        string line,
+        out uint clientHandle,
+        out string action)
+    {
+        clientHandle = 0;
+        action = string.Empty;
+        int separator = line.IndexOf('|');
+        if (!line.StartsWith('S') ||
+            separator < 0 || separator == line.Length - 1)
+        {
+            return false;
+        }
+
+        Match match = ClientStatus.Match(line[(separator + 1)..].Trim());
+        if (!match.Success ||
+            !TryParseFlexUInt(match.Groups["id"].Value.AsSpan(), out clientHandle) ||
+            clientHandle == 0)
+        {
+            return false;
+        }
+        action = match.Groups["action"].Value;
+        return true;
+    }
+
+    private static bool TryParseInterlockStatus(
+        string line,
+        ref string state,
+        ref uint? txClientHandle)
+    {
+        int separator = line.IndexOf('|');
+        if (!line.StartsWith('S') ||
+            separator < 0 || separator == line.Length - 1)
+        {
+            return false;
+        }
+        string body = line[(separator + 1)..].Trim();
+        if (!body.StartsWith("interlock", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        foreach (Match field in InterlockField.Matches(body))
+        {
+            string key = field.Groups["key"].Value;
+            string value = field.Groups["value"].Value.Trim('"');
+            if (string.Equals(key, "state", StringComparison.OrdinalIgnoreCase))
+            {
+                string normalized = value.Trim().ToUpperInvariant();
+                if (normalized.Length is 0 or > 64 ||
+                    normalized.Any(character =>
+                        char.IsControl(character) || char.IsWhiteSpace(character)))
+                {
+                    return false;
+                }
+                state = normalized;
+            }
+            else if (string.Equals(
+                         key,
+                         "tx_client_handle",
+                         StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryParseFlexUInt(value.AsSpan(), out uint parsed))
+                {
+                    return false;
+                }
+                txClientHandle = parsed == 0 ? null : parsed;
+            }
+        }
+
+        if (IsIdleState(state))
+        {
+            txClientHandle = null;
+        }
+        return true;
+    }
+
+    private static bool TryParseFlexUInt(
+        ReadOnlySpan<char> value,
+        out uint parsed)
+    {
+        ReadOnlySpan<char> text = value.Trim().Trim('"');
+        if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+        {
+            text = text[2..];
+        }
+        return uint.TryParse(
+            text,
+            NumberStyles.HexNumber,
+            CultureInfo.InvariantCulture,
+            out parsed);
+    }
+
+    private static bool IsIdleState(string state) =>
+        state is "READY" or "RECEIVE";
 
     private static async Task<string> ReadBoundedLineAsync(
         StreamReader reader,
@@ -494,4 +793,6 @@ internal sealed class TcpWatchdogFlexUnkeyChannel : IWatchdogFlexUnkeyChannel
         }
         return line;
     }
+
+    private sealed record OwnershipObservation(bool AlreadyIdle);
 }

@@ -18,10 +18,11 @@ public static class Program
             options!.UnkeyTransport.Enabled
                 ? new FlexWatchdogUnkeyTransport(options.UnkeyTransport)
                 : new UnavailableWatchdogUnkeyTransport();
-        WatchdogHostEngine engine = new(
+        await using WatchdogHostEngine engine = new(
             timeProvider: null,
             hostInstanceId: null,
-            unkeyTransport);
+            unkeyTransport,
+            options.ArmingEnabled);
         try
         {
             await WatchdogStdioServer.RunAsync(
