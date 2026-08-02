@@ -4,12 +4,13 @@ import {
   BrowserTxController,
   normalizeTxCapability,
   txControlAvailability,
+  txHeartbeatMilliseconds,
   txPendingRequestLimit,
   txProtocolVersion
 } from "../wwwroot/tx-controls.js";
 
 const readyCapability = {
-  protocolVersion: 1,
+  protocolVersion: txProtocolVersion,
   leaseConfigured: true,
   authenticated: true,
   roleAuthorized: true,
@@ -25,6 +26,20 @@ const readyCapability = {
   cwAvailable: false,
   state: "intent-validation-ready",
   message: "Validated only"
+};
+
+const liveCapability = {
+  ...readyCapability,
+  keyingAvailable: true,
+  state: "keying-ready",
+  message: "Protected MOX/PTT ready"
+};
+
+const activeCapability = {
+  ...liveCapability,
+  occupancyAllowsLease: false,
+  state: "transmit-active",
+  message: "Protected TX active"
 };
 
 const availableCapability = {
@@ -45,6 +60,18 @@ const lease = {
   expiresAt: "2026-07-31T16:00:10Z"
 };
 
+function acquire(controller, capability = readyCapability) {
+  assert.equal(controller.requestAcquire(), true);
+  assert.equal(controller.handleMessage({
+    id: 1,
+    protocolVersion: txProtocolVersion,
+    sequence: 1,
+    ok: true,
+    lease,
+    capability
+  }), true);
+}
+
 test("TX capability defaults and unsupported versions fail closed", () => {
   const capability = normalizeTxCapability(null);
   assert.equal(capability.leaseConfigured, false);
@@ -53,7 +80,7 @@ test("TX capability defaults and unsupported versions fail closed", () => {
   assert.equal(
     normalizeTxCapability({
       ...availableCapability,
-      protocolVersion: 2
+      protocolVersion: txProtocolVersion + 1
     }).leaseConfigured,
     false);
   assert.deepEqual(txControlAvailability(capability), {
@@ -67,6 +94,17 @@ test("TX capability defaults and unsupported versions fail closed", () => {
     enableMicrophone: false,
     enableCw: false
   });
+});
+
+test("live keying capability replaces the validation-only surface", () => {
+  const availability = txControlAvailability(liveCapability);
+
+  assert.equal(availability.canValidateIntent, false);
+  assert.equal(availability.enableMox, true);
+  assert.equal(availability.enablePtt, true);
+  assert.equal(availability.enableTune, false);
+  assert.equal(availability.enableMicrophone, false);
+  assert.equal(availability.enableCw, false);
 });
 
 test("lease acquire uses an exact versioned monotonic envelope", () => {
@@ -106,16 +144,8 @@ test("acquire response stores only the exact holder secret and schedules renewal
     createIntentId: () => "intent-a"
   });
   controller.applyWelcome(availableCapability);
-  controller.requestAcquire();
+  acquire(controller);
 
-  assert.equal(controller.handleMessage({
-    id: 1,
-    protocolVersion: 1,
-    sequence: 1,
-    ok: true,
-    lease,
-    capability: readyCapability
-  }), true);
   assert.equal(controller.snapshot().lease.leaseId, lease.leaseId);
   assert.equal(scheduled.length, 1);
   assert.equal(scheduled[0].delay, 7_000);
@@ -123,7 +153,7 @@ test("acquire response stores only the exact holder secret and schedules renewal
   scheduled[0].callback();
   assert.deepEqual(sent[1], {
     id: 2,
-    protocolVersion: 1,
+    protocolVersion: txProtocolVersion,
     sequence: 2,
     cmd: "tx.renew",
     seconds: 10,
@@ -143,20 +173,12 @@ test("deliberate dry-run intent requires exact lease and validation readiness", 
     createIntentId: () => "intent-validated-a"
   });
   controller.applyWelcome(availableCapability);
-  controller.requestAcquire();
-  controller.handleMessage({
-    id: 1,
-    protocolVersion: 1,
-    sequence: 1,
-    ok: true,
-    lease,
-    capability: readyCapability
-  });
+  acquire(controller);
 
   assert.equal(controller.requestIntent("mox.set", { enabled: true }), true);
   assert.deepEqual(sent[1], {
     id: 2,
-    protocolVersion: 1,
+    protocolVersion: txProtocolVersion,
     sequence: 2,
     cmd: "tx.intent",
     leaseId: lease.leaseId,
@@ -169,36 +191,26 @@ test("deliberate dry-run intent requires exact lease and validation readiness", 
 });
 
 test("validated transport-unavailable result never grants a real control", () => {
+  let requestId = 0;
   const controller = new BrowserTxController({
-    send: () => {},
-    nextRequestId: (() => {
-      let value = 0;
-      return () => ++value;
-    })(),
+    send: () => true,
+    nextRequestId: () => ++requestId,
     schedule: () => 1,
     cancel: () => {},
     now: () => Date.parse("2026-07-31T16:00:00Z"),
     createIntentId: () => "intent-a"
   });
   controller.applyWelcome(availableCapability);
-  controller.requestAcquire();
-  controller.handleMessage({
-    id: 1,
-    protocolVersion: 1,
-    sequence: 1,
-    ok: true,
-    lease,
-    capability: readyCapability
-  });
+  acquire(controller);
   controller.requestIntent("tune.set", { enabled: true });
   controller.handleMessage({
     id: 2,
-    protocolVersion: 1,
+    protocolVersion: txProtocolVersion,
     sequence: 2,
     ok: false,
     validated: true,
     outcome: "transport-unavailable",
-    error: "Production command transport is unavailable.",
+    error: "Production activation is unavailable.",
     action: "tune.set",
     intentId: "intent-a",
     capability: readyCapability
@@ -207,48 +219,218 @@ test("validated transport-unavailable result never grants a real control", () =>
   const snapshot = controller.snapshot();
   assert.equal(snapshot.lastResult.validated, true);
   assert.equal(snapshot.lastResult.outcome, "transport-unavailable");
-  assert.deepEqual(txControlAvailability(snapshot.capability), {
-    showAuthorityPanel: true,
-    canAcquireLease: false,
-    canReleaseLease: true,
-    canValidateIntent: true,
-    enableMox: false,
-    enablePtt: false,
-    enableTune: false,
-    enableMicrophone: false,
-    enableCw: false
-  });
+  assert.equal(snapshot.transmitting, false);
+  assert.equal(txControlAvailability(snapshot.capability).enableMox, false);
 });
 
-test("disconnect discards the opaque lease and resets sequence", () => {
+test("accepted key starts a purpose-bound heartbeat and accepted unkey stops it", () => {
+  const sent = [];
+  const timers = new Map();
+  const cancelled = [];
+  let requestId = 0;
+  let timerId = 0;
   const controller = new BrowserTxController({
-    send: () => {},
-    nextRequestId: () => 1,
+    send: message => sent.push(message),
+    nextRequestId: () => ++requestId,
+    schedule: (callback, delay) => {
+      const id = ++timerId;
+      timers.set(id, { callback, delay });
+      return id;
+    },
+    cancel: id => {
+      cancelled.push(id);
+      timers.delete(id);
+    },
+    now: () => Date.parse("2026-07-31T16:00:00Z"),
+    createIntentId: () => `intent-${requestId + 1}`
+  });
+  controller.applyWelcome(availableCapability);
+  acquire(controller, liveCapability);
+
+  assert.equal(controller.requestIntent("mox.set", { enabled: true }), true);
+  assert.equal(controller.handleMessage({
+    id: 2,
+    protocolVersion: txProtocolVersion,
+    sequence: 2,
+    ok: true,
+    validated: true,
+    outcome: "key-confirmed",
+    action: "mox.set",
+    intentId: "intent-2",
+    capability: activeCapability
+  }), true);
+  assert.equal(controller.snapshot().transmitting, true);
+  const heartbeat = [...timers.entries()]
+    .find(([, value]) => value.delay === txHeartbeatMilliseconds);
+  assert.ok(heartbeat);
+
+  timers.delete(heartbeat[0]);
+  heartbeat[1].callback();
+  assert.equal(sent.at(-1).cmd, "tx.heartbeat");
+  const heartbeatRequest = sent.at(-1);
+  assert.equal(controller.handleMessage({
+    id: heartbeatRequest.id,
+    protocolVersion: txProtocolVersion,
+    sequence: heartbeatRequest.sequence,
+    ok: true,
+    outcome: "heartbeat-accepted",
+    capability: activeCapability
+  }), true);
+  assert.ok([...timers.values()].some(
+    value => value.delay === txHeartbeatMilliseconds));
+
+  assert.equal(controller.requestIntent("mox.set", { enabled: false }), true);
+  const unkeyRequest = sent.at(-1);
+  assert.equal(controller.handleMessage({
+    id: unkeyRequest.id,
+    protocolVersion: txProtocolVersion,
+    sequence: unkeyRequest.sequence,
+    ok: true,
+    validated: true,
+    outcome: "unkey-confirmed",
+    action: "mox.set",
+    intentId: unkeyRequest.intentId,
+    capability: liveCapability
+  }), true);
+  assert.equal(controller.snapshot().transmitting, false);
+  assert.ok(cancelled.length > 0);
+});
+
+test("stale heartbeat failure after confirmed unkey does not discard the idle lease", () => {
+  const sent = [];
+  const scheduled = [];
+  let requestId = 0;
+  const controller = new BrowserTxController({
+    send: message => sent.push(message),
+    nextRequestId: () => ++requestId,
+    schedule: (callback, delay) => {
+      scheduled.push({ callback, delay });
+      return scheduled.length;
+    },
+    cancel: () => {},
+    now: () => Date.parse("2026-07-31T16:00:00Z"),
+    createIntentId: () => `intent-${requestId + 1}`
+  });
+  controller.applyWelcome(availableCapability);
+  acquire(controller, liveCapability);
+  controller.requestIntent("mox.set", { enabled: true });
+  controller.handleMessage({
+    id: 2,
+    protocolVersion: txProtocolVersion,
+    sequence: 2,
+    ok: true,
+    validated: true,
+    outcome: "key_confirmed",
+    action: "mox.set",
+    intentId: "intent-2",
+    capability: activeCapability
+  });
+  const heartbeat = scheduled.find(
+    item => item.delay === txHeartbeatMilliseconds);
+  heartbeat.callback();
+  const heartbeatRequest = sent.at(-1);
+
+  controller.requestIntent("mox.set", { enabled: false });
+  const unkeyRequest = sent.at(-1);
+  controller.handleMessage({
+    id: unkeyRequest.id,
+    protocolVersion: txProtocolVersion,
+    sequence: unkeyRequest.sequence,
+    ok: true,
+    validated: true,
+    outcome: "unkey_confirmed",
+    action: "mox.set",
+    intentId: unkeyRequest.intentId,
+    capability: liveCapability
+  });
+  controller.handleMessage({
+    id: heartbeatRequest.id,
+    protocolVersion: txProtocolVersion,
+    sequence: heartbeatRequest.sequence,
+    ok: false,
+    outcome: "stale-heartbeat",
+    error: "Heartbeat completed after unkey.",
+    capability: liveCapability
+  });
+
+  const snapshot = controller.snapshot();
+  assert.equal(snapshot.transmitting, false);
+  assert.equal(snapshot.lease.leaseId, lease.leaseId);
+  assert.equal(snapshot.capability.keyingAvailable, true);
+});
+
+test("heartbeat failure while transmitting discards local authority", () => {
+  const sent = [];
+  const scheduled = [];
+  let requestId = 0;
+  const controller = new BrowserTxController({
+    send: message => sent.push(message),
+    nextRequestId: () => ++requestId,
+    schedule: (callback, delay) => {
+      scheduled.push({ callback, delay });
+      return scheduled.length;
+    },
+    cancel: () => {},
+    now: () => Date.parse("2026-07-31T16:00:00Z"),
+    createIntentId: () => "intent-key"
+  });
+  controller.applyWelcome(availableCapability);
+  acquire(controller, liveCapability);
+  controller.requestIntent("ptt.set", { enabled: true });
+  controller.handleMessage({
+    id: 2,
+    protocolVersion: txProtocolVersion,
+    sequence: 2,
+    ok: true,
+    validated: true,
+    outcome: "key-confirmed",
+    action: "ptt.set",
+    intentId: "intent-key",
+    capability: activeCapability
+  });
+  const heartbeat = scheduled.find(
+    item => item.delay === txHeartbeatMilliseconds);
+  heartbeat.callback();
+  const request = sent.at(-1);
+  controller.handleMessage({
+    id: request.id,
+    protocolVersion: txProtocolVersion,
+    sequence: request.sequence,
+    ok: false,
+    outcome: "heartbeat-authority-lost",
+    error: "Authority was lost.",
+    capability: readyCapability
+  });
+
+  const snapshot = controller.snapshot();
+  assert.equal(snapshot.transmitting, false);
+  assert.equal(snapshot.lease, null);
+  assert.equal(snapshot.capability.keyingAvailable, false);
+});
+
+test("disconnect discards the opaque lease, heartbeat, and sequence", () => {
+  let requestId = 0;
+  const controller = new BrowserTxController({
+    send: () => true,
+    nextRequestId: () => ++requestId,
     schedule: () => 10,
     cancel: () => {},
     now: () => Date.parse("2026-07-31T16:00:00Z"),
     createIntentId: () => "intent-a"
   });
   controller.applyWelcome(availableCapability);
-  controller.requestAcquire();
-  controller.handleMessage({
-    id: 1,
-    protocolVersion: 1,
-    sequence: 1,
-    ok: true,
-    lease,
-    capability: readyCapability
-  });
+  acquire(controller);
 
   controller.resetForDisconnect();
   const snapshot = controller.snapshot();
   assert.equal(snapshot.lease, null);
+  assert.equal(snapshot.transmitting, false);
   assert.equal(snapshot.sequence, 0);
   assert.equal(snapshot.capability.leaseConfigured, false);
   assert.equal(snapshot.lastResult.outcome, "disconnected");
 });
 
-test("deliberate release cancels renewal and discards the secret before response", () => {
+test("deliberate release cancels timers and discards the secret before response", () => {
   const sent = [];
   const cancelled = [];
   let requestId = 0;
@@ -261,25 +443,15 @@ test("deliberate release cancels renewal and discards the secret before response
     createIntentId: () => "intent-a"
   });
   controller.applyWelcome(availableCapability);
-  controller.requestAcquire();
-  controller.handleMessage({
-    id: 1,
-    protocolVersion: 1,
-    sequence: 1,
-    ok: true,
-    lease,
-    capability: readyCapability
-  });
+  acquire(controller);
 
   assert.equal(controller.requestRelease(), true);
   assert.equal(controller.snapshot().lease, null);
-  assert.equal(
-    controller.snapshot().capability.intentValidationAvailable,
-    false);
+  assert.equal(controller.snapshot().capability.intentValidationAvailable, false);
   assert.deepEqual(cancelled, [77]);
   assert.deepEqual(sent[1], {
     id: 2,
-    protocolVersion: 1,
+    protocolVersion: txProtocolVersion,
     sequence: 2,
     cmd: "tx.release",
     leaseId: lease.leaseId
@@ -287,28 +459,21 @@ test("deliberate release cancels renewal and discards the secret before response
 });
 
 test("lease release event clears the local secret without trusting redacted status", () => {
+  let requestId = 0;
   const controller = new BrowserTxController({
-    send: () => {},
-    nextRequestId: () => 1,
+    send: () => true,
+    nextRequestId: () => ++requestId,
     schedule: () => 10,
     cancel: () => {},
     now: () => Date.parse("2026-07-31T16:00:00Z"),
     createIntentId: () => "intent-a"
   });
   controller.applyWelcome(availableCapability);
-  controller.requestAcquire();
-  controller.handleMessage({
-    id: 1,
-    protocolVersion: 1,
-    sequence: 1,
-    ok: true,
-    lease,
-    capability: readyCapability
-  });
+  acquire(controller);
 
   assert.equal(controller.handleMessage({
     event: "tx.lease.released",
-    protocolVersion: 1,
+    protocolVersion: txProtocolVersion,
     reason: "expired",
     lease: { radioId: "RADIO-A", displayName: "Operator A" },
     capability: availableCapability
@@ -369,15 +534,7 @@ test("unconfirmed renewal discards the local lease at server expiry", () => {
     createIntentId: () => "intent-a"
   });
   controller.applyWelcome(availableCapability);
-  controller.requestAcquire();
-  controller.handleMessage({
-    id: 1,
-    protocolVersion: 1,
-    sequence: 1,
-    ok: true,
-    lease,
-    capability: readyCapability
-  });
+  acquire(controller);
 
   const renewal = timers.get(1);
   assert.equal(renewal.delay, 7_000);
@@ -409,20 +566,12 @@ test("unsupported lease events discard secrets and pending authority", () => {
     createIntentId: () => "intent-a"
   });
   controller.applyWelcome(availableCapability);
-  controller.requestAcquire();
-  controller.handleMessage({
-    id: 1,
-    protocolVersion: 1,
-    sequence: 1,
-    ok: true,
-    lease,
-    capability: readyCapability
-  });
+  acquire(controller);
   controller.requestIntent("mox.set", { enabled: true });
 
   assert.equal(controller.handleMessage({
     event: "tx.lease.changed",
-    protocolVersion: 2,
+    protocolVersion: txProtocolVersion + 1,
     capability: readyCapability
   }), true);
   const snapshot = controller.snapshot();
@@ -444,7 +593,7 @@ test("string-coerced response identifiers cannot mutate the lease", () => {
 
   assert.equal(controller.handleMessage({
     id: "1",
-    protocolVersion: 1,
+    protocolVersion: txProtocolVersion,
     sequence: "1",
     ok: true,
     lease,
@@ -456,7 +605,7 @@ test("string-coerced response identifiers cannot mutate the lease", () => {
 test("mismatched and stale responses cannot mutate the lease", () => {
   let requestId = 0;
   const controller = new BrowserTxController({
-    send: () => {},
+    send: () => true,
     nextRequestId: () => ++requestId,
     schedule: () => 1,
     cancel: () => {},
@@ -468,7 +617,7 @@ test("mismatched and stale responses cannot mutate the lease", () => {
 
   assert.equal(controller.handleMessage({
     id: 1,
-    protocolVersion: 1,
+    protocolVersion: txProtocolVersion,
     sequence: 99,
     ok: true,
     lease,

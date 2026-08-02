@@ -534,7 +534,8 @@ one readiness decision plus a deterministic complete list of missing
 prerequisites. It owns no lease, browser identity, transaction, retry, or radio
 operation. The lifecycle also gains one internal typed ingress operation that can
 only delegate a `BrowserTxTransactionIngressRequest` to the Phase 2R adapter.
-Production keeps that adapter execution-disabled and exposes no caller.
+At the Phase 2S checkpoint, production kept that adapter execution-disabled and
+exposed no caller; Phase 2Z later binds its single WebSocket caller conditionally.
 
 Phase 2T introduces one production-primary command transport without connecting
 it to browser execution. `StationTxCommandTransport` is one owned configuration
@@ -579,9 +580,9 @@ configuration, lease, transaction, or radio operation. Its only dependency is a
 provider for the current typed infrastructure prerequisites, and every snapshot
 re-evaluates the deterministic readiness policy rather than caching a prior
 result. Diagnostics distinguish composition attachment from activation
-availability and preserve the policy's exact first blocking reason. Production
-health declares the composition registered, activation unavailable, reason
-`transmit-disabled`, and no registered activation caller.
+availability and preserve the policy's exact first blocking reason. At the Phase
+2W checkpoint, production health declared the composition registered, activation
+unavailable, reason `transmit-disabled`, and no registered activation caller.
 
 Phase 2X inserts a feature-owned static configuration interlock ahead of that
 composition. `StationTxProductionActivation:Enabled` is a request to assemble
@@ -598,21 +599,39 @@ Phase 2Y adds an immutable activation-plan layer between the static interlock an
 the read-only activation composition. The plan has exactly four Boolean switch
 intentions—command boundary, command-gate transmit, browser transaction ingress
 execution, and browser keying-capability projection—and produces either all four
-true after a valid explicit request or all four false. The planner has only a
-snapshot getter. Its diagnostics always report `PlanApplied:false` in this phase,
-and no constructor for the boundary, gate, ingress, coordinator, transport, or
-watchdog receives the plan. The activation composition therefore fails closed at
-`activation-plan-ready-not-applied` even if synthetic dynamic readiness is fully
-ready.
+true after a valid explicit request or all four false.
+
+Phase 2Z adds a single immutable per-session binding between that plan and the
+four existing runtime constructor switches. The binder requires a complete plan,
+a local `FlexRx` endpoint, explicit transmit configuration, and browser lease
+configuration; it rejects partial plans and binds all four false for remote,
+simulation, absent, or incomplete sessions. The lifecycle receives one binding
+before it constructs the gate, command boundary, or browser ingress, so no later
+request can mutate activation state. Browser capability is projected from that
+same binding plus fresh dynamic readiness and exact session authority.
+
+The only new caller is browser TX protocol v2. A strict `tx.intent` for Boolean
+MOX/PTT delegates the unchanged parsed request and server validation through the
+existing transaction ingress. The transaction still arms local and independent
+safety before key, signs and verifies the station command envelope, traverses
+the command gate, and confirms radio state. A strict `tx.heartbeat` may renew
+only the active transaction owned by the same authenticated connection and
+opaque lease. It runs every two seconds with a five-second maximum watchdog
+deadline; ordinary socket keepalive, lease renewal, reconnect, timer, and status
+traffic cannot renew TX authority. Active lease renewal and unkey are accepted
+only while fresh occupancy proves the exact protected AetherSDR handle is the
+sole TX owner.
 
 Normal web artifact inspection now requires exactly one reviewed `xmit 1`, one
 runtime-deduplicated reviewed `xmit 0`, and type markers for both the primary and
 emergency transports. The watchdog artifact requires exactly one reviewed
 `xmit 0` and zero `xmit 1`; both artifacts still reject HIL process, CWX, and
-TX-audio surfaces. Thus source and binary contain the approved dormant
-primary and safety primitives. Default configuration still creates no executable
-production TX or unkey path because the primary gate, unkey transports, watchdog
-arming, signing, submission, and browser ingress execution all remain disabled.
+TX-audio surfaces. Thus source and binary contain the approved primary and
+safety primitives. Default configuration still creates no executable production
+TX or unkey path because the activation request, transmit/lease opt-ins, primary
+and emergency transports, watchdog arming, signing, submission, and binding all
+remain disabled. A reviewed complete configuration can bind the existing path
+without creating a second gate or transport.
 
 The independent, station-local supervisor has no key method and an unkey-only
 transport. Its arm is purpose-bound to one engine

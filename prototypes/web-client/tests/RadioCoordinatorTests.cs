@@ -314,7 +314,9 @@ public sealed class RadioCoordinatorTests
         JsonElement holderRoot = holderDocument.RootElement;
         JsonElement observerRoot = observerDocument.RootElement;
         Assert.Equal("tx.lease.changed", holderRoot.GetProperty("event").GetString());
-        Assert.Equal(1, holderRoot.GetProperty("protocolVersion").GetInt32());
+        Assert.Equal(
+            RadioBrowserTxProtocol.Version,
+            holderRoot.GetProperty("protocolVersion").GetInt32());
         Assert.False(holderRoot.GetProperty("lease").TryGetProperty("leaseId", out _));
         Assert.True(
             holderRoot.GetProperty("capability")

@@ -99,6 +99,16 @@ StationTxProductionActivationConfigurationDiagnostics
             independentTxWatchdogSettings);
 StationTxProductionActivationPlanner stationTxProductionActivationPlanner =
     new(() => stationTxProductionActivationConfiguration);
+StationTxProductionActivationBindingDiagnostics
+    stationTxProductionActivationBinding =
+        StationTxProductionActivationBinder.Bind(
+            stationTxProductionActivationPlanner.Snapshot,
+            localFlexSessionEligible: string.Equals(
+                radioSettings.Mode,
+                "FlexRx",
+                StringComparison.OrdinalIgnoreCase),
+            allowTransmitConfigured: radioSettings.AllowTransmit,
+            browserTxLeaseConfigured: radioSettings.BrowserTxLeaseEnabled);
 ReverseProxySettings reverseProxySettings =
     builder.Configuration
         .GetSection(ReverseProxySettings.SectionName)
@@ -122,6 +132,7 @@ builder.Services.AddSingleton(
 builder.Services.AddSingleton(
     Options.Create(stationTxProductionActivationSettings));
 builder.Services.AddSingleton(stationTxProductionActivationConfiguration);
+builder.Services.AddSingleton(stationTxProductionActivationBinding);
 builder.Services.AddSingleton<StationTxIndependentWatchdogRegistry>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
@@ -274,9 +285,13 @@ app.MapGet(
                     commandCoordinator.SubmissionEnabled,
                     commandCoordinator.SigningAvailable,
                     commandCoordinator.SignatureVerificationAvailable,
-                    CommandBoundaryEnabled: false,
+                    CommandBoundaryEnabled:
+                        stationTxProductionActivationBinding.Binding
+                            .CommandBoundaryEnabled,
                     CommandAdapterRegistered: true,
-                    GateTransmitEnabled: false,
+                    GateTransmitEnabled:
+                        stationTxProductionActivationBinding.Binding
+                            .CommandGateTransmitEnabled,
                     CommandTransportAvailable: false,
                     SetTransmitAvailable: false,
                     EmergencyUnkeyTransportAvailable: false,
@@ -295,6 +310,7 @@ app.MapGet(
                     new StationTxProductionActivationComposition(
                         () => stationTxProductionActivationConfiguration,
                         () => stationTxProductionActivationPlanner.Snapshot,
+                        () => stationTxProductionActivationBinding,
                         () => productionReadinessInputs)
                     .Snapshot;
             StationTxProductionReadinessDiagnostics productionReadiness =
@@ -303,7 +319,8 @@ app.MapGet(
             {
                 status = "ok",
                 radioMode = radioSettings.Mode,
-                transmitEnabled = false,
+                transmitEnabled =
+                    stationTxProductionActivationBinding.BindingApplied,
                 browserTxLeaseEnabled = radioSettings.BrowserTxLeaseEnabled,
                 txGateLifecycleRegistered = true,
                 txLifecycleWatchdogRegistered = true,
@@ -314,7 +331,9 @@ app.MapGet(
                 txStationCommandProtocolVersion =
                     StationTxCommandBoundary.ProtocolVersion,
                 txStationCommandBoundaryRegistered = true,
-                txStationCommandBoundaryEnabled = false,
+                txStationCommandBoundaryEnabled =
+                    stationTxProductionActivationBinding.Binding
+                        .CommandBoundaryEnabled,
                 txStationCommandTrustVerificationEnabled =
                     commandTrust.VerificationEnabled,
                 txStationCommandTrustedKeyCount = commandTrust.TrustedKeyCount,
@@ -334,7 +353,9 @@ app.MapGet(
                 txStationCommandAdapterExecutorAttached = true,
                 txStationCommandAdapterExecutorRegistered = true,
                 txStationCommandGateExecutorRegistered = true,
-                txStationCommandGateExecutorTransmitEnabled = false,
+                txStationCommandGateExecutorTransmitEnabled =
+                    stationTxProductionActivationBinding.Binding
+                        .CommandGateTransmitEnabled,
                 txStationCommandGateExecutorCommandTransportAvailable = false,
                 txStationCommandGateExecutorSetTransmitAvailable = false,
                 txStationCommandGateExecutorBrowserIngressRegistered = false,
@@ -365,15 +386,19 @@ app.MapGet(
                 txStationCommandTransactionAbortAvailable = false,
                 txStationCommandTransactionActive = false,
                 txStationCommandTransactionReconciliationRequired = false,
-                txStationCommandTransactionBrowserIngressRegistered = false,
+                txStationCommandTransactionBrowserIngressRegistered =
+                    stationTxProductionActivationBinding.BindingApplied,
                 txStationCommandTransactionLifecycleBrowserIngressRegistered =
-                    false,
+                    stationTxProductionActivationBinding.BindingApplied,
                 txBrowserTxTransactionIngressRegistered = true,
-                txBrowserTxTransactionIngressExecutionEnabled = false,
+                txBrowserTxTransactionIngressExecutionEnabled =
+                    stationTxProductionActivationBinding.Binding
+                        .BrowserTransactionIngressExecutionEnabled,
                 txBrowserTxTransactionIngressBoundaryAttached = true,
                 txBrowserTxTransactionIngressKeyAvailable = false,
                 txBrowserTxTransactionIngressUnkeyAvailable = false,
-                txBrowserTxTransactionIngressWebSocketCallerRegistered = false,
+                txBrowserTxTransactionIngressWebSocketCallerRegistered =
+                    stationTxProductionActivationBinding.BindingApplied,
                 txBrowserTxTransactionIngressHttpCallerRegistered = false,
                 txBrowserTxTransactionIngressAetherRemoteCallerRegistered = false,
                 txBrowserTxTransactionIngressWatchdogCallerRegistered = false,
@@ -456,10 +481,33 @@ app.MapGet(
                     productionActivation.Plan.Plan
                         .BrowserKeyingCapabilityEnabled,
                 txProductionActivationPlanCallerRegistered = false,
+                txProductionActivationBindingRegistered =
+                    productionActivation.Binding.Registered,
+                txProductionActivationBindingAttached =
+                    productionActivation.ActivationBindingAttached,
+                txProductionActivationBindingApplied =
+                    productionActivation.ActivationBindingApplied,
+                txProductionActivationBindingReason =
+                    productionActivation.Binding.Reason,
+                txProductionActivationBindingSessionEligible =
+                    productionActivation.Binding.SessionEligible,
+                txProductionActivationBindingCommandBoundaryEnabled =
+                    productionActivation.Binding.Binding
+                        .CommandBoundaryEnabled,
+                txProductionActivationBindingCommandGateTransmitEnabled =
+                    productionActivation.Binding.Binding
+                        .CommandGateTransmitEnabled,
+                txProductionActivationBindingBrowserIngressExecutionEnabled =
+                    productionActivation.Binding.Binding
+                        .BrowserTransactionIngressExecutionEnabled,
+                txProductionActivationBindingBrowserKeyingCapabilityEnabled =
+                    productionActivation.Binding.Binding
+                        .BrowserKeyingCapabilityEnabled,
                 txProductionActivationAvailable =
                     productionActivation.ActivationAvailable,
                 txProductionActivationReason = productionActivation.Reason,
-                txProductionActivationCallerRegistered = false,
+                txProductionActivationCallerRegistered =
+                    stationTxProductionActivationBinding.BindingApplied,
                 txStationCommandEnvelopeSubmissionEnabled =
                     commandCoordinator.SubmissionEnabled,
                 txStationCommandEnvelopeSigningAvailable =

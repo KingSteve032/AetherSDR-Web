@@ -117,13 +117,18 @@ public sealed class StationTxProductionActivationPlanTests
     }
 
     [Fact]
-    public void CompleteReadinessCannotBypassAnUnappliedPlan()
+    public void CompleteReadinessCannotBypassAnIneligibleBinding()
     {
         StationTxProductionActivationPlanner planner = new(
             () => Configuration(requested: true, configured: true));
         StationTxProductionActivationComposition composition = new(
             () => Configuration(requested: true, configured: true),
             () => planner.Snapshot,
+            () => StationTxProductionActivationBinder.Bind(
+                planner.Snapshot,
+                localFlexSessionEligible: false,
+                allowTransmitConfigured: false,
+                browserTxLeaseConfigured: false),
             () => Readiness(allReady: true));
 
         StationTxProductionActivationCompositionDiagnostics snapshot =
@@ -133,7 +138,7 @@ public sealed class StationTxProductionActivationPlanTests
         Assert.True(snapshot.ActivationPlanAvailable);
         Assert.False(snapshot.ActivationPlanApplied);
         Assert.False(snapshot.ActivationAvailable);
-        Assert.Equal("activation-plan-ready-not-applied", snapshot.Reason);
+        Assert.Equal("local-flex-session-required", snapshot.Reason);
         Assert.True(snapshot.Readiness.Ready);
     }
 

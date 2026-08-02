@@ -79,25 +79,44 @@ const productionActivationPlan = {
     browserKeyingCapabilityEnabled: false
   }
 };
+const productionActivationBinding = {
+  registered: true,
+  activationPlanAttached: true,
+  planAvailable: false,
+  sessionEligible: false,
+  bindingApplied: false,
+  reason: "activation-not-requested",
+  binding: {
+    commandBoundaryEnabled: false,
+    commandGateTransmitEnabled: false,
+    browserTransactionIngressExecutionEnabled: false,
+    browserKeyingCapabilityEnabled: false
+  }
+};
 const productionActivation = {
   registered: true,
   configurationInterlockAttached: true,
   activationPlanAttached: true,
+  activationBindingAttached: true,
   readinessEvaluationAttached: true,
   activationRequested: false,
   configurationValid: true,
   activationPlanAvailable: false,
   activationPlanApplied: false,
+  activationBindingApplied: false,
   activationAvailable: false,
   reason: "activation-not-requested",
   configuration: productionActivationConfiguration,
   plan: productionActivationPlan,
+  binding: productionActivationBinding,
   readiness: productionReadiness
 };
 const productionActivationText =
   "production activation composition config attached request absent " +
-  "configuration valid plan attached unavailable unapplied switches " +
-  "boundary off gate off ingress off capability off plan-reason " +
+  "configuration valid plan attached unavailable unapplied planned " +
+  "boundary off gate off ingress off capability off binding attached " +
+  "unapplied bound boundary off gate off ingress off capability off " +
+  "binding-reason activation-not-requested plan-reason " +
   "activation-not-requested evaluation attached activation unavailable " +
   "reason activation-not-requested static-missing 16 " +
   `[${productionActivationConfigurationMissing.join(",")}]`;

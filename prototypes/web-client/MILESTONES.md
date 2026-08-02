@@ -2438,6 +2438,65 @@ Milestone state:
   `activation-not-requested`. Fresh radio and Admin console captures contained
   zero entries. No browser TX control, microphone permission, radio command, or
   live RF/HIL operation was used.
+- Phase 2Z adds one immutable per-session activation binding that applies the
+  Phase 2Y command-boundary, command-gate transmit, browser-ingress execution,
+  and browser keying-capability switches only as a complete set. Binding requires
+  the reviewed master request, local `FlexRx`, transmit and browser-lease
+  opt-ins, and the complete Phase 2X static prerequisite set. Remote, simulation,
+  absent, incomplete, or partial activation remains fully unbound. Browser TX
+  protocol version 2 adds a strict purpose-bound `tx.heartbeat`; successful
+  MOX/PTT key and unkey requests now delegate through the existing signed
+  transaction, gate, local safety arm, production transport, and independent
+  watchdog. TUNE, microphone transmit, and CW remain unavailable.
+- Phase 2Z no-RF integration testing used deterministic in-process command,
+  emergency-unkey, signing/verifying, and independent-watchdog fakes while
+  exercising the real browser coordinator, lifecycle, transaction composition,
+  command boundary, gate, radio-occupancy reconciliation, and safety layers. One
+  deliberate key produced one recorded `true` transport call and fresh simulated
+  Aether-owned TX confirmation; one browser safety heartbeat renewed the exact
+  active transaction; monotonic renewal of the same lease remained valid; one
+  deliberate unkey produced one recorded `false` call, fresh idle confirmation,
+  gate-intent cleanup, transaction cleanup, and both safety layers Disarmed.
+  The proof emitted no FLEX command, opened no radio socket, and produced no RF.
+  It also exposed and fixed the dormant connection-ID/lease-ID mismatch,
+  active-lease-expiry extension mismatch, missing heartbeat authority refresh,
+  missing radio-confirmation barrier before browser success or safety cleanup,
+  and cancellation during post-command radio confirmation now enters explicit
+  reconciliation instead of leaving an unclassified active transaction.
+- The 2026-08-02 Phase 2Z automated, validation-only, and final guarded
+  deployment gates passed a zero-warning solution build plus 737 FlexWeb server
+  tests, 57 independent-watchdog tests, 48 TX-HIL isolation tests, 70
+  AetherRemote tests, and 127 browser tests (1,039 total). The browser suite also
+  proves that live keying capability disables the older validation-only selector
+  so an executable intent cannot be presented as a dry run. Production artifact
+  inspection retained exactly one reviewed key string and one runtime-
+  deduplicated unkey string with both reviewed transport markers; the watchdog
+  retained one unkey string and zero key strings, with no additional TX-HIL,
+  CWX, TX-audio, or process-child surface. Validation-only log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260802-m7-production-tx-activation-binding-phase2z-validation-flexweb-validation.txt`.
+- Immutable default-config staging release
+  `20260802-m7-production-tx-activation-binding-phase2z-hardened` was activated
+  with `20260802-m7-production-tx-activation-binding-phase2z-final` retained for
+  rollback.
+  Internal and public health reported browser TX protocol v2, activation binding
+  registered and attached but unapplied, session ineligible, all four bound
+  switches false, activation request absent, browser WebSocket transaction caller
+  absent, primary/emergency transports disabled, watchdog arming unavailable,
+  and zero watchdog unkey attempts. Deployment log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260802-m7-production-tx-activation-binding-phase2z-hardened-flexweb-validation.txt`.
+- Phase 2Z Browser Bridge acceptance opened the deployed radio and Admin pages,
+  used only the read-only Admin Refresh action, and recovered a live RX session.
+  ACQUIRE LEASE and VALIDATE ONLY remained disabled; MOX, TUNE, and CWX remained
+  hidden and disabled. All three canvases had 2D contexts and no WebGL context.
+  Admin showed `DISABLED · DISARMED · NO LEASE`, browser transaction ingress
+  execution disabled, the activation binding attached but unapplied, all four
+  bound switches off, reason `activation-not-requested`, zero transaction
+  attempts, zero primary key/unkey calls, and zero independent-watchdog unkey
+  attempts. The first post-cutover radio capture contained only one stale-session
+  502/404 pair; fresh stabilized radio and Admin captures each contained zero
+  console entries. No lease was acquired, no browser TX intent or heartbeat was
+  sent, no microphone permission was requested, and no live RF/HIL operation was
+  run.
 
 Acceptance criteria:
 

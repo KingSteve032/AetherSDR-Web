@@ -357,6 +357,8 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
     : "unknown";
   const activationPlan = activation?.plan;
   const activationSwitches = activationPlan?.plan;
+  const activationBinding = activation?.binding;
+  const boundSwitches = activationBinding?.binding;
   const activationState = activation?.registered
     ? `production activation composition config ` +
       `${activation.configurationInterlockAttached ? "attached" : "absent"} ` +
@@ -365,10 +367,17 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `plan ${activation.activationPlanAttached ? "attached" : "absent"} ` +
       `${activation.activationPlanAvailable ? "available" : "unavailable"} ` +
       `${activation.activationPlanApplied ? "applied" : "unapplied"} ` +
-      `switches boundary ${activationSwitches?.commandBoundaryEnabled ? "on" : "off"} ` +
+      `planned boundary ${activationSwitches?.commandBoundaryEnabled ? "on" : "off"} ` +
       `gate ${activationSwitches?.commandGateTransmitEnabled ? "on" : "off"} ` +
       `ingress ${activationSwitches?.browserTransactionIngressExecutionEnabled ? "on" : "off"} ` +
       `capability ${activationSwitches?.browserKeyingCapabilityEnabled ? "on" : "off"} ` +
+      `binding ${activation.activationBindingAttached ? "attached" : "absent"} ` +
+      `${activation.activationBindingApplied ? "applied" : "unapplied"} ` +
+      `bound boundary ${boundSwitches?.commandBoundaryEnabled ? "on" : "off"} ` +
+      `gate ${boundSwitches?.commandGateTransmitEnabled ? "on" : "off"} ` +
+      `ingress ${boundSwitches?.browserTransactionIngressExecutionEnabled ? "on" : "off"} ` +
+      `capability ${boundSwitches?.browserKeyingCapabilityEnabled ? "on" : "off"} ` +
+      `binding-reason ${String(activationBinding?.reason || "unknown")} ` +
       `plan-reason ${String(activationPlan?.reason || "unknown")} ` +
       `evaluation ${activation.readinessEvaluationAttached ? "attached" : "absent"} ` +
       `activation ${activation.activationAvailable ? "available" : "unavailable"} ` +

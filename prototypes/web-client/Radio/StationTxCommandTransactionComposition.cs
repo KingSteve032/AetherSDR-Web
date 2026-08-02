@@ -100,6 +100,8 @@ internal sealed class StationTxCommandTransactionComposition
         m_commandComposition;
     private readonly Func<string?, StationTxCommandAuthorityResolution>
         m_authorityResolver;
+    private readonly IStationTxCommandRadioConfirmationParticipant?
+        m_radioConfirmation;
     private readonly TimeProvider m_timeProvider;
 
     private StationTxCommandTransactionState m_state =
@@ -121,12 +123,14 @@ internal sealed class StationTxCommandTransactionComposition
         IStationTxSafetyArmTransactionParticipant? safetyArmComposition,
         IStationTxCommandTransactionSubmissionParticipant? commandComposition,
         Func<string?, StationTxCommandAuthorityResolution> authorityResolver,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IStationTxCommandRadioConfirmationParticipant? radioConfirmation = null)
     {
         ArgumentNullException.ThrowIfNull(authorityResolver);
         m_safetyArmComposition = safetyArmComposition;
         m_commandComposition = commandComposition;
         m_authorityResolver = authorityResolver;
+        m_radioConfirmation = radioConfirmation;
         m_timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -304,6 +308,19 @@ internal sealed class StationTxCommandTransactionComposition
                     StationTxCommandTransactionOutcome.Rejected,
                     "safety_arm_composition_unattached",
                     "No station TX safety-arm composition is attached.",
+                    now);
+            }
+
+            StationTxCommandAuthorityResolution current =
+                ResolveAuthority(request.ConnectionClientId);
+            failure = ValidateActiveAuthority(active!, current);
+            if (failure is not null)
+            {
+                MarkReconciliationRequired(failure.Code, now);
+                return Finish(
+                    StationTxCommandTransactionOutcome.Rejected,
+                    failure.Code,
+                    failure.Message,
                     now);
             }
 
@@ -602,11 +619,54 @@ internal sealed class StationTxCommandTransactionComposition
 
         if (commandResult.Success)
         {
+            StationTxCommandRadioConfirmationResult confirmation;
+            try
+            {
+                confirmation = await ConfirmRadioAsync(
+                    enabled: true,
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                MarkReconciliationRequired("key-confirmation-cancelled", now);
+                RecordExceptionUnknown("key-confirmation-cancelled", now);
+                throw;
+            }
+            if (!confirmation.Success)
+            {
+                if (!confirmation.OutcomeKnown)
+                {
+                    MarkReconciliationRequired(confirmation.Code, now);
+                    return Finish(
+                        StationTxCommandTransactionOutcome.Unknown,
+                        confirmation.Code,
+                        confirmation.Message,
+                        now,
+                        armResult,
+                        commandResult);
+                }
+
+                CleanupAttempt cleanup = await TryCleanupAsync(
+                    request.ConnectionClientId,
+                    "transaction-key-not-confirmed",
+                    now);
+                return FinishKnownFailureAfterCleanup(
+                    new TransactionFailure(
+                        confirmation.Code,
+                        confirmation.Message),
+                    now,
+                    armResult,
+                    cleanup);
+            }
+
             RestoreActiveState(now);
+            bool radioConfirmed = m_radioConfirmation is not null;
             return Finish(
                 StationTxCommandTransactionOutcome.Accepted,
-                "key_accepted",
-                "The signed station TX key command was accepted once.",
+                radioConfirmed ? "key_confirmed" : "key_accepted",
+                radioConfirmed
+                    ? "Fresh radio state confirmed the signed station TX key command and exact AetherSDR owner."
+                    : "The signed station TX key command was accepted once.",
                 now,
                 armResult,
                 commandResult);
@@ -775,6 +835,31 @@ internal sealed class StationTxCommandTransactionComposition
                 commandResult);
         }
 
+        StationTxCommandRadioConfirmationResult confirmation;
+        try
+        {
+            confirmation = await ConfirmRadioAsync(
+                enabled: false,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            MarkReconciliationRequired("unkey-confirmation-cancelled", now);
+            RecordExceptionUnknown("unkey-confirmation-cancelled", now);
+            throw;
+        }
+        if (!confirmation.Success)
+        {
+            MarkReconciliationRequired(confirmation.Code, now);
+            return Finish(
+                StationTxCommandTransactionOutcome.Unknown,
+                confirmation.Code,
+                confirmation.Message,
+                now,
+                heartbeatResult,
+                commandResult);
+        }
+
         CleanupAttempt cleanup = await TryCleanupAsync(
             request.ConnectionClientId,
             "transaction-unkey-confirmed",
@@ -792,14 +877,53 @@ internal sealed class StationTxCommandTransactionComposition
                 cleanup.Result);
         }
 
+        bool radioConfirmed = m_radioConfirmation is not null;
         return Finish(
             StationTxCommandTransactionOutcome.Accepted,
-            "unkey_accepted",
-            "The signed station TX unkey command was accepted and the matching safety arm was cleared.",
+            radioConfirmed ? "unkey_confirmed" : "unkey_accepted",
+            radioConfirmed
+                ? "Fresh radio state confirmed receive/idle after the signed unkey command, and the matching safety arm was cleared."
+                : "The signed station TX unkey command was accepted and the matching safety arm was cleared.",
             now,
             heartbeatResult,
             commandResult,
             cleanup.Result);
+    }
+
+    private async Task<StationTxCommandRadioConfirmationResult>
+        ConfirmRadioAsync(
+            bool enabled,
+            CancellationToken cancellationToken)
+    {
+        if (m_radioConfirmation is null)
+        {
+            return new(
+                Success: true,
+                OutcomeKnown: true,
+                Code: enabled ? "key-confirmation-unattached" : "unkey-confirmation-unattached",
+                Message: "No separate radio-confirmation participant is attached.");
+        }
+
+        try
+        {
+            return await m_radioConfirmation.ConfirmAsync(
+                enabled,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return new(
+                Success: false,
+                OutcomeKnown: false,
+                Code: enabled
+                    ? "key_confirmation_exception"
+                    : "unkey_confirmation_exception",
+                Message: "The radio-confirmation outcome is unknown.");
+        }
     }
 
     private async Task<CleanupAttempt> TryCleanupAsync(
@@ -1062,7 +1186,10 @@ internal sealed class StationTxCommandTransactionComposition
             return new(armed.Code, armed.Message);
         }
         StationTxCommandAuthority current = armed.Authority!;
-        if (!StableAuthorityTupleMatches(initial, current))
+        if (!StableAuthorityTupleMatches(
+                initial,
+                current,
+                allowLeaseExtension: false))
         {
             return new(
                 "authority_changed_before_submit",
@@ -1085,7 +1212,10 @@ internal sealed class StationTxCommandTransactionComposition
         {
             return new(current.Code, current.Message);
         }
-        if (!StableAuthorityTupleMatches(active.Authority, current.Authority!))
+        if (!StableAuthorityTupleMatches(
+                active.Authority,
+                current.Authority!,
+                allowLeaseExtension: true))
         {
             return new(
                 "active_authority_changed",
@@ -1102,7 +1232,8 @@ internal sealed class StationTxCommandTransactionComposition
 
     private static bool StableAuthorityTupleMatches(
         StationTxCommandAuthority expected,
-        StationTxCommandAuthority current) =>
+        StationTxCommandAuthority current,
+        bool allowLeaseExtension) =>
         string.Equals(
             expected.StationId,
             current.StationId,
@@ -1123,7 +1254,9 @@ internal sealed class StationTxCommandTransactionComposition
             expected.LeaseId,
             current.LeaseId,
             StringComparison.Ordinal) &&
-        expected.LeaseExpiresAt == current.LeaseExpiresAt &&
+        (allowLeaseExtension
+            ? current.LeaseExpiresAt >= expected.LeaseExpiresAt
+            : current.LeaseExpiresAt == expected.LeaseExpiresAt) &&
         string.Equals(
             expected.GatewayInstanceId,
             current.GatewayInstanceId,
@@ -1387,7 +1520,8 @@ internal sealed class StationTxCommandTransactionComposition
             if (m_active is not null &&
                 StableAuthorityTupleMatches(
                     m_active.Authority,
-                    authority.Authority!))
+                    authority.Authority!,
+                    allowLeaseExtension: true))
             {
                 m_active = m_active with { Authority = authority.Authority! };
             }

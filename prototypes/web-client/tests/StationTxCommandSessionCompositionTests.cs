@@ -108,7 +108,8 @@ public sealed class StationTxCommandSessionCompositionTests
         Assert.Equal("gateway-a", authority.StationId);
         Assert.Equal("RADIO-A", authority.RadioId);
         Assert.Equal("session-a", authority.SessionId);
-        Assert.Equal("browser-a", authority.BrowserClientId);
+        Assert.Equal("browser-a", before.BrowserClientId);
+        Assert.Equal("connection-a", authority.BrowserClientId);
         Assert.Equal(lease.LeaseId, authority.LeaseId);
         Assert.Equal(lease.ExpiresAt, authority.LeaseExpiresAt);
         Assert.Equal("gateway-a", authority.GatewayInstanceId);

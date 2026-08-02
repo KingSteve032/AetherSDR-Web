@@ -205,9 +205,10 @@ IPC connection, registration, lease-bound state, last sequence, restart count,
 last observation, and error. These are read-only diagnostics and are never
 accepted from browser input.
 
-Phase 2F adds a separate browser TX protocol version 1 for ownership and
-validation-only deliberate intent. Every request has a positive JavaScript-safe
-integer `id`, `protocolVersion:1`, and a strictly increasing positive
+Phase 2F introduced browser TX protocol version 1 for ownership and
+validation-only deliberate intent; Phase 2Z upgrades the current browser TX wire
+contract to version 2. Every current TX request has a positive JavaScript-safe
+integer `id`, `protocolVersion:2`, and a strictly increasing positive
 JavaScript-safe integer `sequence` scoped to the current admitted WebSocket. A
 reconnect starts a new sequence at one and the browser discards every prior
 opaque lease secret. The gateway rejects non-object roots, unknown or duplicate
@@ -235,14 +236,16 @@ The browser may send:
 {"id":8,"cmd":"intent","action":"pan.remove",
  "selector":"0x40000001","values":{}}
 {"id":9,"cmd":"ping"}
-{"id":10,"cmd":"tx.acquire","protocolVersion":1,"sequence":1,"seconds":10}
-{"id":11,"cmd":"tx.renew","protocolVersion":1,"sequence":2,
+{"id":10,"cmd":"tx.acquire","protocolVersion":2,"sequence":1,"seconds":10}
+{"id":11,"cmd":"tx.renew","protocolVersion":2,"sequence":2,
  "leaseId":"0123456789abcdef0123456789abcdef","seconds":10}
-{"id":12,"cmd":"tx.intent","protocolVersion":1,"sequence":3,
+{"id":12,"cmd":"tx.intent","protocolVersion":2,"sequence":3,
  "leaseId":"0123456789abcdef0123456789abcdef",
  "intentId":"63b5e3e4-a3ac-45fd-8857-90387a00a50a",
  "action":"mox.set","values":{"enabled":true}}
-{"id":13,"cmd":"tx.release","protocolVersion":1,"sequence":4,
+{"id":13,"cmd":"tx.heartbeat","protocolVersion":2,"sequence":4,
+ "leaseId":"0123456789abcdef0123456789abcdef"}
+{"id":14,"cmd":"tx.release","protocolVersion":2,"sequence":5,
  "leaseId":"0123456789abcdef0123456789abcdef"}
 {"cmd":"client.visibility","visible":false}
 ```
@@ -268,10 +271,12 @@ requires the dedicated `Radio:BrowserTxLeaseEnabled` server switch, current
 authentication with transmit/admin role, the exact current WebSocket, a connected
 radio session, fresh radio-authoritative idle occupancy, and no lease held by
 another browser. `Radio:AllowTransmit` alone does not enable lease acquisition or
-keying. Renewal additionally requires fresh idle occupancy and, when the
-production lifecycle is registered, the same exact fresh lease-bound Disarmed
-watchdog authority. Loss of either boundary refuses renewal and releases only
-that exact lease with reason `renewal-authority-lost`. The browser renews before
+keying. Renewal additionally requires either fresh idle occupancy or fresh proof that
+the same protected AetherSDR handle is the sole active TX owner. When the
+production lifecycle is registered, the same exact fresh lease-bound watchdog
+identity and transaction authority are required; a correctly armed watchdog is
+expected during active TX. Loss of any boundary refuses renewal and releases
+only that exact lease with reason `renewal-authority-lost`. The browser renews before
 expiry, releases on deliberate page exit where possible, and always discards the
 secret on disconnect. A rejected renewal, unsupported lease-event protocol, or
 missing exact renewal response before the current expiry also discards the
@@ -282,10 +287,11 @@ local secret. Server disconnect and lease-expiry handling remain authoritative.
 `enabled` value. CW accepts exactly one conservative printable ASCII `text`
 value from 1 through 32 characters; quote, backslash, and control characters are
 rejected. Each request carries a unique bounded `intentId` and the
-exact lease ID. The server re-derives authentication, role, current connection,
-radio state, fresh idle occupancy, exact lifecycle lease/connection/FLEX handle,
-and a connected registered Disarmed watchdog epoch. Browser-supplied identity or
-capability assertions are not accepted.
+exact lease ID. The server re-derives authentication, role, current connection, radio state,
+exact lifecycle lease/connection/FLEX handle, and the registered watchdog epoch.
+Key requires fresh idle occupancy; unkey during active TX requires fresh proof
+that the exact protected AetherSDR handle is the sole owner. Browser-supplied
+identity or capability assertions are not accepted.
 
 A fully valid Phase 2F intent returns `validated:true`,
 `outcome:"transport-unavailable"`, and `ok:false`. This means deliberate intent
@@ -706,12 +712,42 @@ plan contains only four Boolean switch intentions:
 `browserTransactionIngressExecutionEnabled`, and
 `browserKeyingCapabilityEnabled`. Default production reports the planner
 registered and attached, plan unavailable and unapplied, every switch false,
-reason `activation-not-requested`, and no plan caller. A valid explicit request
-may make all four intentions available together, but Phase 2Y never applies the
-plan or passes it to an executable component.
+reason `activation-not-requested`, and no plan caller.
 
-The command gate remains transmit-disabled and browser ingress remains
-execution-disabled and callerless. The normal web binary contains exactly one
+Phase 2Z upgrades the browser TX protocol to version 2 and adds one strict
+message:
+
+```json
+{"id":14,"cmd":"tx.heartbeat","protocolVersion":2,"sequence":5,
+ "leaseId":"0123456789abcdef0123456789abcdef"}
+```
+
+Version 2 is required for acquire, renew, release, intent, and heartbeat; version
+1 TX envelopes fail closed. `tx.heartbeat` accepts exactly `id`, `cmd`,
+`protocolVersion`, `sequence`, and the lowercase 32-character opaque lease ID.
+It carries no identity, timeout, action, or capability assertion. The server
+re-derives the authenticated current connection and exact active transaction,
+then renews the local and independent safety deadline for the fixed five-second
+maximum. The browser sends at most one heartbeat request at a time every two
+seconds only after a radio-confirmed key result. Ordinary WebSocket `ping`, lease
+renewal, reconnect, lifecycle observation, and status traffic do not count.
+
+Lifecycle `productionActivation` also adds `activationBindingAttached`,
+`activationBindingApplied`, and a nested `binding` diagnostic. The binding
+contains the same four Boolean switches as the plan and is applied only as an
+all-or-nothing set for an eligible local `FlexRx` session. With the binding and
+dynamic readiness complete, Boolean `mox.set` and `ptt.set` intents delegate
+through browser transaction ingress. Key requires fresh idle occupancy; unkey
+and lease renewal during active TX require fresh proof that the exact protected
+AetherSDR FLEX handle is the sole owner. External, stale, ambiguous, replaced,
+or ownerless TX never receives browser unkey authority. When executable MOX/PTT
+capability is projected, the browser disables the older **VALIDATE ONLY** selector
+so an operator cannot mistake an executable `tx.intent` for a dry run.
+`tune.set`, `microphone.set`, and `cw.send` remain non-executable in Phase 2Z.
+
+Default production still reports the binding unapplied, all four switches false,
+the command gate transmit-disabled, browser ingress execution-disabled, and no
+WebSocket transaction caller. The normal web binary contains exactly one
 reviewed `xmit 1`, one runtime-deduplicated reviewed `xmit 0`, and type markers
 for both the primary and emergency transports. The watchdog binary contains
 exactly one reviewed `xmit 0` and zero `xmit 1`; HIL process, CWX, and TX-audio

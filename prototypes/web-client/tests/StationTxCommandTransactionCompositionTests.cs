@@ -402,6 +402,44 @@ public sealed class StationTxCommandTransactionCompositionTests
     }
 
     [Fact]
+    public async Task ActiveAuthorityAcceptsMonotonicLeaseExtension()
+    {
+        Fixture fixture = new();
+        await fixture.ArmKeyAsync();
+        fixture.Authority = fixture.Authority with
+        {
+            LeaseExpiresAt = fixture.Authority.LeaseExpiresAt.AddSeconds(10)
+        };
+
+        StationTxCommandTransactionResult result =
+            await fixture.Subject.HeartbeatAsync(fixture.HeartbeatRequest());
+
+        Assert.True(result.Success);
+        Assert.Equal("heartbeat_accepted", result.Code);
+        Assert.Equal(1, fixture.Safety.HeartbeatCalls);
+        Assert.True(result.Diagnostics.Active);
+    }
+
+    [Fact]
+    public async Task ActiveAuthorityRejectsLeaseExpiryShortening()
+    {
+        Fixture fixture = new();
+        await fixture.ArmKeyAsync();
+        fixture.Authority = fixture.Authority with
+        {
+            LeaseExpiresAt = fixture.Authority.LeaseExpiresAt.AddSeconds(-1)
+        };
+
+        StationTxCommandTransactionResult result =
+            await fixture.Subject.HeartbeatAsync(fixture.HeartbeatRequest());
+
+        Assert.False(result.Success);
+        Assert.Equal("active_authority_changed", result.Code);
+        Assert.Equal(0, fixture.Safety.HeartbeatCalls);
+        Assert.True(result.Diagnostics.Active);
+    }
+
+    [Fact]
     public async Task RejectedHeartbeatRequiresReconciliation()
     {
         Fixture fixture = new();
@@ -578,6 +616,53 @@ public sealed class StationTxCommandTransactionCompositionTests
         Assert.Equal(1, snapshot.UnknownCount);
     }
 
+    [Fact]
+    public async Task KeyConfirmationCancellationRequiresReconciliation()
+    {
+        ConfigurableRadioConfirmation confirmation = new()
+        {
+            CancelKey = true
+        };
+        Fixture fixture = new(radioConfirmation: confirmation);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => fixture.Subject.SubmitAsync(fixture.Request(enabled: true)));
+
+        StationTxCommandTransactionCompositionDiagnostics snapshot =
+            fixture.Subject.Snapshot;
+        Assert.Equal(1, confirmation.KeyCalls);
+        Assert.Equal(1, fixture.Command.SubmitCalls);
+        Assert.True(snapshot.Active);
+        Assert.True(snapshot.ReconciliationRequired);
+        Assert.Equal(1, snapshot.UnknownCount);
+        Assert.Equal("key-confirmation-cancelled", snapshot.LastOutcome);
+    }
+
+    [Fact]
+    public async Task UnkeyConfirmationCancellationRequiresReconciliation()
+    {
+        ConfigurableRadioConfirmation confirmation = new()
+        {
+            CancelUnkey = true
+        };
+        Fixture fixture = new(radioConfirmation: confirmation);
+        await fixture.ArmKeyAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => fixture.Subject.SubmitAsync(
+                fixture.Request(enabled: false, sequence: 2)));
+
+        StationTxCommandTransactionCompositionDiagnostics snapshot =
+            fixture.Subject.Snapshot;
+        Assert.Equal(1, confirmation.KeyCalls);
+        Assert.Equal(1, confirmation.UnkeyCalls);
+        Assert.Equal(2, fixture.Command.SubmitCalls);
+        Assert.True(snapshot.Active);
+        Assert.True(snapshot.ReconciliationRequired);
+        Assert.Equal(1, snapshot.UnknownCount);
+        Assert.Equal("unkey-confirmation-cancelled", snapshot.LastOutcome);
+    }
+
     private sealed class Fixture
     {
         private const string ConnectionId = "connection-a";
@@ -586,7 +671,8 @@ public sealed class StationTxCommandTransactionCompositionTests
 
         public Fixture(
             bool safetyAttached = true,
-            bool commandAttached = true)
+            bool commandAttached = true,
+            IStationTxCommandRadioConfirmationParticipant? radioConfirmation = null)
         {
             Time = new ManualTimeProvider(Now);
             Authority = CreateAuthority(armed: false);
@@ -596,7 +682,8 @@ public sealed class StationTxCommandTransactionCompositionTests
                 safetyAttached ? Safety : null,
                 commandAttached ? Command : null,
                 ResolveAuthority,
-                Time);
+                Time,
+                radioConfirmation);
         }
 
         public ManualTimeProvider Time { get; }
@@ -893,6 +980,48 @@ public sealed class StationTxCommandTransactionCompositionTests
                 request.Intent.Enabled == true
                     ? KeyResult ?? fixture.CommandResult(true, "accepted")
                     : UnkeyResult ?? fixture.CommandResult(true, "accepted"));
+        }
+    }
+
+    private sealed class ConfigurableRadioConfirmation :
+        IStationTxCommandRadioConfirmationParticipant
+    {
+        public bool CancelKey { get; init; }
+        public bool CancelUnkey { get; init; }
+        public int KeyCalls { get; private set; }
+        public int UnkeyCalls { get; private set; }
+
+        public Task<StationTxCommandRadioConfirmationResult> ConfirmAsync(
+            bool enabled,
+            CancellationToken cancellationToken = default)
+        {
+            if (enabled)
+            {
+                KeyCalls++;
+                if (CancelKey)
+                {
+                    return Task.FromException<
+                        StationTxCommandRadioConfirmationResult>(
+                            new OperationCanceledException());
+                }
+            }
+            else
+            {
+                UnkeyCalls++;
+                if (CancelUnkey)
+                {
+                    return Task.FromException<
+                        StationTxCommandRadioConfirmationResult>(
+                            new OperationCanceledException());
+                }
+            }
+
+            return Task.FromResult(
+                new StationTxCommandRadioConfirmationResult(
+                    Success: true,
+                    OutcomeKnown: true,
+                    Code: enabled ? "key_confirmed" : "unkey_confirmed",
+                    Message: "confirmed"));
         }
     }
 

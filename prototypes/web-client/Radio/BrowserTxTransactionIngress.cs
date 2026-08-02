@@ -41,9 +41,11 @@ internal sealed record BrowserTxTransactionIngressResult(
 
 /// <summary>
 /// Typed boundary between a server-validated browser TX intent and the
-/// lifecycle-owned transaction composition. Production constructs this adapter
-/// with execution disabled and exposes no WebSocket, HTTP, reconnect, timer,
-/// watchdog, or AetherRemote caller.
+/// lifecycle-owned transaction composition. Production defaults execution off;
+/// Phase 2Z may enable it only through the complete per-session activation
+/// binding. The WebSocket caller supplies only the parsed request and the exact
+/// server validation result. HTTP, reconnect, timer, watchdog, and AetherRemote
+/// callers remain absent.
 /// </summary>
 internal sealed class BrowserTxTransactionIngress
 {
