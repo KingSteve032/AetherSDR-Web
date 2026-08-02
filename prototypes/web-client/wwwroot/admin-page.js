@@ -22,7 +22,7 @@ import {
   rememberSessionDiagnosticExpansion,
   sessionDiagnosticExpanded,
   shortId
-} from "./admin-diagnostics.js?v=unkey-only-transport-1";
+} from "./admin-diagnostics.js?v=watchdog-arming-1";
 
 const elements = {
   userName: document.querySelector("#user-name"),

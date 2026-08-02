@@ -197,7 +197,18 @@ Currently:
 - the production browser does not receive a reachable keying path merely because
   the dormant production primitive exists;
 - Phase 2U includes separate reviewed emergency and watchdog `xmit 0` primitives
-  behind disabled configuration, exact allowlists, and no arm/caller surface;
+  behind disabled configuration and exact allowlists;
+- Phase 2V adds a protocol-v2 independent watchdog arm/heartbeat/disarm state
+  machine behind a separate disabled arming switch. It has no key or arbitrary-
+  command method, accepts authority only from the lifecycle-owned safety
+  transaction participant, survives controlling-connection loss until its
+  bounded deadline, and sends at most one `xmit 0` only after fresh FLEX status
+  proves the exact protected handle is the current TX owner. It clears that arm
+  only after both command acceptance and fresh radio-confirmed idle; a missing
+  idle confirmation remains an unknown outcome requiring reconciliation.
+  Browser, HTTP,
+  AetherRemote, reconnect, and ordinary lifecycle heartbeats cannot arm or renew
+  it;
 - production publish verification must require exactly one web `xmit 1`, one
   deduplicated web `xmit 0` plus both reviewed web transport type markers, one
   watchdog `xmit 0`, and zero watchdog `xmit 1`, while proving that HIL process,

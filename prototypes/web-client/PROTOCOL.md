@@ -638,8 +638,7 @@ eligibility, allowlist, channel/handle availability, attempt/forward/key/unkey/
 accepted/rejected/unknown counters, last operation/outcome/reason, and no radio
 allowlist values or command text.
 
-Phase 2U adds no browser wire message and no watchdog request kind. The internal
-emergency interface becomes
+Phase 2U adds no browser wire message. The internal emergency interface becomes
 `RequestUnkeyAsync(ExpectedProtectedClientHandle, CancellationToken)` and has no
 key or Boolean transmit method. `StationTxEmergencyUnkeyTransport` has its own
 disabled `Enabled`, bounded exact `AllowedRadioIds`, and bounded command timeout.
@@ -651,13 +650,33 @@ channel/handle state, attempt/forward/outcome counters, and reason.
 `IndependentTxWatchdog` adds disabled radio-command transport configuration with
 an exact radio allowlist and bounded timeout. Only an eligible local `FlexRx`
 session may launch the child with the strict `--unkey-enabled`, radio ID, IPv4
-host, port, and timeout arguments. The child TCP adapter has one operation and
-one encoded command, `C1|xmit 0`; it waits for a valid FLEX session handle and
-accepts only the matching `R1` response. The watchdog protocol remains version 1
-with only `status`, `register`, `heartbeat`, and `disconnect`. Its snapshot may
-report either `unkey-transport-disabled-disarmed` with transport false or
-`unkey-transport-ready-disarmed` with transport true, but state must remain
-`Disarmed`, arming must remain false, and no command request exists.
+host, port, and timeout arguments. Phase 2V upgrades the watchdog protocol to version 2. It permits only `status`,
+`register`, `arm`, `heartbeat`, `disarm`, and `disconnect`; there remains no
+`key`, `unkey`, lease, reset, retry, or arbitrary-command request. `arm` requires
+an exact registered identity, a strictly increasing sequence, and a bounded
+`heartbeatTimeoutMilliseconds` from 250 through 5000. An armed heartbeat carries
+a fresh bounded timeout; a Disarmed registration heartbeat carries none and
+cannot arm or renew safety authority. Disconnect preserves an active arm until
+its deadline.
+
+The child TCP adapter still exposes one unkey-only operation. It sends the fixed
+`C1|sub client all` and `C2|sub tx all` observers, then requires fresh interlock
+state naming the exact protected handle as current TX owner before sending the
+single fixed `C3|xmit 0`. Idle state succeeds without C3. A different, missing,
+ambiguous, or unconfirmed owner rejects before C3. Deadline expiry performs at
+most one attempt. After C3, a matching successful command response and fresh
+`READY` or `RECEIVE` interlock status are both required before the child returns
+Disarmed. Known rejection, missing idle confirmation, or another unknown outcome
+returns `ReconciliationRequired` with no retry.
+
+Protocol-v2 snapshots add `armed`, arm/heartbeat/deadline timestamps, bounded
+heartbeat timeout, unkey attempt/accepted/rejected/unknown counters, and the last
+bounded outcome/reason. The full authority identity remains non-serialized.
+Health adds protocol version, explicit arming registration/configuration,
+armed/reconciliation process counts, and aggregate unkey attempts. Production
+defaults require arming configured false, arming unavailable, zero armed
+processes, zero reconciliation-required processes, zero unkey attempts, and no
+WebSocket caller.
 
 The command gate remains transmit-disabled and browser ingress remains
 execution-disabled and callerless. The normal web binary contains exactly one

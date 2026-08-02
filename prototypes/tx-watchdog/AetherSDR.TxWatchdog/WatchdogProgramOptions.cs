@@ -4,9 +4,11 @@ using System.Net;
 namespace AetherSDR.TxWatchdog;
 
 internal sealed record WatchdogProgramOptions(
-    WatchdogUnkeyTransportConfiguration UnkeyTransport)
+    WatchdogUnkeyTransportConfiguration UnkeyTransport,
+    bool ArmingEnabled)
 {
     private const int EnabledArgumentCount = 10;
+    private const int ArmedArgumentCount = 11;
 
     public static bool TryParse(
         IReadOnlyList<string> args,
@@ -21,18 +23,33 @@ internal sealed record WatchdogProgramOptions(
             string.Equals(args[0], "--stdio", StringComparison.Ordinal))
         {
             options = new WatchdogProgramOptions(
-                WatchdogUnkeyTransportConfiguration.Disabled);
+                WatchdogUnkeyTransportConfiguration.Disabled,
+                ArmingEnabled: false);
             return true;
         }
 
-        if (args.Count != EnabledArgumentCount ||
+        bool armingEnabled =
+            args.Count == ArmedArgumentCount &&
+            string.Equals(args[2], "--arming-enabled", StringComparison.Ordinal);
+        int offset = armingEnabled ? 1 : 0;
+        if (args.Count is not (EnabledArgumentCount or ArmedArgumentCount) ||
             !string.Equals(args[0], "--stdio", StringComparison.Ordinal) ||
             !string.Equals(args[1], "--unkey-enabled", StringComparison.Ordinal) ||
-            !string.Equals(args[2], "--radio-id", StringComparison.Ordinal) ||
-            !string.Equals(args[4], "--radio-host", StringComparison.Ordinal) ||
-            !string.Equals(args[6], "--radio-port", StringComparison.Ordinal) ||
+            (args.Count == ArmedArgumentCount && !armingEnabled) ||
             !string.Equals(
-                args[8],
+                args[2 + offset],
+                "--radio-id",
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                args[4 + offset],
+                "--radio-host",
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                args[6 + offset],
+                "--radio-port",
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                args[8 + offset],
                 "--command-timeout-ms",
                 StringComparison.Ordinal))
         {
@@ -40,13 +57,13 @@ internal sealed record WatchdogProgramOptions(
             return false;
         }
 
-        string radioId = args[3].Trim().ToUpperInvariant();
+        string radioId = args[3 + offset].Trim().ToUpperInvariant();
         if (radioId.Length is 0 or > 128 || radioId.Any(char.IsControl))
         {
             error = "invalid-radio-id";
             return false;
         }
-        if (!IPAddress.TryParse(args[5], out IPAddress? address) ||
+        if (!IPAddress.TryParse(args[5 + offset], out IPAddress? address) ||
             address.AddressFamily !=
                 System.Net.Sockets.AddressFamily.InterNetwork)
         {
@@ -54,7 +71,7 @@ internal sealed record WatchdogProgramOptions(
             return false;
         }
         if (!int.TryParse(
-                args[7],
+                args[7 + offset],
                 NumberStyles.None,
                 CultureInfo.InvariantCulture,
                 out int port) ||
@@ -64,7 +81,7 @@ internal sealed record WatchdogProgramOptions(
             return false;
         }
         if (!int.TryParse(
-                args[9],
+                args[9 + offset],
                 NumberStyles.None,
                 CultureInfo.InvariantCulture,
                 out int timeoutMilliseconds) ||
@@ -83,7 +100,9 @@ internal sealed record WatchdogProgramOptions(
                 port,
                 TimeSpan.FromMilliseconds(timeoutMilliseconds));
             _ = new FlexWatchdogUnkeyTransport(configuration);
-            options = new WatchdogProgramOptions(configuration);
+            options = new WatchdogProgramOptions(
+                configuration,
+                armingEnabled);
             return true;
         }
         catch (InvalidOperationException)
@@ -95,6 +114,6 @@ internal sealed record WatchdogProgramOptions(
 
     public static string Usage =>
         "Usage: AetherSDR.TxWatchdog --stdio [--unkey-enabled " +
-        "--radio-id <id> --radio-host <IPv4> --radio-port <port> " +
-        "--command-timeout-ms <250-5000>]";
+        "[--arming-enabled] --radio-id <id> --radio-host <IPv4> " +
+        "--radio-port <port> --command-timeout-ms <250-5000>]";
 }

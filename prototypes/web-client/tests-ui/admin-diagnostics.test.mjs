@@ -251,7 +251,15 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       lastSequence: 0,
       restartCount: 1,
       radioCommandTransportAvailable: false,
-      armingAvailable: false
+      armingAvailable: false,
+      armed: false,
+      heartbeatDeadlineAt: null,
+      unkeyAttemptCount: 0,
+      unkeyAcceptedCount: 0,
+      unkeyRejectedCount: 0,
+      unkeyUnknownCount: 0,
+      lastUnkeyOutcome: "none",
+      lastUnkeyReason: "none"
     },
     lastObservation: "gateway-heartbeat"
   }, now), {
@@ -260,7 +268,9 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       "browser 4/fresh (1s ago) · engine 7/fresh (3s ago) · " +
       "gateway 9/fresh (2s ago) · lease 2 (10s ago) · " +
       "watchdog 3 (1s ago) · independent disarmed pid 4242 " +
-      "host watchdog seq 0 restarts 1 unkey-transport disabled arming unavailable · " +
+      "host watchdog seq 0 restarts 1 unkey-transport disabled arming unavailable " +
+      "armed no deadline none unkey-attempts 0 accepted 0 rejected 0 unknown 0 " +
+      "last none/none · " +
       "command boundary v1 disabled " +
       "signature absent adapter registered arming absent set-transmit absent " +
       "audit 0 · adapter composition executor attached registered yes authority " +

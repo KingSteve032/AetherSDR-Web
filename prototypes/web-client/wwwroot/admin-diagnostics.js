@@ -359,7 +359,17 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
         `unkey-transport ${independent.radioCommandTransportAvailable
           ? "available"
           : "disabled"} ` +
-        `arming ${independent.armingAvailable ? "available" : "unavailable"}`
+        `arming ${independent.armingAvailable ? "available" : "unavailable"} ` +
+        `armed ${independent.armed ? "yes" : "no"} ` +
+        `deadline ${independent.heartbeatDeadlineAt
+          ? formatUntil(independent.heartbeatDeadlineAt, now)
+          : "none"} ` +
+        `unkey-attempts ${formatCount(independent.unkeyAttemptCount)} ` +
+        `accepted ${formatCount(independent.unkeyAcceptedCount)} ` +
+        `rejected ${formatCount(independent.unkeyRejectedCount)} ` +
+        `unknown ${formatCount(independent.unkeyUnknownCount)} ` +
+        `last ${String(independent.lastUnkeyOutcome || "none")}/` +
+        `${String(independent.lastUnkeyReason || "none")}`
       : `independent degraded (${independent.reason || "unavailable"})`;
   return {
     value: `${gate} · ${safety} · ${authorityState}`,

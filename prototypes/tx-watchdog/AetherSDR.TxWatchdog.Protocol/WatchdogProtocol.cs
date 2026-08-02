@@ -7,7 +7,9 @@ public enum WatchdogRequestKind
 {
     Status,
     Register,
+    Arm,
     Heartbeat,
+    Disarm,
     Disconnect
 }
 
@@ -26,7 +28,8 @@ public sealed record WatchdogRequest(
     string RequestId,
     WatchdogRequestKind Kind,
     long? Sequence,
-    WatchdogIdentity? Identity);
+    WatchdogIdentity? Identity,
+    int? HeartbeatTimeoutMilliseconds = null);
 
 public sealed record WatchdogSnapshot(
     string HostInstanceId,
@@ -41,7 +44,18 @@ public sealed record WatchdogSnapshot(
     bool LeaseBound,
     long LastSequence,
     string LastObservation,
-    DateTimeOffset? LastObservedAt);
+    DateTimeOffset? LastObservedAt,
+    bool Armed = false,
+    DateTimeOffset? ArmedAt = null,
+    DateTimeOffset? LastHeartbeatAt = null,
+    DateTimeOffset? HeartbeatDeadlineAt = null,
+    int? HeartbeatTimeoutMilliseconds = null,
+    long UnkeyAttemptCount = 0,
+    long UnkeyAcceptedCount = 0,
+    long UnkeyRejectedCount = 0,
+    long UnkeyUnknownCount = 0,
+    string LastUnkeyOutcome = "none",
+    string LastUnkeyReason = "none");
 
 public sealed record WatchdogResponse(
     int ProtocolVersion,
@@ -52,10 +66,12 @@ public sealed record WatchdogResponse(
 
 public static class WatchdogProtocol
 {
-    public const int Version = 1;
+    public const int Version = 2;
     public const int MaximumMessageCharacters = 4096;
     public const int MaximumRequestIdLength = 64;
     public const int MaximumIdentifierLength = 128;
+    public const int MinimumHeartbeatTimeoutMilliseconds = 250;
+    public const int MaximumHeartbeatTimeoutMilliseconds = 5000;
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -71,7 +87,8 @@ public static class WatchdogProtocol
             "requestId",
             "type",
             "sequence",
-            "identity"
+            "identity",
+            "heartbeatTimeoutMilliseconds"
         };
 
     private static readonly HashSet<string> IdentityProperties =
@@ -111,7 +128,18 @@ public static class WatchdogProtocol
             "leaseBound",
             "lastSequence",
             "lastObservation",
-            "lastObservedAt"
+            "lastObservedAt",
+            "armed",
+            "armedAt",
+            "lastHeartbeatAt",
+            "heartbeatDeadlineAt",
+            "heartbeatTimeoutMilliseconds",
+            "unkeyAttemptCount",
+            "unkeyAcceptedCount",
+            "unkeyRejectedCount",
+            "unkeyUnknownCount",
+            "lastUnkeyOutcome",
+            "lastUnkeyReason"
         };
 
     public static bool TryParseRequest(
@@ -179,10 +207,13 @@ public static class WatchdogProtocol
             bool hasIdentity = root.TryGetProperty(
                 "identity",
                 out JsonElement identityElement);
+            bool hasHeartbeatTimeout = root.TryGetProperty(
+                "heartbeatTimeoutMilliseconds",
+                out JsonElement heartbeatTimeoutElement);
 
             if (kind == WatchdogRequestKind.Status)
             {
-                if (hasSequence || hasIdentity)
+                if (hasSequence || hasIdentity || hasHeartbeatTimeout)
                 {
                     error = "status-must-not-carry-authority";
                     return false;
@@ -192,7 +223,8 @@ public static class WatchdogProtocol
                     requestId,
                     kind,
                     Sequence: null,
-                    Identity: null);
+                    Identity: null,
+                    HeartbeatTimeoutMilliseconds: null);
                 return true;
             }
 
@@ -211,12 +243,42 @@ public static class WatchdogProtocol
                 return false;
             }
 
+            int? heartbeatTimeoutMilliseconds = null;
+            if (hasHeartbeatTimeout)
+            {
+                if (heartbeatTimeoutElement.ValueKind != JsonValueKind.Number ||
+                    !heartbeatTimeoutElement.TryGetInt32(
+                        out int parsedHeartbeatTimeout) ||
+                    parsedHeartbeatTimeout < MinimumHeartbeatTimeoutMilliseconds ||
+                    parsedHeartbeatTimeout > MaximumHeartbeatTimeoutMilliseconds)
+                {
+                    error = "invalid-heartbeat-timeout";
+                    return false;
+                }
+                heartbeatTimeoutMilliseconds = parsedHeartbeatTimeout;
+            }
+
+            if (kind == WatchdogRequestKind.Arm &&
+                heartbeatTimeoutMilliseconds is null)
+            {
+                error = "arm-requires-heartbeat-timeout";
+                return false;
+            }
+            if (kind is WatchdogRequestKind.Register or
+                WatchdogRequestKind.Disarm or WatchdogRequestKind.Disconnect &&
+                heartbeatTimeoutMilliseconds is not null)
+            {
+                error = "unexpected-heartbeat-timeout";
+                return false;
+            }
+
             request = new WatchdogRequest(
                 Version,
                 requestId,
                 kind,
                 sequence,
-                identity);
+                identity,
+                heartbeatTimeoutMilliseconds);
             return true;
         }
         catch (JsonException)
@@ -233,7 +295,9 @@ public static class WatchdogProtocol
         {
             WatchdogRequestKind.Status => "status",
             WatchdogRequestKind.Register => "register",
+            WatchdogRequestKind.Arm => "arm",
             WatchdogRequestKind.Heartbeat => "heartbeat",
+            WatchdogRequestKind.Disarm => "disarm",
             WatchdogRequestKind.Disconnect => "disconnect",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(request),
@@ -246,7 +310,9 @@ public static class WatchdogProtocol
                 requestId = request.RequestId,
                 type,
                 sequence = request.Sequence,
-                identity = request.Identity
+                identity = request.Identity,
+                heartbeatTimeoutMilliseconds =
+                    request.HeartbeatTimeoutMilliseconds
             },
             SerializerOptions);
     }
@@ -377,23 +443,90 @@ public static class WatchdogProtocol
             !TryReadNullableDateTimeOffset(
                 element,
                 "lastObservedAt",
-                out DateTimeOffset? lastObservedAt))
+                out DateTimeOffset? lastObservedAt) ||
+            !TryReadBoolean(element, "armed", out bool armed) ||
+            !TryReadNullableDateTimeOffset(
+                element,
+                "armedAt",
+                out DateTimeOffset? armedAt) ||
+            !TryReadNullableDateTimeOffset(
+                element,
+                "lastHeartbeatAt",
+                out DateTimeOffset? lastHeartbeatAt) ||
+            !TryReadNullableDateTimeOffset(
+                element,
+                "heartbeatDeadlineAt",
+                out DateTimeOffset? heartbeatDeadlineAt) ||
+            !TryReadNullableInt32(
+                element,
+                "heartbeatTimeoutMilliseconds",
+                out int? heartbeatTimeoutMilliseconds) ||
+            !TryReadNonNegativeInt64(
+                element,
+                "unkeyAttemptCount",
+                out long unkeyAttemptCount) ||
+            !TryReadNonNegativeInt64(
+                element,
+                "unkeyAcceptedCount",
+                out long unkeyAcceptedCount) ||
+            !TryReadNonNegativeInt64(
+                element,
+                "unkeyRejectedCount",
+                out long unkeyRejectedCount) ||
+            !TryReadNonNegativeInt64(
+                element,
+                "unkeyUnknownCount",
+                out long unkeyUnknownCount) ||
+            !TryReadIdentifier(
+                element,
+                "lastUnkeyOutcome",
+                MaximumIdentifierLength,
+                normalizeUpper: false,
+                out string lastUnkeyOutcome) ||
+            !TryReadIdentifier(
+                element,
+                "lastUnkeyReason",
+                MaximumIdentifierLength,
+                normalizeUpper: false,
+                out string lastUnkeyReason))
         {
             return false;
         }
 
-        bool validTransportState = radioCommandTransportAvailable
-            ? string.Equals(
-                reason,
-                "unkey-transport-ready-disarmed",
-                StringComparison.Ordinal)
-            : string.Equals(
-                reason,
-                "unkey-transport-disabled-disarmed",
-                StringComparison.Ordinal);
-        if (!string.Equals(state, "Disarmed", StringComparison.Ordinal) ||
-            !validTransportState || armingAvailable ||
-            (connected && !registered) || (leaseBound != registered))
+        bool disarmed = string.Equals(
+            state,
+            "Disarmed",
+            StringComparison.Ordinal);
+        bool activeState = state is
+            "Armed" or "Unkeying" or "ReconciliationRequired";
+        bool validOutcome = lastUnkeyOutcome is
+            "none" or "accepted" or "rejected" or "unknown";
+        bool validCompletedOutcomes =
+            unkeyAcceptedCount <= unkeyAttemptCount &&
+            unkeyRejectedCount <=
+                unkeyAttemptCount - unkeyAcceptedCount &&
+            unkeyUnknownCount <=
+                unkeyAttemptCount - unkeyAcceptedCount - unkeyRejectedCount;
+        bool validActiveFields = !activeState ||
+            (armed && registered && leaseBound &&
+             armedAt is not null && lastHeartbeatAt is not null &&
+             heartbeatDeadlineAt is not null &&
+             heartbeatTimeoutMilliseconds is >=
+                 MinimumHeartbeatTimeoutMilliseconds and <=
+                 MaximumHeartbeatTimeoutMilliseconds);
+        bool validDisarmedFields = !disarmed ||
+            (!armed && armedAt is null && lastHeartbeatAt is null &&
+             heartbeatDeadlineAt is null &&
+             heartbeatTimeoutMilliseconds is null);
+
+        if ((!disarmed && !activeState) ||
+            (armingAvailable && !radioCommandTransportAvailable) ||
+            (connected && !registered) ||
+            leaseBound != registered ||
+            !validOutcome ||
+            !validCompletedOutcomes ||
+            !validActiveFields ||
+            !validDisarmedFields)
         {
             return false;
         }
@@ -411,7 +544,18 @@ public static class WatchdogProtocol
             leaseBound,
             lastSequence,
             lastObservation,
-            lastObservedAt);
+            lastObservedAt,
+            armed,
+            armedAt,
+            lastHeartbeatAt,
+            heartbeatDeadlineAt,
+            heartbeatTimeoutMilliseconds,
+            unkeyAttemptCount,
+            unkeyAcceptedCount,
+            unkeyRejectedCount,
+            unkeyUnknownCount,
+            lastUnkeyOutcome,
+            lastUnkeyReason);
         return true;
     }
 
@@ -494,11 +638,14 @@ public static class WatchdogProtocol
         {
             "status" => WatchdogRequestKind.Status,
             "register" => WatchdogRequestKind.Register,
+            "arm" => WatchdogRequestKind.Arm,
             "heartbeat" => WatchdogRequestKind.Heartbeat,
+            "disarm" => WatchdogRequestKind.Disarm,
             "disconnect" => WatchdogRequestKind.Disconnect,
             _ => default
         };
-        return type is "status" or "register" or "heartbeat" or "disconnect";
+        return type is "status" or "register" or "arm" or "heartbeat" or
+            "disarm" or "disconnect";
     }
 
     private static bool HasOnlyUniqueProperties(
@@ -525,6 +672,38 @@ public static class WatchdogProtocol
         return element.TryGetProperty(propertyName, out JsonElement property) &&
             property.ValueKind == JsonValueKind.Number &&
             property.TryGetInt32(out value);
+    }
+
+    private static bool TryReadNonNegativeInt64(
+        JsonElement element,
+        string propertyName,
+        out long value)
+    {
+        value = default;
+        return element.TryGetProperty(propertyName, out JsonElement property) &&
+            property.ValueKind == JsonValueKind.Number &&
+            property.TryGetInt64(out value) &&
+            value >= 0;
+    }
+
+    private static bool TryReadNullableInt32(
+        JsonElement element,
+        string propertyName,
+        out int? value)
+    {
+        value = null;
+        if (!element.TryGetProperty(propertyName, out JsonElement property) ||
+            property.ValueKind == JsonValueKind.Null)
+        {
+            return true;
+        }
+        if (property.ValueKind != JsonValueKind.Number ||
+            !property.TryGetInt32(out int parsed))
+        {
+            return false;
+        }
+        value = parsed;
+        return true;
     }
 
     private static bool TryReadString(

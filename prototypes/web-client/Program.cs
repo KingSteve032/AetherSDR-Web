@@ -404,6 +404,8 @@ app.MapGet(
                 txStationCommandArmingAvailable = false,
                 txStationCommandSetTransmitAvailable = false,
                 txIndependentWatchdogHostPackaged = true,
+                txIndependentWatchdogProtocolVersion =
+                    AetherSDR.TxWatchdog.Protocol.WatchdogProtocol.Version,
                 txIndependentWatchdogSupervisionRegistered =
                     watchdog.SupervisionRegistered,
                 txIndependentWatchdogState = watchdog.State,
@@ -417,6 +419,12 @@ app.MapGet(
                 txIndependentWatchdogRegisteredIdentityCount =
                     watchdog.RegisteredIdentityCount,
                 txIndependentWatchdogRestartCount = watchdog.RestartCount,
+                txIndependentWatchdogArmedProcessCount =
+                    watchdog.ArmedProcessCount,
+                txIndependentWatchdogReconciliationRequiredCount =
+                    watchdog.ReconciliationRequiredCount,
+                txIndependentWatchdogUnkeyAttemptCount =
+                    watchdog.UnkeyAttemptCount,
                 txIndependentWatchdogUnkeyTransportRegistered = true,
                 txIndependentWatchdogUnkeyTransportConfiguredEnabled =
                     independentTxWatchdogSettings
@@ -430,6 +438,10 @@ app.MapGet(
                     watchdog.CommandTransportAvailable,
                 txIndependentWatchdogUnkeyTransportWebSocketCallerRegistered =
                     false,
+                txIndependentWatchdogArmingRegistered = true,
+                txIndependentWatchdogArmingConfiguredEnabled =
+                    independentTxWatchdogSettings.ArmingEnabled,
+                txIndependentWatchdogArmingWebSocketCallerRegistered = false,
                 txIndependentWatchdogCommandTransportRegistered =
                     watchdog.CommandTransportAvailable,
                 txIndependentWatchdogArmingAvailable =

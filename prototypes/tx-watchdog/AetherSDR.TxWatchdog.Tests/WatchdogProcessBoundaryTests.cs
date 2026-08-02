@@ -76,7 +76,7 @@ public sealed class WatchdogProcessBoundaryTests
             WatchdogResponse response = await SendAsync(
                 process,
                 WatchdogProtocolTests.RequestJson(
-                    "arm",
+                    "key",
                     "mutation-1",
                     1,
                     WatchdogProtocolTests.IdentityJson("radio-a")));

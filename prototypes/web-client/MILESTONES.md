@@ -2272,8 +2272,61 @@ Milestone state:
   boundary, command submission, and supervisor arming remained false.
   Deployment log:
   `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260802-m7-unkey-only-emergency-watchdog-phase2u-flexweb-validation.txt`.
-- Browser Bridge acceptance remains pending because the local browser extension
-  was disconnected after deployment. No browser TX control, radio command, or RF
+- Browser Bridge acceptance connected a live PSOC2 session in RX-only mode.
+  TUNE and OPERATE remained disabled; emergency and watchdog unkey transports
+  remained disabled with zero attempts; both safety supervisors remained
+  Disarmed; public health was fail-closed; and fresh radio/Admin console captures
+  contained no entries. No TX control, microphone permission, radio command, or
+  RF operation was used.
+- Phase 2V adds independent-watchdog protocol version 2 after explicit
+  maintainer approval. It permits only status, register, arm, heartbeat, disarm,
+  and disconnect; no key, unkey, lease, reset, retry, or arbitrary-command
+  request exists. A separate `ArmingEnabled:false` default is invalid without the
+  reviewed unkey transport.
+- The one-shot watchdog controller binds one exact authority tuple and protected
+  FLEX handle to a 250-5000 ms heartbeat deadline. Ordinary registration
+  heartbeats cannot arm or renew it. Disconnect preserves an active arm. Deadline
+  expiry performs at most one ownership-checked unkey; known rejection or
+  unknown outcome remains `ReconciliationRequired` without retry.
+- The standalone FLEX observer sends only fixed client/TX subscriptions before
+  unkey. Fresh idle completes without a command. A different or unconfirmed TX
+  owner rejects before the single fixed `xmit 0` write. After dispatch, both the
+  matching command response and fresh radio-confirmed idle are required; missing
+  idle confirmation is an unknown outcome requiring reconciliation. The
+  lifecycle-owned
+  safety transaction participant is the only production caller of arm,
+  safety-heartbeat, and disarm; browser, HTTP, AetherRemote, reconnect, timer,
+  and ordinary lifecycle heartbeat surfaces receive none of those operations.
+- The final 2026-08-02 Phase 2V guarded gate passed 704 FlexWeb server tests,
+  57 independent-watchdog tests, 48 TX-HIL isolation tests, 70 AetherRemote
+  tests, and 123 browser tests (1,002 total), with a zero-warning solution build.
+  The web artifact contained exactly one reviewed key string, one runtime-
+  deduplicated unkey string, and both reviewed primary/emergency transport type
+  markers. The watchdog artifact contained one unkey string, zero key strings,
+  and no HIL, CWX, or TX-audio surface. Its protocol-v2 status probe began empty,
+  Disarmed, transport-disabled, arming-disabled, unarmed, and with zero unkey
+  outcomes. Validation log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260802-m7-watchdog-arming-timeout-unkey-phase2v-validation-flexweb-validation.txt`.
+- Immutable staging release
+  `20260802-m7-watchdog-arming-timeout-unkey-phase2v-final` was activated with
+  `20260802-m7-watchdog-arming-timeout-unkey-phase2v` retained for rollback.
+  Internal and public health reported watchdog protocol version 2, arming
+  registered but configured disabled, unkey transport configured disabled,
+  armed-process count zero, reconciliation-required count zero, unkey-attempt
+  count zero, arming unavailable, and WebSocket caller absent. Production
+  transmit, browser lease, signing, submission, command gate, ingress execution,
+  transaction key/unkey, and both emergency transports remained unavailable.
+  Deployment log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260802-m7-watchdog-arming-timeout-unkey-phase2v-final-flexweb-validation.txt`.
+- Browser Bridge acceptance recovered the live PSOC2 session in RX-only mode.
+  TUNE and OPERATE remained disabled. Public health and Admin showed protocol v2,
+  the independent process connected but Disarmed and unarmed, no active lease,
+  arming and unkey transport unavailable, and unkey attempt/accepted/rejected/
+  unknown counts all zero. Primary and emergency production transports also
+  remained disabled with zero counters; radio-authoritative occupancy was idle;
+  browser transaction ingress remained execution-disabled and callerless. The
+  radio and Admin console captures completed without surfacing an entry. No
+  browser TX control, microphone permission, radio command, or live RF/HIL
   operation was used.
 
 Acceptance criteria:
