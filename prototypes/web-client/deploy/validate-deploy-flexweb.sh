@@ -521,16 +521,20 @@ dotnet publish "${WATCHDOG_PROJECT}" \
 
 binary="${publish_dir}/AetherSDR.Web"
 managed_binary="${publish_dir}/AetherSDR.Web.dll"
+activation_preflight_wrapper="${publish_dir}/tools/validate-production-tx-activation.sh"
 watchdog_binary="${watchdog_publish_dir}/AetherSDR.TxWatchdog"
 watchdog_managed_binary="${watchdog_publish_dir}/AetherSDR.TxWatchdog.dll"
-for published_executable in "${binary}" "${watchdog_binary}"; do
+for published_executable in \
+  "${binary}" \
+  "${activation_preflight_wrapper}" \
+  "${watchdog_binary}"; do
   [[ -f "${published_executable}" ]] || {
     echo "Published executable is missing: ${published_executable}" >&2
     exit 1
   }
-  # Some reviewed shared worktrees are hosted on CIFS, which strips the
-  # generated apphost execute bit before dotnet publish copies it. Normalize
-  # only the two known Linux entry points in the local publish tree.
+  # Some reviewed shared worktrees are hosted on CIFS, which strips execute
+  # bits before dotnet publish copies them. Normalize only the three reviewed
+  # Linux entry points in the local publish tree.
   chmod 0755 -- "${published_executable}"
 done
 [[ -x "${binary}" ]] || {
@@ -541,6 +545,11 @@ done
   echo "Published AetherSDR.Web managed assembly is missing or empty." >&2
   exit 1
 }
+[[ -x "${activation_preflight_wrapper}" ]] || {
+  echo "Published production TX activation preflight wrapper is unavailable." >&2
+  exit 1
+}
+bash -n "${activation_preflight_wrapper}"
 [[ -s "${publish_dir}/wwwroot/tx-controls.js" ]] || {
   echo "Published tx-controls.js module is missing or empty." >&2
   exit 1
@@ -723,6 +732,8 @@ active_release="$(ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
 }
 ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
   'systemctl --user is-active --quiet aethersdr-web.service'
+ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
+  'test -x /home/flexweb/aethersdr/current/tools/validate-production-tx-activation.sh && bash -n /home/flexweb/aethersdr/current/tools/validate-production-tx-activation.sh'
 remote_watchdog_status="$(ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
   'test -x /home/flexweb/aethersdr/current/watchdog/AetherSDR.TxWatchdog && printf '\''%s\n'\'' '\''{"protocolVersion":2,"requestId":"artifact-status","type":"status"}'\'' | /home/flexweb/aethersdr/current/watchdog/AetherSDR.TxWatchdog --stdio')"
 assert_watchdog_disarmed \
