@@ -190,7 +190,14 @@ diagnostic only and cannot restore the released lease.
 per-session running/connected/registered-identity counts, cumulative restart
 count, `txIndependentWatchdogCommandTransportRegistered=false`,
 `txIndependentWatchdogArmingAvailable=false`,
-`txCommandTransportRegistered=false`, and
+`txProductionCommandTransportRegistered=true`,
+`txProductionCommandTransportConfiguredEnabled=false`,
+`txProductionCommandTransportAllowedRadioCount=0`,
+`txProductionCommandTransportAvailable=false`,
+`txProductionCommandTransportSetTransmitAvailable=false`,
+`txProductionCommandTransportWebSocketCallerRegistered=false`,
+`txCommandTransportRegistered=true`,
+`txCommandTransportAvailable=false`, and
 `txSafetySupervisorArmingAvailable=false`. With browser TX leases disabled, the
 deployment gate requires zero registered watchdog identities. The Admin
 `txLifecycle.independentWatchdog` projection includes process ID, host instance,
@@ -604,6 +611,37 @@ policy result. The lifecycle's new internal
 `ExecuteBrowserTxTransactionIngressAsync` operation accepts only
 `BrowserTxTransactionIngressRequest` plus cancellation and returns only
 `BrowserTxTransactionIngressResult`; no HTTP or WebSocket contract exposes it.
+
+Phase 2T adds no browser or network wire message. The internal
+`IStationTxCommandTransport.SetTransmitAsync` contract now requires
+`Enabled`, the exact non-zero `ExpectedClientHandle`, and cancellation. The gate
+passes the handle it stored in the guarded intent. The production FLEX router's
+`SendForClientAsync` compares that expected handle with the currently attached
+handle while holding the control-session lock, then captures that exact control
+session. A replaced handle is a known rejection before any command write;
+I/O and timeout after a write begins remain unknown outcomes. No automatic retry
+is added.
+
+`StationTxCommandTransport` configuration has `Enabled`, bounded
+`AllowedRadioIds`, and `CommandTimeoutMilliseconds`. Defaults are false, empty,
+and 2000. `Enabled:true` with an empty allowlist, duplicate or malformed IDs,
+more than 16 IDs, or a timeout outside 250-5000 ms fails startup. Only a local
+`FlexRx` session can become eligible. Health reports
+`txProductionCommandTransportRegistered:true`, configured enabled false,
+allowed-radio count zero, timeout 2000, availability and SetTransmit false,
+reason `transport-disabled`, and WebSocket caller false. The compatibility field
+`txCommandTransportRegistered` becomes true while the separate
+`txCommandTransportAvailable` field remains false.
+
+Each session snapshot includes bounded production-transport registration,
+eligibility, allowlist, channel/handle availability, attempt/forward/key/unkey/
+accepted/rejected/unknown counters, last operation/outcome/reason, and no radio
+allowlist values or command text. The command gate remains transmit-disabled,
+browser ingress remains execution-disabled and callerless, and emergency-unkey
+and independent-watchdog command transports remain absent. The normal web binary
+contains exactly one reviewed `xmit 1` and one reviewed `xmit 0`; those strings
+are forbidden in the watchdog binary, and HIL process, CWX, and TX-audio markers
+remain forbidden in both production artifacts.
 
 `client.visibility` accepts only a JSON boolean. A hidden browser keeps its
 authenticated WebSocket, radio session, text responses, snapshots, presence,

@@ -13,6 +13,7 @@ public sealed record StationTxLifecycleDiagnostics(
     bool ProductionTransmitEnabled,
     bool CommandTransportAvailable,
     bool EmergencyUnkeyTransportAvailable,
+    StationTxProductionCommandTransportDiagnostics ProductionCommandTransport,
     int StationCommandProtocolVersion,
     bool StationCommandBoundaryRegistered,
     bool StationCommandBoundaryEnabled,
@@ -81,9 +82,10 @@ public sealed record StationTxLifecycleDiagnostics(
 
 /// <summary>
 /// Production registration boundary for the accepted station TX gate,
-/// safety, and command transaction state machines. This lifecycle is
-/// deliberately command-incapable: its transports always report unavailable,
-/// the command gate is constructed with transmit disabled, and the only
+/// safety, and command transaction state machines. The reviewed primary FLEX
+/// command transport may be registered here, but it defaults disabled, the
+/// command gate remains transmit-disabled, the emergency transport is absent,
+/// and the only
 /// internal command operation surface delegates through the transaction
 /// composition. No browser, HTTP, WebSocket, AetherRemote, watchdog, reconnect,
 /// or timer caller reaches that surface.
@@ -116,6 +118,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
     private readonly ILogger<StationTxProductionLifecycle> m_logger;
     private readonly TimeProvider m_timeProvider;
     private readonly CancellationTokenSource m_watchdogCancellation = new();
+    private readonly IStationTxProductionCommandTransport
+        m_productionCommandTransport;
     private readonly StationTxCommandGate m_commandGate;
     private readonly StationTxCommandBoundary m_stationCommandBoundary;
     private readonly StationTxCommandAdapterComposition
@@ -188,7 +192,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         IStationTxCommandSignatureVerifier? stationCommandVerifier = null,
         IStationTxCommandEnvelopeSubmitter? stationCommandSubmitter = null,
         StationTxProductionReadinessConfiguration?
-            productionReadinessConfiguration = null)
+            productionReadinessConfiguration = null,
+        IStationTxProductionCommandTransport? productionCommandTransport = null)
     {
         ArgumentNullException.ThrowIfNull(leases);
         ArgumentNullException.ThrowIfNull(occupancy);
@@ -210,14 +215,16 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         m_lastGatewayObservedAt = now;
         m_lastObservedAt = now;
 
-        StationTxUnavailableCommandTransport commandTransport = new();
+        m_productionCommandTransport =
+            productionCommandTransport ??
+            new StationTxUnavailableCommandTransport();
         StationTxUnavailableEmergencyUnkeyTransport emergencyTransport = new();
         m_commandGate = new StationTxCommandGate(
             allowTransmit: false,
             m_radioId,
             leases,
             occupancy,
-            commandTransport,
+            m_productionCommandTransport,
             m_timeProvider);
         m_supervisor = new StationTxSafetySupervisor(
             m_radioId,
@@ -313,6 +320,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     m_stationCommandTransactionComposition.Snapshot;
             BrowserTxTransactionIngressDiagnostics transactionIngress =
                 m_browserTxTransactionIngress.Snapshot;
+            StationTxProductionCommandTransportDiagnostics productionTransport =
+                m_productionCommandTransport.Snapshot;
             StationTxSafetyArmAuthorityDiagnostics safetyArmAuthority =
                 m_stationCommandSafetyArmAuthority.Snapshot;
             StationTxSafetyArmCompositionDiagnostics safetyArmComposition =
@@ -355,8 +364,9 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     m_engineInstanceId,
                     Registered: true,
                     ProductionTransmitEnabled: false,
-                    CommandTransportAvailable: false,
+                    CommandTransportAvailable: productionTransport.Available,
                     EmergencyUnkeyTransportAvailable: false,
+                    productionTransport,
                     commandBoundary.ProtocolVersion,
                     commandBoundary.BoundaryRegistered,
                     commandBoundary.BoundaryEnabled,
@@ -1446,13 +1456,38 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         string Reason);
 }
 
-internal sealed class StationTxUnavailableCommandTransport : IStationTxCommandTransport
+internal sealed class StationTxUnavailableCommandTransport :
+    IStationTxProductionCommandTransport
 {
     public bool IsConnected => false;
     public uint ClientHandle => 0;
 
+    public StationTxProductionCommandTransportDiagnostics Snapshot =>
+        new(
+            Registered: false,
+            ConfiguredEnabled: false,
+            LocalFlexEligible: false,
+            RadioAllowed: false,
+            CommandChannelAttached: false,
+            ClientHandleAvailable: false,
+            Available: false,
+            SetTransmitAvailable: false,
+            CommandTimeoutMilliseconds: 0,
+            AttemptCount: 0,
+            ForwardedCount: 0,
+            KeyAttemptCount: 0,
+            UnkeyAttemptCount: 0,
+            AcceptedCount: 0,
+            RejectedCount: 0,
+            UnknownCount: 0,
+            LastOperation: "none",
+            LastOutcome: "none",
+            LastReason: "transport-unregistered",
+            LastObservedAt: null);
+
     public Task<StationTxTransportResult> SetTransmitAsync(
         bool enabled,
+        uint expectedClientHandle,
         CancellationToken cancellationToken) =>
         Task.FromResult(StationTxTransportResult.Rejected(
             "Production station TX command transport is not registered."));

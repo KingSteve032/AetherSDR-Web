@@ -49,8 +49,10 @@ single-holder TX lease policy without changing the native radio engine.
   through that transaction composition. Phase 2R adds a typed browser-intent
   ingress adapter that accepts only an exact server-validation result paired
   with a Boolean `mox.set` or `ptt.set` request, but production constructs it
-  execution-disabled and exposes no caller. The gate remains disabled
-  and its production FLEX transport remains unavailable.
+  execution-disabled and exposes no caller. Phase 2T registers the reviewed
+  primary FLEX key/unkey transport behind disabled configuration and an exact
+  radio allowlist. The gate remains transmit-disabled, the transport is
+  unavailable by default, and the emergency-unkey transport is absent.
   Verification, signing, and submission all
   default disabled; no browser command ingress, arming capability, reachable
   keying command, or transmit-audio path is registered.
@@ -307,7 +309,14 @@ non-negative process/session/restart counts, zero registered watchdog identities
 while browser TX leases are disabled,
 `txIndependentWatchdogCommandTransportRegistered=false`,
 `txIndependentWatchdogArmingAvailable=false`,
-`txCommandTransportRegistered=false`, and
+`txProductionCommandTransportRegistered=true`,
+`txProductionCommandTransportConfiguredEnabled=false`,
+`txProductionCommandTransportAllowedRadioCount=0`,
+`txProductionCommandTransportAvailable=false`,
+`txProductionCommandTransportSetTransmitAvailable=false`,
+`txProductionCommandTransportWebSocketCallerRegistered=false`,
+`txCommandTransportRegistered=true`,
+`txCommandTransportAvailable=false`, and
 `txSafetySupervisorArmingAvailable=false`. The repeatable browser procedure is
 stored locally at
 `~/.browser-bridge/playbooks/aethersdr-flexweb-post-deploy-acceptance.md`.
@@ -513,9 +522,10 @@ straight to `StationTxCommandTransactionComposition`; none returns a command-
 session result or can skip arm, cleanup, or reconciliation sequencing. No
 registry, coordinator, WebSocket, HTTP, AetherRemote, watchdog, reconnect, timer,
 or browser caller receives those methods or transaction types. Submission
-remains disabled, the boundary and gate remain disabled, both transports remain
-absent, and all key, heartbeat, unkey, and abort transaction capabilities remain
-false with no active transaction or reconciliation state.
+remains disabled, the boundary and gate remain disabled, the primary transport
+is unavailable, the emergency transport remains absent, and all key, heartbeat,
+unkey, and abort transaction capabilities remain false with no active
+transaction or reconciliation state.
 
 Phase 2R adds `BrowserTxTransactionIngress` inside that lifecycle. Its input is
 both the parsed browser request and the server-produced validation result. It
@@ -542,11 +552,37 @@ and delegates to the Phase 2R ingress; no external production type receives that
 operation or its request/result types. Production ingress execution remains
 false, the WebSocket remains validation-only, and readiness remains blocked.
 
+Phase 2T adds `StationTxProductionCommandTransport` to normal local FLEX
+sessions. Its single owned `StationTxCommandTransport` configuration defaults
+`Enabled:false`, an empty exact `AllowedRadioIds` set, and a bounded two-second
+command timeout. Enabling the setting with no allowlist fails startup. Remote and
+simulation sessions are permanently ineligible. Every key or unkey operation
+must carry the exact non-zero FLEX client handle authorized by the gate; the
+router checks that handle under the same lock used to capture the control
+session, so a replaced connection cannot receive the command. The transport
+sends at most once, preserves known radio rejection versus unknown socket or
+timeout outcome, bounds returned radio text, and owns no retry.
+
+The normal web artifact now contains exactly one reviewed `xmit 1` and one
+reviewed `xmit 0` string. Production artifact inspection requires those exact
+counts while continuing to reject HIL markers, CWX send, TX-audio creation, and
+process-child surfaces. The independent watchdog artifact contains neither
+command. The Phase 2T gate remains constructed with `allowTransmit:false`, the
+browser ingress remains execution-disabled and callerless, and the emergency
+unkey transport remains absent, so the deployed default is still RX-only.
+
 Environment-variable form remains disabled by default:
 
 ```bash
 StationTxCommandEnvelopeCoordinator__SubmissionEnabled=false
+StationTxCommandTransport__Enabled=false
+StationTxCommandTransport__AllowedRadioIds__0=REVIEWED-RADIO-ID
+StationTxCommandTransport__CommandTimeoutMilliseconds=2000
 ```
+
+The allowlist example is inert while `Enabled=false`; enabling it is a separate
+reviewed milestone and does not by itself enable the command gate or browser
+execution.
 
 `Radio:BrowserTxLeaseEnabled` remains false by default. When deliberately enabled
 for validation, the radio page reveals a **TX AUTHORITY** panel that can acquire,

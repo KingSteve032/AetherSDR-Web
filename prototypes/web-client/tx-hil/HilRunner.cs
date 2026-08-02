@@ -1373,8 +1373,14 @@ internal sealed class HilRunner(
 
         public Task<StationTxTransportResult> SetTransmitAsync(
             bool enabled,
+            uint expectedClientHandle,
             CancellationToken cancellationToken)
         {
+            if (expectedClientHandle != ClientHandle)
+            {
+                throw new InvalidOperationException(
+                    "The external-owner denial changed the expected FLEX handle.");
+            }
             CommandCount++;
             throw new InvalidOperationException(
                 "The external-owner denial reached the TX command transport.");

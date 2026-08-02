@@ -1257,6 +1257,7 @@ internal sealed class HilSafetySessionLossOperation(
 
         public async Task<StationTxTransportResult> SetTransmitAsync(
             bool enabled,
+            uint expectedClientHandle,
             CancellationToken cancellationToken)
         {
             if (enabled)
@@ -1267,7 +1268,10 @@ internal sealed class HilSafetySessionLossOperation(
             {
                 UnkeyCommands++;
             }
-            return await inner.SetTransmitAsync(enabled, cancellationToken);
+            return await inner.SetTransmitAsync(
+                enabled,
+                expectedClientHandle,
+                cancellationToken);
         }
     }
 

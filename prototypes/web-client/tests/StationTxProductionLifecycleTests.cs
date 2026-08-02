@@ -1013,9 +1013,11 @@ public sealed class StationTxProductionLifecycleTests
 
         StationTxTransportResult key = await command.SetTransmitAsync(
             enabled: true,
+            expectedClientHandle: 1,
             CancellationToken.None);
         StationTxTransportResult unkey = await command.SetTransmitAsync(
             enabled: false,
+            expectedClientHandle: 1,
             CancellationToken.None);
         StationTxTransportResult emergencyUnkey =
             await emergency.RequestUnkeyAsync(CancellationToken.None);

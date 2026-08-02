@@ -39,6 +39,32 @@ const productionReadiness = {
 const productionReadinessText =
   `production readiness blocked reason transmit-disabled missing 12 ` +
   `[${productionReadinessMissing.join(",")}]`;
+const productionCommandTransport = {
+  registered: true,
+  configuredEnabled: false,
+  localFlexEligible: true,
+  radioAllowed: false,
+  commandChannelAttached: true,
+  clientHandleAvailable: true,
+  available: false,
+  setTransmitAvailable: false,
+  commandTimeoutMilliseconds: 2000,
+  attemptCount: 0,
+  forwardedCount: 0,
+  keyAttemptCount: 0,
+  unkeyAttemptCount: 0,
+  acceptedCount: 0,
+  rejectedCount: 0,
+  unknownCount: 0,
+  lastOperation: "none",
+  lastOutcome: "none",
+  lastReason: "transport-disabled"
+};
+const productionCommandTransportText =
+  "production command transport config disabled eligible yes radio blocked " +
+  "channel attached handle available available no set-transmit unavailable " +
+  "attempts 0 forwarded 0 key 0 unkey 0 accepted 0 rejected 0 unknown 0 " +
+  "last none/none reason transport-disabled";
 
 test("admin diagnostics format radio ownership identifiers", () => {
   assert.equal(formatHexId(0x452b3521), "0x452b3521");
@@ -173,6 +199,7 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       lastOutcome: "none",
       lastReason: "execution-disabled"
     },
+    productionCommandTransport,
     productionReadiness,
     browserObservationSequence: 4,
     lastBrowserObservedAt: "2026-07-31T02:29:59Z",
@@ -228,8 +255,8 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       "reason submission-disabled · browser transaction ingress execution disabled boundary " +
       "attached key unavailable unkey unavailable attempts 0 forwarded 0 accepted 0 rejected 0 " +
       "unknown 0 last none reason execution-disabled · " +
-      `${productionReadinessText} · authority no-active-lease · ` +
-      "last gateway-heartbeat · TX transports absent"
+      `${productionCommandTransportText} · ${productionReadinessText} · ` +
+      "authority no-active-lease · last gateway-heartbeat · emergency unkey absent"
   });
   assert.deepEqual(formatTxLifecycle(null, now), {
     value: "NOT REGISTERED",
@@ -352,6 +379,7 @@ test("admin diagnostics keep ready signature verification separate from commands
       lastOutcome: "none",
       lastReason: "execution-disabled"
     },
+    productionCommandTransport,
     productionReadiness,
     authorityFresh: false,
     authorityReason: "no-active-lease",
@@ -384,7 +412,10 @@ test("admin diagnostics keep ready signature verification separate from commands
     result.detail,
     /browser transaction ingress execution disabled boundary attached key unavailable unkey unavailable attempts 0 forwarded 0 accepted 0 rejected 0 unknown 0 last none reason execution-disabled/);
   assert.ok(result.detail.includes(productionReadinessText));
-  assert.match(result.detail, /TX transports absent/);
+  assert.match(
+    result.detail,
+    /production command transport config disabled eligible yes radio blocked channel attached handle available available no set-transmit unavailable attempts 0 forwarded 0 key 0 unkey 0 accepted 0 rejected 0 unknown 0 last none\/none reason transport-disabled/);
+  assert.match(result.detail, /emergency unkey absent/);
 });
 
 test("admin diagnostics surface lease holder expiry and browser TX intent outcome", () => {
@@ -495,6 +526,7 @@ test("admin diagnostics surface lease holder expiry and browser TX intent outcom
       lastOutcome: "none",
       lastReason: "execution-disabled"
     },
+    productionCommandTransport,
     productionReadiness,
     browserObservationSequence: 12,
     lastBrowserObservedAt: "2026-07-31T15:59:59Z",
@@ -562,7 +594,10 @@ test("admin diagnostics surface lease holder expiry and browser TX intent outcom
     result.detail,
     /browser transaction ingress execution disabled boundary attached key unavailable unkey unavailable attempts 0 forwarded 0 accepted 0 rejected 0 unknown 0 last none reason execution-disabled/);
   assert.ok(result.detail.includes(productionReadinessText));
-  assert.match(result.detail, /TX transports absent$/);
+  assert.match(
+    result.detail,
+    /production command transport config disabled eligible yes radio blocked channel attached handle available available no set-transmit unavailable attempts 0 forwarded 0 key 0 unkey 0 accepted 0 rejected 0 unknown 0 last none\/none reason transport-disabled/);
+  assert.match(result.detail, /emergency unkey absent$/);
 });
 
 test("admin diagnostics distinguish pending and radio-confirmed tunes", () => {

@@ -434,6 +434,7 @@ public sealed class FlexRadioRxService(
             uint primaryPanStreamId = primaryPan.StreamId;
             commandRouter.Attach(
                 control,
+                handle,
                 primaryPan.Id,
                 primaryPan.CenterFrequencyHz);
             foreach (PanadapterSnapshot additionalPan in

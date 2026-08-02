@@ -65,6 +65,7 @@ internal interface IStationTxCommandTransport
 
     Task<StationTxTransportResult> SetTransmitAsync(
         bool enabled,
+        uint expectedClientHandle,
         CancellationToken cancellationToken);
 }
 
@@ -250,7 +251,10 @@ internal sealed class StationTxCommandGate : IAsyncDisposable
             m_reason = "key-command-pending";
 
             StationTxTransportResult command =
-                await m_transport.SetTransmitAsync(true, cancellationToken);
+                await m_transport.SetTransmitAsync(
+                    enabled: true,
+                    expectedClientHandle: clientHandle,
+                    cancellationToken);
             if (!command.Success)
             {
                 if (!command.OutcomeKnown)
@@ -584,7 +588,10 @@ internal sealed class StationTxCommandGate : IAsyncDisposable
         }
 
         StationTxTransportResult command =
-            await m_transport.SetTransmitAsync(false, cancellationToken);
+            await m_transport.SetTransmitAsync(
+                enabled: false,
+                expectedClientHandle: intent.ClientHandle,
+                cancellationToken);
         DateTimeOffset now = m_timeProvider.GetUtcNow();
         int attempts = checked(intent.UnkeyAttempts + 1);
         m_intent = intent with
@@ -767,8 +774,9 @@ internal sealed class StationTxCommandWatchdog(
 #if AETHERSDR_TX_HIL
 /// <summary>
 /// Real FLEX command adapter for an explicit hardware-in-the-loop build. Normal
-/// production publishes do not define AETHERSDR_TX_HIL and therefore contain
-/// no FLEX keying command implementation.
+/// production publishes do not define AETHERSDR_TX_HIL and therefore exclude
+/// this HIL-specific adapter; Phase 2T's separate production-primary adapter is
+/// independently disabled and allowlisted.
 /// </summary>
 internal sealed class FlexStationTxCommandTransport(
     FlexRadioCommandRouter router,
@@ -782,11 +790,13 @@ internal sealed class FlexStationTxCommandTransport(
 
     public async Task<StationTxTransportResult> SetTransmitAsync(
         bool enabled,
+        uint expectedClientHandle,
         CancellationToken cancellationToken)
     {
         try
         {
-            FlexCommandResponse response = await router.SendAsync(
+            FlexCommandResponse response = await router.SendForClientAsync(
+                expectedClientHandle,
                 enabled ? "xmit 1" : "xmit 0",
                 CommandTimeout,
                 cancellationToken);

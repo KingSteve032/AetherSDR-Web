@@ -187,11 +187,17 @@ explicitly approved production TX milestone changes that rule.
 
 Currently:
 
-- the real `xmit 1`/`xmit 0` adapter is isolated behind `EnableTxHil=true`;
+- Phase 2T includes one reviewed primary `xmit 1`/`xmit 0` adapter in the normal
+  web artifact, but its owned configuration defaults disabled, requires an exact
+  radio allowlist, accepts an exact expected FLEX handle, and sits behind the
+  still-transmit-disabled command gate;
+- the separate HIL adapter and all HIL operations remain isolated behind
+  `EnableTxHil=true` or the standalone HIL project;
 - the production browser does not receive a reachable keying path merely because
-  HIL source exists;
-- production publish verification must continue to prove that HIL-only key,
-  unkey, CW-ID, process-loss child, and TX-audio creation paths are absent;
+  the dormant production primitive exists;
+- production publish verification must require exactly the approved primary key
+  and unkey strings while proving that HIL process, CW-ID, TX-audio creation, and
+  watchdog radio-command paths are absent;
 - do not register HIL transports, gates, or operations in production dependency
   injection or browser routing.
 
@@ -452,9 +458,11 @@ hypothesis, not evidence.
 ### Production publish inspection
 
 TX-sensitive changes require clean production and HIL publishes to be inspected
-separately. Confirm the normal production artifact has no reachable HIL key,
-unkey, CW-ID, process-child, manifest, or TX-audio command path. Confirm the HIL
-artifact contains only the expected purpose-bound command surface.
+separately. Confirm the normal production artifact contains only the explicitly
+approved dormant production command primitives, with disabled defaults and no
+reachable browser path, and has no HIL key/unkey adapter, CW-ID, process-child,
+manifest, watchdog command, or TX-audio path. Confirm the HIL artifact contains
+only the expected purpose-bound command surface.
 
 Do not infer this from source conditionals alone; inspect the produced artifact
 as documented by the TX-HIL workflow.

@@ -2,13 +2,26 @@ using System.Globalization;
 
 namespace AetherSDR.Web.Radio;
 
-public sealed class FlexRadioCommandRouter
+internal interface IStationTxFlexCommandChannel
+{
+    bool IsAttached { get; }
+    uint ClientHandle { get; }
+
+    Task<FlexCommandResponse> SendForClientAsync(
+        uint expectedClientHandle,
+        string command,
+        TimeSpan timeout,
+        CancellationToken cancellationToken);
+}
+
+public sealed class FlexRadioCommandRouter : IStationTxFlexCommandChannel
 {
     private readonly object m_gate = new();
     private readonly HashSet<int> m_createdSliceIds = [];
     private readonly Dictionary<string, long> m_panCenters =
         new(StringComparer.OrdinalIgnoreCase);
     private FlexControlSession? m_control;
+    private uint m_clientHandle;
 
     internal bool IsAttached
     {
@@ -20,6 +33,20 @@ public sealed class FlexRadioCommandRouter
             }
         }
     }
+
+    internal uint ClientHandle
+    {
+        get
+        {
+            lock (m_gate)
+            {
+                return m_control is null ? 0 : m_clientHandle;
+            }
+        }
+    }
+
+    bool IStationTxFlexCommandChannel.IsAttached => IsAttached;
+    uint IStationTxFlexCommandChannel.ClientHandle => ClientHandle;
 
     public string? PanId
     {
@@ -56,12 +83,20 @@ public sealed class FlexRadioCommandRouter
 
     internal void Attach(
         FlexControlSession control,
+        uint clientHandle,
         string panId,
         long panCenterHz)
     {
+        ArgumentNullException.ThrowIfNull(control);
+        if (clientHandle == 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(clientHandle));
+        }
+
         lock (m_gate)
         {
             m_control = control;
+            m_clientHandle = clientHandle;
             m_panCenters.Clear();
             m_panCenters[panId] = panCenterHz;
             m_createdSliceIds.Clear();
@@ -80,6 +115,7 @@ public sealed class FlexRadioCommandRouter
             int[] createdSliceIds = m_createdSliceIds.ToArray();
             m_createdSliceIds.Clear();
             m_control = null;
+            m_clientHandle = 0;
             m_panCenters.Clear();
             return createdSliceIds;
         }
@@ -165,7 +201,48 @@ public sealed class FlexRadioCommandRouter
         }
     }
 
-    internal async Task<FlexCommandResponse> SendAsync(
+    internal Task<FlexCommandResponse> SendAsync(
+        string command,
+        TimeSpan timeout,
+        CancellationToken cancellationToken) =>
+        SendCoreAsync(
+            expectedClientHandle: null,
+            command,
+            timeout,
+            cancellationToken);
+
+    Task<FlexCommandResponse>
+        IStationTxFlexCommandChannel.SendForClientAsync(
+            uint expectedClientHandle,
+            string command,
+            TimeSpan timeout,
+            CancellationToken cancellationToken) =>
+        SendForClientAsync(
+            expectedClientHandle,
+            command,
+            timeout,
+            cancellationToken);
+
+    internal Task<FlexCommandResponse> SendForClientAsync(
+        uint expectedClientHandle,
+        string command,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        if (expectedClientHandle == 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(expectedClientHandle));
+        }
+
+        return SendCoreAsync(
+            expectedClientHandle,
+            command,
+            timeout,
+            cancellationToken);
+    }
+
+    private async Task<FlexCommandResponse> SendCoreAsync(
+        uint? expectedClientHandle,
         string command,
         TimeSpan timeout,
         CancellationToken cancellationToken)
@@ -176,6 +253,12 @@ public sealed class FlexRadioCommandRouter
             control = m_control ??
                 throw new InvalidOperationException(
                     "The Flex radio control session is not connected.");
+            if (expectedClientHandle is uint expected &&
+                m_clientHandle != expected)
+            {
+                throw new InvalidOperationException(
+                    "The exact Flex radio client handle is no longer connected.");
+            }
         }
 
         FlexCommandResponse response = await control.SendCommandAsync(

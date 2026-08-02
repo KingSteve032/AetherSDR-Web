@@ -503,9 +503,11 @@ public sealed class StationTxCommandGateTests
 
         public Task<StationTxTransportResult> SetTransmitAsync(
             bool enabled,
+            uint expectedClientHandle,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            Assert.Equal(ClientHandle, expectedClientHandle);
             Commands.Add(enabled);
             StationTxTransportResult result = NextResult;
             NextResult = StationTxTransportResult.Ok;

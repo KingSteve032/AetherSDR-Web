@@ -511,9 +511,11 @@ public sealed class StationTxCommandGateExecutorTests
 
         public Task<StationTxTransportResult> SetTransmitAsync(
             bool enabled,
+            uint expectedClientHandle,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            Assert.Equal(Handle, expectedClientHandle);
             Commands.Add(enabled);
             StationTxTransportResult result = NextResult;
             NextResult = StationTxTransportResult.Ok;
