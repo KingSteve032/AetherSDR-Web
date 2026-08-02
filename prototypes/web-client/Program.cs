@@ -387,6 +387,10 @@ app.MapGet(
                     productionReadiness.MissingPrerequisites,
                 txProductionReadinessLifecycleIngressRegistered = true,
                 txProductionReadinessWebSocketCallerRegistered = false,
+                txProductionActivationCompositionRegistered = true,
+                txProductionActivationAvailable = productionReadiness.Ready,
+                txProductionActivationReason = productionReadiness.Reason,
+                txProductionActivationCallerRegistered = false,
                 txStationCommandEnvelopeSubmissionEnabled =
                     commandCoordinator.SubmissionEnabled,
                 txStationCommandEnvelopeSigningAvailable =

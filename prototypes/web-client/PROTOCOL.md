@@ -678,6 +678,15 @@ defaults require arming configured false, arming unavailable, zero armed
 processes, zero reconciliation-required processes, zero unkey attempts, and no
 WebSocket caller.
 
+Phase 2W adds no browser wire message. Each lifecycle snapshot adds
+`productionActivation` with `registered`, `readinessEvaluationAttached`,
+`activationAvailable`, `reason`, and the complete nested readiness result. The
+composition is diagnostic-only and has no callable activation operation. Health
+adds `txProductionActivationCompositionRegistered:true`,
+`txProductionActivationAvailable:false`, reason `transmit-disabled`, and
+`txProductionActivationCallerRegistered:false` for the default production
+configuration.
+
 The command gate remains transmit-disabled and browser ingress remains
 execution-disabled and callerless. The normal web binary contains exactly one
 reviewed `xmit 1`, one runtime-deduplicated reviewed `xmit 0`, and type markers

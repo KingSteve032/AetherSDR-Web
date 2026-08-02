@@ -347,6 +347,13 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `missing ${formatCount(readiness.missingPrerequisites?.length)} ` +
       `[${readinessMissing}]`
     : "production readiness policy not registered";
+  const activation = lifecycle.productionActivation;
+  const activationState = activation?.registered
+    ? `production activation composition evaluation ` +
+      `${activation.readinessEvaluationAttached ? "attached" : "absent"} ` +
+      `activation ${activation.activationAvailable ? "available" : "unavailable"} ` +
+      `reason ${String(activation.reason || "unknown")}`
+    : "production activation composition not registered";
   const independent = lifecycle.independentWatchdog;
   const independentState = !independent?.supervisionEnabled
     ? "independent not supervised"
@@ -390,7 +397,7 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `${safetyArmAuthorityState} · ${safetyArmCompositionState} · ` +
       `${commandCompositionState} · ${transactionState} · ` +
       `${transactionIngressState} · ${productionTransportState} · ` +
-      `${readinessState} · authority ${authorityReason} · ` +
+      `${readinessState} · ${activationState} · authority ${authorityReason} · ` +
       `last ${lifecycle.lastObservation || "none"} · ${transportState}`
   };
 }

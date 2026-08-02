@@ -39,6 +39,16 @@ const productionReadiness = {
 const productionReadinessText =
   `production readiness blocked reason transmit-disabled missing 12 ` +
   `[${productionReadinessMissing.join(",")}]`;
+const productionActivation = {
+  registered: true,
+  readinessEvaluationAttached: true,
+  activationAvailable: false,
+  reason: "transmit-disabled",
+  readiness: productionReadiness
+};
+const productionActivationText =
+  "production activation composition evaluation attached activation unavailable " +
+  "reason transmit-disabled";
 const productionCommandTransport = {
   registered: true,
   configuredEnabled: false,
@@ -225,6 +235,7 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
     productionCommandTransport,
     productionEmergencyUnkeyTransport,
     productionReadiness,
+    productionActivation,
     browserObservationSequence: 4,
     lastBrowserObservedAt: "2026-07-31T02:29:59Z",
     engineObservationSequence: 7,
@@ -293,7 +304,8 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       "attached key unavailable unkey unavailable attempts 0 forwarded 0 accepted 0 rejected 0 " +
       "unknown 0 last none reason execution-disabled · " +
       `${productionCommandTransportText} · ${productionReadinessText} · ` +
-      `authority no-active-lease · last gateway-heartbeat · ` +
+      `${productionActivationText} · authority no-active-lease · ` +
+      `last gateway-heartbeat · ` +
       productionEmergencyUnkeyTransportText
   });
   assert.deepEqual(formatTxLifecycle(null, now), {
@@ -419,6 +431,7 @@ test("admin diagnostics keep ready signature verification separate from commands
     },
     productionCommandTransport,
     productionReadiness,
+    productionActivation,
     authorityFresh: false,
     authorityReason: "no-active-lease",
     independentWatchdog: {
@@ -566,6 +579,7 @@ test("admin diagnostics surface lease holder expiry and browser TX intent outcom
     },
     productionCommandTransport,
     productionReadiness,
+    productionActivation,
     browserObservationSequence: 12,
     lastBrowserObservedAt: "2026-07-31T15:59:59Z",
     engineObservationSequence: 13,

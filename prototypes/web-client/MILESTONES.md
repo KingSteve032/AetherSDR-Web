@@ -2328,6 +2328,40 @@ Milestone state:
   radio and Admin console captures completed without surfacing an entry. No
   browser TX control, microphone permission, radio command, or live RF/HIL
   operation was used.
+- Phase 2W adds a read-only production activation composition over the existing
+  deterministic readiness policy. It evaluates current infrastructure on every
+  snapshot and exposes only attachment, availability, reason, and nested
+  readiness diagnostics. Reflection tests prove the composition has no execute,
+  activate, enable, submit, lease, arm, key, unkey, or configuration-mutation
+  method. The lifecycle, Admin, and health projections report the composition
+  attached but activation unavailable at `transmit-disabled`; no activation
+  caller is registered.
+- The 2026-08-02 Phase 2W guarded gate passed 709 FlexWeb server tests, 57
+  independent-watchdog tests, 48 TX-HIL isolation tests, 70 AetherRemote tests,
+  and 123 browser tests (1,007 total), with a zero-warning solution build. The
+  production web artifact retained exactly one reviewed key string and one
+  runtime-deduplicated unkey string with both reviewed transport markers. The
+  watchdog artifact retained one unkey string, zero key strings, and no HIL,
+  CWX, or TX-audio surface. Validation log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260802-m7-production-tx-activation-composition-phase2w-validation-flexweb-validation.txt`.
+- Immutable staging release
+  `20260802-m7-production-tx-activation-composition-phase2w` was activated with
+  `20260802-m7-watchdog-arming-timeout-unkey-phase2v-final` retained for
+  rollback. Internal and public health reported the activation composition
+  registered, activation unavailable, reason `transmit-disabled`, and activation
+  caller absent. Production transmit, browser lease, signing, submission,
+  boundary, command gate, transaction execution, primary/emergency transports,
+  and watchdog arming remained disabled or unavailable. Deployment log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260802-m7-production-tx-activation-composition-phase2w-flexweb-validation.txt`.
+- Browser Bridge acceptance recovered a live PSOC2 RX-only session. TUNE,
+  OPERATE, ACQUIRE LEASE, and VALIDATE ONLY remained disabled. The fixed 2D
+  spectrum/waterfall canvases were present with no WebGL path. Admin showed
+  `DISABLED · DISARMED · NO LEASE`, production readiness blocked at
+  `transmit-disabled`, and the activation composition evaluation attached but
+  unavailable. The first console capture observed transient session-load errors
+  during deployment cutover; fresh post-stabilization radio and Admin captures
+  contained zero errors. No browser TX control, microphone permission, radio
+  command, or live RF/HIL operation was used.
 
 Acceptance criteria:
 
