@@ -2402,6 +2402,42 @@ Milestone state:
   fresh post-stabilization radio and Admin captures contained zero entries. No
   browser TX control, microphone permission, radio command, or live RF/HIL
   operation was used.
+- Phase 2Y adds `StationTxProductionActivationPlanner` and one immutable
+  four-switch activation plan over the validated Phase 2X request. A valid
+  request describes command-boundary enablement, command-gate transmit,
+  browser-transaction-ingress execution, and browser keying-capability
+  projection as one all-or-nothing unit. The planner exposes only a fresh
+  snapshot; absent or invalid requests keep every switch false. Phase 2Y always
+  reports the plan unapplied and passes it to no boundary, gate, ingress,
+  coordinator, transport, watchdog, browser, or radio operation.
+- The 2026-08-02 Phase 2Y automated and guarded validation gates passed a
+  zero-warning solution build plus 723 FlexWeb server tests, 57 independent-
+  watchdog tests, 48 TX-HIL isolation tests, 70 AetherRemote tests, and 123
+  browser tests (1,021 total). Production artifact inspection retained exactly
+  one reviewed key string and one runtime-deduplicated unkey string with both
+  reviewed transport markers; the watchdog retained one unkey string and zero
+  key strings, with no additional TX/HIL, CWX, or TX-audio surface. Validation
+  log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260802-m7-production-tx-activation-plan-phase2y-validation-flexweb-validation.txt`.
+- Immutable staging release
+  `20260802-m7-production-tx-activation-plan-phase2y` was activated with
+  `20260802-m7-production-tx-activation-config-interlock-phase2x` retained for
+  rollback. Internal and public health reported the planner registered and
+  attached, plan unavailable and unapplied, all four planned switches false,
+  reason `activation-not-requested`, and no plan or activation caller. Dynamic
+  readiness remained blocked, and browser ingress, boundary, gate,
+  primary/emergency transports, and watchdog arming remained disabled or
+  unavailable. Deployment log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260802-m7-production-tx-activation-plan-phase2y-flexweb-validation.txt`.
+- Phase 2Y Browser Bridge acceptance opened fresh radio and Admin tabs after
+  the extension was reconnected. The live RX session recovered; TUNE, OPERATE,
+  ACQUIRE LEASE, and VALIDATE ONLY remained disabled. All three canvases used
+  the fixed 2D path with no WebGL context. Admin showed
+  `DISABLED · DISARMED · NO LEASE`, the activation plan attached but unavailable
+  and unapplied, every planned switch off, and reason
+  `activation-not-requested`. Fresh radio and Admin console captures contained
+  zero entries. No browser TX control, microphone permission, radio command, or
+  live RF/HIL operation was used.
 
 Acceptance criteria:
 

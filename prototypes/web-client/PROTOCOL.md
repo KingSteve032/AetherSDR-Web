@@ -698,6 +698,18 @@ and the complete nested configuration result. Default reason becomes
 `transmit-disabled`. An invalid requested configuration fails startup before any
 listener or session is created.
 
+Phase 2Y also adds no browser wire message. Lifecycle `productionActivation`
+adds `activationPlanAttached`, `activationPlanAvailable`,
+`activationPlanApplied`, and a nested `plan` diagnostic. The nested immutable
+plan contains only four Boolean switch intentions:
+`commandBoundaryEnabled`, `commandGateTransmitEnabled`,
+`browserTransactionIngressExecutionEnabled`, and
+`browserKeyingCapabilityEnabled`. Default production reports the planner
+registered and attached, plan unavailable and unapplied, every switch false,
+reason `activation-not-requested`, and no plan caller. A valid explicit request
+may make all four intentions available together, but Phase 2Y never applies the
+plan or passes it to an executable component.
+
 The command gate remains transmit-disabled and browser ingress remains
 execution-disabled and callerless. The normal web binary contains exactly one
 reviewed `xmit 1`, one runtime-deduplicated reviewed `xmit 0`, and type markers

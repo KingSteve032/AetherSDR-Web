@@ -594,6 +594,17 @@ keeps the activation composition unavailable at `activation-not-requested` while
 retaining the nested dynamic readiness result for diagnosis. No caller, command,
 lease, gate, transport, watchdog operation, or radio authority is added.
 
+Phase 2Y adds an immutable activation-plan layer between the static interlock and
+the read-only activation composition. The plan has exactly four Boolean switch
+intentions—command boundary, command-gate transmit, browser transaction ingress
+execution, and browser keying-capability projection—and produces either all four
+true after a valid explicit request or all four false. The planner has only a
+snapshot getter. Its diagnostics always report `PlanApplied:false` in this phase,
+and no constructor for the boundary, gate, ingress, coordinator, transport, or
+watchdog receives the plan. The activation composition therefore fails closed at
+`activation-plan-ready-not-applied` even if synthetic dynamic readiness is fully
+ready.
+
 Normal web artifact inspection now requires exactly one reviewed `xmit 1`, one
 runtime-deduplicated reviewed `xmit 0`, and type markers for both the primary and
 emergency transports. The watchdog artifact requires exactly one reviewed
