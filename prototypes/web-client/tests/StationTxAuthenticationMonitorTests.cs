@@ -334,6 +334,7 @@ public sealed class StationTxAuthenticationMonitorTests
         public Queue<StationTxTransportResult> Results { get; } = [];
 
         public Task<StationTxTransportResult> RequestUnkeyAsync(
+            uint expectedProtectedClientHandle,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();

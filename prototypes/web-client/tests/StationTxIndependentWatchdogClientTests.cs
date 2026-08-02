@@ -157,7 +157,10 @@ public sealed class StationTxIndependentWatchdogClientTests
                 "session-a",
                 "browser-a",
                 "gateway-a",
-                "engine-a"),
+                "engine-a",
+                "127.0.0.1",
+                4992,
+                LocalFlexEligible: false),
             new IndependentTxWatchdogSettings
             {
                 Enabled = true,
@@ -169,7 +172,8 @@ public sealed class StationTxIndependentWatchdogClientTests
                     Path.GetTempPath(),
                     Guid.NewGuid().ToString("N"),
                     "missing-watchdog"),
-                ["--stdio"]),
+                ["--stdio"],
+                ExpectRadioCommandTransportAvailable: false),
             watchdogEvent =>
             {
                 if (watchdogEvent.Kind ==
@@ -246,7 +250,10 @@ public sealed class StationTxIndependentWatchdogClientTests
                 "session-a",
                 "browser-a",
                 "gateway-a",
-                "engine-a"),
+                "engine-a",
+                "127.0.0.1",
+                4992,
+                LocalFlexEligible: false),
             new IndependentTxWatchdogSettings
             {
                 Enabled = true,
@@ -255,7 +262,8 @@ public sealed class StationTxIndependentWatchdogClientTests
             },
             new IndependentTxWatchdogLaunchCommand(
                 dotnetHost,
-                [hostAssembly, "--stdio"]),
+                [hostAssembly, "--stdio"],
+                ExpectRadioCommandTransportAvailable: false),
             eventSink,
             disposedCallback: () => { },
             NullLogger<StationTxIndependentWatchdogClient>.Instance);

@@ -51,8 +51,10 @@ single-holder TX lease policy without changing the native radio engine.
   with a Boolean `mox.set` or `ptt.set` request, but production constructs it
   execution-disabled and exposes no caller. Phase 2T registers the reviewed
   primary FLEX key/unkey transport behind disabled configuration and an exact
-  radio allowlist. The gate remains transmit-disabled, the transport is
-  unavailable by default, and the emergency-unkey transport is absent.
+  radio allowlist. Phase 2U adds separate in-process emergency and independent-
+  watchdog unkey-only transports behind their own disabled configuration and
+  exact allowlists. The gate remains transmit-disabled, both supervisors remain
+  Disarmed, and no unkey transport has an arm or browser caller.
   Verification, signing, and submission all
   default disabled; no browser command ingress, arming capability, reachable
   keying command, or transmit-audio path is registered.
@@ -227,13 +229,14 @@ bash prototypes/web-client/deploy/validate-deploy-flexweb.sh
 
 The gate has no skip-tests option. It builds the complete solution, runs the
 server, independent-watchdog, TX-HIL isolation, AetherRemote, and browser test
-suites, publishes the web gateway plus the command-incapable independent
-watchdog, inspects both production binaries for forbidden TX/HIL command
-strings, executes a Disarmed status probe against the published watchdog, and
-requires the activated web service to supervise one private child per active
-radio session. The child remains in the gateway's existing least-privileged
-service cgroup and communicates only over redirected standard input/output; it
-has no listener, FLEX connection, command transport, or arming surface. The gate
+suites, publishes the web gateway plus the independent watchdog, inspects both
+production binaries for exact reviewed key/unkey counts and forbidden HIL/CWX/
+TX-audio surfaces, executes a Disarmed status probe against the published
+watchdog, and requires the activated web service to supervise one private child
+per active radio session. The child remains in the gateway's existing least-
+privileged service cgroup and communicates only over redirected standard
+input/output; it has no listener, key capability, arbitrary-command surface, or
+arming request. Its optional unkey-only FLEX client defaults disabled. The gate
 deploys FlexWeb through the `flexweb-gateway` SSH alias (resolving to
 `flexweb@10.2.0.254`), and verifies internal and public fail-closed health. After
 all local validation passes, it prompts once without echo for the FlexWeb sudo
@@ -522,10 +525,10 @@ straight to `StationTxCommandTransactionComposition`; none returns a command-
 session result or can skip arm, cleanup, or reconciliation sequencing. No
 registry, coordinator, WebSocket, HTTP, AetherRemote, watchdog, reconnect, timer,
 or browser caller receives those methods or transaction types. Submission
-remains disabled, the boundary and gate remain disabled, the primary transport
-is unavailable, the emergency transport remains absent, and all key, heartbeat,
-unkey, and abort transaction capabilities remain false with no active
-transaction or reconciliation state.
+remains disabled, the boundary and gate remain disabled, the primary and
+emergency transports are unavailable by default, the independent watchdog is
+Disarmed, and all key, heartbeat, unkey, and abort transaction capabilities
+remain false with no active transaction or reconciliation state.
 
 Phase 2R adds `BrowserTxTransactionIngress` inside that lifecycle. Its input is
 both the parsed browser request and the server-produced validation result. It
@@ -563,13 +566,26 @@ session, so a replaced connection cannot receive the command. The transport
 sends at most once, preserves known radio rejection versus unknown socket or
 timeout outcome, bounds returned radio text, and owns no retry.
 
+Phase 2U adds `StationTxProductionEmergencyUnkeyTransport` to the same local
+FLEX session router. Its interface contains only `RequestUnkeyAsync`, requires
+the exact protected FLEX handle, sends at most one `xmit 0`, and preserves known
+rejection versus unknown network outcome. The independent watchdog binary gains
+a separate purpose-built TCP client whose only encoded command is `xmit 0`.
+The web process supplies that process with a radio endpoint only when watchdog
+transport enablement, exact radio allowlisting, and local `FlexRx` eligibility
+all match. The watchdog protocol still exposes only status, register, heartbeat,
+and disconnect; it has no arm or unkey request, starts empty and Disarmed, and
+reports arming unavailable.
+
 The normal web artifact now contains exactly one reviewed `xmit 1` and one
-reviewed `xmit 0` string. Production artifact inspection requires those exact
-counts while continuing to reject HIL markers, CWX send, TX-audio creation, and
-process-child surfaces. The independent watchdog artifact contains neither
-command. The Phase 2T gate remains constructed with `allowTransmit:false`, the
-browser ingress remains execution-disabled and callerless, and the emergency
-unkey transport remains absent, so the deployed default is still RX-only.
+runtime-deduplicated reviewed `xmit 0`, plus type markers for both the primary
+and emergency transports that reference that unkey command. The independent
+watchdog artifact contains exactly one reviewed `xmit 0` and no `xmit 1`.
+Production artifact inspection requires that exact binary shape while continuing
+to reject HIL markers, CWX send, TX-audio creation, and process-child surfaces. All three transport settings default disabled, the Phase 2T gate
+remains constructed with `allowTransmit:false`, browser ingress remains
+execution-disabled and callerless, and both supervisors remain Disarmed, so the
+deployed default is still RX-only.
 
 Environment-variable form remains disabled by default:
 
@@ -578,10 +594,17 @@ StationTxCommandEnvelopeCoordinator__SubmissionEnabled=false
 StationTxCommandTransport__Enabled=false
 StationTxCommandTransport__AllowedRadioIds__0=REVIEWED-RADIO-ID
 StationTxCommandTransport__CommandTimeoutMilliseconds=2000
+StationTxEmergencyUnkeyTransport__Enabled=false
+StationTxEmergencyUnkeyTransport__AllowedRadioIds__0=REVIEWED-RADIO-ID
+StationTxEmergencyUnkeyTransport__CommandTimeoutMilliseconds=2000
+IndependentTxWatchdog__RadioCommandTransportEnabled=false
+IndependentTxWatchdog__AllowedRadioIds__0=REVIEWED-RADIO-ID
+IndependentTxWatchdog__RadioCommandTimeoutMilliseconds=2000
 ```
 
-The allowlist example is inert while `Enabled=false`; enabling it is a separate
-reviewed milestone and does not by itself enable the command gate or browser
+The allowlist examples are inert while their corresponding enable flags are
+false. Enabling a transport is a separate reviewed deployment action and does
+not by itself arm either supervisor, enable the command gate, or add browser
 execution.
 
 `Radio:BrowserTxLeaseEnabled` remains false by default. When deliberately enabled

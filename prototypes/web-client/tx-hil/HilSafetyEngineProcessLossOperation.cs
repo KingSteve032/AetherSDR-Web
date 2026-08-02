@@ -1216,13 +1216,16 @@ internal sealed class HilSafetyEngineProcessLossOperation(
         public DateTimeOffset? CommandCompletedAt { get; private set; }
 
         public async Task<StationTxTransportResult> RequestUnkeyAsync(
+            uint expectedProtectedClientHandle,
             CancellationToken cancellationToken)
         {
             CommandCount++;
             CommandDispatchedAt ??= timeProvider.GetUtcNow();
             try
             {
-                return await inner.RequestUnkeyAsync(cancellationToken);
+                return await inner.RequestUnkeyAsync(
+                    expectedProtectedClientHandle,
+                    cancellationToken);
             }
             finally
             {

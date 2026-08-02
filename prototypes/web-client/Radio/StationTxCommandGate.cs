@@ -77,10 +77,10 @@ internal sealed record StationTxCommandGateCapabilities(
     string Reason);
 
 /// <summary>
-/// Station-local, browser-inaccessible TX command gate. Production now
-/// registers this state machine only through the command-incapable lifecycle
-/// boundary with transmit disabled. No production caller or transport can
-/// reach a keying command.
+/// Station-local, browser-inaccessible TX command gate. Production registers
+/// this state machine only through the fail-closed lifecycle boundary with
+/// transmit disabled. Reviewed command primitives may be present behind disabled
+/// configuration, but no production caller can reach a keying command.
 /// </summary>
 internal sealed class StationTxCommandGate : IAsyncDisposable
 {

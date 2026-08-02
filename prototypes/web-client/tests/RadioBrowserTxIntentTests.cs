@@ -499,7 +499,7 @@ public sealed class RadioBrowserTxIntentTests
                 HostInstanceId: "fake-watchdog-intent",
                 ProcessStartedAt: DateTimeOffset.UtcNow,
                 State: "Disarmed",
-                Reason: "command-incapable-skeleton",
+                Reason: "unkey-transport-disabled-disarmed",
                 IpcConnected: processRunning,
                 registered,
                 Connected: registered,

@@ -65,6 +65,29 @@ const productionCommandTransportText =
   "channel attached handle available available no set-transmit unavailable " +
   "attempts 0 forwarded 0 key 0 unkey 0 accepted 0 rejected 0 unknown 0 " +
   "last none/none reason transport-disabled";
+const productionEmergencyUnkeyTransport = {
+  registered: true,
+  configuredEnabled: false,
+  localFlexEligible: true,
+  radioAllowed: false,
+  commandChannelAttached: true,
+  clientHandleAvailable: true,
+  available: false,
+  unkeyAvailable: false,
+  commandTimeoutMilliseconds: 2000,
+  attemptCount: 0,
+  forwardedCount: 0,
+  acceptedCount: 0,
+  rejectedCount: 0,
+  unknownCount: 0,
+  lastOutcome: "none",
+  lastReason: "transport-disabled"
+};
+const productionEmergencyUnkeyTransportText =
+  "emergency unkey transport config disabled eligible yes radio blocked " +
+  "channel attached handle available available no unkey unavailable " +
+  "attempts 0 forwarded 0 accepted 0 rejected 0 unknown 0 " +
+  "last none reason transport-disabled";
 
 test("admin diagnostics format radio ownership identifiers", () => {
   assert.equal(formatHexId(0x452b3521), "0x452b3521");
@@ -200,6 +223,7 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       lastReason: "execution-disabled"
     },
     productionCommandTransport,
+    productionEmergencyUnkeyTransport,
     productionReadiness,
     browserObservationSequence: 4,
     lastBrowserObservedAt: "2026-07-31T02:29:59Z",
@@ -225,7 +249,9 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       state: "Disarmed",
       ipcConnected: true,
       lastSequence: 0,
-      restartCount: 1
+      restartCount: 1,
+      radioCommandTransportAvailable: false,
+      armingAvailable: false
     },
     lastObservation: "gateway-heartbeat"
   }, now), {
@@ -234,7 +260,8 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       "browser 4/fresh (1s ago) · engine 7/fresh (3s ago) · " +
       "gateway 9/fresh (2s ago) · lease 2 (10s ago) · " +
       "watchdog 3 (1s ago) · independent disarmed pid 4242 " +
-      "host watchdog seq 0 restarts 1 · command boundary v1 disabled " +
+      "host watchdog seq 0 restarts 1 unkey-transport disabled arming unavailable · " +
+      "command boundary v1 disabled " +
       "signature absent adapter registered arming absent set-transmit absent " +
       "audit 0 · adapter composition executor attached registered yes authority " +
       "absent adapter registered arming absent set-transmit absent attempts 0 " +
@@ -256,7 +283,8 @@ test("admin diagnostics summarize fail-closed TX lifecycle freshness", () => {
       "attached key unavailable unkey unavailable attempts 0 forwarded 0 accepted 0 rejected 0 " +
       "unknown 0 last none reason execution-disabled · " +
       `${productionCommandTransportText} · ${productionReadinessText} · ` +
-      "authority no-active-lease · last gateway-heartbeat · emergency unkey absent"
+      `authority no-active-lease · last gateway-heartbeat · ` +
+      productionEmergencyUnkeyTransportText
   });
   assert.deepEqual(formatTxLifecycle(null, now), {
     value: "NOT REGISTERED",

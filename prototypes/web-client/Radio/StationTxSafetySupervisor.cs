@@ -53,6 +53,7 @@ internal interface IStationTxEmergencyUnkeyTransport
     bool IsConnected { get; }
 
     Task<StationTxTransportResult> RequestUnkeyAsync(
+        uint expectedProtectedClientHandle,
         CancellationToken cancellationToken);
 }
 
@@ -62,10 +63,11 @@ internal interface IStationTxEmergencyUnkeyTransport
 /// fresh radio state proves that the single TX occupant is the exact FLEX
 /// client handle named by the active arm record.
 ///
-/// Production registers this state machine only inside the command-incapable
-/// per-session lifecycle. It remains disarmed, has no browser endpoint, and has
-/// no production emergency-unkey transport. A future reviewed milestone must
-/// move the active supervisor into an independent station watchdog process.
+/// Production registers this state machine only inside the fail-closed
+/// per-session lifecycle. Phase 2U may attach a disabled-by-default, exact-handle
+/// emergency-unkey transport, but the supervisor remains Disarmed and has no
+/// browser endpoint or arm caller. The independent watchdog also remains a
+/// separate Disarmed process boundary.
 /// </summary>
 internal sealed class StationTxSafetySupervisor : IAsyncDisposable
 {
@@ -519,7 +521,9 @@ internal sealed class StationTxSafetySupervisor : IAsyncDisposable
         }
 
         StationTxTransportResult command =
-            await m_transport.RequestUnkeyAsync(cancellationToken);
+            await m_transport.RequestUnkeyAsync(
+                arm.ProtectedClientHandle,
+                cancellationToken);
         int attempts = checked(arm.UnkeyAttempts + 1);
         m_arm = arm with
         {

@@ -69,6 +69,17 @@ StationTxCommandTransportRegistrationDiagnostics
     stationTxCommandTransportRegistration =
         StationTxCommandTransportSettingsValidator.CreateDiagnostics(
             stationTxCommandTransportSettings);
+StationTxEmergencyUnkeyTransportSettings
+    stationTxEmergencyUnkeyTransportSettings =
+        builder.Configuration
+            .GetSection(StationTxEmergencyUnkeyTransportSettings.SectionName)
+            .Get<StationTxEmergencyUnkeyTransportSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new StationTxEmergencyUnkeyTransportSettings();
+StationTxEmergencyUnkeyTransportRegistrationDiagnostics
+    stationTxEmergencyUnkeyTransportRegistration =
+        StationTxEmergencyUnkeyTransportSettingsValidator.CreateDiagnostics(
+            stationTxEmergencyUnkeyTransportSettings);
 ReverseProxySettings reverseProxySettings =
     builder.Configuration
         .GetSection(ReverseProxySettings.SectionName)
@@ -87,6 +98,8 @@ builder.Services.AddSingleton(
     Options.Create(stationTxCommandEnvelopeCoordinatorSettings));
 builder.Services.AddSingleton(
     Options.Create(stationTxCommandTransportSettings));
+builder.Services.AddSingleton(
+    Options.Create(stationTxEmergencyUnkeyTransportSettings));
 builder.Services.AddSingleton<StationTxIndependentWatchdogRegistry>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
@@ -349,6 +362,23 @@ app.MapGet(
                 txProductionCommandTransportReason =
                     stationTxCommandTransportRegistration.Reason,
                 txProductionCommandTransportWebSocketCallerRegistered = false,
+                txProductionEmergencyUnkeyTransportRegistered =
+                    stationTxEmergencyUnkeyTransportRegistration.Registered,
+                txProductionEmergencyUnkeyTransportConfiguredEnabled =
+                    stationTxEmergencyUnkeyTransportRegistration
+                        .ConfiguredEnabled,
+                txProductionEmergencyUnkeyTransportAllowedRadioCount =
+                    stationTxEmergencyUnkeyTransportRegistration
+                        .AllowedRadioCount,
+                txProductionEmergencyUnkeyTransportCommandTimeoutMilliseconds =
+                    stationTxEmergencyUnkeyTransportRegistration
+                        .CommandTimeoutMilliseconds,
+                txProductionEmergencyUnkeyTransportAvailable = false,
+                txProductionEmergencyUnkeyTransportUnkeyAvailable = false,
+                txProductionEmergencyUnkeyTransportReason =
+                    stationTxEmergencyUnkeyTransportRegistration.Reason,
+                txProductionEmergencyUnkeyTransportWebSocketCallerRegistered =
+                    false,
                 txProductionReadinessPolicyRegistered =
                     productionReadiness.Registered,
                 txProductionReadinessReady = productionReadiness.Ready,
@@ -387,6 +417,19 @@ app.MapGet(
                 txIndependentWatchdogRegisteredIdentityCount =
                     watchdog.RegisteredIdentityCount,
                 txIndependentWatchdogRestartCount = watchdog.RestartCount,
+                txIndependentWatchdogUnkeyTransportRegistered = true,
+                txIndependentWatchdogUnkeyTransportConfiguredEnabled =
+                    independentTxWatchdogSettings
+                        .RadioCommandTransportEnabled,
+                txIndependentWatchdogUnkeyTransportAllowedRadioCount =
+                    independentTxWatchdogSettings.AllowedRadioIds.Length,
+                txIndependentWatchdogUnkeyTransportCommandTimeoutMilliseconds =
+                    independentTxWatchdogSettings
+                        .RadioCommandTimeoutMilliseconds,
+                txIndependentWatchdogUnkeyTransportAvailable =
+                    watchdog.CommandTransportAvailable,
+                txIndependentWatchdogUnkeyTransportWebSocketCallerRegistered =
+                    false,
                 txIndependentWatchdogCommandTransportRegistered =
                     watchdog.CommandTransportAvailable,
                 txIndependentWatchdogArmingAvailable =

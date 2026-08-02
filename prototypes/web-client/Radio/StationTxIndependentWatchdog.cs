@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
+using System.Net;
 using AetherSDR.TxWatchdog.Protocol;
 using Microsoft.Extensions.Options;
 
@@ -13,6 +15,9 @@ public sealed class IndependentTxWatchdogSettings
     public string ExecutablePath { get; set; } = string.Empty;
     public int RequestTimeoutMilliseconds { get; set; } = 2000;
     public int RestartDelayMilliseconds { get; set; } = 1000;
+    public bool RadioCommandTransportEnabled { get; set; }
+    public string[] AllowedRadioIds { get; set; } = [];
+    public int RadioCommandTimeoutMilliseconds { get; set; } = 2000;
 }
 
 public sealed record StationTxIndependentWatchdogDiagnostics(
@@ -82,7 +87,10 @@ internal sealed record StationTxIndependentWatchdogOwner(
     string SessionId,
     string BrowserClientId,
     string GatewayInstanceId,
-    string EngineInstanceId);
+    string EngineInstanceId,
+    string RadioHost,
+    int RadioPort,
+    bool LocalFlexEligible);
 
 internal interface IStationTxIndependentWatchdogFactory
 {
@@ -172,7 +180,8 @@ public sealed class StationTxIndependentWatchdogRegistry :
                 snapshots.Count(snapshot => snapshot.IpcConnected),
                 snapshots.Count(snapshot => snapshot.Registered),
                 snapshots.Sum(snapshot => snapshot.RestartCount),
-                CommandTransportAvailable: false,
+                CommandTransportAvailable: snapshots.Any(
+                    snapshot => snapshot.RadioCommandTransportAvailable),
                 ArmingAvailable: false,
                 State: snapshots.Length == 0
                     ? "supervised-empty-disarmed"
@@ -195,7 +204,7 @@ public sealed class StationTxIndependentWatchdogRegistry :
     {
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(eventSink);
-        IndependentTxWatchdogLaunchCommand command = ResolveCommand();
+        IndependentTxWatchdogLaunchCommand command = ResolveCommand(owner);
         StationTxIndependentWatchdogClient client = new(
             owner,
             m_settings,
@@ -211,7 +220,8 @@ public sealed class StationTxIndependentWatchdogRegistry :
         return client;
     }
 
-    private IndependentTxWatchdogLaunchCommand ResolveCommand()
+    private IndependentTxWatchdogLaunchCommand ResolveCommand(
+        StationTxIndependentWatchdogOwner owner)
     {
         string configured = m_settings.ExecutablePath.Trim();
         string executable = configured.Length > 0
@@ -233,7 +243,44 @@ public sealed class StationTxIndependentWatchdogRegistry :
             throw new InvalidOperationException(
                 "IndependentTxWatchdog:ExecutablePath must name the reviewed watchdog executable.");
         }
-        return new IndependentTxWatchdogLaunchCommand(executable, ["--stdio"]);
+        bool enableUnkeyTransport =
+            m_settings.RadioCommandTransportEnabled &&
+            owner.LocalFlexEligible &&
+            m_settings.AllowedRadioIds.Contains(
+                owner.RadioId,
+                StringComparer.Ordinal);
+        if (!enableUnkeyTransport)
+        {
+            return new IndependentTxWatchdogLaunchCommand(
+                executable,
+                ["--stdio"],
+                ExpectRadioCommandTransportAvailable: false);
+        }
+        if (!IPAddress.TryParse(owner.RadioHost, out IPAddress? address) ||
+            address.AddressFamily !=
+                System.Net.Sockets.AddressFamily.InterNetwork ||
+            owner.RadioPort is < 1 or > 65535)
+        {
+            throw new InvalidOperationException(
+                "IndependentTxWatchdog radio command transport requires an exact IPv4 FLEX endpoint.");
+        }
+
+        return new IndependentTxWatchdogLaunchCommand(
+            executable,
+            [
+                "--stdio",
+                "--unkey-enabled",
+                "--radio-id",
+                owner.RadioId,
+                "--radio-host",
+                address.ToString(),
+                "--radio-port",
+                owner.RadioPort.ToString(CultureInfo.InvariantCulture),
+                "--command-timeout-ms",
+                m_settings.RadioCommandTimeoutMilliseconds.ToString(
+                    CultureInfo.InvariantCulture)
+            ],
+            ExpectRadioCommandTransportAvailable: true);
     }
 
     private static IndependentTxWatchdogSettings Validate(
@@ -256,13 +303,43 @@ public sealed class StationTxIndependentWatchdogRegistry :
             throw new InvalidOperationException(
                 "IndependentTxWatchdog:ExecutablePath is invalid.");
         }
+        if (settings.RadioCommandTimeoutMilliseconds is < 250 or > 5000)
+        {
+            throw new InvalidOperationException(
+                "IndependentTxWatchdog:RadioCommandTimeoutMilliseconds must be between 250 and 5000.");
+        }
+        string[] configured = settings.AllowedRadioIds ?? [];
+        if (configured.Length > 16)
+        {
+            throw new InvalidOperationException(
+                "IndependentTxWatchdog:AllowedRadioIds supports at most 16 entries.");
+        }
+        HashSet<string> normalized = new(StringComparer.Ordinal);
+        foreach (string? value in configured)
+        {
+            string radioId = value?.Trim().ToUpperInvariant() ?? string.Empty;
+            if (radioId.Length is 0 or > 128 ||
+                radioId.Any(char.IsControl) ||
+                !normalized.Add(radioId))
+            {
+                throw new InvalidOperationException(
+                    "IndependentTxWatchdog:AllowedRadioIds contains an invalid or duplicate radio ID.");
+            }
+        }
+        if (settings.RadioCommandTransportEnabled && normalized.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "IndependentTxWatchdog:AllowedRadioIds is required when the radio command transport is enabled.");
+        }
+        settings.AllowedRadioIds = [.. normalized];
         return settings;
     }
 }
 
 internal sealed record IndependentTxWatchdogLaunchCommand(
     string FileName,
-    IReadOnlyList<string> Arguments);
+    IReadOnlyList<string> Arguments,
+    bool ExpectRadioCommandTransportAvailable);
 
 internal sealed class StationTxIndependentWatchdogClient :
     IStationTxIndependentWatchdog
@@ -287,6 +364,7 @@ internal sealed class StationTxIndependentWatchdogClient :
     private bool m_registered;
     private bool m_connected;
     private bool m_leaseBound;
+    private bool m_radioCommandTransportAvailable;
     private long m_lastSequence;
     private long m_restartCount;
     private string m_state = "Disarmed";
@@ -338,7 +416,7 @@ internal sealed class StationTxIndependentWatchdogClient :
                     m_lastObservation,
                     m_lastObservedAt,
                     m_lastError,
-                    RadioCommandTransportAvailable: false,
+                    m_radioCommandTransportAvailable,
                     ArmingAvailable: false);
             }
         }
@@ -600,7 +678,8 @@ internal sealed class StationTxIndependentWatchdogClient :
             cancellationToken);
         if (!response.Ok ||
             response.Snapshot.State != "Disarmed" ||
-            response.Snapshot.RadioCommandTransportAvailable ||
+            response.Snapshot.RadioCommandTransportAvailable !=
+                m_command.ExpectRadioCommandTransportAvailable ||
             response.Snapshot.ArmingAvailable ||
             response.Snapshot.Registered ||
             response.Snapshot.Connected ||
@@ -857,6 +936,7 @@ internal sealed class StationTxIndependentWatchdogClient :
                 m_processStartedAt = null;
                 m_processRunning = false;
                 m_ipcConnected = false;
+                m_radioCommandTransportAvailable = false;
             }
         }
     }
@@ -872,6 +952,8 @@ internal sealed class StationTxIndependentWatchdogClient :
             m_registered = snapshot.Registered;
             m_connected = snapshot.Connected;
             m_leaseBound = snapshot.LeaseBound;
+            m_radioCommandTransportAvailable =
+                snapshot.RadioCommandTransportAvailable;
             m_lastSequence = snapshot.LastSequence;
             m_lastObservation = snapshot.LastObservation;
             m_lastObservedAt = snapshot.LastObservedAt ?? DateTimeOffset.UtcNow;

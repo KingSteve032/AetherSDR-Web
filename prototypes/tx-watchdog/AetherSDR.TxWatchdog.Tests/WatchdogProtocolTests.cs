@@ -118,7 +118,7 @@ public sealed class WatchdogProtocolTests
     }
 
     [Fact]
-    public void StrictResponseParserAcceptsOnlyCommandIncapableSnapshots()
+    public void StrictResponseParserAcceptsDisabledDisarmedUnkeyTransportSnapshots()
     {
         WatchdogResponse expected = new(
             WatchdogProtocol.Version,
@@ -129,7 +129,7 @@ public sealed class WatchdogProtocolTests
                 "watchdog-a",
                 new DateTimeOffset(2026, 7, 31, 13, 0, 0, TimeSpan.Zero),
                 "Disarmed",
-                "command-incapable-skeleton",
+                "unkey-transport-disabled-disarmed",
                 RadioCommandTransportAvailable: false,
                 ArmingAvailable: false,
                 Registered: true,
@@ -164,6 +164,41 @@ public sealed class WatchdogProtocolTests
         Assert.Null(actual.Snapshot.Identity);
     }
 
+    [Fact]
+    public void StrictResponseParserAcceptsReadyDisarmedUnkeyTransportSnapshot()
+    {
+        WatchdogResponse expected = new(
+            WatchdogProtocol.Version,
+            "response-ready",
+            Ok: true,
+            Error: null,
+            new WatchdogSnapshot(
+                "watchdog-ready",
+                new DateTimeOffset(2026, 8, 2, 1, 0, 0, TimeSpan.Zero),
+                "Disarmed",
+                "unkey-transport-ready-disarmed",
+                RadioCommandTransportAvailable: true,
+                ArmingAvailable: false,
+                Registered: false,
+                Connected: false,
+                Identity: null,
+                LeaseBound: false,
+                LastSequence: 0,
+                LastObservation: "process-started-disarmed",
+                LastObservedAt: null));
+
+        string json = WatchdogProtocol.SerializeResponse(expected);
+
+        Assert.True(WatchdogProtocol.TryParseResponse(
+            json,
+            out WatchdogResponse? actual,
+            out string error), error);
+        Assert.NotNull(actual);
+        Assert.True(actual.Snapshot.RadioCommandTransportAvailable);
+        Assert.False(actual.Snapshot.ArmingAvailable);
+        Assert.Equal("Disarmed", actual.Snapshot.State);
+    }
+
     [Theory]
     [InlineData("radioCommandTransportAvailable", "true")]
     [InlineData("armingAvailable", "true")]
@@ -177,7 +212,7 @@ public sealed class WatchdogProtocolTests
             "{\"protocolVersion\":1,\"requestId\":\"response-2\",\"ok\":true," +
             "\"snapshot\":{\"hostInstanceId\":\"watchdog-a\"," +
             "\"startedAt\":\"2026-07-31T13:00:00+00:00\"," +
-            "\"state\":\"Disarmed\",\"reason\":\"command-incapable-skeleton\"," +
+            "\"state\":\"Disarmed\",\"reason\":\"unkey-transport-disabled-disarmed\"," +
             "\"radioCommandTransportAvailable\":false,\"armingAvailable\":false," +
             "\"registered\":true,\"connected\":true,\"leaseBound\":true," +
             "\"lastSequence\":1,\"lastObservation\":\"registered-disarmed\"," +
@@ -197,7 +232,7 @@ public sealed class WatchdogProtocolTests
     [Theory]
     [InlineData("\"state\":\"Disarmed\"", "\"state\":\"Armed\"")]
     [InlineData(
-        "\"reason\":\"command-incapable-skeleton\"",
+        "\"reason\":\"unkey-transport-disabled-disarmed\"",
         "\"reason\":\"authority-restored\"")]
     public void NonDisarmedResponseStatesAreRejected(
         string current,
@@ -207,7 +242,7 @@ public sealed class WatchdogProtocolTests
             "{\"protocolVersion\":1,\"requestId\":\"response-3\",\"ok\":true," +
             "\"snapshot\":{\"hostInstanceId\":\"watchdog-a\"," +
             "\"startedAt\":\"2026-07-31T13:00:00+00:00\"," +
-            "\"state\":\"Disarmed\",\"reason\":\"command-incapable-skeleton\"," +
+            "\"state\":\"Disarmed\",\"reason\":\"unkey-transport-disabled-disarmed\"," +
             "\"radioCommandTransportAvailable\":false,\"armingAvailable\":false," +
             "\"registered\":false,\"connected\":false,\"leaseBound\":false," +
             "\"lastSequence\":0,\"lastObservation\":\"process-started-disarmed\"}}";

@@ -699,6 +699,7 @@ public sealed class StationTxSafetyArmCompositionTests
         public List<bool> Commands { get; } = [];
 
         public Task<StationTxTransportResult> RequestUnkeyAsync(
+            uint expectedProtectedClientHandle,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();

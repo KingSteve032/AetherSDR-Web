@@ -382,12 +382,17 @@ public static class WatchdogProtocol
             return false;
         }
 
-        if (!string.Equals(state, "Disarmed", StringComparison.Ordinal) ||
-            !string.Equals(
+        bool validTransportState = radioCommandTransportAvailable
+            ? string.Equals(
                 reason,
-                "command-incapable-skeleton",
-                StringComparison.Ordinal) ||
-            radioCommandTransportAvailable || armingAvailable ||
+                "unkey-transport-ready-disarmed",
+                StringComparison.Ordinal)
+            : string.Equals(
+                reason,
+                "unkey-transport-disabled-disarmed",
+                StringComparison.Ordinal);
+        if (!string.Equals(state, "Disarmed", StringComparison.Ordinal) ||
+            !validTransportState || armingAvailable ||
             (connected && !registered) || (leaseBound != registered))
         {
             return false;

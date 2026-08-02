@@ -14,7 +14,7 @@ public sealed class WatchdogHostEngineTests
 
         Assert.Equal("host-a", snapshot.HostInstanceId);
         Assert.Equal("Disarmed", snapshot.State);
-        Assert.Equal("command-incapable-skeleton", snapshot.Reason);
+        Assert.Equal("unkey-transport-disabled-disarmed", snapshot.Reason);
         Assert.False(snapshot.RadioCommandTransportAvailable);
         Assert.False(snapshot.ArmingAvailable);
         Assert.False(snapshot.Registered);
