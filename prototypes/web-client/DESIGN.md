@@ -138,9 +138,11 @@ keyed, unkey-pending, and fault states. It requires the exact lease, session,
 browser, FLEX handle, fresh idle interlock, and exclusive AetherSDR Local PTT
 authority. A 100 ms private watchdog reconciles lease loss and bounded unkey
 retries. Unknown network outcomes retain the guarded intent until the radio
-interlock resolves ownership. The real `xmit 1`/`xmit 0` adapter is compiled
-only when `EnableTxHil=true`; normal production publishes contain neither
-command string. Production therefore remains receive-only with
+interlock resolves ownership. Through Phase 2S, the real `xmit 1`/`xmit 0`
+adapter was compiled only when `EnableTxHil=true`, and normal production
+publishes contained neither command string. Phase 2T adds a separate reviewed
+production adapter behind disabled configuration, an exact radio allowlist, and
+the still-disabled command gate. Production therefore remains receive-only with
 `CanTransmit=false`.
 
 The Phase 2A production lifecycle registers the accepted command gate, safety
@@ -529,6 +531,30 @@ prerequisites. It owns no lease, browser identity, transaction, retry, or radio
 operation. The lifecycle also gains one internal typed ingress operation that can
 only delegate a `BrowserTxTransactionIngressRequest` to the Phase 2R adapter.
 Production keeps that adapter execution-disabled and exposes no caller.
+
+Phase 2T introduces one production-primary command transport without connecting
+it to browser execution. `StationTxCommandTransport` is one owned configuration
+object with a disabled default, an exact bounded radio allowlist, and a bounded
+command timeout. A local `FlexRx` session constructs the adapter; remote and
+simulation sessions are ineligible. The adapter remains unavailable unless the
+feature switch is enabled, the exact normalized radio ID is allowlisted, the
+FLEX command router is attached, and the router has a non-zero client handle.
+Every send receives the exact expected handle from the command gate. The router
+checks that expected handle while holding the same lock that captures the
+control session, preventing a detach/reconnect race from redirecting a command
+to a replacement FLEX client. The adapter performs one send only, distinguishes
+known FLEX rejection from unknown socket/timeout outcomes, propagates caller
+cancellation, and bounds untrusted result text.
+
+The primary adapter is registered in the lifecycle but the Phase 2T command gate
+is still constructed transmit-disabled. Browser ingress remains execution-
+disabled and callerless, signing/submission/boundary prerequisites remain
+disabled, and the independent emergency-unkey path remains absent. Normal web
+artifact inspection now requires exactly one reviewed `xmit 1` and one reviewed
+`xmit 0`; it still rejects HIL process, CWX, and TX-audio surfaces, and the
+watchdog artifact still contains no radio command. Thus source and binary contain
+the approved dormant primitive without creating an executable production TX
+path.
 
 The independent, station-local supervisor has no key method and an unkey-only
 transport. Its arm is purpose-bound to one engine

@@ -2176,6 +2176,58 @@ Milestone state:
   ingress execution-disabled with every counter zero, and all TX transports
   absent. A fresh Admin console capture contained zero entries. No TX control,
   microphone permission, radio command, or RF operation was used.
+- Phase 2T adds the first reviewed production-primary FLEX key/unkey transport
+  after explicit maintainer approval. Its owned configuration defaults disabled,
+  requires an exact bounded radio allowlist when enabled, and accepts only local
+  `FlexRx` sessions. Remote and simulation sessions are permanently ineligible.
+  The command gate remains constructed with `allowTransmit:false`, browser
+  ingress remains execution-disabled and callerless, and the emergency-unkey
+  transport remains absent.
+- The internal command transport contract now carries the exact expected FLEX
+  client handle. The gate passes its guarded-intent handle, and the router checks
+  that handle under the same lock used to capture the control session. A
+  replaced session is rejected before a command write. The adapter sends at most
+  once, propagates cancellation, preserves accepted, known-rejected, and unknown
+  socket/timeout outcomes, and bounds untrusted radio response text.
+- Phase 2T health and Admin diagnostics distinguish transport registration from
+  availability. The global transport is registered but configured disabled;
+  each session reports bounded eligibility, channel/handle state, counters, and
+  last outcome without exposing allowlist values or command text. WebSocket,
+  HTTP, AetherRemote, watchdog, reconnect, and timer types receive no production
+  transport surface.
+- The focused production transport, gate, and reachability proof passes 58
+  cases. The complete FlexWeb server suite passes 682 cases and all 48 TX-HIL
+  isolation tests pass. The combined Admin controls and diagnostics proof passes
+  25 cases.
+- The final 2026-08-02 Phase 2T guarded gate passed 682 FlexWeb server tests, 25
+  independent-watchdog tests, 48 TX-HIL isolation tests, 70 AetherRemote tests,
+  and 123 browser tests (948 total), with a zero-warning solution build. A clean
+  production publish contained exactly one reviewed `xmit 1` and one reviewed
+  `xmit 0` in the web artifact, zero of either in the watchdog artifact, and no
+  HIL process, CWX-send, or TX-audio command surface. The published transport
+  configuration remained disabled with an empty allowlist, and the watchdog
+  probe remained empty, Disarmed, and command-incapable. Validation log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260802-m7-production-command-transport-phase2t-validation-final-flexweb-validation.txt`.
+- Immutable staging release
+  `20260802-m7-production-command-transport-phase2t` was activated with
+  `20260801-m7-production-readiness-phase2s` retained for rollback. Internal and
+  public health reported the production command transport registered, configured
+  disabled, allowlist count zero, timeout 2000 ms, availability false,
+  SetTransmit false, reason `transport-disabled`, and WebSocket caller absent.
+  Production transmit, browser lease, ingress execution, transaction key/unkey,
+  signed boundary, command submission, emergency unkey, watchdog command/arming,
+  and supervisor arming all remained false. Deployment log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260802-m7-production-command-transport-phase2t-flexweb-validation.txt`.
+- Browser Bridge acceptance recovered `FLEX-6700` as `RX-ONLY / RADIO: LIVE`.
+  MOX, TUNE, and CWX remained hidden and disabled; lease and validation controls
+  remained disabled. Admin showed the transport config disabled, local FLEX
+  eligibility yes, radio blocked by the empty allowlist, live command channel
+  attached, current handle observed, transport and SetTransmit unavailable,
+  attempts/forwarded/key/unkey/accepted/rejected/unknown all zero, last
+  `none/none`, reason `transport-disabled`, and emergency unkey absent. Readiness
+  remained blocked at `transmit-disabled`; the Phase 2R ingress remained
+  execution-disabled. A fresh Admin console capture contained zero entries. No
+  TX control, microphone permission, radio command, or RF operation was used.
 
 Acceptance criteria:
 

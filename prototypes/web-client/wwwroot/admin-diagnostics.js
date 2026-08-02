@@ -63,11 +63,38 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
 
   const gate = String(lifecycle.gateState || "unknown").toUpperCase();
   const safety = String(lifecycle.safetyState || "unknown").toUpperCase();
+  const productionTransport = lifecycle.productionCommandTransport;
+  const productionTransportState = productionTransport?.registered
+    ? `production command transport config ${productionTransport.configuredEnabled
+        ? "enabled"
+        : "disabled"} ` +
+      `eligible ${productionTransport.localFlexEligible ? "yes" : "no"} ` +
+      `radio ${productionTransport.radioAllowed ? "allowed" : "blocked"} ` +
+      `channel ${productionTransport.commandChannelAttached
+        ? "attached"
+        : "absent"} ` +
+      `handle ${productionTransport.clientHandleAvailable
+        ? "available"
+        : "absent"} ` +
+      `available ${productionTransport.available ? "yes" : "no"} ` +
+      `set-transmit ${productionTransport.setTransmitAvailable
+        ? "available"
+        : "unavailable"} ` +
+      `attempts ${formatCount(productionTransport.attemptCount)} ` +
+      `forwarded ${formatCount(productionTransport.forwardedCount)} ` +
+      `key ${formatCount(productionTransport.keyAttemptCount)} ` +
+      `unkey ${formatCount(productionTransport.unkeyAttemptCount)} ` +
+      `accepted ${formatCount(productionTransport.acceptedCount)} ` +
+      `rejected ${formatCount(productionTransport.rejectedCount)} ` +
+      `unknown ${formatCount(productionTransport.unknownCount)} ` +
+      `last ${String(productionTransport.lastOperation || "none")}/` +
+      `${String(productionTransport.lastOutcome || "none")} ` +
+      `reason ${String(productionTransport.lastReason || "unknown")}`
+    : "production command transport not registered";
   const transportState =
-    lifecycle.commandTransportAvailable ||
-    lifecycle.emergencyUnkeyTransportAvailable
-      ? "TX transport present"
-      : "TX transports absent";
+    `emergency unkey ${lifecycle.emergencyUnkeyTransportAvailable
+      ? "available"
+      : "absent"}`;
   const authorityReason = String(
     lifecycle.authorityReason || "unknown");
   const authorityState = lifecycle.authorityFresh
@@ -325,8 +352,8 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `${stationCommandState} · ${adapterCompositionState} · ` +
       `${safetyArmAuthorityState} · ${safetyArmCompositionState} · ` +
       `${commandCompositionState} · ${transactionState} · ` +
-      `${transactionIngressState} · ${readinessState} · ` +
-      `authority ${authorityReason} · ` +
+      `${transactionIngressState} · ${productionTransportState} · ` +
+      `${readinessState} · authority ${authorityReason} · ` +
       `last ${lifecycle.lastObservation || "none"} · ${transportState}`
   };
 }

@@ -273,7 +273,9 @@ public sealed class RadioSessionRegistry(
     IOptions<RemoteStationSettings>? remoteSettings = null,
     StationTxIndependentWatchdogRegistry? independentWatchdogs = null,
     StationTxCommandTrustRegistry? stationCommandTrust = null,
-    StationTxCommandEnvelopeCoordinator? stationCommandCoordinator = null)
+    StationTxCommandEnvelopeCoordinator? stationCommandCoordinator = null,
+    IOptions<StationTxCommandTransportSettings>?
+        stationTxCommandTransportSettings = null)
     : BackgroundService
 {
     // Mobile browsers suspend WebSockets as soon as the operator changes apps
@@ -721,6 +723,18 @@ public sealed class RadioSessionRegistry(
             StringComparison.Ordinal);
         RemoteRadioIntentRouter? remoteIntentRouter =
             isRemote ? new RemoteRadioIntentRouter() : null;
+        bool localFlexEligible =
+            !isRemote &&
+            string.Equals(
+                sessionSettings.Mode,
+                "FlexRx",
+                StringComparison.OrdinalIgnoreCase);
+        StationTxProductionCommandTransport productionCommandTransport = new(
+            stationTxCommandTransportSettings?.Value ??
+                new StationTxCommandTransportSettings(),
+            endpoint.RadioId,
+            localFlexEligible,
+            commandRouter);
         StationTxProductionLifecycle txLifecycle = new(
             endpoint.RadioId,
             sessionId,
@@ -736,7 +750,8 @@ public sealed class RadioSessionRegistry(
                 AllowTransmitConfigured:
                     settings.Value.AllowTransmit && !isRemote,
                 BrowserTxLeaseConfigured:
-                    sessionSettings.BrowserTxLeaseEnabled));
+                    sessionSettings.BrowserTxLeaseEnabled),
+            productionCommandTransport: productionCommandTransport);
         RadioCoordinator coordinator = new(
             loggerFactory.CreateLogger<RadioCoordinator>(),
             sessionOptions,

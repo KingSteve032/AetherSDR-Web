@@ -59,6 +59,16 @@ StationTxCommandEnvelopeCoordinatorSettings
             .Get<StationTxCommandEnvelopeCoordinatorSettings>(options =>
                 options.ErrorOnUnknownConfiguration = true) ??
         new StationTxCommandEnvelopeCoordinatorSettings();
+StationTxCommandTransportSettings stationTxCommandTransportSettings =
+    builder.Configuration
+        .GetSection(StationTxCommandTransportSettings.SectionName)
+        .Get<StationTxCommandTransportSettings>(options =>
+            options.ErrorOnUnknownConfiguration = true) ??
+    new StationTxCommandTransportSettings();
+StationTxCommandTransportRegistrationDiagnostics
+    stationTxCommandTransportRegistration =
+        StationTxCommandTransportSettingsValidator.CreateDiagnostics(
+            stationTxCommandTransportSettings);
 ReverseProxySettings reverseProxySettings =
     builder.Configuration
         .GetSection(ReverseProxySettings.SectionName)
@@ -75,6 +85,8 @@ builder.Services.AddSingleton(Options.Create(stationTxCommandTrustSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandSigningSettings));
 builder.Services.AddSingleton(
     Options.Create(stationTxCommandEnvelopeCoordinatorSettings));
+builder.Services.AddSingleton(
+    Options.Create(stationTxCommandTransportSettings));
 builder.Services.AddSingleton<StationTxIndependentWatchdogRegistry>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
@@ -323,6 +335,20 @@ app.MapGet(
                 txBrowserTxTransactionIngressWatchdogCallerRegistered = false,
                 txBrowserTxTransactionIngressReconnectCallerRegistered = false,
                 txBrowserTxTransactionIngressTimerCallerRegistered = false,
+                txProductionCommandTransportRegistered =
+                    stationTxCommandTransportRegistration.Registered,
+                txProductionCommandTransportConfiguredEnabled =
+                    stationTxCommandTransportRegistration.ConfiguredEnabled,
+                txProductionCommandTransportAllowedRadioCount =
+                    stationTxCommandTransportRegistration.AllowedRadioCount,
+                txProductionCommandTransportCommandTimeoutMilliseconds =
+                    stationTxCommandTransportRegistration
+                        .CommandTimeoutMilliseconds,
+                txProductionCommandTransportAvailable = false,
+                txProductionCommandTransportSetTransmitAvailable = false,
+                txProductionCommandTransportReason =
+                    stationTxCommandTransportRegistration.Reason,
+                txProductionCommandTransportWebSocketCallerRegistered = false,
                 txProductionReadinessPolicyRegistered =
                     productionReadiness.Registered,
                 txProductionReadinessReady = productionReadiness.Ready,
@@ -365,7 +391,9 @@ app.MapGet(
                     watchdog.CommandTransportAvailable,
                 txIndependentWatchdogArmingAvailable =
                     watchdog.ArmingAvailable,
-                txCommandTransportRegistered = false,
+                txCommandTransportRegistered =
+                    stationTxCommandTransportRegistration.Registered,
+                txCommandTransportAvailable = false,
                 txSafetySupervisorArmingAvailable = false
             });
         })

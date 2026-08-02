@@ -218,6 +218,14 @@ expected = {
     "txBrowserTxTransactionIngressWatchdogCallerRegistered": False,
     "txBrowserTxTransactionIngressReconnectCallerRegistered": False,
     "txBrowserTxTransactionIngressTimerCallerRegistered": False,
+    "txProductionCommandTransportRegistered": True,
+    "txProductionCommandTransportConfiguredEnabled": False,
+    "txProductionCommandTransportAllowedRadioCount": 0,
+    "txProductionCommandTransportCommandTimeoutMilliseconds": 2000,
+    "txProductionCommandTransportAvailable": False,
+    "txProductionCommandTransportSetTransmitAvailable": False,
+    "txProductionCommandTransportReason": "transport-disabled",
+    "txProductionCommandTransportWebSocketCallerRegistered": False,
     "txProductionReadinessPolicyRegistered": True,
     "txProductionReadinessReady": False,
     "txProductionReadinessReason": "transmit-disabled",
@@ -231,7 +239,8 @@ expected = {
     "txIndependentWatchdogSupervisionRegistered": True,
     "txIndependentWatchdogCommandTransportRegistered": False,
     "txIndependentWatchdogArmingAvailable": False,
-    "txCommandTransportRegistered": False,
+    "txCommandTransportRegistered": True,
+    "txCommandTransportAvailable": False,
     "txSafetySupervisorArmingAvailable": False,
 }
 for key, value in expected.items():
@@ -348,6 +357,19 @@ assert_forbidden_string_absent() {
   fi
 }
 
+assert_string_occurs_once() {
+  local needle="$1"
+  local ascii_file="$2"
+  local utf16_file="$3"
+  local count
+  count="$({ grep -Fo -- "${needle}" "${ascii_file}" || true; \
+             grep -Fo -- "${needle}" "${utf16_file}" || true; } | wc -l)"
+  if [[ "${count}" -ne 1 ]]; then
+    echo "Production publish contained ${count} copies of reviewed string ${needle}; expected exactly one." >&2
+    exit 1
+  fi
+}
+
 printf 'Release: %s\n' "${release_name}"
 printf 'Checkout: %s\n' "${REPO_ROOT}"
 printf 'Branch: %s\n' "$(git -C "${REPO_ROOT}" branch --show-current)"
@@ -386,7 +408,7 @@ node --check "${REPO_ROOT}/prototypes/web-client/wwwroot/admin-page.js"
 node --check "${REPO_ROOT}/prototypes/web-client/wwwroot/tx-controls.js"
 node --test "${UI_TEST_DIR}"/*.test.mjs
 
-echo "Publishing receive-only FlexWeb artifact..."
+echo "Publishing RX-only-default FlexWeb artifact with disabled production TX transport..."
 publish_dir="${work_dir}/publish"
 archive="${work_dir}/${release_name}.tar.gz"
 mkdir -p -- "${publish_dir}"
@@ -407,7 +429,9 @@ dotnet publish "${WATCHDOG_PROJECT}" \
   --output "${watchdog_publish_dir}"
 
 binary="${publish_dir}/AetherSDR.Web"
+managed_binary="${publish_dir}/AetherSDR.Web.dll"
 watchdog_binary="${watchdog_publish_dir}/AetherSDR.TxWatchdog"
+watchdog_managed_binary="${watchdog_publish_dir}/AetherSDR.TxWatchdog.dll"
 for published_executable in "${binary}" "${watchdog_binary}"; do
   [[ -f "${published_executable}" ]] || {
     echo "Published executable is missing: ${published_executable}" >&2
@@ -420,6 +444,10 @@ for published_executable in "${binary}" "${watchdog_binary}"; do
 done
 [[ -x "${binary}" ]] || {
   echo "Published AetherSDR.Web binary is not executable." >&2
+  exit 1
+}
+[[ -s "${managed_binary}" ]] || {
+  echo "Published AetherSDR.Web managed assembly is missing or empty." >&2
   exit 1
 }
 [[ -s "${publish_dir}/wwwroot/tx-controls.js" ]] || {
@@ -466,18 +494,38 @@ fi
   echo "Published AetherSDR.TxWatchdog binary is not executable." >&2
   exit 1
 }
+[[ -s "${watchdog_managed_binary}" ]] || {
+  echo "Published AetherSDR.TxWatchdog managed assembly is missing or empty." >&2
+  exit 1
+}
 
 ascii_strings="${work_dir}/production-ascii.txt"
 utf16_strings="${work_dir}/production-utf16.txt"
 watchdog_ascii_strings="${work_dir}/watchdog-production-ascii.txt"
 watchdog_utf16_strings="${work_dir}/watchdog-production-utf16.txt"
-strings -a "${binary}" > "${ascii_strings}"
-strings -el "${binary}" > "${utf16_strings}"
-strings -a "${watchdog_binary}" > "${watchdog_ascii_strings}"
-strings -el "${watchdog_binary}" > "${watchdog_utf16_strings}"
+{
+  strings -a "${binary}"
+  strings -a "${managed_binary}"
+} > "${ascii_strings}"
+{
+  strings -el "${binary}"
+  strings -el "${managed_binary}"
+} > "${utf16_strings}"
+{
+  strings -a "${watchdog_binary}"
+  strings -a "${watchdog_managed_binary}"
+} > "${watchdog_ascii_strings}"
+{
+  strings -el "${watchdog_binary}"
+  strings -el "${watchdog_managed_binary}"
+} > "${watchdog_utf16_strings}"
+assert_string_occurs_once 'xmit 1' "${ascii_strings}" "${utf16_strings}"
+assert_string_occurs_once 'xmit 0' "${ascii_strings}" "${utf16_strings}"
+assert_forbidden_string_absent \
+  'xmit 1' "${watchdog_ascii_strings}" "${watchdog_utf16_strings}"
+assert_forbidden_string_absent \
+  'xmit 0' "${watchdog_ascii_strings}" "${watchdog_utf16_strings}"
 for forbidden in \
-  'xmit 1' \
-  'xmit 0' \
   'cwx send' \
   'HilGatewayAuthorityChild' \
   'internal-engine-process-child' \
@@ -493,7 +541,25 @@ if ! grep -F -- '"/tx-controls.js"' \
   echo "Production Program.cs does not contain the authenticated tx-controls.js route." >&2
   exit 1
 fi
-echo "Production web and watchdog artifacts contain no forbidden TX/HIL command surface."
+PUBLISHED_APPSETTINGS="${publish_dir}/appsettings.json" python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+path = Path(os.environ["PUBLISHED_APPSETTINGS"])
+payload = json.loads(path.read_text(encoding="utf-8"))
+transport = payload.get("StationTxCommandTransport")
+expected = {
+    "Enabled": False,
+    "AllowedRadioIds": [],
+    "CommandTimeoutMilliseconds": 2000,
+}
+if transport != expected:
+    raise SystemExit(
+        f"Published StationTxCommandTransport defaults were {transport!r}; expected {expected!r}")
+PY
+
+echo "Production web artifact contains exactly the reviewed disabled key/unkey transport strings; watchdog and all other TX/HIL surfaces remain absent."
 
 watchdog_status="$(
   printf '%s\n' \

@@ -422,6 +422,7 @@ internal sealed class HilFlexSession : IAsyncDisposable, IHilCwxRadio
             FlexRadioCommandRouter router = new();
             router.Attach(
                 m_control,
+                m_clientHandle,
                 panId,
                 options.FrequencyHz);
             HilStationTxCommandTransport transport = new(
@@ -973,11 +974,13 @@ internal sealed class HilStationTxCommandTransport(
 
     public async Task<StationTxTransportResult> SetTransmitAsync(
         bool enabled,
+        uint expectedClientHandle,
         CancellationToken cancellationToken)
     {
         try
         {
-            FlexCommandResponse response = await router.SendAsync(
+            FlexCommandResponse response = await router.SendForClientAsync(
+                expectedClientHandle,
                 enabled ? "xmit 1" : "xmit 0",
                 CommandTimeout,
                 cancellationToken);

@@ -22,7 +22,7 @@ import {
   rememberSessionDiagnosticExpansion,
   sessionDiagnosticExpanded,
   shortId
-} from "./admin-diagnostics.js?v=production-readiness-1";
+} from "./admin-diagnostics.js?v=production-command-transport-1";
 
 const elements = {
   userName: document.querySelector("#user-name"),

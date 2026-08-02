@@ -795,6 +795,7 @@ internal sealed class HilSafetyExpiryOperation(
 
         public async Task<StationTxTransportResult> SetTransmitAsync(
             bool enabled,
+            uint expectedClientHandle,
             CancellationToken cancellationToken)
         {
             if (enabled)
@@ -805,7 +806,10 @@ internal sealed class HilSafetyExpiryOperation(
             {
                 UnkeyCommands++;
             }
-            return await inner.SetTransmitAsync(enabled, cancellationToken);
+            return await inner.SetTransmitAsync(
+                enabled,
+                expectedClientHandle,
+                cancellationToken);
         }
     }
 

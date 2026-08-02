@@ -384,6 +384,7 @@ internal sealed class HilEngineProcessChild(
 
         public async Task<StationTxTransportResult> SetTransmitAsync(
             bool enabled,
+            uint expectedClientHandle,
             CancellationToken cancellationToken)
         {
             if (enabled)
@@ -394,7 +395,10 @@ internal sealed class HilEngineProcessChild(
             {
                 UnkeyCommands++;
             }
-            return await inner.SetTransmitAsync(enabled, cancellationToken);
+            return await inner.SetTransmitAsync(
+                enabled,
+                expectedClientHandle,
+                cancellationToken);
         }
     }
 }
