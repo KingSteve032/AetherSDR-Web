@@ -588,6 +588,17 @@ the arm only after the matching command response and fresh radio-confirmed idle;
 rejection, missing idle confirmation, or another unknown outcome enters
 reconciliation without retry.
 
+Phase 2W adds `StationTxProductionActivationComposition` as a read-only,
+server-owned composition over the existing production readiness policy. It
+accepts only a current infrastructure snapshot provider, evaluates every
+prerequisite afresh, and exposes bounded diagnostics for attachment,
+availability, and the exact blocking reason. It has no execute, activate, enable,
+submit, lease, arm, key, unkey, or configuration-mutation method. The lifecycle
+publishes the same evaluated readiness through both `ProductionReadiness` and
+`ProductionActivation.Readiness`, while Admin and health explicitly report the
+composition as attached but activation unavailable at `transmit-disabled`.
+No browser or other production caller is registered.
+
 The normal web artifact now contains exactly one reviewed `xmit 1` and one
 runtime-deduplicated reviewed `xmit 0`, plus type markers for both the primary
 and emergency transports that reference that unkey command. The independent

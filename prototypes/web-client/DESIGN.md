@@ -573,6 +573,16 @@ local-arm failure attempts to clear the independent arm; a rejected or unknown
 independent unkey remains reconciliation-required. No browser, HTTP, WebSocket,
 AetherRemote, reconnect, or ordinary lifecycle heartbeat receives these methods.
 
+Phase 2W introduces a read-only production activation composition between the
+lifecycle and the Phase 2S readiness policy. The composition owns no authority,
+configuration, lease, transaction, or radio operation. Its only dependency is a
+provider for the current typed infrastructure prerequisites, and every snapshot
+re-evaluates the deterministic readiness policy rather than caching a prior
+result. Diagnostics distinguish composition attachment from activation
+availability and preserve the policy's exact first blocking reason. Production
+health declares the composition registered, activation unavailable, reason
+`transmit-disabled`, and no registered activation caller.
+
 Normal web artifact inspection now requires exactly one reviewed `xmit 1`, one
 runtime-deduplicated reviewed `xmit 0`, and type markers for both the primary and
 emergency transports. The watchdog artifact requires exactly one reviewed

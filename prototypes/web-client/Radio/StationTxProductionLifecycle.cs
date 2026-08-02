@@ -34,6 +34,8 @@ public sealed record StationTxLifecycleDiagnostics(
         BrowserTxTransactionIngress,
     StationTxProductionReadinessDiagnostics
         ProductionReadiness,
+    StationTxProductionActivationCompositionDiagnostics
+        ProductionActivation,
     StationTxSafetyArmAuthorityDiagnostics
         StationCommandSafetyArmAuthority,
     StationTxSafetyArmCompositionDiagnostics
@@ -136,6 +138,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         m_browserTxTransactionIngress;
     private readonly StationTxProductionReadinessConfiguration
         m_productionReadinessConfiguration;
+    private readonly StationTxProductionActivationComposition
+        m_productionActivationComposition;
     private readonly StationTxSafetyArmAuthority
         m_stationCommandSafetyArmAuthority;
     private readonly StationTxSafetyArmComposition
@@ -308,6 +312,9 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     request,
                     cancellationToken),
             m_timeProvider);
+        m_productionActivationComposition =
+            new StationTxProductionActivationComposition(
+                ResolveProductionReadinessInputs);
         m_authenticationMonitor = new StationTxAuthenticationMonitor(m_supervisor);
         m_engineMonitor = new StationTxEngineConnectionMonitor(m_supervisor);
         m_gatewayMonitor = new StationTxGatewayConnectionMonitor(m_supervisor);
@@ -352,26 +359,10 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 m_commandGate.Capabilities;
             StationTxIndependentWatchdogDiagnostics independentWatchdog =
                 m_independentWatchdog.Snapshot;
+            StationTxProductionActivationCompositionDiagnostics
+                productionActivation = m_productionActivationComposition.Snapshot;
             StationTxProductionReadinessDiagnostics productionReadiness =
-                StationTxProductionReadinessPolicy.Evaluate(new(
-                    m_productionReadinessConfiguration.AllowTransmitConfigured,
-                    m_productionReadinessConfiguration.BrowserTxLeaseConfigured,
-                    commandComposition.CoordinatorAttached,
-                    commandComposition.SubmissionEnabled,
-                    commandComposition.SigningAvailable,
-                    commandComposition.SignatureVerificationAvailable,
-                    commandComposition.BoundaryEnabled,
-                    commandComposition.CommandAdapterRegistered,
-                    gateCapabilities.TransmitEnabled,
-                    gateCapabilities.CommandTransportAvailable,
-                    gateCapabilities.SetTransmitAvailable,
-                    emergencyTransport.Available,
-                    safetyArmAuthority.Registered,
-                    independentWatchdog.SupervisionEnabled,
-                    independentWatchdog.ProcessRunning,
-                    independentWatchdog.IpcConnected,
-                    independentWatchdog.RadioCommandTransportAvailable,
-                    independentWatchdog.ArmingAvailable));
+                productionActivation.Readiness;
             lock (m_stateGate)
             {
                 LifecycleFreshness freshness =
@@ -404,6 +395,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     transactionComposition,
                     transactionIngress,
                     productionReadiness,
+                    productionActivation,
                     safetyArmAuthority,
                     safetyArmComposition,
                     m_gatewayConnected,
@@ -451,6 +443,41 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     m_lastObservedAt);
             }
         }
+    }
+
+    private StationTxProductionReadinessInputs
+        ResolveProductionReadinessInputs()
+    {
+        StationTxCommandSessionCompositionDiagnostics commandComposition =
+            m_stationCommandComposition.Snapshot;
+        StationTxCommandGateCapabilities gateCapabilities =
+            m_commandGate.Capabilities;
+        StationTxProductionEmergencyUnkeyTransportDiagnostics
+            emergencyTransport = m_productionEmergencyUnkeyTransport.Snapshot;
+        StationTxSafetyArmAuthorityDiagnostics safetyArmAuthority =
+            m_stationCommandSafetyArmAuthority.Snapshot;
+        StationTxIndependentWatchdogDiagnostics independentWatchdog =
+            m_independentWatchdog.Snapshot;
+
+        return new StationTxProductionReadinessInputs(
+            m_productionReadinessConfiguration.AllowTransmitConfigured,
+            m_productionReadinessConfiguration.BrowserTxLeaseConfigured,
+            commandComposition.CoordinatorAttached,
+            commandComposition.SubmissionEnabled,
+            commandComposition.SigningAvailable,
+            commandComposition.SignatureVerificationAvailable,
+            commandComposition.BoundaryEnabled,
+            commandComposition.CommandAdapterRegistered,
+            gateCapabilities.TransmitEnabled,
+            gateCapabilities.CommandTransportAvailable,
+            gateCapabilities.SetTransmitAvailable,
+            emergencyTransport.Available,
+            safetyArmAuthority.Registered,
+            independentWatchdog.SupervisionEnabled,
+            independentWatchdog.ProcessRunning,
+            independentWatchdog.IpcConnected,
+            independentWatchdog.RadioCommandTransportAvailable,
+            independentWatchdog.ArmingAvailable);
     }
 
     public Task StartAsync(CancellationToken cancellationToken = default) =>
