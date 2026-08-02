@@ -35,6 +35,10 @@
              Link="wwwroot\assets\bandplans\arrl-us.json"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="deploy\validate-production-tx-activation.sh"
+             Link="tools\validate-production-tx-activation.sh"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

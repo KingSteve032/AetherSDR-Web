@@ -2497,6 +2497,69 @@ Milestone state:
   console entries. No lease was acquired, no browser TX intent or heartbeat was
   sent, no microphone permission was requested, and no live RF/HIL operation was
   run.
+- Phase 3A adds a non-starting production TX activation preflight to the normal
+  web executable. `--validate-production-tx-activation` requires one exact
+  `--production-tx-radio-id`, loads the same deployment configuration as the
+  service, simulates the master activation request without changing it, validates
+  key files and permissions, matches the signing fingerprint to the trusted
+  public key under the same key ID, checks all three exact radio allowlists,
+  validates watchdog settings and the reviewed executable, emits redacted JSON,
+  and exits before the host, dependency injection, hosted services, watchdog,
+  HTTP listener, lease manager, or radio transport can start. The owner-only
+  deployment wrapper rejects symbolic links and environment files other than
+  exact mode 0400/0600. A ready report is only permission to proceed to a
+  separate operator-controlled activation; it does not enable TX.
+- The 2026-08-02 Phase 3A automated gate passed a zero-warning solution build
+  plus 741 FlexWeb server tests, 57 independent-watchdog tests, 48 TX-HIL
+  isolation tests, 70 AetherRemote tests, and 127 browser tests (1,043 total).
+  The four focused preflight cases prove that a fully staged package reports
+  ready while the actual master switch remains off; mismatched signing and trust
+  keys, a wrong primary radio allowlist, and a non-executable watchdog each fail
+  closed. Direct CLI and owner/mode-guarded wrapper runs against RX-only config
+  exited 2, listed only redacted missing-prerequisite codes, and explicitly
+  reported web host, radio connection, and watchdog process all not started.
+- Immutable RX-only staging release
+  `20260802-m7-production-tx-activation-preflight-phase3a-final` was activated
+  with `20260802-m7-production-tx-activation-preflight-phase3a` retained for
+  rollback. The final release packages the owner-only preflight wrapper under
+  `current/tools`; the guarded deployment rejects a missing, non-executable, or
+  syntactically invalid local or deployed wrapper. It reran all 1,043 tests,
+  production binary inspection, and the Disarmed watchdog probe. Internal and
+  public health remained fail-closed with activation not requested, all four
+  binding switches off, transports disabled, watchdog arming unavailable, and
+  zero TX activity. Deployment log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260802-m7-production-tx-activation-preflight-phase3a-final-flexweb-validation.txt`.
+- The packaged deployed wrapper was invoked directly against the real owner-only
+  service environment. It exited 2, confirmed the reviewed watchdog executable
+  was ready, reported the current master activation request absent, and listed
+  only redacted missing codes for the still-disabled transmit, browser lease,
+  trust/signing, submission, transport/allowlist, and watchdog-arm prerequisites.
+  It explicitly reported web host, radio connection, and watchdog process all
+  not started.
+- Phase 3A Browser Bridge acceptance used the exact final release radio and Admin
+  pages without acquiring a lease or invoking a TX control. The live RX session
+  recovered with three 2D canvases and no WebGL context; TUNE, OPERATE, ACQUIRE
+  LEASE, and VALIDATE ONLY remained disabled, while MOX and CWX remained hidden.
+  Admin showed `DISABLED · DISARMED · NO LEASE`, browser transaction ingress
+  execution disabled, the activation binding attached but unapplied, all four
+  bound switches off, reason `activation-not-requested`, zero transaction
+  attempts, zero primary key/unkey calls, and zero independent-watchdog unkey
+  attempts. The first radio capture contained only a transient network-change
+  and stale-session recovery pair; fresh stabilized radio and Admin captures
+  each contained zero console entries. No microphone permission, browser TX
+  intent, safety heartbeat, radio command, or live RF/HIL operation was used.
+- The 2026-08-02 live no-RF station check built the merged TX-HIL tool with zero
+  warnings, observed the reviewed radio freshly idle with zero TX occupants and
+  no external GUI client, and found the HIL GUI profile recalling 1 W. The
+  hard-bound `restore-idle-defaults` operation twice radio-confirmed 100 W, DAX
+  on, PC microphone selection, VOX off, idle, zero occupants, `rfEmitted:false`,
+  and no key or unkey command. The ten-scenario simulated safety fault matrix
+  passed with no radio connection and an unkey-only boundary. The live non-GUI
+  observer preflight also passed: exact engine Local PTT ownership was observed
+  while idle, the observer was not a GUI client, zero unkey commands were sent,
+  and no key command was available. The full state-changing no-RF frequency
+  preflight remains pending an operator-supplied clear-frequency/camera/remote-
+  off confirmation; no token was fabricated and no live RF operation was run.
 
 Acceptance criteria:
 

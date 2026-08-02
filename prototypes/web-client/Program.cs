@@ -15,7 +15,59 @@ using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 using System.Threading.RateLimiting;
 
-WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+const string ProductionTxPreflightSwitch =
+    "--validate-production-tx-activation";
+const string ProductionTxRadioIdSwitch =
+    "--production-tx-radio-id";
+bool productionTxPreflightRequested = false;
+string? productionTxPreflightRadioId = null;
+List<string> applicationArguments = [];
+for (int index = 0; index < args.Length; index++)
+{
+    string argument = args[index];
+    if (string.Equals(
+            argument,
+            ProductionTxPreflightSwitch,
+            StringComparison.Ordinal))
+    {
+        if (productionTxPreflightRequested)
+        {
+            throw new InvalidOperationException(
+                "Production TX activation preflight was requested more than once.");
+        }
+        productionTxPreflightRequested = true;
+        continue;
+    }
+    if (string.Equals(
+            argument,
+            ProductionTxRadioIdSwitch,
+            StringComparison.Ordinal))
+    {
+        if (productionTxPreflightRadioId is not null ||
+            index + 1 >= args.Length)
+        {
+            throw new InvalidOperationException(
+                "Production TX activation preflight requires one exact radio ID.");
+        }
+        productionTxPreflightRadioId = args[++index];
+        continue;
+    }
+    applicationArguments.Add(argument);
+}
+if (!productionTxPreflightRequested && productionTxPreflightRadioId is not null)
+{
+    throw new InvalidOperationException(
+        "The production TX radio ID switch is valid only with activation preflight.");
+}
+if (productionTxPreflightRequested &&
+    string.IsNullOrWhiteSpace(productionTxPreflightRadioId))
+{
+    throw new InvalidOperationException(
+        "Production TX activation preflight requires --production-tx-radio-id.");
+}
+
+WebApplicationBuilder builder = WebApplication.CreateBuilder(
+    [.. applicationArguments]);
 builder.Logging.ClearProviders();
 builder.Logging.AddSimpleConsole(options =>
 {
@@ -65,10 +117,6 @@ StationTxCommandTransportSettings stationTxCommandTransportSettings =
         .Get<StationTxCommandTransportSettings>(options =>
             options.ErrorOnUnknownConfiguration = true) ??
     new StationTxCommandTransportSettings();
-StationTxCommandTransportRegistrationDiagnostics
-    stationTxCommandTransportRegistration =
-        StationTxCommandTransportSettingsValidator.CreateDiagnostics(
-            stationTxCommandTransportSettings);
 StationTxEmergencyUnkeyTransportSettings
     stationTxEmergencyUnkeyTransportSettings =
         builder.Configuration
@@ -76,16 +124,41 @@ StationTxEmergencyUnkeyTransportSettings
             .Get<StationTxEmergencyUnkeyTransportSettings>(options =>
                 options.ErrorOnUnknownConfiguration = true) ??
         new StationTxEmergencyUnkeyTransportSettings();
-StationTxEmergencyUnkeyTransportRegistrationDiagnostics
-    stationTxEmergencyUnkeyTransportRegistration =
-        StationTxEmergencyUnkeyTransportSettingsValidator.CreateDiagnostics(
-            stationTxEmergencyUnkeyTransportSettings);
 StationTxProductionActivationSettings stationTxProductionActivationSettings =
     builder.Configuration
         .GetSection(StationTxProductionActivationSettings.SectionName)
         .Get<StationTxProductionActivationSettings>(options =>
             options.ErrorOnUnknownConfiguration = true) ??
     new StationTxProductionActivationSettings();
+if (productionTxPreflightRequested)
+{
+    StationTxProductionActivationPreflightReport report =
+        StationTxProductionActivationPreflight.Evaluate(
+            productionTxPreflightRadioId!,
+            builder.Environment.ContentRootPath,
+            stationTxProductionActivationSettings,
+            radioSettings,
+            stationTxCommandTrustSettings,
+            stationTxCommandSigningSettings,
+            stationTxCommandEnvelopeCoordinatorSettings,
+            stationTxCommandTransportSettings,
+            stationTxEmergencyUnkeyTransportSettings,
+            independentTxWatchdogSettings);
+    Console.WriteLine(JsonSerializer.Serialize(
+        report,
+        new JsonSerializerOptions { WriteIndented = true }));
+    Environment.ExitCode = report.ReadyForOperatorActivation ? 0 : 2;
+    return;
+}
+
+StationTxCommandTransportRegistrationDiagnostics
+    stationTxCommandTransportRegistration =
+        StationTxCommandTransportSettingsValidator.CreateDiagnostics(
+            stationTxCommandTransportSettings);
+StationTxEmergencyUnkeyTransportRegistrationDiagnostics
+    stationTxEmergencyUnkeyTransportRegistration =
+        StationTxEmergencyUnkeyTransportSettingsValidator.CreateDiagnostics(
+            stationTxEmergencyUnkeyTransportSettings);
 StationTxProductionActivationConfigurationDiagnostics
     stationTxProductionActivationConfiguration =
         StationTxProductionActivationConfigurationInterlock.ValidateOrThrow(

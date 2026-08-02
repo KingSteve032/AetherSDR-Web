@@ -673,6 +673,30 @@ still requires the exact connected radio/session/browser/engine/FLEX-handle
 identity and independent watchdog process before the browser receives keying
 capability.
 
+Before changing the master activation switch, run the non-starting configuration
+preflight as the service account:
+
+```bash
+/home/flexweb/aethersdr/current/tools/validate-production-tx-activation.sh \
+  REVIEWED-RADIO-ID
+```
+
+The wrapper is packaged into every immutable release under `tools/`. It requires
+an owner-only, non-symlink deployment environment and the reviewed
+`AetherSDR.Web` executable. It sources the same environment used by the
+service, then invokes `--validate-production-tx-activation` with one exact radio
+ID. The application simulates the master activation request while leaving the
+real setting unchanged. It loads and validates the public trust ring and private
+signing key, requires the signing fingerprint to appear under the same key ID in
+the trust ring, checks the primary, emergency, and watchdog allowlists against
+the exact target radio, validates watchdog timeouts and the packaged executable,
+and exits before dependency injection or hosted services are built. Its JSON
+report always states `WebHostStarted:false`, `RadioConnectionCreated:false`, and
+`WatchdogProcessStarted:false`; exit status 0 means the static package is ready
+for a separate operator-controlled activation, while status 2 lists only
+redacted missing-prerequisite codes. The command does not acquire a lease, start
+a watchdog, open a radio socket, or enable production TX.
+
 `Radio:BrowserTxLeaseEnabled` remains false by default. When deliberately enabled,
 the radio page reveals a **TX AUTHORITY** panel that can acquire, automatically
 renew, and release the single physical-radio lease. Browser TX protocol version

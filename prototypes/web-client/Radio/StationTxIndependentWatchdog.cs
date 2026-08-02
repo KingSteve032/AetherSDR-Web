@@ -354,7 +354,7 @@ public sealed class StationTxIndependentWatchdogRegistry :
             ExpectArmingAvailable: enableArming);
     }
 
-    private static IndependentTxWatchdogSettings Validate(
+    internal static IndependentTxWatchdogSettings Validate(
         IndependentTxWatchdogSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
