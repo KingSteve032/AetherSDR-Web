@@ -355,11 +355,21 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       .map(value => String(value))
       .join(",")
     : "unknown";
+  const activationPlan = activation?.plan;
+  const activationSwitches = activationPlan?.plan;
   const activationState = activation?.registered
     ? `production activation composition config ` +
       `${activation.configurationInterlockAttached ? "attached" : "absent"} ` +
       `request ${activation.activationRequested ? "present" : "absent"} ` +
       `configuration ${activation.configurationValid ? "valid" : "invalid"} ` +
+      `plan ${activation.activationPlanAttached ? "attached" : "absent"} ` +
+      `${activation.activationPlanAvailable ? "available" : "unavailable"} ` +
+      `${activation.activationPlanApplied ? "applied" : "unapplied"} ` +
+      `switches boundary ${activationSwitches?.commandBoundaryEnabled ? "on" : "off"} ` +
+      `gate ${activationSwitches?.commandGateTransmitEnabled ? "on" : "off"} ` +
+      `ingress ${activationSwitches?.browserTransactionIngressExecutionEnabled ? "on" : "off"} ` +
+      `capability ${activationSwitches?.browserKeyingCapabilityEnabled ? "on" : "off"} ` +
+      `plan-reason ${String(activationPlan?.reason || "unknown")} ` +
       `evaluation ${activation.readinessEvaluationAttached ? "attached" : "absent"} ` +
       `activation ${activation.activationAvailable ? "available" : "unavailable"} ` +
       `reason ${String(activation.reason || "unknown")} ` +

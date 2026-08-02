@@ -64,20 +64,41 @@ const productionActivationConfiguration = {
   reason: "activation-not-requested",
   missingPrerequisites: productionActivationConfigurationMissing
 };
+const productionActivationPlan = {
+  registered: true,
+  configurationInterlockAttached: true,
+  activationRequested: false,
+  configurationValid: true,
+  planAvailable: false,
+  planApplied: false,
+  reason: "activation-not-requested",
+  plan: {
+    commandBoundaryEnabled: false,
+    commandGateTransmitEnabled: false,
+    browserTransactionIngressExecutionEnabled: false,
+    browserKeyingCapabilityEnabled: false
+  }
+};
 const productionActivation = {
   registered: true,
   configurationInterlockAttached: true,
+  activationPlanAttached: true,
   readinessEvaluationAttached: true,
   activationRequested: false,
   configurationValid: true,
+  activationPlanAvailable: false,
+  activationPlanApplied: false,
   activationAvailable: false,
   reason: "activation-not-requested",
   configuration: productionActivationConfiguration,
+  plan: productionActivationPlan,
   readiness: productionReadiness
 };
 const productionActivationText =
   "production activation composition config attached request absent " +
-  "configuration valid evaluation attached activation unavailable " +
+  "configuration valid plan attached unavailable unapplied switches " +
+  "boundary off gate off ingress off capability off plan-reason " +
+  "activation-not-requested evaluation attached activation unavailable " +
   "reason activation-not-requested static-missing 16 " +
   `[${productionActivationConfigurationMissing.join(",")}]`;
 const productionCommandTransport = {

@@ -611,6 +611,16 @@ testable. The interlock owns no command or activation operation, and the dynamic
 readiness policy still decides whether attached infrastructure is actually
 available.
 
+Phase 2Y adds `StationTxProductionActivationPlanner`, a snapshot-only bridge
+from that validated request to one immutable four-switch plan: command boundary,
+command-gate transmit, browser transaction ingress execution, and browser
+keying-capability projection. A valid request makes the complete plan available
+as one unit; an absent or invalid request keeps every planned switch false. The
+plan is deliberately reported as unapplied, is passed to no executable
+component, has no apply or operation method, and therefore cannot change any
+hardcoded production disable point. Activation remains unavailable even when a
+unit test supplies otherwise-complete dynamic readiness.
+
 The normal web artifact now contains exactly one reviewed `xmit 1` and one
 runtime-deduplicated reviewed `xmit 0`, plus type markers for both the primary
 and emergency transports that reference that unkey command. The independent

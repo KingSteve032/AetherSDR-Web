@@ -97,6 +97,8 @@ StationTxProductionActivationConfigurationDiagnostics
             stationTxCommandTransportSettings,
             stationTxEmergencyUnkeyTransportSettings,
             independentTxWatchdogSettings);
+StationTxProductionActivationPlanner stationTxProductionActivationPlanner =
+    new(() => stationTxProductionActivationConfiguration);
 ReverseProxySettings reverseProxySettings =
     builder.Configuration
         .GetSection(ReverseProxySettings.SectionName)
@@ -292,6 +294,7 @@ app.MapGet(
                 productionActivation =
                     new StationTxProductionActivationComposition(
                         () => stationTxProductionActivationConfiguration,
+                        () => stationTxProductionActivationPlanner.Snapshot,
                         () => productionReadinessInputs)
                     .Snapshot;
             StationTxProductionReadinessDiagnostics productionReadiness =
@@ -432,6 +435,27 @@ app.MapGet(
                     productionActivation.Registered,
                 txProductionActivationConfigurationInterlockAttached =
                     productionActivation.ConfigurationInterlockAttached,
+                txProductionActivationPlanRegistered =
+                    productionActivation.Plan.Registered,
+                txProductionActivationPlanAttached =
+                    productionActivation.ActivationPlanAttached,
+                txProductionActivationPlanAvailable =
+                    productionActivation.ActivationPlanAvailable,
+                txProductionActivationPlanApplied =
+                    productionActivation.ActivationPlanApplied,
+                txProductionActivationPlanReason =
+                    productionActivation.Plan.Reason,
+                txProductionActivationPlanCommandBoundaryEnabled =
+                    productionActivation.Plan.Plan.CommandBoundaryEnabled,
+                txProductionActivationPlanCommandGateTransmitEnabled =
+                    productionActivation.Plan.Plan.CommandGateTransmitEnabled,
+                txProductionActivationPlanBrowserIngressExecutionEnabled =
+                    productionActivation.Plan.Plan
+                        .BrowserTransactionIngressExecutionEnabled,
+                txProductionActivationPlanBrowserKeyingCapabilityEnabled =
+                    productionActivation.Plan.Plan
+                        .BrowserKeyingCapabilityEnabled,
+                txProductionActivationPlanCallerRegistered = false,
                 txProductionActivationAvailable =
                     productionActivation.ActivationAvailable,
                 txProductionActivationReason = productionActivation.Reason,

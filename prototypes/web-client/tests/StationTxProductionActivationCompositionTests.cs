@@ -26,8 +26,12 @@ public sealed class StationTxProductionActivationCompositionTests
     [Fact]
     public void DisabledInputsRemainAttachedButActivationUnavailable()
     {
+        StationTxProductionActivationConfigurationDiagnostics configuration =
+            Configuration(requested: false, configured: false);
+        StationTxProductionActivationPlanner planner = new(() => configuration);
         StationTxProductionActivationComposition composition = new(
-            () => Configuration(requested: false, configured: false),
+            () => configuration,
+            () => planner.Snapshot,
             () => Inputs(allReady: false));
 
         StationTxProductionActivationCompositionDiagnostics snapshot =
@@ -35,9 +39,12 @@ public sealed class StationTxProductionActivationCompositionTests
 
         Assert.True(snapshot.Registered);
         Assert.True(snapshot.ConfigurationInterlockAttached);
+        Assert.True(snapshot.ActivationPlanAttached);
         Assert.True(snapshot.ReadinessEvaluationAttached);
         Assert.False(snapshot.ActivationRequested);
         Assert.True(snapshot.ConfigurationValid);
+        Assert.False(snapshot.ActivationPlanAvailable);
+        Assert.False(snapshot.ActivationPlanApplied);
         Assert.False(snapshot.ActivationAvailable);
         Assert.Equal("activation-not-requested", snapshot.Reason);
         Assert.False(snapshot.Readiness.Ready);
@@ -45,33 +52,69 @@ public sealed class StationTxProductionActivationCompositionTests
     }
 
     [Fact]
-    public void CompleteInfrastructureReportsAvailabilityWithoutAnActionSurface()
+    public void CompleteInfrastructureStillRequiresASeparatelyAppliedPlan()
     {
+        StationTxProductionActivationConfigurationDiagnostics configuration =
+            Configuration(requested: true, configured: true);
+        StationTxProductionActivationPlanner planner = new(() => configuration);
         StationTxProductionActivationComposition composition = new(
-            () => Configuration(requested: true, configured: true),
+            () => configuration,
+            () => planner.Snapshot,
             () => Inputs(allReady: true));
 
         StationTxProductionActivationCompositionDiagnostics snapshot =
             composition.Snapshot;
 
-        Assert.True(snapshot.ActivationAvailable);
-        Assert.Equal("ready", snapshot.Reason);
+        Assert.True(snapshot.ActivationPlanAvailable);
+        Assert.False(snapshot.ActivationPlanApplied);
+        Assert.False(snapshot.ActivationAvailable);
+        Assert.Equal("activation-plan-ready-not-applied", snapshot.Reason);
         Assert.True(snapshot.Readiness.Ready);
     }
 
     [Fact]
-    public void SnapshotReevaluatesCurrentInfrastructureInsteadOfCachingAuthority()
+    public void SnapshotReevaluatesCurrentInfrastructureWithoutApplyingThePlan()
     {
         bool ready = false;
+        StationTxProductionActivationConfigurationDiagnostics configuration =
+            Configuration(requested: true, configured: true);
+        StationTxProductionActivationPlanner planner = new(() => configuration);
         StationTxProductionActivationComposition composition = new(
-            () => Configuration(requested: true, configured: true),
+            () => configuration,
+            () => planner.Snapshot,
             () => Inputs(ready));
 
+        Assert.False(composition.Snapshot.Readiness.Ready);
         Assert.False(composition.Snapshot.ActivationAvailable);
 
         ready = true;
 
-        Assert.True(composition.Snapshot.ActivationAvailable);
+        Assert.True(composition.Snapshot.Readiness.Ready);
+        Assert.False(composition.Snapshot.ActivationAvailable);
+        Assert.Equal(
+            "activation-plan-ready-not-applied",
+            composition.Snapshot.Reason);
+    }
+
+    [Fact]
+    public void MismatchedPlanFailsClosed()
+    {
+        StationTxProductionActivationConfigurationDiagnostics configuration =
+            Configuration(requested: true, configured: true);
+        StationTxProductionActivationPlanner dormantPlanner = new(
+            () => Configuration(requested: false, configured: false));
+        StationTxProductionActivationComposition composition = new(
+            () => configuration,
+            () => dormantPlanner.Snapshot,
+            () => Inputs(allReady: true));
+
+        StationTxProductionActivationCompositionDiagnostics snapshot =
+            composition.Snapshot;
+
+        Assert.False(snapshot.ActivationPlanAvailable);
+        Assert.False(snapshot.ActivationPlanApplied);
+        Assert.False(snapshot.ActivationAvailable);
+        Assert.Equal("activation-plan-configuration-mismatch", snapshot.Reason);
     }
 
     [Fact]
@@ -94,9 +137,12 @@ public sealed class StationTxProductionActivationCompositionTests
 
         Assert.True(activation.Registered);
         Assert.True(activation.ConfigurationInterlockAttached);
+        Assert.True(activation.ActivationPlanAttached);
         Assert.True(activation.ReadinessEvaluationAttached);
         Assert.False(activation.ActivationRequested);
         Assert.True(activation.ConfigurationValid);
+        Assert.False(activation.ActivationPlanAvailable);
+        Assert.False(activation.ActivationPlanApplied);
         Assert.False(activation.ActivationAvailable);
         Assert.Equal("activation-not-requested", activation.Reason);
         StationTxProductionReadinessDiagnostics nextReadiness =

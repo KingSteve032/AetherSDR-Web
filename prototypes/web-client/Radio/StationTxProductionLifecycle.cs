@@ -138,6 +138,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         m_browserTxTransactionIngress;
     private readonly StationTxProductionReadinessConfiguration
         m_productionReadinessConfiguration;
+    private readonly StationTxProductionActivationPlanner
+        m_productionActivationPlanner;
     private readonly StationTxProductionActivationComposition
         m_productionActivationComposition;
     private readonly StationTxSafetyArmAuthority
@@ -318,9 +320,13 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
             activationConfiguration =
                 productionActivationConfiguration ??
                 StationTxProductionActivationConfigurationInterlock.Dormant;
+        m_productionActivationPlanner =
+            new StationTxProductionActivationPlanner(
+                () => activationConfiguration);
         m_productionActivationComposition =
             new StationTxProductionActivationComposition(
                 () => activationConfiguration,
+                () => m_productionActivationPlanner.Snapshot,
                 ResolveProductionReadinessInputs);
         m_authenticationMonitor = new StationTxAuthenticationMonitor(m_supervisor);
         m_engineMonitor = new StationTxEngineConnectionMonitor(m_supervisor);
