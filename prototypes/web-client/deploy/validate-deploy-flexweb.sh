@@ -218,6 +218,11 @@ expected = {
     "txBrowserTxTransactionIngressWatchdogCallerRegistered": False,
     "txBrowserTxTransactionIngressReconnectCallerRegistered": False,
     "txBrowserTxTransactionIngressTimerCallerRegistered": False,
+    "txProductionReadinessPolicyRegistered": True,
+    "txProductionReadinessReady": False,
+    "txProductionReadinessReason": "transmit-disabled",
+    "txProductionReadinessLifecycleIngressRegistered": True,
+    "txProductionReadinessWebSocketCallerRegistered": False,
     "txStationCommandEnvelopeSubmissionRegistered": False,
     "txStationCommandAdapterRegistered": True,
     "txStationCommandArmingAvailable": False,
@@ -233,6 +238,33 @@ for key, value in expected.items():
     if payload.get(key) != value:
         raise SystemExit(
             f"{source} health field {key!r} was {payload.get(key)!r}; expected {value!r}")
+missing = payload.get("txProductionReadinessMissingPrerequisites")
+if not isinstance(missing, list) or not missing:
+    raise SystemExit(
+        f"{source} production readiness prerequisites were not a non-empty list")
+if missing[0] != payload["txProductionReadinessReason"]:
+    raise SystemExit(
+        f"{source} production readiness reason did not match its first missing prerequisite")
+required_missing = {
+    "transmit-disabled",
+    "browser-tx-lease-disabled",
+    "command-submission-disabled",
+    "command-signing-unavailable",
+    "command-verification-unavailable",
+    "command-boundary-disabled",
+    "command-gate-transmit-disabled",
+    "command-transport-unavailable",
+    "set-transmit-unavailable",
+    "emergency-unkey-transport-unavailable",
+    "watchdog-unkey-transport-unavailable",
+    "watchdog-arming-unavailable",
+}
+if not required_missing.issubset(set(missing)):
+    raise SystemExit(
+        f"{source} production readiness omitted required fail-closed prerequisites: {missing!r}")
+if len(missing) != len(set(missing)):
+    raise SystemExit(
+        f"{source} production readiness repeated a missing prerequisite: {missing!r}")
 state = payload.get("txIndependentWatchdogState")
 if state not in {
         "supervised-empty-disarmed",

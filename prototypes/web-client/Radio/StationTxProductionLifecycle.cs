@@ -29,6 +29,8 @@ public sealed record StationTxLifecycleDiagnostics(
         StationCommandTransactionComposition,
     BrowserTxTransactionIngressDiagnostics
         BrowserTxTransactionIngress,
+    StationTxProductionReadinessDiagnostics
+        ProductionReadiness,
     StationTxSafetyArmAuthorityDiagnostics
         StationCommandSafetyArmAuthority,
     StationTxSafetyArmCompositionDiagnostics
@@ -124,6 +126,8 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         m_stationCommandTransactionComposition;
     private readonly BrowserTxTransactionIngress
         m_browserTxTransactionIngress;
+    private readonly StationTxProductionReadinessConfiguration
+        m_productionReadinessConfiguration;
     private readonly StationTxSafetyArmAuthority
         m_stationCommandSafetyArmAuthority;
     private readonly StationTxSafetyArmComposition
@@ -182,7 +186,9 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         TimeProvider? timeProvider = null,
         IStationTxIndependentWatchdogFactory? independentWatchdogFactory = null,
         IStationTxCommandSignatureVerifier? stationCommandVerifier = null,
-        IStationTxCommandEnvelopeSubmitter? stationCommandSubmitter = null)
+        IStationTxCommandEnvelopeSubmitter? stationCommandSubmitter = null,
+        StationTxProductionReadinessConfiguration?
+            productionReadinessConfiguration = null)
     {
         ArgumentNullException.ThrowIfNull(leases);
         ArgumentNullException.ThrowIfNull(occupancy);
@@ -197,6 +203,9 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
         m_occupancy = occupancy;
         m_logger = logger;
         m_timeProvider = timeProvider ?? TimeProvider.System;
+        m_productionReadinessConfiguration =
+            productionReadinessConfiguration ??
+            StationTxProductionReadinessConfiguration.Disabled;
         DateTimeOffset now = m_timeProvider.GetUtcNow();
         m_lastGatewayObservedAt = now;
         m_lastObservedAt = now;
@@ -308,6 +317,30 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                 m_stationCommandSafetyArmAuthority.Snapshot;
             StationTxSafetyArmCompositionDiagnostics safetyArmComposition =
                 m_stationCommandSafetyArmComposition.Snapshot;
+            StationTxCommandGateCapabilities gateCapabilities =
+                m_commandGate.Capabilities;
+            StationTxIndependentWatchdogDiagnostics independentWatchdog =
+                m_independentWatchdog.Snapshot;
+            StationTxProductionReadinessDiagnostics productionReadiness =
+                StationTxProductionReadinessPolicy.Evaluate(new(
+                    m_productionReadinessConfiguration.AllowTransmitConfigured,
+                    m_productionReadinessConfiguration.BrowserTxLeaseConfigured,
+                    commandComposition.CoordinatorAttached,
+                    commandComposition.SubmissionEnabled,
+                    commandComposition.SigningAvailable,
+                    commandComposition.SignatureVerificationAvailable,
+                    commandComposition.BoundaryEnabled,
+                    commandComposition.CommandAdapterRegistered,
+                    gateCapabilities.TransmitEnabled,
+                    gateCapabilities.CommandTransportAvailable,
+                    gateCapabilities.SetTransmitAvailable,
+                    EmergencyUnkeyTransportAvailable: false,
+                    safetyArmAuthority.Registered,
+                    independentWatchdog.SupervisionEnabled,
+                    independentWatchdog.ProcessRunning,
+                    independentWatchdog.IpcConnected,
+                    independentWatchdog.RadioCommandTransportAvailable,
+                    independentWatchdog.ArmingAvailable));
             lock (m_stateGate)
             {
                 LifecycleFreshness freshness =
@@ -336,6 +369,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     commandComposition,
                     transactionComposition,
                     transactionIngress,
+                    productionReadiness,
                     safetyArmAuthority,
                     safetyArmComposition,
                     m_gatewayConnected,
@@ -378,7 +412,7 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
                     freshness.GatewayFresh,
                     freshness.AuthorityFresh,
                     freshness.Reason,
-                    m_independentWatchdog.Snapshot,
+                    independentWatchdog,
                     m_lastObservation,
                     m_lastObservedAt);
             }
@@ -387,6 +421,14 @@ internal sealed class StationTxProductionLifecycle : IAsyncDisposable
 
     public Task StartAsync(CancellationToken cancellationToken = default) =>
         m_independentWatchdog.StartAsync(cancellationToken);
+
+    internal Task<BrowserTxTransactionIngressResult>
+        ExecuteBrowserTxTransactionIngressAsync(
+            BrowserTxTransactionIngressRequest request,
+            CancellationToken cancellationToken = default) =>
+        m_browserTxTransactionIngress.SubmitAsync(
+            request,
+            cancellationToken);
 
     internal Task<StationTxCommandTransactionResult>
         ExecuteStationCommandTransactionAsync(

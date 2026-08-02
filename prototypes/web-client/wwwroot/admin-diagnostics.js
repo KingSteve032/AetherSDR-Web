@@ -287,6 +287,16 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `last ${String(transactionIngress.lastOutcome || "none")} ` +
       `reason ${String(transactionIngress.lastReason || "unknown")}`
     : "browser transaction ingress not registered";
+  const readiness = lifecycle.productionReadiness;
+  const readinessMissing = Array.isArray(readiness?.missingPrerequisites)
+    ? readiness.missingPrerequisites.map(value => String(value)).join(",")
+    : "unknown";
+  const readinessState = readiness?.registered
+    ? `production readiness ${readiness.ready ? "ready" : "blocked"} ` +
+      `reason ${String(readiness.reason || "unknown")} ` +
+      `missing ${formatCount(readiness.missingPrerequisites?.length)} ` +
+      `[${readinessMissing}]`
+    : "production readiness policy not registered";
   const independent = lifecycle.independentWatchdog;
   const independentState = !independent?.supervisionEnabled
     ? "independent not supervised"
@@ -315,7 +325,8 @@ export function formatTxLifecycle(lifecycle, now = Date.now()) {
       `${stationCommandState} · ${adapterCompositionState} · ` +
       `${safetyArmAuthorityState} · ${safetyArmCompositionState} · ` +
       `${commandCompositionState} · ${transactionState} · ` +
-      `${transactionIngressState} · authority ${authorityReason} · ` +
+      `${transactionIngressState} · ${readinessState} · ` +
+      `authority ${authorityReason} · ` +
       `last ${lifecycle.lastObservation || "none"} · ${transportState}`
   };
 }

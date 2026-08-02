@@ -517,6 +517,19 @@ mismatched values, and stale/unavailable validation or transaction capability fa
 transaction boundary. No coordinator, WebSocket, HTTP route, reconnect path,
 timer, watchdog, or AetherRemote type receives the adapter, request, or result.
 
+Phase 2S introduces one pure production-readiness policy rather than allowing
+individual callers to infer readiness from partial capabilities. The policy
+consumes existing configuration and live infrastructure facts only: transmit and
+browser-lease configuration; coordinator attachment and submission; signing and
+verification; boundary, adapter, gate, command transport, SetTransmit, and
+emergency-unkey availability; safety-arm authority registration; and independent
+watchdog supervision, process, IPC, unkey transport, and arming state. It returns
+one readiness decision plus a deterministic complete list of missing
+prerequisites. It owns no lease, browser identity, transaction, retry, or radio
+operation. The lifecycle also gains one internal typed ingress operation that can
+only delegate a `BrowserTxTransactionIngressRequest` to the Phase 2R adapter.
+Production keeps that adapter execution-disabled and exposes no caller.
+
 The independent, station-local supervisor has no key method and an unkey-only
 transport. Its arm is purpose-bound to one engine
 instance, lease, session/browser owner, exact protected FLEX client handle, and

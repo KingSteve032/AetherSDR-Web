@@ -731,7 +731,12 @@ public sealed class RadioSessionRegistry(
             loggerFactory.CreateLogger<StationTxProductionLifecycle>(),
             independentWatchdogFactory: independentWatchdogs,
             stationCommandVerifier: stationCommandTrust?.Verifier,
-            stationCommandSubmitter: stationCommandCoordinator);
+            stationCommandSubmitter: stationCommandCoordinator,
+            productionReadinessConfiguration: new(
+                AllowTransmitConfigured:
+                    settings.Value.AllowTransmit && !isRemote,
+                BrowserTxLeaseConfigured:
+                    sessionSettings.BrowserTxLeaseEnabled));
         RadioCoordinator coordinator = new(
             loggerFactory.CreateLogger<RadioCoordinator>(),
             sessionOptions,

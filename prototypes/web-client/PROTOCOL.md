@@ -593,6 +593,18 @@ false, and every caller-registration field false. Per-session diagnostics add
 only bounded state, attempt/forward/outcome counts, and a bounded reason; active
 identity and lease values are not rendered in Admin text.
 
+Phase 2S adds no wire message. An internal
+`StationTxProductionReadinessDiagnostics` object reports `Registered`, one
+`Ready` boolean, the first blocking `Reason`, the Boolean state of every existing
+infrastructure prerequisite, and an ordered `MissingPrerequisites` list. Health
+publishes `txProductionReadinessPolicyRegistered:true`, readiness false, reason
+`transmit-disabled`, the complete missing list, lifecycle ingress registered,
+and WebSocket caller registered false. Each session snapshot carries the same
+policy result. The lifecycle's new internal
+`ExecuteBrowserTxTransactionIngressAsync` operation accepts only
+`BrowserTxTransactionIngressRequest` plus cancellation and returns only
+`BrowserTxTransactionIngressResult`; no HTTP or WebSocket contract exposes it.
+
 `client.visibility` accepts only a JSON boolean. A hidden browser keeps its
 authenticated WebSocket, radio session, text responses, snapshots, presence,
 and radio-authoritative state, but the gateway does not enqueue spectrum or

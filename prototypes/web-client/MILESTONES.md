@@ -2137,6 +2137,45 @@ Milestone state:
   last `none`, reason `execution-disabled`, and all TX transports absent. A fresh
   Admin console capture contained zero entries. No TX control, microphone
   permission, radio command, or RF operation was used.
+- Phase 2S adds one server-owned `StationTxProductionReadinessPolicy`. It
+  evaluates the existing transmit, browser-lease, coordinator, submission,
+  signing, verification, boundary, adapter, gate, command-transport,
+  SetTransmit, emergency-unkey, safety-arm authority, and independent-watchdog
+  prerequisites. The result contains one readiness decision, the first blocking
+  reason, and the complete ordered missing-prerequisite list; it owns no lease,
+  browser authority, transaction, retry, or radio operation.
+- The production lifecycle now exposes one internal typed ingress operation that
+  accepts only the Phase 2R request and returns only the Phase 2R result. No
+  registry, coordinator, WebSocket, HTTP, AetherRemote, watchdog, reconnect, or
+  timer type receives the operation or its request/result types. The ingress
+  remains execution-disabled, and the WebSocket remains validation-only.
+- Phase 2S focused readiness and lifecycle tests pass 29 cases; the combined
+  Admin controls and diagnostics proof passes 25 cases. The complete FlexWeb
+  server suite passes 661 cases and all 123 browser tests pass with a
+  zero-warning solution build.
+- The final 2026-08-01 Phase 2S guarded gate passed 661 FlexWeb server tests, 25
+  independent-watchdog tests, 48 TX-HIL isolation tests, 70 AetherRemote tests,
+  and 123 browser tests (927 total). The production web and watchdog artifacts
+  contained no forbidden TX/HIL command surface, and the watchdog probe remained
+  empty and Disarmed with no command transport or arming capability. Validation
+  log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-production-readiness-phase2s-validation-flexweb-validation.txt`.
+- Staging release `20260801-m7-production-readiness-phase2s` was activated with
+  `20260801-m7-browser-tx-transaction-ingress-phase2r-final` retained for
+  rollback. Internal and public health reported the readiness policy registered,
+  readiness false, reason `transmit-disabled`, the complete ordered missing list,
+  typed lifecycle ingress registered, and WebSocket caller absent. Production
+  transmit, lease, ingress execution, transaction, boundary, submission,
+  command transport, SetTransmit, watchdog unkey/arming, and supervisor arming
+  remained false. Deployment log:
+  `/home/devspace/.local/state/aethersdr-web/deploy-logs/20260801-m7-production-readiness-phase2s-flexweb-validation.txt`.
+- Browser Bridge acceptance recovered `FLEX-6700` as `RX-ONLY / RADIO: LIVE`.
+  MOX, TUNE, and CWX remained hidden and disabled; lease and validation controls
+  remained disabled. Admin rendered `production readiness blocked reason
+  transmit-disabled` with all 12 public-session prerequisites, the Phase 2R
+  ingress execution-disabled with every counter zero, and all TX transports
+  absent. A fresh Admin console capture contained zero entries. No TX control,
+  microphone permission, radio command, or RF operation was used.
 
 Acceptance criteria:
 
