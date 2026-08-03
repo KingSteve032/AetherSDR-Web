@@ -97,6 +97,17 @@ redirected so service logs and shell pipelines cannot silently retain it. No
 HTTP, WebSocket, AetherRemote, browser, timer, or startup path can issue or reveal
 a bootstrap token.
 
+The setup-workflow increment adds one typed mutation boundary for topology,
+canonical public URL, paths, update channel, backup confirmation, and the
+explicit TX-support installation choice. Every mutation requires a claimed lock,
+the exact expected revision, and the immediately preceding validated step.
+Revisiting an earlier step preserves later data only when the resulting complete
+state still validates. The preflight reader requires all choices, reads an
+existing state without creating or modifying it, and reports planned service
+users, repository-backed packages and service units, loopback/public ports,
+files, proxy work, firewall expectations, migrations, and TX-support warnings.
+It applies no package, service, proxy, firewall, migration, radio, or TX change.
+
 ## Trust boundaries
 
 ### Browser

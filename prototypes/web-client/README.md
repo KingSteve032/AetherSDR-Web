@@ -240,6 +240,14 @@ The status command is safe to redirect for local diagnostics. It reports only
 setup progress, whether token material exists, and non-secret configuration
 presence flags; it never prints the token digest or canonical public URL.
 
+The typed setup workflow beneath the future guided installer enforces ordered,
+revision-checked collection of topology, canonical public URL, portable paths,
+update channel, backup confirmation, and the explicit TX-support installation
+choice. Its preflight is read-only: it reports planned users, packages, ports,
+files, services, proxy work, firewall expectations, migrations, and warnings,
+but applies none of them. This increment intentionally adds no setup HTTP route,
+installer command, administrator account provider, radio action, or TX command.
+
 ## Ubuntu 24.04 pilot service
 
 Publish a self-contained build so the server does not require a machine-wide
