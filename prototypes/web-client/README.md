@@ -400,10 +400,27 @@ JSON. Claim and mutation responses rotate the `__Host-AetherSdrSetup` HttpOnly
 session cookie and readable `__Host-AetherSdrSetupCsrf` cookie without serializing
 either value. Revocation is revision-bound and deletes both cookies.
 
-This slice still adds no HTML, JavaScript, static setup asset, account provider,
-administrator creation, installer side effect, radio action, watchdog action,
-command path, or TX action. The next reviewed slice can build the browser setup UI
-against these routes without changing the underlying authority model.
+The setup-only host now also serves the browser setup center at
+`https://<canonical-host>/setup/center`, with fixed CSS and module-script assets
+under `/setup/assets/`. The document contains only encoded redacted setup status,
+the exact configured access origin, and resolved default path suggestions. The
+bootstrap token, process-local session bearer, persisted token digest, and CSRF
+value are never rendered into HTML.
+
+The browser flow claims setup, resumes an exact active session, and guides the
+operator through topology, canonical URL, paths, update channel, backup
+confirmation, TX-support package intent, non-mutating preflight, and session
+revocation. It uses the existing bounded JSON routes and rotated `__Host-`
+cookies, clears the bootstrap field immediately after constructing the claim,
+and uses no local storage, session storage, IndexedDB, inline script, inline
+style, or token-bearing URL. Preflight output is added with text nodes rather
+than HTML injection.
+
+The browser shell stops after preflight review. It still creates no administrator,
+account provider, package, service, proxy change, firewall rule, migration, radio
+action, watchdog action, command path, or TX action. If its process-local session
+is lost or expires, the UI fails closed and directs the operator back to the
+local setup CLI.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled

@@ -603,7 +603,7 @@ public static class InstallationSetupOnlyHttpAdapter
         return request;
     }
 
-    private static InstallationSetupHttpRequest CreateRequest(
+    internal static InstallationSetupHttpRequest CreateRequest(
         HttpRequest request,
         InstallationSetupHttpOperation operation)
     {
@@ -850,7 +850,7 @@ public static class InstallationSetupOnlyHttpAdapter
             timeProvider);
     }
 
-    private static void AppendCsrfCookie(
+    internal static void AppendCsrfCookie(
         HttpResponse response,
         string csrfToken,
         DateTimeOffset expiresAt,
@@ -915,7 +915,7 @@ public static class InstallationSetupOnlyHttpAdapter
         };
     }
 
-    private static void ApplyResponseHeaders(
+    internal static void ApplyResponseHeaders(
         HttpResponse response,
         InstallationSetupHttpResponseSecurityContract contract)
     {

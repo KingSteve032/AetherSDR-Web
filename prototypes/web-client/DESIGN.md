@@ -241,10 +241,27 @@ response DTOs contain only redacted status and session metadata. Revocation firs
 validates the exact revision, then clears both cookies. Cleartext, foreign-origin,
 cross-site, malformed, oversized, stale, and unauthorized requests fail closed.
 
-This increment adds no HTML, JavaScript, static browser asset, account provider,
-administrator creation, installer side effect, radio path, watchdog path, command
-path, or TX caller. A later browser slice may consume these routes but must not
-weaken their authority, ordering, request-bound, or redaction guarantees.
+The setup browser-shell increment maps one human-facing document at
+`GET /setup/center` plus fixed CSS and module-script assets under
+`/setup/assets/`. The JSON adapter and its eleven routes remain unchanged. Page
+navigation passes through the existing page-read security classification, issues
+only the readable CSRF cookie, and renders encoded redacted status plus resolved
+default path suggestions into `data-*` attributes. The raw bootstrap token,
+session bearer, persisted bootstrap digest, and CSRF value never appear in HTML.
+
+The module implements bootstrap claim, exact session resume, topology, canonical
+URL, path, update-channel, backup, TX-support-choice, preflight, and revocation
+workflows. It submits credentials only in bounded JSON bodies or strict cookies,
+uses no local storage, session storage, IndexedDB, inline script, inline style, or
+token-bearing URL, and clears the bootstrap input before awaiting the claim. Each
+mutation consumes the rotated revision and cookies returned by the existing
+adapter. Preflight is rendered with DOM text nodes rather than HTML injection.
+
+The shell stops after non-mutating preflight review. It creates no administrator,
+account provider, package, service, proxy, firewall rule, migration, radio path,
+watchdog path, command path, or TX caller. Process-local session loss remains
+fail closed and directs the operator back to the local setup CLI rather than
+manufacturing replacement browser authority.
 
 The runtime-readiness increment defines the fail-closed binding required before a
 normal runtime may admit the web gateway or a remote station node. The binding

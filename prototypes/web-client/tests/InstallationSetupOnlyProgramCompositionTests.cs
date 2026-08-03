@@ -209,6 +209,28 @@ public sealed class InstallationSetupOnlyProgramCompositionTests
                 string body = await response.Content.ReadAsStringAsync();
                 Assert.Contains("httpsRequired", body, StringComparison.Ordinal);
             }
+
+            using HttpRequestMessage shellRequest = new(
+                HttpMethod.Get,
+                $"http://127.0.0.1:{port}" +
+                InstallationSetupBrowserShell.PagePath);
+            shellRequest.Headers.TryAddWithoutValidation(
+                "Sec-Fetch-Site",
+                "none");
+            shellRequest.Headers.TryAddWithoutValidation(
+                "Sec-Fetch-Mode",
+                "navigate");
+            shellRequest.Headers.Host = "radio.example.org";
+            using HttpResponseMessage shellResponse =
+                await client.SendAsync(shellRequest);
+            Assert.Equal(HttpStatusCode.Forbidden, shellResponse.StatusCode);
+            Assert.Equal(
+                "no-store, max-age=0",
+                shellResponse.Headers.CacheControl?.ToString());
+            Assert.Contains(
+                "setup page request was rejected",
+                await shellResponse.Content.ReadAsStringAsync(),
+                StringComparison.OrdinalIgnoreCase);
             Assert.False(process.HasExited);
         }
         finally
