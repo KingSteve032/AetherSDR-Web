@@ -626,10 +626,31 @@ internal staged-artifact handle. Any source/layout/status drift removes the
 partial tree. The target release path is never created, `current` is never
 changed, archives are not extracted, and no package is installed or activated.
 
-Publishing, packaged bundle production, network download, archive extraction,
-immutable-directory publication, installation, activation, rollback, migrations,
-service health verification, Admin/browser workflows, and all operational update
-callers remain later M8B work.
+The ninth M8B increment adds `VerifiedReleasePublicationService`, another
+callerless internal boundary. It accepts only a successful exact staging token,
+rehashes the frozen tree, and rereads completed setup, inventory, and `current`
+before publication. The target must still be absent and the private staging path
+must remain the canonical owner-private child created for that release.
+
+Linux cross-parent directory rename requires the moved root itself to be
+owner-writable while its `..` entry changes. The service therefore opens only the
+already-verified staging root from owner-read/execute to owner-read/write/execute,
+performs one no-overwrite `Directory.Move` into the direct release target, and
+immediately freezes the published root again. Files and descendant directories
+remain non-writable throughout. It then rehashes the published tree and requires
+release status to show exactly one inventory addition while the setup revision,
+channel, Pinned selection, TX-support policy, and active `current` release remain
+unchanged. Cancellation is honored only before the atomic rename. Any ambiguous
+post-rename outcome is reported as requiring reconciliation; the service never
+deletes a target that another actor may have activated.
+
+Publication has no public execution method and no CLI, Admin, browser, startup,
+timer, or background caller. It never copies files, changes `current`, activates,
+rolls back, executes migrations, controls services, or touches radio, watchdog,
+command, lease, AetherRemote runtime, or TX state. Packaged bundle production,
+network download, archive extraction, activation, rollback, migrations, service
+health verification, Admin/browser workflows, and all operational update callers
+remain later M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled
@@ -816,6 +837,28 @@ overrides are enforced directly by the guarded script:
 `releaseStagingCommandCallerRegistered=false`,
 `releaseStagingLeaseCallerRegistered=false`,
 `releaseStagingTxCallerRegistered=false`,
+`releasePublicationServiceRegistered=true`,
+`releasePublicationStatusRevalidationRegistered=true`,
+`releasePublicationFrozenStagingValidationRegistered=true`,
+`releasePublicationRootPermissionTransitionRegistered=true`,
+`releasePublicationAtomicDirectoryPublishRegistered=true`,
+`releasePublicationPublishedTreeValidationRegistered=true`,
+`releasePublicationNetworkDownloadRegistered=false`,
+`releasePublicationArchiveExtractionRegistered=false`,
+`releasePublicationFileCopyRegistered=false`,
+`releasePublicationCurrentPointerMutationRegistered=false`,
+`releasePublicationActivationRegistered=false`,
+`releasePublicationRollbackRegistered=false`,
+`releasePublicationMigrationExecutionRegistered=false`,
+`releasePublicationServiceControlRegistered=false`,
+`releasePublicationCliCallerRegistered=false`,
+`releasePublicationAdminCallerRegistered=false`,
+`releasePublicationBrowserCallerRegistered=false`,
+`releasePublicationRadioCallerRegistered=false`,
+`releasePublicationWatchdogCallerRegistered=false`,
+`releasePublicationCommandCallerRegistered=false`,
+`releasePublicationLeaseCallerRegistered=false`,
+`releasePublicationTxCallerRegistered=false`,
 `txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,
 `txBrowserIntentProtocolVersion=2`,
 `txBrowserIntentValidationRegistered=true`,

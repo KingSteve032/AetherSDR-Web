@@ -2701,10 +2701,10 @@ M8C.
 Status: active. The local-only signed-manifest verifier, normal-runtime public-key
 trust composition, immutable local offline-directory bundle reader, read-only
 offline bundle CLI `check`, read-only local release `status`, read-only offline
-install preflight, verified installation-plan composition, and private verified
-staging execution are implemented; publishing, network download, extraction,
-immutable-directory publication, installation, activation, rollback, migration
-execution, service control, and Admin/browser callers remain unimplemented.
+install preflight, verified installation-plan composition, private verified staging,
+and atomic inactive-release publication are implemented; publishing artifacts,
+network download, extraction, activation, rollback, migration execution, service
+control, and Admin/browser callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -2826,6 +2826,21 @@ an internal artifact. It does not create the target release directory, switch
 `current`, extract archives, install, activate, roll back, execute migrations,
 control services, or touch radio/TX state.
 
+The ninth increment adds `VerifiedReleasePublicationService`. It exposes only
+public diagnostics and has no CLI, Admin, browser, hosted-service, startup, timer,
+or operational caller. Its internal method requires the exact successful staging
+token, rereads completed setup/inventory/`current`, and rehashes the frozen tree.
+It then temporarily opens only the verified root directory owner-writable, uses
+one no-overwrite cross-parent `Directory.Move` into the absent direct release
+target, immediately refreezes the root, rehashes the published tree, and requires
+status to show exactly one inventory addition with the active release unchanged.
+Cancellation stops before but never interrupts outcome reconciliation after the
+atomic rename. Ambiguous post-rename state is retained and reported for
+reconciliation rather than deleted. The boundary never copies files, switches
+`current`, activates, rolls back, executes migrations, controls services, or
+touches Admin/browser, AetherRemote runtime, radio, watchdog, command, lease, or
+TX state.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -2897,6 +2912,18 @@ A live development health probe confirmed staging read/write/freeze/cleanup
 registration while network, extraction, publication, installation, activation,
 rollback, migration, service, CLI/Admin/browser, radio, watchdog, command, lease,
 and TX callers remained absent. No live radio or RF operation was performed.
+
+Automated checkpoint on 2026-08-03 for atomic inactive-release publication: the
+deployment script passed shell syntax validation; Release solution build completed
+with zero warnings and zero errors; the focused publication suite passed 38/38;
+web tests passed 1,187/1,187; independent-watchdog tests passed 57/57; TX-HIL
+isolation tests passed 48/48; AetherRemote tests passed 70/70; and browser tests
+passed 135/135. The complete checkpoint covered 1,362 .NET tests and 1,497 tests
+overall. A live development health probe confirmed frozen-tree validation, the
+root permission transition, atomic directory publication, and published-tree
+validation while file copy, `current` mutation, activation, rollback, migration,
+service, CLI/Admin/browser, radio, watchdog, command, lease, and TX callers
+remained absent. No live radio or RF operation was performed or required.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.
