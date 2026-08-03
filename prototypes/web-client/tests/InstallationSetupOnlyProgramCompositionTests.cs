@@ -109,7 +109,7 @@ public sealed class InstallationSetupOnlyProgramCompositionTests
     }
 
     [Fact]
-    public async Task RealProgramRunsRouteEmptyWithoutReadingNormalSettings()
+    public async Task RealProgramMapsFailClosedSetupRouteWithoutReadingNormalSettings()
     {
         using TemporaryDirectory temporary = new();
         InstallationPaths paths = CreatePaths(temporary.Path);
@@ -171,8 +171,17 @@ public sealed class InstallationSetupOnlyProgramCompositionTests
                 }
                 try
                 {
-                    response = await client.GetAsync(
-                        $"http://127.0.0.1:{port}/not-mapped");
+                    using HttpRequestMessage request = new(
+                        HttpMethod.Get,
+                        $"http://127.0.0.1:{port}/setup");
+                    request.Headers.TryAddWithoutValidation(
+                        "Sec-Fetch-Site",
+                        "none");
+                    request.Headers.TryAddWithoutValidation(
+                        "Sec-Fetch-Mode",
+                        "navigate");
+                    request.Headers.Host = "radio.example.org";
+                    response = await client.SendAsync(request);
                 }
                 catch (HttpRequestException)
                 {
@@ -193,7 +202,12 @@ public sealed class InstallationSetupOnlyProgramCompositionTests
             }
             using (response)
             {
-                Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+                Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+                Assert.Equal(
+                    "no-store, max-age=0",
+                    response.Headers.CacheControl?.ToString());
+                string body = await response.Content.ReadAsStringAsync();
+                Assert.Contains("httpsRequired", body, StringComparison.Ordinal);
             }
             Assert.False(process.HasExited);
         }

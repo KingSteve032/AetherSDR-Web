@@ -327,9 +327,9 @@ bootstrap token, create a claim session, or authorize an endpoint. Normal-runtim
 planning continues through the exact completed runtime binding.
 
 `Program.cs` now calls the planner before normal configuration and uses its
-setup-only result to build the isolated route-empty host described below. The
-planner itself still creates no state, listener, route, cookie, service,
-account-provider, radio, watchdog, command, or TX authority.
+setup-only result to build the isolated setup host described below. The planner
+itself still creates no state, listener, route, cookie, service, account-provider,
+radio, watchdog, command, or TX authority.
 
 The internal setup HTTP-security policy now fixes the request contract for a
 future browser setup center. It allows only canonical HTTPS page navigation,
@@ -350,11 +350,12 @@ diagnostics. Setup responses are defined as no-store with a restrictive CSP,
 no-referrer, nosniff, same-origin opener/resource policies, and disabled browser
 device permissions.
 
-The policy is now instantiated only inside explicit setup-only program
-composition. It still adds no middleware, rate limiter, cookie, route, browser
-asset, account provider, radio action, or TX action. A later reviewed HTTP adapter
-must mechanically map these contracts without putting bootstrap or session tokens
-in URLs, logs, or browser storage.
+The policy is instantiated only inside explicit setup-only program composition.
+The setup HTTP adapter now translates it into response-header middleware, four
+zero-queue fixed-window rate-limit policies, strict cookie writes, and eleven
+JSON-only setup routes. Request security is evaluated before any bounded body is
+read or deserialized, unknown JSON fields are rejected, and no bootstrap,
+session, or CSRF value is returned in a JSON response or accepted through a URL.
 
 The internal setup-center application now composes the security policy, redacted
 status, bootstrap claim, process-local session, ordered workflow, and read-only
@@ -389,13 +390,20 @@ operator will reach setup. Disabled setup-only configuration must leave that URL
 empty, setup-only and normal runtime cannot both be enabled, and the public-URL
 workflow step must select the same origin.
 
-An eligible setup-only process registers only installation paths, the setup store,
-the HTTP-security policy, and the setup-center application. It builds a real but
-route-empty ASP.NET host and returns before normal service configuration. No setup
-page or API is exposed yet: there is still no mapped endpoint, middleware, rate
-limiter, JSON parser, cookie writer, browser asset, account provider, installer
-side effect, radio action, watchdog action, or TX action. The next reviewed slice
-must mechanically adapt HTTP metadata and bounded JSON into these typed calls.
+An eligible setup-only process registers only installation paths, time, the setup
+store, the HTTP-security policy, rate limiting, and the setup-center application.
+It maps `GET /setup`; claim, session, preflight, topology, public-URL, path,
+update-channel, backup, TX-support-choice, and revoke operations under
+`/setup/api/`; then returns before normal service configuration. Session reads use
+`X-Aether-Setup-Revision`; mutations carry one exact expected revision in bounded
+JSON. Claim and mutation responses rotate the `__Host-AetherSdrSetup` HttpOnly
+session cookie and readable `__Host-AetherSdrSetupCsrf` cookie without serializing
+either value. Revocation is revision-bound and deletes both cookies.
+
+This slice still adds no HTML, JavaScript, static setup asset, account provider,
+administrator creation, installer side effect, radio action, watchdog action,
+command path, or TX action. The next reviewed slice can build the browser setup UI
+against these routes without changing the underlying authority model.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled

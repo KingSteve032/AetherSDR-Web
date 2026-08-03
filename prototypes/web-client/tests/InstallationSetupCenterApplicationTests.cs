@@ -394,7 +394,8 @@ public sealed class InstallationSetupCenterApplicationTests
 
         await application.RevokeAsync(
             MutationRequest(claim.Csrf.Token, claim.Csrf.Token),
-            claim.Session.Token);
+            claim.Session.Token,
+            claim.Session.SetupRevision);
         string after = await File.ReadAllTextAsync(store.StatePath);
 
         await AssertInvalidSessionAsync(

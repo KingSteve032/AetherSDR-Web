@@ -187,10 +187,12 @@ CSP, no-referrer, nosniff, same-origin opener/resource policies, and a permissio
 policy that disables browser device capabilities.
 
 The policy is instantiated only by the explicit setup-only program composition.
-It still registers no middleware, rate limiter, cookie, route, browser asset,
-account provider, installer mutation, radio caller, or TX caller. A later reviewed
-HTTP adapter must translate the published contracts mechanically and keep
-bootstrap and session tokens out of URLs, logs, and browser storage.
+The setup-only HTTP adapter translates it into response-header middleware, four
+zero-queue fixed-window rate-limit policies, strict host-only cookie writes, and
+eleven JSON-only routes. Security evaluation happens before any bounded request
+body is read or deserialized. Unknown JSON members are rejected, query strings
+remain forbidden, and bootstrap, session, and CSRF values are never serialized in
+responses or accepted through URLs.
 
 The setup-center application increment composes the redacted status projection,
 HTTP-security policy, bootstrap claim, process-local claim session, ordered setup
@@ -220,21 +222,29 @@ requires one exact canonical HTTPS access URL and remains mutually exclusive wit
 normal installation runtime. The public-URL workflow step must match that same
 origin exactly.
 
-An eligible setup-only plan registers only resolved installation paths, the setup
-store, the HTTP-security policy, the setup-center application, and a redacted
-composition report. The program then builds and runs a route-empty ASP.NET host
-and returns before normal service configuration. Composition rejects any plan
-that is completed, not setup-only, missing paths or status, or attempted after a
-normal authentication/radio/remote/watchdog service registration. The default
-configuration remains disabled and the development environment example preserves
-that default.
+An eligible setup-only plan registers only resolved installation paths, time, the
+setup store, the HTTP-security policy, rate limiting, the setup-center application,
+and a redacted composition report. The program builds the isolated host, maps
+`GET /setup` plus claim, session, preflight, topology, public-URL, paths,
+update-channel, backup, TX-support-choice, and revoke operations under
+`/setup/api/`, and returns before normal service configuration. Composition
+rejects any plan that is completed, not setup-only, missing paths or status, or
+attempted after a normal authentication/radio/remote/watchdog service
+registration. The default configuration remains disabled and the development
+environment example preserves that default.
 
-This increment adds a listener through the route-empty ASP.NET host, but still
-maps no endpoint, middleware, rate limiter, cookie writer, JSON parser, browser
-asset, account provider, installer side effect, radio path, watchdog path, or TX
-caller. A later reviewed HTTP adapter must add only the setup-center routes and
-mechanically adapt request metadata and bounded JSON into the typed application
-operations without weakening their ordering or redaction guarantees.
+Session and preflight reads require the exact revision in
+`X-Aether-Setup-Revision`. Mutations carry one exact expected revision in bounded
+JSON, and claim or mutation success rotates both strict cookies. The HttpOnly
+session bearer and readable CSRF token are written only as `__Host-` cookies;
+response DTOs contain only redacted status and session metadata. Revocation first
+validates the exact revision, then clears both cookies. Cleartext, foreign-origin,
+cross-site, malformed, oversized, stale, and unauthorized requests fail closed.
+
+This increment adds no HTML, JavaScript, static browser asset, account provider,
+administrator creation, installer side effect, radio path, watchdog path, command
+path, or TX caller. A later browser slice may consume these routes but must not
+weaken their authority, ordering, request-bound, or redaction guarantees.
 
 The runtime-readiness increment defines the fail-closed binding required before a
 normal runtime may admit the web gateway or a remote station node. The binding
