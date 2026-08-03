@@ -131,10 +131,30 @@ credential, provider secret, or role list; it advances only to `Administrator`
 and records the completion timestamp after verification succeeds.
 
 No administrator provider, dependency-injection registration, console command,
-HTTP route, browser claim session, or normal-runtime caller is included in this
-handoff increment. Production local-account creation remains M8D work, while
-claim-session binding for a future browser setup center and installer mutation
-remain separate reviewed work.
+HTTP route, or normal-runtime caller is included in the handoff increment.
+Production local-account creation remains M8D work, while installer mutation
+remains separate reviewed work.
+
+The setup claim-session increment provides the bearer boundary required before a
+future browser setup center can expose any setup mutation. The service consumes
+the short-lived bootstrap token through the existing claim operation and then
+returns one 256-bit process-local bearer. Only its SHA-256 digest is retained in
+memory; neither token nor digest is persisted. A new successful bootstrap claim
+replaces the prior session, process restart loses it, and expiry is absolute and
+never slides. The bearer is bound to the exact setup schema, creation identity,
+claim timestamp, and revision. After one successful setup mutation, the caller
+must rotate it across exactly one revision; skipped, concurrent, completed,
+expired, restarted, replaced, or malformed sessions all return the same
+unauthorized result. The setup document remains unchanged by validation,
+rotation, and revocation.
+
+This increment registers no service and adds no HTTP route, cookie, browser
+asset, setup-only listener, account provider, installer mutation, radio caller,
+or TX caller. A later browser setup-center increment must separately enforce
+setup-only startup, trusted origin and host validation, CSRF protection, bounded
+request bodies and rate limits, and a Secure, HttpOnly, SameSite=Strict cookie
+without placing either bootstrap or session tokens in URLs, logs, or browser
+storage.
 
 The runtime-readiness increment defines the fail-closed binding required before a
 normal runtime may admit the web gateway or a remote station node. The binding
