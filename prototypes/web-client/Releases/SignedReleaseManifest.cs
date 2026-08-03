@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -317,6 +318,112 @@ public sealed record ReleaseManifestVerificationReport(
             payload.Channel,
             payload.Packages.Length,
             payload.TxSupport.Capability == ReleaseTxSupportCapability.Available);
+}
+
+internal sealed class VerifiedReleasePackageSnapshot
+{
+    private readonly byte[] m_sha256;
+
+    internal VerifiedReleasePackageSnapshot(SignedReleasePackage package)
+    {
+        ArgumentNullException.ThrowIfNull(package);
+        PackageIdentity = package.PackageIdentity;
+        Role = package.Role;
+        RelativePath = package.FileName;
+        Length = package.Length;
+        m_sha256 = Convert.FromHexString(package.Sha256);
+    }
+
+    internal string PackageIdentity { get; }
+    internal ReleasePackageRole Role { get; }
+    internal string RelativePath { get; }
+    internal long Length { get; }
+    internal ReadOnlySpan<byte> Sha256 => m_sha256;
+}
+
+internal sealed class VerifiedReleaseManifestSnapshot
+{
+    private readonly ReadOnlyCollection<VerifiedReleasePackageSnapshot> m_packages;
+
+    private VerifiedReleaseManifestSnapshot(SignedReleaseManifestPayload payload)
+    {
+        SchemaVersion = payload.SchemaVersion;
+        ReleaseIdentity = payload.ReleaseIdentity;
+        Version = payload.Version;
+        Channel = payload.Channel;
+        Architecture = payload.Architecture;
+        m_packages = Array.AsReadOnly(
+            payload.Packages
+                .Select(package => new VerifiedReleasePackageSnapshot(package))
+                .ToArray());
+        TargetConfigurationSchemaVersion =
+            payload.Configuration.TargetSchemaVersion;
+        MinimumCompatibleConfigurationSchemaVersion =
+            payload.Configuration.MinimumCompatibleSchemaVersion;
+        MaximumCompatibleConfigurationSchemaVersion =
+            payload.Configuration.MaximumCompatibleSchemaVersion;
+        MinimumProtocolVersion = payload.Protocol.MinimumVersion;
+        MaximumProtocolVersion = payload.Protocol.MaximumVersion;
+        MinimumPreviousVersion = payload.MinimumPreviousVersion;
+        RestartGatewayWeb = payload.Restart.GatewayWeb;
+        RestartBroker = payload.Restart.Broker;
+        RestartAetherRemoteAgent = payload.Restart.AetherRemoteAgent;
+        RestartStationEngine = payload.Restart.StationEngine;
+        RestartHost = payload.Restart.Host;
+        MigrationKind = payload.Migration.Kind;
+        MigrationFromConfigurationSchemaVersion =
+            payload.Migration.FromConfigurationSchemaVersion;
+        MigrationToConfigurationSchemaVersion =
+            payload.Migration.ToConfigurationSchemaVersion;
+        MigrationIdentity = payload.Migration.MigrationIdentity;
+        TxSupportCapable = payload.TxSupport.Capability ==
+            ReleaseTxSupportCapability.Available;
+        ReleaseNotesTitle = payload.ReleaseNotes.Title;
+        ReleaseNotesSummary = payload.ReleaseNotes.Summary;
+    }
+
+    internal int SchemaVersion { get; }
+    internal string ReleaseIdentity { get; }
+    internal string Version { get; }
+    internal ReleaseManifestChannel Channel { get; }
+    internal ReleaseManifestArchitecture Architecture { get; }
+    internal IReadOnlyList<VerifiedReleasePackageSnapshot> Packages => m_packages;
+    internal int TargetConfigurationSchemaVersion { get; }
+    internal int MinimumCompatibleConfigurationSchemaVersion { get; }
+    internal int MaximumCompatibleConfigurationSchemaVersion { get; }
+    internal int MinimumProtocolVersion { get; }
+    internal int MaximumProtocolVersion { get; }
+    internal string MinimumPreviousVersion { get; }
+    internal bool RestartGatewayWeb { get; }
+    internal bool RestartBroker { get; }
+    internal bool RestartAetherRemoteAgent { get; }
+    internal bool RestartStationEngine { get; }
+    internal bool RestartHost { get; }
+    internal ReleaseMigrationKind MigrationKind { get; }
+    internal int? MigrationFromConfigurationSchemaVersion { get; }
+    internal int? MigrationToConfigurationSchemaVersion { get; }
+    internal string MigrationIdentity { get; }
+    internal bool TxSupportCapable { get; }
+    internal string ReleaseNotesTitle { get; }
+    internal string ReleaseNotesSummary { get; }
+
+    internal static VerifiedReleaseManifestSnapshot Create(
+        SignedReleaseManifestPayload payload) =>
+        new(payload ?? throw new ArgumentNullException(nameof(payload)));
+}
+
+internal sealed record SignedReleaseManifestVerificationResult(
+    ReleaseManifestVerificationReport Report,
+    VerifiedReleaseManifestSnapshot? VerifiedManifest)
+{
+    internal static SignedReleaseManifestVerificationResult Failure(
+        ReleaseManifestVerificationReport report) =>
+        new(report, VerifiedManifest: null);
+
+    internal static SignedReleaseManifestVerificationResult Success(
+        ReleaseManifestVerificationReport report,
+        VerifiedReleaseManifestSnapshot verifiedManifest) =>
+        new(report, verifiedManifest);
 }
 
 internal sealed record ReleaseManifestSignatureMetadata

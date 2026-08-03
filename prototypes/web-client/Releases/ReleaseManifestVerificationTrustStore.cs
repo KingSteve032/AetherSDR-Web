@@ -508,23 +508,31 @@ public sealed class SignedReleaseManifestVerificationService
     public ReleaseManifestVerificationReport VerifyLocal(
         ReadOnlyMemory<byte> manifestUtf8,
         IReadOnlyCollection<LocalImmutableReleasePackage> localPackages,
+        ReleaseManifestVerificationContext context) =>
+        VerifyLocalDetailed(manifestUtf8, localPackages, context).Report;
+
+    internal SignedReleaseManifestVerificationResult VerifyLocalDetailed(
+        ReadOnlyMemory<byte> manifestUtf8,
+        IReadOnlyCollection<LocalImmutableReleasePackage> localPackages,
         ReleaseManifestVerificationContext context)
     {
         ReleaseManifestTrustDiagnostics trust = m_trustRegistry.Snapshot;
         if (!trust.VerificationEnabled)
         {
-            return ReleaseManifestVerificationReport.Failure(
-                ReleaseManifestFailureCode.VerificationTrustDisabled,
-                "Signed release manifest verification trust is disabled.");
+            return SignedReleaseManifestVerificationResult.Failure(
+                ReleaseManifestVerificationReport.Failure(
+                    ReleaseManifestFailureCode.VerificationTrustDisabled,
+                    "Signed release manifest verification trust is disabled."));
         }
         if (!trust.SignatureVerificationAvailable)
         {
-            return ReleaseManifestVerificationReport.Failure(
-                ReleaseManifestFailureCode.VerificationTrustUnavailable,
-                "Signed release manifest verification trust is unavailable.");
+            return SignedReleaseManifestVerificationResult.Failure(
+                ReleaseManifestVerificationReport.Failure(
+                    ReleaseManifestFailureCode.VerificationTrustUnavailable,
+                    "Signed release manifest verification trust is unavailable."));
         }
 
-        return m_verifier.Verify(
+        return m_verifier.VerifyDetailed(
             manifestUtf8,
             localPackages,
             context,

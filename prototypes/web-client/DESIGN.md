@@ -473,6 +473,25 @@ owns no network, download, extraction, write, staging, installation, activation,
 rollback, migration execution, service-control, Admin, browser, radio, watchdog,
 command, lease, or TX method.
 
+The seventh M8B increment adds a typed verified-installation-plan composition
+without adding an installer. The verifier reparses only its own immutable manifest
+copy after complete success and converts the trusted payload into defensive scalar
+and package snapshots. A failed signature, compatibility, package, length, or
+digest check yields no snapshot. The public verifier, offline-bundle, and preflight
+reports remain unchanged and redacted.
+
+A successful stable preflight may then be combined with resolved installation
+paths. The composer independently checks preflight/snapshot identity, version,
+architecture, channel, package count, TX-support capability, canonical release
+identities, exact four-role package inventory, bounded lengths, safe relative
+paths, unique target paths, and one direct target directory under the release
+root. Its internal plan preserves signed restart, migration, release-note, package
+length, and digest metadata for a future reviewed transaction. The public result
+contains no paths, package names, or digests. The composer performs no filesystem
+read or write and has no download, extraction, staging execution, installation,
+activation, rollback, migration execution, service-control, Admin, browser,
+radio, watchdog, command, lease, or TX method.
+
 ## Trust boundaries
 
 ### Browser

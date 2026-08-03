@@ -591,6 +591,24 @@ transaction; exit `2` means it is not. Preflight never downloads, extracts,
 stages, writes, installs, activates, rolls back, migrates, controls services, or
 touches Admin, browser, radio, watchdog, command, lease, or TX state.
 
+The seventh M8B increment retains one defensive internal manifest snapshot only
+after the existing verifier has completed signature, channel, architecture,
+compatibility, restart/migration, TX-support, package inventory, length, and
+SHA-256 validation. Failed verification retains no planning metadata. The
+successful preflight keeps that snapshot internally while its public JSON remains
+unchanged and path-redacted.
+
+`VerifiedReleaseInstallationPlanComposer` combines only a successful stable
+preflight, that exact verified snapshot, and resolved `InstallationPaths`. It
+produces an in-memory future-transaction plan containing canonical direct target
+and package destinations, immutable package lengths and digests, signed restart
+and migration requirements, release notes, and TX-support capability. Its public
+result exposes only bounded summary fields; paths, package names, and digests stay
+internal. Normal health reports plan composition as registered while network,
+extraction, file writes, staging execution, installation, activation, rollback,
+migration execution, service control, Admin/browser, radio, watchdog, command,
+lease, and TX callers remain false.
+
 Publishing, packaged bundle production, network download, staging, extraction,
 installation, activation, rollback, migrations, service health verification,
 Admin/browser workflows, and all update mutation callers remain later M8B work.

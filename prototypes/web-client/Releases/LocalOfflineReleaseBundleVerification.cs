@@ -55,6 +55,20 @@ public sealed record LocalOfflineReleaseBundleVerificationReport(
             verification);
 }
 
+internal sealed record LocalOfflineReleaseBundleVerificationResult(
+    LocalOfflineReleaseBundleVerificationReport Report,
+    VerifiedReleaseManifestSnapshot? VerifiedManifest)
+{
+    internal static LocalOfflineReleaseBundleVerificationResult Failure(
+        LocalOfflineReleaseBundleVerificationReport report) =>
+        new(report, VerifiedManifest: null);
+
+    internal static LocalOfflineReleaseBundleVerificationResult Success(
+        LocalOfflineReleaseBundleVerificationReport report,
+        VerifiedReleaseManifestSnapshot verifiedManifest) =>
+        new(report, verifiedManifest);
+}
+
 public sealed record LocalOfflineReleaseBundleVerificationDiagnostics(
     bool Registered,
     bool DirectoryReadRegistered,
@@ -110,13 +124,19 @@ public sealed class LocalOfflineReleaseBundleVerificationService
 
     public LocalOfflineReleaseBundleVerificationReport VerifyDirectory(
         string bundleDirectory,
+        ReleaseManifestVerificationContext context) =>
+        VerifyDirectoryDetailed(bundleDirectory, context).Report;
+
+    internal LocalOfflineReleaseBundleVerificationResult VerifyDirectoryDetailed(
+        string bundleDirectory,
         ReleaseManifestVerificationContext context)
     {
         if (context is null)
         {
-            return LocalOfflineReleaseBundleVerificationReport.Failure(
-                LocalOfflineReleaseBundleFailureCode.BundleReadFailed,
-                "The local offline release bundle verification context is missing.");
+            return LocalOfflineReleaseBundleVerificationResult.Failure(
+                LocalOfflineReleaseBundleVerificationReport.Failure(
+                    LocalOfflineReleaseBundleFailureCode.BundleReadFailed,
+                    "The local offline release bundle verification context is missing."));
         }
 
         SignedReleaseManifestVerificationServiceDiagnostics readiness =
@@ -135,46 +155,56 @@ public sealed class LocalOfflineReleaseBundleVerificationService
                     disabled
                         ? "Signed release manifest verification trust is disabled."
                         : "Signed release manifest verification trust is unavailable.");
-            return LocalOfflineReleaseBundleVerificationReport.Failure(
-                LocalOfflineReleaseBundleFailureCode.VerificationFailed,
-                "The immutable local offline release bundle cannot be verified because production trust is unavailable.",
-                verification: verification);
+            return LocalOfflineReleaseBundleVerificationResult.Failure(
+                LocalOfflineReleaseBundleVerificationReport.Failure(
+                    LocalOfflineReleaseBundleFailureCode.VerificationFailed,
+                    "The immutable local offline release bundle cannot be verified because production trust is unavailable.",
+                    verification: verification));
         }
 
         try
         {
             BundleSnapshot bundle = ReadBundle(bundleDirectory);
-            ReleaseManifestVerificationReport verification =
-                m_manifestVerificationService.VerifyLocal(
+            SignedReleaseManifestVerificationResult verification =
+                m_manifestVerificationService.VerifyLocalDetailed(
                     bundle.Manifest,
                     bundle.Packages,
                     context);
-            return verification.Succeeded
-                ? LocalOfflineReleaseBundleVerificationReport.Success(
+            if (!verification.Report.Succeeded ||
+                verification.VerifiedManifest is null)
+            {
+                return LocalOfflineReleaseBundleVerificationResult.Failure(
+                    LocalOfflineReleaseBundleVerificationReport.Failure(
+                        LocalOfflineReleaseBundleFailureCode.VerificationFailed,
+                        "The immutable local offline release bundle failed signed-manifest verification.",
+                        bundle.Packages.Length,
+                        bundle.TotalPackageBytes,
+                        verification.Report));
+            }
+
+            return LocalOfflineReleaseBundleVerificationResult.Success(
+                LocalOfflineReleaseBundleVerificationReport.Success(
                     bundle.Packages.Length,
                     bundle.TotalPackageBytes,
-                    verification)
-                : LocalOfflineReleaseBundleVerificationReport.Failure(
-                    LocalOfflineReleaseBundleFailureCode.VerificationFailed,
-                    "The immutable local offline release bundle failed signed-manifest verification.",
-                    bundle.Packages.Length,
-                    bundle.TotalPackageBytes,
-                    verification);
+                    verification.Report),
+                verification.VerifiedManifest);
         }
         catch (BundleReadException exception)
         {
-            return LocalOfflineReleaseBundleVerificationReport.Failure(
-                exception.FailureCode,
-                exception.Message);
+            return LocalOfflineReleaseBundleVerificationResult.Failure(
+                LocalOfflineReleaseBundleVerificationReport.Failure(
+                    exception.FailureCode,
+                    exception.Message));
         }
         catch (Exception exception)
             when (exception is IOException or UnauthorizedAccessException or
                 SecurityException or CryptographicException or ArgumentException or
                 NotSupportedException or PathTooLongException)
         {
-            return LocalOfflineReleaseBundleVerificationReport.Failure(
-                LocalOfflineReleaseBundleFailureCode.BundleReadFailed,
-                "The immutable local offline release bundle could not be read.");
+            return LocalOfflineReleaseBundleVerificationResult.Failure(
+                LocalOfflineReleaseBundleVerificationReport.Failure(
+                    LocalOfflineReleaseBundleFailureCode.BundleReadFailed,
+                    "The immutable local offline release bundle could not be read."));
         }
     }
 

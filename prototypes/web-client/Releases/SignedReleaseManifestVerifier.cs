@@ -165,6 +165,50 @@ public sealed class SignedReleaseManifestVerifier
         return packageFailure ?? ReleaseManifestVerificationReport.Success(payload);
     }
 
+    internal SignedReleaseManifestVerificationResult VerifyDetailed(
+        ReadOnlyMemory<byte> manifestUtf8,
+        IReadOnlyCollection<LocalImmutableReleasePackage> localPackages,
+        ReleaseManifestVerificationContext context,
+        IReadOnlyCollection<ReleaseManifestVerificationKey> verificationKeys)
+    {
+        byte[] immutableManifest = manifestUtf8.ToArray();
+        ReleaseManifestVerificationReport report = Verify(
+            immutableManifest,
+            localPackages,
+            context,
+            verificationKeys);
+        if (!report.Succeeded)
+        {
+            return SignedReleaseManifestVerificationResult.Failure(report);
+        }
+
+        try
+        {
+            SignedReleaseManifestDocument? document =
+                SignedReleaseManifestJson.Deserialize(immutableManifest);
+            if (document?.Payload is null)
+            {
+                return SignedReleaseManifestVerificationResult.Failure(
+                    Failure(
+                        ReleaseManifestFailureCode.MalformedManifest,
+                        "The verified local release manifest payload is unavailable."));
+            }
+
+            return SignedReleaseManifestVerificationResult.Success(
+                report,
+                VerifiedReleaseManifestSnapshot.Create(document.Payload));
+        }
+        catch (Exception exception)
+            when (exception is JsonException or NotSupportedException or
+                FormatException or ArgumentException)
+        {
+            return SignedReleaseManifestVerificationResult.Failure(
+                Failure(
+                    ReleaseManifestFailureCode.MalformedManifest,
+                    "The verified local release manifest could not be retained safely."));
+        }
+    }
+
     private static ReleaseManifestVerificationReport? VerifySignature(
         SignedReleaseManifestPayload payload,
         ReleaseManifestSignature signature,

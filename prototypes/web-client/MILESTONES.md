@@ -2700,10 +2700,11 @@ M8C.
 
 Status: active. The local-only signed-manifest verifier, normal-runtime public-key
 trust composition, immutable local offline-directory bundle reader, read-only
-offline bundle CLI `check`, read-only local release `status`, and read-only offline
-install preflight workflows are implemented; publishing, network download,
-extraction, staging, installation, activation, rollback, migration execution,
-service control, and Admin/browser callers remain unimplemented.
+offline bundle CLI `check`, read-only local release `status`, read-only offline
+install preflight, and verified installation-plan composition are implemented;
+publishing, network download, extraction, staging execution, installation,
+activation, rollback, migration execution, service control, and Admin/browser
+callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -2793,6 +2794,20 @@ rejection. It adds no network, download, extraction, write, staging, installatio
 activation, rollback, migration execution, service-control, Admin, browser, radio,
 watchdog, command, lease, or TX method.
 
+The seventh increment retains an internal defensive manifest snapshot only after
+full signature, compatibility, restart/migration, TX-support, package inventory,
+length, and SHA-256 verification. Successful preflight carries that snapshot
+internally without changing its public redacted report. A pure
+`VerifiedReleaseInstallationPlanComposer` then binds the stable preflight to
+resolved installation paths, checks exact identity/version/architecture/channel/
+TX-support agreement, validates the four-role package plan, and derives canonical
+direct target and package destinations plus signed restart, migration, release-
+notes, length, and digest metadata. Public diagnostics and results expose no paths,
+package names, or digests. The composer performs no filesystem I/O and registers
+no network, extraction, file write, staging execution, installation, activation,
+rollback, migration execution, service-control, Admin, browser, radio, watchdog,
+command, lease, or TX caller.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -2845,6 +2860,14 @@ tests passed 135/135. The complete checkpoint covered 1,270 .NET tests and 1,405
 tests overall. A direct built-DLL invocation with missing setup state returned one
 path-redacted JSON report, exit code `2`, and did not reflect or access the supplied
 missing bundle path. No live radio or RF operation was performed or required.
+
+Automated checkpoint on 2026-08-03 for verified installation-plan composition:
+the deployment script passed shell syntax validation; Release solution build
+completed with zero warnings and zero errors; the focused composition suite passed
+26/26; web tests passed 1,121/1,121; independent-watchdog tests passed 57/57;
+TX-HIL isolation tests passed 48/48; AetherRemote tests passed 70/70; and browser
+tests passed 135/135. The complete checkpoint covered 1,296 .NET tests and 1,431
+tests overall. No live radio or RF operation was performed or required.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.
