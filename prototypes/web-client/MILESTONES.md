@@ -2700,10 +2700,10 @@ M8C.
 
 Status: active. The local-only signed-manifest verifier, normal-runtime public-key
 trust composition, immutable local offline-directory bundle reader, read-only
-offline bundle CLI `check`, and read-only local release `status` workflows are
-implemented; publishing, network download, extraction, staging, installation,
-activation, rollback, migration execution, service control, and Admin/browser
-callers remain unimplemented.
+offline bundle CLI `check`, read-only local release `status`, and read-only offline
+install preflight workflows are implemented; publishing, network download,
+extraction, staging, installation, activation, rollback, migration execution,
+service control, and Admin/browser callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -2779,6 +2779,20 @@ unreadable layout, and deliberately reports no known rollback candidate. It adds
 no network, extraction, staging, installation, activation, rollback, migration,
 service-control, Admin, browser, radio, watchdog, command, lease, or TX method.
 
+The sixth increment adds `--preflight-offline-release-install`. Its owned parser
+requires a canonical immutable bundle path plus exact active release identity,
+installed semantic version, configuration-schema version, and protocol version.
+Completed setup supplies the channel, Pinned identity, installation paths, and
+TX-support installation policy; Linux architecture is derived from the process.
+Preflight requires completed setup and a validated `current` pointer matching the
+supplied identity, delegates the bundle to the existing production-trust-backed
+verifier, rejects an equal or already-inventoried target and any TX-support policy
+mismatch, then rereads setup, inventory, and `current` to detect concurrent drift.
+The path-redacted report returns `0` only for a stable eligible plan or `2` for any
+rejection. It adds no network, download, extraction, write, staging, installation,
+activation, rollback, migration execution, service-control, Admin, browser, radio,
+watchdog, command, lease, or TX method.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -2821,6 +2835,16 @@ tests passed 48/48; AetherRemote tests passed 70/70; and browser tests passed
 A direct built-DLL invocation with missing setup state returned one path-redacted
 JSON report and exit code `2`. No live radio or RF operation was performed or
 required.
+
+Automated checkpoint on 2026-08-03 for the read-only offline install preflight:
+the deployment script passed shell syntax validation; Release solution build
+completed with zero warnings and zero errors; the focused preflight suite passed
+38/38; web tests passed 1,095/1,095; independent-watchdog tests passed 57/57;
+TX-HIL isolation tests passed 48/48; AetherRemote tests passed 70/70; and browser
+tests passed 135/135. The complete checkpoint covered 1,270 .NET tests and 1,405
+tests overall. A direct built-DLL invocation with missing setup state returned one
+path-redacted JSON report, exit code `2`, and did not reflect or access the supplied
+missing bundle path. No live radio or RF operation was performed or required.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

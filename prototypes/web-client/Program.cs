@@ -24,9 +24,12 @@ const string ProductionTxRadioIdSwitch =
     "--production-tx-radio-id";
 InstallationSetupConsoleCommandLine installationSetupCommandLine =
     InstallationSetupConsoleCommandParser.Parse(args);
+OfflineReleaseInstallPreflightCommandLine releaseInstallPreflightCommandLine =
+    OfflineReleaseInstallPreflightCommandParser.Parse(
+        installationSetupCommandLine.ApplicationArguments);
 ReleaseUpdateConsoleCommandLine releaseUpdateCommandLine =
     ReleaseUpdateConsoleCommandParser.Parse(
-        installationSetupCommandLine.ApplicationArguments);
+        releaseInstallPreflightCommandLine.ApplicationArguments);
 bool productionTxPreflightRequested = false;
 string? productionTxPreflightRadioId = null;
 List<string> applicationArguments = [];
@@ -84,6 +87,14 @@ if (productionTxPreflightRequested &&
     throw new InvalidOperationException(
         "Installation setup commands cannot run with production TX preflight.");
 }
+if (releaseInstallPreflightCommandLine.Command !=
+        OfflineReleaseInstallPreflightCommandKind.None &&
+    installationSetupCommandLine.Command !=
+        InstallationSetupConsoleCommandKind.None)
+{
+    throw new InvalidOperationException(
+        "Release install preflight cannot run with installation setup commands.");
+}
 if (releaseUpdateCommandLine.Command !=
         ReleaseUpdateConsoleCommandKind.None &&
     installationSetupCommandLine.Command !=
@@ -91,6 +102,21 @@ if (releaseUpdateCommandLine.Command !=
 {
     throw new InvalidOperationException(
         "Release update commands cannot run with installation setup commands.");
+}
+if (releaseInstallPreflightCommandLine.Command !=
+        OfflineReleaseInstallPreflightCommandKind.None &&
+    releaseUpdateCommandLine.Command !=
+        ReleaseUpdateConsoleCommandKind.None)
+{
+    throw new InvalidOperationException(
+        "Release install preflight cannot run with another release command.");
+}
+if (productionTxPreflightRequested &&
+    releaseInstallPreflightCommandLine.Command !=
+        OfflineReleaseInstallPreflightCommandKind.None)
+{
+    throw new InvalidOperationException(
+        "Release install preflight cannot run with production TX preflight.");
 }
 if (productionTxPreflightRequested &&
     releaseUpdateCommandLine.Command !=
@@ -108,6 +134,54 @@ builder.Logging.AddSimpleConsole(options =>
     options.SingleLine = true;
     options.TimestampFormat = "HH:mm:ss ";
 });
+
+if (releaseInstallPreflightCommandLine.Command ==
+    OfflineReleaseInstallPreflightCommandKind.Preflight)
+{
+    InstallationPathSettings releasePreflightPathSettings =
+        builder.Configuration
+            .GetSection(InstallationPathSettings.SectionName)
+            .Get<InstallationPathSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new InstallationPathSettings();
+    InstallationPathLayout releasePreflightPathLayout =
+        builder.Environment.IsDevelopment()
+            ? InstallationPathLayout.Development
+            : OperatingSystem.IsLinux()
+                ? InstallationPathLayout.LinuxSystem
+                : throw new InvalidOperationException(
+                    "Standalone production release install preflight requires Linux.");
+    InstallationPaths releasePreflightPaths = InstallationPaths.Resolve(
+        builder.Environment.ContentRootPath,
+        releasePreflightPathLayout,
+        releasePreflightPathSettings);
+    ReleaseManifestTrustSettings releasePreflightTrustSettings =
+        builder.Configuration
+            .GetSection(ReleaseManifestTrustSettings.SectionName)
+            .Get<ReleaseManifestTrustSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new ReleaseManifestTrustSettings();
+    ReleaseManifestTrustRegistry releasePreflightTrustRegistry = new(
+        Options.Create(releasePreflightTrustSettings),
+        NullLogger<ReleaseManifestTrustRegistry>.Instance);
+    SignedReleaseManifestVerificationService releasePreflightManifestService =
+        new(
+            releasePreflightTrustRegistry,
+            new SignedReleaseManifestVerifier());
+    LocalOfflineReleaseBundleVerificationService releasePreflightBundleService =
+        new(releasePreflightManifestService);
+    ReleaseInstallationStatusReader releasePreflightStatusReader = new(
+        new InstallationSetupStore(releasePreflightPaths.SetupStatePath),
+        releasePreflightPaths);
+    OfflineReleaseInstallPreflightConsole releasePreflightConsole = new(
+        new OfflineReleaseInstallPreflightPlanner(
+            releasePreflightStatusReader,
+            releasePreflightBundleService));
+    Environment.ExitCode = await releasePreflightConsole.ExecuteAsync(
+        releaseInstallPreflightCommandLine,
+        Console.Out);
+    return;
+}
 
 if (releaseUpdateCommandLine.Command ==
     ReleaseUpdateConsoleCommandKind.CheckOfflineBundle)
@@ -422,6 +496,8 @@ builder.Services.AddSingleton(
             statusPaths);
     });
 builder.Services.AddSingleton<ReleaseStatusConsole>();
+builder.Services.AddSingleton<OfflineReleaseInstallPreflightPlanner>();
+builder.Services.AddSingleton<OfflineReleaseInstallPreflightConsole>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
 builder.Services.AddSingleton<StationTxCommandEnvelopeCoordinator>();
@@ -519,6 +595,8 @@ OfflineReleaseBundleCheckConsole offlineReleaseBundleCheckConsole =
     app.Services.GetRequiredService<OfflineReleaseBundleCheckConsole>();
 ReleaseStatusConsole releaseStatusConsole =
     app.Services.GetRequiredService<ReleaseStatusConsole>();
+OfflineReleaseInstallPreflightConsole releaseInstallPreflightConsole =
+    app.Services.GetRequiredService<OfflineReleaseInstallPreflightConsole>();
 StationTxIndependentWatchdogRegistry independentTxWatchdogRegistry =
     app.Services.GetRequiredService<StationTxIndependentWatchdogRegistry>();
 StationTxCommandTrustRegistry stationTxCommandTrustRegistry =
@@ -578,6 +656,8 @@ app.MapGet(
                 offlineReleaseBundleCheckConsole.Snapshot;
             ReleaseStatusConsoleDiagnostics releaseStatus =
                 releaseStatusConsole.Snapshot;
+            OfflineReleaseInstallPreflightConsoleDiagnostics
+                releaseInstallPreflight = releaseInstallPreflightConsole.Snapshot;
             StationTxIndependentWatchdogAggregate watchdog =
                 independentTxWatchdogRegistry.Snapshot;
             StationTxCommandTrustDiagnostics commandTrust =
@@ -697,6 +777,46 @@ app.MapGet(
                     releaseStatus.LeaseCallerRegistered,
                 releaseStatusTxCallerRegistered =
                     releaseStatus.TxCallerRegistered,
+                releaseInstallPreflightCliRegistered =
+                    releaseInstallPreflight.Registered,
+                releaseInstallPreflightSetupStateReadRegistered =
+                    releaseInstallPreflight.SetupStateReadRegistered,
+                releaseInstallPreflightReleaseInventoryReadRegistered =
+                    releaseInstallPreflight.ReleaseInventoryReadRegistered,
+                releaseInstallPreflightCurrentPointerReadRegistered =
+                    releaseInstallPreflight.CurrentPointerReadRegistered,
+                releaseInstallPreflightSignedBundleVerificationRegistered =
+                    releaseInstallPreflight.SignedBundleVerificationRegistered,
+                releaseInstallPreflightNetworkDownloadRegistered =
+                    releaseInstallPreflight.NetworkDownloadRegistered,
+                releaseInstallPreflightArchiveExtractionRegistered =
+                    releaseInstallPreflight.ArchiveExtractionRegistered,
+                releaseInstallPreflightStagingRegistered =
+                    releaseInstallPreflight.StagingRegistered,
+                releaseInstallPreflightInstallationRegistered =
+                    releaseInstallPreflight.InstallationRegistered,
+                releaseInstallPreflightActivationRegistered =
+                    releaseInstallPreflight.ActivationRegistered,
+                releaseInstallPreflightRollbackRegistered =
+                    releaseInstallPreflight.RollbackRegistered,
+                releaseInstallPreflightMigrationExecutionRegistered =
+                    releaseInstallPreflight.MigrationExecutionRegistered,
+                releaseInstallPreflightServiceControlRegistered =
+                    releaseInstallPreflight.ServiceControlRegistered,
+                releaseInstallPreflightAdminCallerRegistered =
+                    releaseInstallPreflight.AdminCallerRegistered,
+                releaseInstallPreflightBrowserCallerRegistered =
+                    releaseInstallPreflight.BrowserCallerRegistered,
+                releaseInstallPreflightRadioCallerRegistered =
+                    releaseInstallPreflight.RadioCallerRegistered,
+                releaseInstallPreflightWatchdogCallerRegistered =
+                    releaseInstallPreflight.WatchdogCallerRegistered,
+                releaseInstallPreflightCommandCallerRegistered =
+                    releaseInstallPreflight.CommandCallerRegistered,
+                releaseInstallPreflightLeaseCallerRegistered =
+                    releaseInstallPreflight.LeaseCallerRegistered,
+                releaseInstallPreflightTxCallerRegistered =
+                    releaseInstallPreflight.TxCallerRegistered,
                 radioMode = radioSettings.Mode,
                 transmitEnabled =
                     stationTxProductionActivationBinding.BindingApplied,

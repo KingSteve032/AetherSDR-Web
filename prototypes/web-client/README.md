@@ -563,6 +563,34 @@ even when no release is installed; exit `2` means setup or release-layout state
 was unsafe or unreadable. The command returns before any web host, service, radio,
 watchdog, command, lease, or TX composition.
 
+The sixth M8B increment adds a third read-only CLI workflow:
+
+```text
+AetherSDR.Web \
+  --preflight-offline-release-install /srv/aethersdr/bundles/aethersdr-8.2.0 \
+  --release-preflight-installed-identity aethersdr-8.1.0 \
+  --release-preflight-installed-version 8.1.0 \
+  --release-preflight-configuration-schema-version 1 \
+  --release-preflight-protocol-version 2
+```
+
+The preflight requires completed setup, exact persisted/resolved installation
+paths, one validated active `current` release matching the supplied canonical
+installed identity, and a target not already present in the immutable release
+inventory. Channel and Pinned policy come only from completed setup; Linux
+architecture comes only from the running process. The same production trust and
+immutable bundle verifier checks signature, integrity, architecture, channel,
+version transition, configuration schema, and protocol compatibility. The target
+TX-support capability must exactly match the completed installation choice.
+
+After verification, the command reads release status again and rejects any setup
+revision, policy, inventory, or active-pointer change. The versioned report omits
+all paths, signatures, checksums, key identifiers, and package names. Exit `0`
+means the bundle is eligible for a future separately reviewed installation
+transaction; exit `2` means it is not. Preflight never downloads, extracts,
+stages, writes, installs, activates, rolls back, migrates, controls services, or
+touches Admin, browser, radio, watchdog, command, lease, or TX state.
+
 Publishing, packaged bundle production, network download, staging, extraction,
 installation, activation, rollback, migrations, service health verification,
 Admin/browser workflows, and all update mutation callers remain later M8B work.
@@ -690,6 +718,26 @@ overrides are enforced directly by the guarded script:
 `releaseStatusCommandCallerRegistered=false`,
 `releaseStatusLeaseCallerRegistered=false`,
 `releaseStatusTxCallerRegistered=false`,
+`releaseInstallPreflightCliRegistered=true`,
+`releaseInstallPreflightSetupStateReadRegistered=true`,
+`releaseInstallPreflightReleaseInventoryReadRegistered=true`,
+`releaseInstallPreflightCurrentPointerReadRegistered=true`,
+`releaseInstallPreflightSignedBundleVerificationRegistered=true`,
+`releaseInstallPreflightNetworkDownloadRegistered=false`,
+`releaseInstallPreflightArchiveExtractionRegistered=false`,
+`releaseInstallPreflightStagingRegistered=false`,
+`releaseInstallPreflightInstallationRegistered=false`,
+`releaseInstallPreflightActivationRegistered=false`,
+`releaseInstallPreflightRollbackRegistered=false`,
+`releaseInstallPreflightMigrationExecutionRegistered=false`,
+`releaseInstallPreflightServiceControlRegistered=false`,
+`releaseInstallPreflightAdminCallerRegistered=false`,
+`releaseInstallPreflightBrowserCallerRegistered=false`,
+`releaseInstallPreflightRadioCallerRegistered=false`,
+`releaseInstallPreflightWatchdogCallerRegistered=false`,
+`releaseInstallPreflightCommandCallerRegistered=false`,
+`releaseInstallPreflightLeaseCallerRegistered=false`,
+`releaseInstallPreflightTxCallerRegistered=false`,
 `txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,
 `txBrowserIntentProtocolVersion=2`,
 `txBrowserIntentValidationRegistered=true`,
