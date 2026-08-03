@@ -647,10 +647,27 @@ deletes a target that another actor may have activated.
 Publication has no public execution method and no CLI, Admin, browser, startup,
 timer, or background caller. It never copies files, changes `current`, activates,
 rolls back, executes migrations, controls services, or touches radio, watchdog,
-command, lease, AetherRemote runtime, or TX state. Packaged bundle production,
-network download, archive extraction, activation, rollback, migrations, service
-health verification, Admin/browser workflows, and all operational update callers
-remain later M8B work.
+command, lease, AetherRemote runtime, or TX state.
+
+The tenth M8B increment adds `VerifiedReleaseActivationPlanComposer`, a pure
+planning boundary behind one successful reconciliation-free inactive publication.
+It binds the exact internal published-release token to canonical previous and
+target release paths, canonical relative `current` link values, the exact four
+signed package roles, target configuration schema, migration declaration,
+restart requirements, release notes, and TX-support installation policy. Its
+public result remains path-, package-, and digest-redacted.
+
+Every successful plan requires operator approval, closure of new TX-lease
+admission, radio-authoritative idle, disarmed watchdogs, a configuration backup,
+any signed migration on a staged copy, one future atomic `current` switch, service
+health verification, and automatic rollback authority. These are obligations,
+not assertions that the work has happened. The composer performs no filesystem
+I/O and registers no pointer mutation, activation, backup, migration, service,
+health-probe, CLI/Admin/browser, radio, watchdog, command, lease, or TX caller.
+Packaged bundle production, network download, archive extraction, activation
+execution, rollback execution, migration execution, service control, health
+probing, Admin/browser workflows, and all operational update callers remain later
+M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled
@@ -859,6 +876,32 @@ overrides are enforced directly by the guarded script:
 `releasePublicationCommandCallerRegistered=false`,
 `releasePublicationLeaseCallerRegistered=false`,
 `releasePublicationTxCallerRegistered=false`,
+`releaseActivationPlanComposerRegistered=true`,
+`releaseActivationPlanPublishedReleaseInputRegistered=true`,
+`releaseActivationPlanPathCompositionRegistered=true`,
+`releaseActivationPlanTxQuiescencePlanningRegistered=true`,
+`releaseActivationPlanBackupPlanningRegistered=true`,
+`releaseActivationPlanMigrationPlanningRegistered=true`,
+`releaseActivationPlanServiceRestartPlanningRegistered=true`,
+`releaseActivationPlanHealthVerificationPlanningRegistered=true`,
+`releaseActivationPlanRollbackPlanningRegistered=true`,
+`releaseActivationPlanNetworkDownloadRegistered=false`,
+`releaseActivationPlanArchiveExtractionRegistered=false`,
+`releaseActivationPlanFileWriteRegistered=false`,
+`releaseActivationPlanCurrentPointerMutationRegistered=false`,
+`releaseActivationPlanActivationExecutionRegistered=false`,
+`releaseActivationPlanBackupExecutionRegistered=false`,
+`releaseActivationPlanMigrationExecutionRegistered=false`,
+`releaseActivationPlanServiceControlRegistered=false`,
+`releaseActivationPlanHealthProbeCallerRegistered=false`,
+`releaseActivationPlanCliCallerRegistered=false`,
+`releaseActivationPlanAdminCallerRegistered=false`,
+`releaseActivationPlanBrowserCallerRegistered=false`,
+`releaseActivationPlanRadioCallerRegistered=false`,
+`releaseActivationPlanWatchdogCallerRegistered=false`,
+`releaseActivationPlanCommandCallerRegistered=false`,
+`releaseActivationPlanLeaseCallerRegistered=false`,
+`releaseActivationPlanTxCallerRegistered=false`,
 `txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,
 `txBrowserIntentProtocolVersion=2`,
 `txBrowserIntentValidationRegistered=true`,

@@ -546,6 +546,32 @@ copy files, mutate `current`, activate, roll back, execute migrations, control
 services, or touch Admin/browser, AetherRemote runtime, radio, watchdog, command,
 lease, or TX state.
 
+The tenth M8B increment adds a pure activation-transaction plan behind successful
+inactive publication. `VerifiedReleaseActivationPlanComposer` requires the exact
+successful publication summary and internal published-release token, including a
+consumed staging source, immutable published target, unchanged `current`, no prior
+activation, and no reconciliation requirement. It independently checks setup and
+identity agreement, canonical semantic version and Linux architecture, Stable/
+Beta/exact-Pinned policy, TX-support installation consistency, manifest/package
+byte totals, the exact four unique service roles, safe package destinations, and
+coherent signed migration metadata.
+
+The internal plan derives canonical previous/target release paths, the direct
+`current` path, and canonical relative link values for both the previous and target
+release. It preserves signed configuration-schema, migration, restart, release-
+notes, package-role, and TX-support metadata. The public result contains no path,
+package name, or digest and reports only bounded identities, counts, migration,
+and restart summaries.
+
+A successful plan marks operator approval, TX-lease admission closure, fresh
+radio-authoritative idle, disarmed watchdogs, configuration backup, staged-copy
+migration when declared, atomic `current` switching, service health verification,
+and automatic rollback as mandatory future transaction steps. It does not claim
+those steps have run. The composer performs no filesystem I/O and owns no current
+mutation, activation, backup, migration execution, service control, health probe,
+CLI/Admin/browser, AetherRemote runtime, radio, watchdog, command, lease, or TX
+caller.
+
 ## Trust boundaries
 
 ### Browser

@@ -501,6 +501,7 @@ builder.Services.AddSingleton<OfflineReleaseInstallPreflightConsole>();
 builder.Services.AddSingleton<VerifiedReleaseInstallationPlanComposer>();
 builder.Services.AddSingleton<VerifiedReleaseStagingService>();
 builder.Services.AddSingleton<VerifiedReleasePublicationService>();
+builder.Services.AddSingleton<VerifiedReleaseActivationPlanComposer>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
 builder.Services.AddSingleton<StationTxCommandEnvelopeCoordinator>();
@@ -606,6 +607,8 @@ VerifiedReleaseStagingService verifiedReleaseStagingService =
     app.Services.GetRequiredService<VerifiedReleaseStagingService>();
 VerifiedReleasePublicationService verifiedReleasePublicationService =
     app.Services.GetRequiredService<VerifiedReleasePublicationService>();
+VerifiedReleaseActivationPlanComposer releaseActivationPlanComposer =
+    app.Services.GetRequiredService<VerifiedReleaseActivationPlanComposer>();
 StationTxIndependentWatchdogRegistry independentTxWatchdogRegistry =
     app.Services.GetRequiredService<StationTxIndependentWatchdogRegistry>();
 StationTxCommandTrustRegistry stationTxCommandTrustRegistry =
@@ -673,6 +676,8 @@ app.MapGet(
                 verifiedReleaseStagingService.Snapshot;
             VerifiedReleasePublicationDiagnostics releasePublication =
                 verifiedReleasePublicationService.Snapshot;
+            VerifiedReleaseActivationPlanDiagnostics releaseActivationPlan =
+                releaseActivationPlanComposer.Snapshot;
             StationTxIndependentWatchdogAggregate watchdog =
                 independentTxWatchdogRegistry.Snapshot;
             StationTxCommandTrustDiagnostics commandTrust =
@@ -959,6 +964,58 @@ app.MapGet(
                     releasePublication.LeaseCallerRegistered,
                 releasePublicationTxCallerRegistered =
                     releasePublication.TxCallerRegistered,
+                releaseActivationPlanComposerRegistered =
+                    releaseActivationPlan.Registered,
+                releaseActivationPlanPublishedReleaseInputRegistered =
+                    releaseActivationPlan.PublishedReleaseInputRegistered,
+                releaseActivationPlanPathCompositionRegistered =
+                    releaseActivationPlan.ActivationPathCompositionRegistered,
+                releaseActivationPlanTxQuiescencePlanningRegistered =
+                    releaseActivationPlan.TxQuiescencePlanningRegistered,
+                releaseActivationPlanBackupPlanningRegistered =
+                    releaseActivationPlan.BackupPlanningRegistered,
+                releaseActivationPlanMigrationPlanningRegistered =
+                    releaseActivationPlan.MigrationPlanningRegistered,
+                releaseActivationPlanServiceRestartPlanningRegistered =
+                    releaseActivationPlan.ServiceRestartPlanningRegistered,
+                releaseActivationPlanHealthVerificationPlanningRegistered =
+                    releaseActivationPlan.HealthVerificationPlanningRegistered,
+                releaseActivationPlanRollbackPlanningRegistered =
+                    releaseActivationPlan.RollbackPlanningRegistered,
+                releaseActivationPlanNetworkDownloadRegistered =
+                    releaseActivationPlan.NetworkDownloadRegistered,
+                releaseActivationPlanArchiveExtractionRegistered =
+                    releaseActivationPlan.ArchiveExtractionRegistered,
+                releaseActivationPlanFileWriteRegistered =
+                    releaseActivationPlan.FileWriteRegistered,
+                releaseActivationPlanCurrentPointerMutationRegistered =
+                    releaseActivationPlan.CurrentPointerMutationRegistered,
+                releaseActivationPlanActivationExecutionRegistered =
+                    releaseActivationPlan.ActivationExecutionRegistered,
+                releaseActivationPlanBackupExecutionRegistered =
+                    releaseActivationPlan.BackupExecutionRegistered,
+                releaseActivationPlanMigrationExecutionRegistered =
+                    releaseActivationPlan.MigrationExecutionRegistered,
+                releaseActivationPlanServiceControlRegistered =
+                    releaseActivationPlan.ServiceControlRegistered,
+                releaseActivationPlanHealthProbeCallerRegistered =
+                    releaseActivationPlan.HealthProbeCallerRegistered,
+                releaseActivationPlanCliCallerRegistered =
+                    releaseActivationPlan.CliCallerRegistered,
+                releaseActivationPlanAdminCallerRegistered =
+                    releaseActivationPlan.AdminCallerRegistered,
+                releaseActivationPlanBrowserCallerRegistered =
+                    releaseActivationPlan.BrowserCallerRegistered,
+                releaseActivationPlanRadioCallerRegistered =
+                    releaseActivationPlan.RadioCallerRegistered,
+                releaseActivationPlanWatchdogCallerRegistered =
+                    releaseActivationPlan.WatchdogCallerRegistered,
+                releaseActivationPlanCommandCallerRegistered =
+                    releaseActivationPlan.CommandCallerRegistered,
+                releaseActivationPlanLeaseCallerRegistered =
+                    releaseActivationPlan.LeaseCallerRegistered,
+                releaseActivationPlanTxCallerRegistered =
+                    releaseActivationPlan.TxCallerRegistered,
                 radioMode = radioSettings.Mode,
                 transmitEnabled =
                     stationTxProductionActivationBinding.BindingApplied,
