@@ -512,10 +512,36 @@ decisions to the existing production-trust-backed verifier.
 
 No path is configured or scanned automatically. Health reports the reader and
 local directory-read boundary as registered while archive extraction, network
-download, installation, activation, CLI, Admin, and browser callers remain false.
-Publishing, packaged bundle production, staging, activation, rollback, migrations,
-service health verification, and all update mutation callers remain later M8B
-work.
+download, installation, activation, Admin, and browser callers remain false.
+
+The fourth M8B increment adds one read-only local CLI caller. It runs before any
+web host, setup-only host, radio, watchdog, or service composition and accepts only
+an explicit immutable bundle path plus the exact installed semantic version,
+Stable/Beta/Pinned channel, optional pinned release identity, configuration schema
+version, and protocol version. Linux architecture is derived from the running
+process and cannot be selected by the caller.
+
+```text
+AetherSDR.Web \
+  --check-offline-release-bundle /srv/aethersdr/bundles/aethersdr-8.2.0 \
+  --release-check-installed-version 8.1.0 \
+  --release-check-update-channel stable \
+  --release-check-configuration-schema-version 1 \
+  --release-check-protocol-version 2
+```
+
+Pinned checks additionally require
+`--release-check-pinned-identity <canonical-release-identity>`. The command emits
+one redacted JSON report, returns exit code `0` only when the complete bundle
+verifies, and returns `2` for any trust, filesystem, signature, integrity,
+architecture, channel, or compatibility rejection. Unknown, duplicate, missing,
+non-canonical, or contradictory CLI values fail before bundle access. The report
+contains no bundle path, trust-key path, key material, signature, package path, or
+checksum.
+
+Publishing, packaged bundle production, network download, staging, extraction,
+installation, activation, rollback, migrations, service health verification,
+Admin/browser workflows, and all update mutation callers remain later M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled
@@ -618,7 +644,7 @@ overrides are enforced directly by the guarded script:
 `releaseOfflineBundleNetworkDownloadRegistered=false`,
 `releaseOfflineBundleInstallationRegistered=false`,
 `releaseOfflineBundleActivationRegistered=false`,
-`releaseOfflineBundleCliCallerRegistered=false`,
+`releaseOfflineBundleCliCallerRegistered=true`,
 `releaseOfflineBundleAdminCallerRegistered=false`,
 `releaseOfflineBundleBrowserCallerRegistered=false`,
 `txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,

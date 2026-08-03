@@ -2699,10 +2699,10 @@ M8C.
 ### M8B — Signed GitHub releases and transactional updates
 
 Status: active. The local-only signed-manifest verifier, normal-runtime public-key
-trust composition, and immutable local offline-directory bundle reader are
-implemented; publishing, network download, extraction, staging, activation,
-rollback, migration execution, service control, and Admin/CLI/browser callers
-remain unimplemented.
+trust composition, immutable local offline-directory bundle reader, and read-only
+offline bundle CLI `check` workflow are implemented; publishing, network download,
+extraction, staging, installation, activation, rollback, migration execution,
+service control, and Admin/browser callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -2749,7 +2749,21 @@ length and SHA-256 snapshots and rechecked for metadata drift before the existin
 trust-backed verifier decides acceptance. The composed service has no configured
 path, startup scan, polling, archive extraction, download, installation, staging,
 activation, service-control, migration, backup, radio, watchdog, command, lease,
-CLI, Admin, browser, or TX caller.
+Admin, browser, or TX caller.
+
+The fourth increment adds the first read-only release CLI workflow:
+`--check-offline-release-bundle`. Its owned parser requires the canonical bundle
+path, exact installed semantic version, Stable/Beta/Pinned channel, a pinned
+identity only for Pinned, and positive canonical configuration-schema and protocol
+versions. It derives Linux architecture from the running process, is mutually
+exclusive with setup commands and production-TX preflight, and returns before any
+web host, setup-only host, authentication, hosted service, radio, watchdog, or
+routing composition. It constructs the same production trust registry, rejects
+unavailable trust before filesystem I/O, emits one redacted versioned JSON report,
+and returns `0` only for a fully verified bundle or `2` for a verification/read
+failure. It adds no network, extraction, staging, installation, activation,
+rollback, migration, service-control, Admin, browser, radio, watchdog, command,
+lease, or TX method.
 
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
@@ -2773,6 +2787,16 @@ passed 31/31; web tests passed 994/994; independent-watchdog tests passed 57/57;
 TX-HIL isolation tests passed 48/48; AetherRemote tests passed 70/70; and browser
 tests passed 135/135. The complete checkpoint covered 1,169 .NET tests and 1,304
 tests overall. No live radio or RF operation was performed or required.
+
+Automated checkpoint on 2026-08-03 for the read-only offline bundle CLI check: the
+deployment script passed shell syntax validation; Release solution build completed
+with zero warnings and zero errors; the focused CLI suite passed 38/38; web tests
+passed 1,032/1,032; independent-watchdog tests passed 57/57; TX-HIL isolation tests
+passed 48/48; AetherRemote tests passed 70/70; and browser tests passed 135/135.
+The complete checkpoint covered 1,207 .NET tests and 1,342 tests overall. A direct
+built-DLL invocation with default-disabled trust returned one redacted JSON report,
+exit code `2`, and did not reflect or access the supplied missing bundle path. No
+live radio or RF operation was performed or required.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

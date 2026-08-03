@@ -237,7 +237,7 @@ expected = {
     "releaseOfflineBundleNetworkDownloadRegistered": False,
     "releaseOfflineBundleInstallationRegistered": False,
     "releaseOfflineBundleActivationRegistered": False,
-    "releaseOfflineBundleCliCallerRegistered": False,
+    "releaseOfflineBundleCliCallerRegistered": True,
     "releaseOfflineBundleAdminCallerRegistered": False,
     "releaseOfflineBundleBrowserCallerRegistered": False,
     "transmitEnabled": False,

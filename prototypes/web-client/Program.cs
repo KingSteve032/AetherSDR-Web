@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
@@ -23,15 +24,18 @@ const string ProductionTxRadioIdSwitch =
     "--production-tx-radio-id";
 InstallationSetupConsoleCommandLine installationSetupCommandLine =
     InstallationSetupConsoleCommandParser.Parse(args);
+ReleaseUpdateConsoleCommandLine releaseUpdateCommandLine =
+    ReleaseUpdateConsoleCommandParser.Parse(
+        installationSetupCommandLine.ApplicationArguments);
 bool productionTxPreflightRequested = false;
 string? productionTxPreflightRadioId = null;
 List<string> applicationArguments = [];
 for (int index = 0;
-     index < installationSetupCommandLine.ApplicationArguments.Count;
+     index < releaseUpdateCommandLine.ApplicationArguments.Count;
      index++)
 {
     string argument =
-        installationSetupCommandLine.ApplicationArguments[index];
+        releaseUpdateCommandLine.ApplicationArguments[index];
     if (string.Equals(
             argument,
             ProductionTxPreflightSwitch,
@@ -51,13 +55,13 @@ for (int index = 0;
             StringComparison.Ordinal))
     {
         if (productionTxPreflightRadioId is not null ||
-            index + 1 >= installationSetupCommandLine.ApplicationArguments.Count)
+            index + 1 >= releaseUpdateCommandLine.ApplicationArguments.Count)
         {
             throw new InvalidOperationException(
                 "Production TX activation preflight requires one exact radio ID.");
         }
         productionTxPreflightRadioId =
-            installationSetupCommandLine.ApplicationArguments[++index];
+            releaseUpdateCommandLine.ApplicationArguments[++index];
         continue;
     }
     applicationArguments.Add(argument);
@@ -80,6 +84,21 @@ if (productionTxPreflightRequested &&
     throw new InvalidOperationException(
         "Installation setup commands cannot run with production TX preflight.");
 }
+if (releaseUpdateCommandLine.Command !=
+        ReleaseUpdateConsoleCommandKind.None &&
+    installationSetupCommandLine.Command !=
+        InstallationSetupConsoleCommandKind.None)
+{
+    throw new InvalidOperationException(
+        "Release update commands cannot run with installation setup commands.");
+}
+if (productionTxPreflightRequested &&
+    releaseUpdateCommandLine.Command !=
+        ReleaseUpdateConsoleCommandKind.None)
+{
+    throw new InvalidOperationException(
+        "Release update commands cannot run with production TX preflight.");
+}
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(
     [.. applicationArguments]);
@@ -89,6 +108,31 @@ builder.Logging.AddSimpleConsole(options =>
     options.SingleLine = true;
     options.TimestampFormat = "HH:mm:ss ";
 });
+
+if (releaseUpdateCommandLine.Command !=
+    ReleaseUpdateConsoleCommandKind.None)
+{
+    ReleaseManifestTrustSettings releaseCheckTrustSettings =
+        builder.Configuration
+            .GetSection(ReleaseManifestTrustSettings.SectionName)
+            .Get<ReleaseManifestTrustSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new ReleaseManifestTrustSettings();
+    ReleaseManifestTrustRegistry releaseCheckTrustRegistry = new(
+        Options.Create(releaseCheckTrustSettings),
+        NullLogger<ReleaseManifestTrustRegistry>.Instance);
+    SignedReleaseManifestVerificationService releaseCheckManifestService = new(
+        releaseCheckTrustRegistry,
+        new SignedReleaseManifestVerifier());
+    LocalOfflineReleaseBundleVerificationService releaseCheckBundleService =
+        new(releaseCheckManifestService);
+    OfflineReleaseBundleCheckConsole releaseCheckConsole =
+        new(releaseCheckBundleService);
+    Environment.ExitCode = await releaseCheckConsole.ExecuteAsync(
+        releaseUpdateCommandLine,
+        Console.Out);
+    return;
+}
 
 if (installationSetupCommandLine.Command !=
     InstallationSetupConsoleCommandKind.None)
@@ -337,6 +381,7 @@ builder.Services.AddSingleton<SignedReleaseManifestVerifier>();
 builder.Services.AddSingleton<SignedReleaseManifestVerificationService>();
 builder.Services.AddSingleton<
     LocalOfflineReleaseBundleVerificationService>();
+builder.Services.AddSingleton<OfflineReleaseBundleCheckConsole>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
 builder.Services.AddSingleton<StationTxCommandEnvelopeCoordinator>();
@@ -430,6 +475,8 @@ SignedReleaseManifestVerificationService releaseManifestVerificationService =
 LocalOfflineReleaseBundleVerificationService offlineReleaseBundleService =
     app.Services.GetRequiredService<
         LocalOfflineReleaseBundleVerificationService>();
+OfflineReleaseBundleCheckConsole offlineReleaseBundleCheckConsole =
+    app.Services.GetRequiredService<OfflineReleaseBundleCheckConsole>();
 StationTxIndependentWatchdogRegistry independentTxWatchdogRegistry =
     app.Services.GetRequiredService<StationTxIndependentWatchdogRegistry>();
 StationTxCommandTrustRegistry stationTxCommandTrustRegistry =
@@ -485,6 +532,8 @@ app.MapGet(
                 releaseManifestVerificationService.Snapshot;
             LocalOfflineReleaseBundleVerificationDiagnostics offlineBundle =
                 offlineReleaseBundleService.Snapshot;
+            OfflineReleaseBundleCheckConsoleDiagnostics offlineBundleCheck =
+                offlineReleaseBundleCheckConsole.Snapshot;
             StationTxIndependentWatchdogAggregate watchdog =
                 independentTxWatchdogRegistry.Snapshot;
             StationTxCommandTrustDiagnostics commandTrust =
@@ -562,7 +611,7 @@ app.MapGet(
                 releaseOfflineBundleActivationRegistered =
                     offlineBundle.ActivationRegistered,
                 releaseOfflineBundleCliCallerRegistered =
-                    offlineBundle.CliCallerRegistered,
+                    offlineBundleCheck.Registered,
                 releaseOfflineBundleAdminCallerRegistered =
                     offlineBundle.AdminCallerRegistered,
                 releaseOfflineBundleBrowserCallerRegistered =
