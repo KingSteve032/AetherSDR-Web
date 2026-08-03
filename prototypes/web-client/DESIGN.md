@@ -150,11 +150,26 @@ rotation, and revocation.
 
 This increment registers no service and adds no HTTP route, cookie, browser
 asset, setup-only listener, account provider, installer mutation, radio caller,
-or TX caller. A later browser setup-center increment must separately enforce
-setup-only startup, trusted origin and host validation, CSRF protection, bounded
-request bodies and rate limits, and a Secure, HttpOnly, SameSite=Strict cookie
-without placing either bootstrap or session tokens in URLs, logs, or browser
-storage.
+or TX caller.
+
+The setup-only startup-planning increment combines the exact disabled legacy
+configuration, unfinished setup eligibility, and completed normal-runtime
+readiness into one typed decision without changing `Program.cs`. Setup-only and
+normal runtime are mutually exclusive. Setup-only planning requires an existing,
+valid, incomplete setup document, rejects completed setup and any selected
+topology that does not run the web gateway here, and returns only the existing
+redacted status projection. It never creates setup state, issues a bootstrap
+token, constructs a claim session, or authorizes a network endpoint. Exact normal
+runtime continues to delegate to the revision-, URL-, path-, topology-, role-,
+and TX-support-bound readiness gate.
+
+The planner registers no service and adds no configuration section, HTTP route,
+cookie, browser asset, listener, account provider, installer mutation, radio
+caller, or TX caller. A later reviewed integration must wire the planner before
+normal authentication and hosted services, then separately enforce trusted
+origin and host validation, CSRF protection, bounded request bodies and rate
+limits, and a Secure, HttpOnly, SameSite=Strict cookie without placing either
+bootstrap or session tokens in URLs, logs, or browser storage.
 
 The runtime-readiness increment defines the fail-closed binding required before a
 normal runtime may admit the web gateway or a remote station node. The binding
