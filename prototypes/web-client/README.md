@@ -301,10 +301,25 @@ future trusted account provider verifies one durable, enabled subject with the
 exact `Aether.Admin` role for the current setup schema, revision, creation
 identity, topology, and canonical URL. Failed verification or a concurrent setup
 change leaves setup claimed and retryable. The setup document retains no account
-identity, credential, provider secret, or role list. This increment deliberately
-adds no account provider, console command, HTTP route, browser claim session, or
-runtime registration; production local-account creation and a browser setup
-center remain separate reviewed work.
+identity, credential, provider secret, or role list. Production local-account
+creation and a browser setup center remain separate reviewed work.
+
+The internal setup claim-session boundary can consume a valid bootstrap token and
+return one short-lived 256-bit process-local bearer for a future browser setup
+center. Only a SHA-256 digest is retained in memory; no session token or digest is
+written to setup state. The bearer is bound to the exact setup identity and
+revision, expires without sliding, is replaced by a new successful claim, and is
+lost on process restart. After each exact one-revision setup mutation, it must be
+rotated; stale, skipped, concurrent, expired, replaced, restarted, or completed
+sessions all fail with the same unauthorized result. Validation, rotation, and
+revocation do not mutate setup state.
+
+This boundary is not registered in `Program.cs` and adds no HTTP route, cookie,
+browser asset, setup-only listener, account provider, installer mutation, radio
+action, or TX action. A later browser setup-center increment must add setup-only
+startup, trusted-origin and host checks, CSRF protection, request bounds and rate
+limits, and a Secure, HttpOnly, SameSite=Strict cookie without putting either
+bootstrap or session tokens in URLs, logs, or browser storage.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled
