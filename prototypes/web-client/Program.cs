@@ -109,8 +109,8 @@ builder.Logging.AddSimpleConsole(options =>
     options.TimestampFormat = "HH:mm:ss ";
 });
 
-if (releaseUpdateCommandLine.Command !=
-    ReleaseUpdateConsoleCommandKind.None)
+if (releaseUpdateCommandLine.Command ==
+    ReleaseUpdateConsoleCommandKind.CheckOfflineBundle)
 {
     ReleaseManifestTrustSettings releaseCheckTrustSettings =
         builder.Configuration
@@ -129,6 +129,37 @@ if (releaseUpdateCommandLine.Command !=
     OfflineReleaseBundleCheckConsole releaseCheckConsole =
         new(releaseCheckBundleService);
     Environment.ExitCode = await releaseCheckConsole.ExecuteAsync(
+        releaseUpdateCommandLine,
+        Console.Out);
+    return;
+}
+if (releaseUpdateCommandLine.Command ==
+    ReleaseUpdateConsoleCommandKind.Status)
+{
+    InstallationPathSettings releaseStatusPathSettings =
+        builder.Configuration
+            .GetSection(InstallationPathSettings.SectionName)
+            .Get<InstallationPathSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new InstallationPathSettings();
+    InstallationPathLayout releaseStatusPathLayout =
+        builder.Environment.IsDevelopment()
+            ? InstallationPathLayout.Development
+            : OperatingSystem.IsLinux()
+                ? InstallationPathLayout.LinuxSystem
+                : throw new InvalidOperationException(
+                    "Standalone production release status requires Linux.");
+    InstallationPaths releaseStatusPaths = InstallationPaths.Resolve(
+        builder.Environment.ContentRootPath,
+        releaseStatusPathLayout,
+        releaseStatusPathSettings);
+    InstallationSetupStore releaseStatusSetupStore =
+        new(releaseStatusPaths.SetupStatePath);
+    ReleaseStatusConsole releaseStatusCommandConsole = new(
+        new ReleaseInstallationStatusReader(
+            releaseStatusSetupStore,
+            releaseStatusPaths));
+    Environment.ExitCode = await releaseStatusCommandConsole.ExecuteAsync(
         releaseUpdateCommandLine,
         Console.Out);
     return;
@@ -382,6 +413,15 @@ builder.Services.AddSingleton<SignedReleaseManifestVerificationService>();
 builder.Services.AddSingleton<
     LocalOfflineReleaseBundleVerificationService>();
 builder.Services.AddSingleton<OfflineReleaseBundleCheckConsole>();
+builder.Services.AddSingleton(
+    services =>
+    {
+        InstallationPaths statusPaths = resolveInstallationPaths();
+        return new ReleaseInstallationStatusReader(
+            new InstallationSetupStore(statusPaths.SetupStatePath),
+            statusPaths);
+    });
+builder.Services.AddSingleton<ReleaseStatusConsole>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
 builder.Services.AddSingleton<StationTxCommandEnvelopeCoordinator>();
@@ -477,6 +517,8 @@ LocalOfflineReleaseBundleVerificationService offlineReleaseBundleService =
         LocalOfflineReleaseBundleVerificationService>();
 OfflineReleaseBundleCheckConsole offlineReleaseBundleCheckConsole =
     app.Services.GetRequiredService<OfflineReleaseBundleCheckConsole>();
+ReleaseStatusConsole releaseStatusConsole =
+    app.Services.GetRequiredService<ReleaseStatusConsole>();
 StationTxIndependentWatchdogRegistry independentTxWatchdogRegistry =
     app.Services.GetRequiredService<StationTxIndependentWatchdogRegistry>();
 StationTxCommandTrustRegistry stationTxCommandTrustRegistry =
@@ -534,6 +576,8 @@ app.MapGet(
                 offlineReleaseBundleService.Snapshot;
             OfflineReleaseBundleCheckConsoleDiagnostics offlineBundleCheck =
                 offlineReleaseBundleCheckConsole.Snapshot;
+            ReleaseStatusConsoleDiagnostics releaseStatus =
+                releaseStatusConsole.Snapshot;
             StationTxIndependentWatchdogAggregate watchdog =
                 independentTxWatchdogRegistry.Snapshot;
             StationTxCommandTrustDiagnostics commandTrust =
@@ -616,6 +660,43 @@ app.MapGet(
                     offlineBundle.AdminCallerRegistered,
                 releaseOfflineBundleBrowserCallerRegistered =
                     offlineBundle.BrowserCallerRegistered,
+                releaseStatusCliRegistered = releaseStatus.Registered,
+                releaseStatusSetupStateReadRegistered =
+                    releaseStatus.SetupStateReadRegistered,
+                releaseStatusReleaseInventoryReadRegistered =
+                    releaseStatus.ReleaseInventoryReadRegistered,
+                releaseStatusCurrentPointerReadRegistered =
+                    releaseStatus.CurrentPointerReadRegistered,
+                releaseStatusNetworkDownloadRegistered =
+                    releaseStatus.NetworkDownloadRegistered,
+                releaseStatusArchiveExtractionRegistered =
+                    releaseStatus.ArchiveExtractionRegistered,
+                releaseStatusStagingRegistered =
+                    releaseStatus.StagingRegistered,
+                releaseStatusInstallationRegistered =
+                    releaseStatus.InstallationRegistered,
+                releaseStatusActivationRegistered =
+                    releaseStatus.ActivationRegistered,
+                releaseStatusRollbackRegistered =
+                    releaseStatus.RollbackRegistered,
+                releaseStatusMigrationRegistered =
+                    releaseStatus.MigrationRegistered,
+                releaseStatusServiceControlRegistered =
+                    releaseStatus.ServiceControlRegistered,
+                releaseStatusAdminCallerRegistered =
+                    releaseStatus.AdminCallerRegistered,
+                releaseStatusBrowserCallerRegistered =
+                    releaseStatus.BrowserCallerRegistered,
+                releaseStatusRadioCallerRegistered =
+                    releaseStatus.RadioCallerRegistered,
+                releaseStatusWatchdogCallerRegistered =
+                    releaseStatus.WatchdogCallerRegistered,
+                releaseStatusCommandCallerRegistered =
+                    releaseStatus.CommandCallerRegistered,
+                releaseStatusLeaseCallerRegistered =
+                    releaseStatus.LeaseCallerRegistered,
+                releaseStatusTxCallerRegistered =
+                    releaseStatus.TxCallerRegistered,
                 radioMode = radioSettings.Mode,
                 transmitEnabled =
                     stationTxProductionActivationBinding.BindingApplied,

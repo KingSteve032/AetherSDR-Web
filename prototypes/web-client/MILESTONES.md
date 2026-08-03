@@ -2699,10 +2699,11 @@ M8C.
 ### M8B — Signed GitHub releases and transactional updates
 
 Status: active. The local-only signed-manifest verifier, normal-runtime public-key
-trust composition, immutable local offline-directory bundle reader, and read-only
-offline bundle CLI `check` workflow are implemented; publishing, network download,
-extraction, staging, installation, activation, rollback, migration execution,
-service control, and Admin/browser callers remain unimplemented.
+trust composition, immutable local offline-directory bundle reader, read-only
+offline bundle CLI `check`, and read-only local release `status` workflows are
+implemented; publishing, network download, extraction, staging, installation,
+activation, rollback, migration execution, service control, and Admin/browser
+callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -2765,6 +2766,19 @@ failure. It adds no network, extraction, staging, installation, activation,
 rollback, migration, service-control, Admin, browser, radio, watchdog, command,
 lease, or TX method.
 
+The fifth increment adds `--release-status`. It loads but never creates setup
+state, requires persisted installation paths to equal the currently resolved
+layout, and then reads only direct children of the configured release directory
+plus its sibling `current` symbolic link. Missing release storage or a missing
+pointer is a successful empty/inactive status. Unsafe setup state, files or links
+inside the release inventory, non-canonical identities, group/other-writable Unix
+directories, more than 64 releases, non-link or non-canonical `current` entries,
+and targets outside or absent from the inventory fail closed. The versioned report
+omits every path, returns `0` for a trustworthy snapshot or `2` for an unsafe or
+unreadable layout, and deliberately reports no known rollback candidate. It adds
+no network, extraction, staging, installation, activation, rollback, migration,
+service-control, Admin, browser, radio, watchdog, command, lease, or TX method.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -2797,6 +2811,16 @@ The complete checkpoint covered 1,207 .NET tests and 1,342 tests overall. A dire
 built-DLL invocation with default-disabled trust returned one redacted JSON report,
 exit code `2`, and did not reflect or access the supplied missing bundle path. No
 live radio or RF operation was performed or required.
+
+Automated checkpoint on 2026-08-03 for the read-only release status CLI: the
+deployment script passed shell syntax validation; Release solution build completed
+with zero warnings and zero errors; the focused status suite passed 25/25; web
+tests passed 1,057/1,057; independent-watchdog tests passed 57/57; TX-HIL isolation
+tests passed 48/48; AetherRemote tests passed 70/70; and browser tests passed
+135/135. The complete checkpoint covered 1,232 .NET tests and 1,367 tests overall.
+A direct built-DLL invocation with missing setup state returned one path-redacted
+JSON report and exit code `2`. No live radio or RF operation was performed or
+required.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

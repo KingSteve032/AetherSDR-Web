@@ -8,7 +8,8 @@ namespace AetherSDR.Web.Releases;
 public enum ReleaseUpdateConsoleCommandKind
 {
     None = 0,
-    CheckOfflineBundle = 1
+    CheckOfflineBundle = 1,
+    Status = 2
 }
 
 public sealed record ReleaseUpdateConsoleCommandLine(
@@ -38,6 +39,7 @@ public static class ReleaseUpdateConsoleCommandParser
 {
     public const string CheckOfflineBundleSwitch =
         "--check-offline-release-bundle";
+    public const string StatusSwitch = "--release-status";
     public const string InstalledVersionSwitch =
         "--release-check-installed-version";
     public const string UpdateChannelSwitch =
@@ -82,6 +84,11 @@ public static class ReleaseUpdateConsoleCommandParser
                         ReleaseUpdateConsoleCommandKind.CheckOfflineBundle);
                     bundleDirectory = ValidateBundleDirectory(
                         RequireValue(arguments, ref index, argument));
+                    break;
+                case StatusSwitch:
+                    SetCommand(
+                        ref command,
+                        ReleaseUpdateConsoleCommandKind.Status);
                     break;
                 case InstalledVersionSwitch:
                     RejectDuplicate(
@@ -150,6 +157,23 @@ public static class ReleaseUpdateConsoleCommandParser
                     "Release check options require --check-offline-release-bundle.");
             }
             return ReleaseUpdateConsoleCommandLine.None(
+                [.. applicationArguments]);
+        }
+        if (command == ReleaseUpdateConsoleCommandKind.Status)
+        {
+            if (hasReleaseOption)
+            {
+                throw new InvalidOperationException(
+                    "Release check options cannot run with --release-status.");
+            }
+            return new ReleaseUpdateConsoleCommandLine(
+                command,
+                string.Empty,
+                string.Empty,
+                UpdateChannel: null,
+                string.Empty,
+                ConfigurationSchemaVersion: null,
+                ProtocolVersion: null,
                 [.. applicationArguments]);
         }
 
