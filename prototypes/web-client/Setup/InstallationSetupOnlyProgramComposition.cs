@@ -73,10 +73,14 @@ public static class InstallationSetupOnlyProgramComposition
             status.LockMode,
             status.LastCompletedStep);
 
+        builder.Services.AddSingleton(time);
         builder.Services.AddSingleton(paths);
         builder.Services.AddSingleton(
             _ => new InstallationSetupStore(paths.SetupStatePath, time));
         builder.Services.AddSingleton(security);
+        InstallationSetupOnlyHttpAdapter.ConfigureServices(
+            builder.Services,
+            security.Contract);
         builder.Services.AddSingleton(
             services => new InstallationSetupCenterApplication(
                 services.GetRequiredService<InstallationSetupStore>(),

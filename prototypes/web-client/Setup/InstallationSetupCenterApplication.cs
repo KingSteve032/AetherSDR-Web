@@ -333,10 +333,19 @@ public sealed class InstallationSetupCenterApplication : IDisposable
     public async Task RevokeAsync(
         InstallationSetupHttpRequest request,
         string sessionToken,
+        long expectedRevision,
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         RequireSecurity(request, InstallationSetupHttpOperation.SessionMutation);
+        InstallationSetupClaimSessionContext session =
+            await m_sessions.ValidateAsync(
+                sessionToken,
+                expectedRevision,
+                cancellationToken);
+        InstallationSetupState state =
+            await LoadSetupOnlyStateAsync(cancellationToken);
+        RequireSessionContextMatchesState(session, state);
         await m_sessions.RevokeAsync(sessionToken, cancellationToken);
     }
 
