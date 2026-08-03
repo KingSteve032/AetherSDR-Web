@@ -2698,6 +2698,39 @@ M8C.
 
 ### M8B — Signed GitHub releases and transactional updates
 
+Status: active. The first local-only signed-manifest verification boundary is
+implemented; production trust-store composition, publishing, download, staging,
+activation, rollback, migration execution, service control, and Admin/CLI/browser
+callers remain unimplemented.
+
+The first increment defines a strict version-1 JSON manifest for one release
+identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
+architecture, the four required package roles, SHA-256 and length metadata,
+configuration and protocol compatibility, minimum previous version, restart and
+migration declarations, bounded release-note metadata, and a versioned TX-support
+capability declaration. One canonical payload plus algorithm and key identifier is
+verified with injected ECDSA P-256/SHA-256 public-key material. Unknown or duplicate
+JSON fields, unsupported schema/algorithm/key/architecture, invalid signatures,
+unsafe or duplicate package declarations, missing or extra local packages,
+checksum/length drift, incompatible transitions, contradictory restart/migration
+metadata, and any TX-support authority grant fail closed. The typed redacted
+report omits signature, checksum, path, and key material and does not reflect
+unverified release metadata.
+
+This increment operates only on immutable copied local bytes. It adds no network,
+GitHub, polling, download, extraction, installation, active-release mutation,
+symlink switch, service control, migration, backup/restore, radio, watchdog,
+command, browser, or TX caller. Deterministic signing material exists only in the
+focused test assembly; no production private key or production trust anchor is
+committed.
+
+Automated checkpoint on 2026-08-03: Release solution build completed with zero
+warnings and zero errors; the focused signed-manifest verifier suite passed
+42/42; web tests passed 928/928; independent-watchdog tests passed 57/57; TX-HIL
+isolation tests passed 48/48; AetherRemote tests passed 70/70; and browser tests
+passed 135/135. The complete checkpoint covered 1,103 .NET tests and 1,238 tests
+overall. No live radio or RF operation was performed or required.
+
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.
 - Publish a signed release manifest containing checksums, configuration schema,

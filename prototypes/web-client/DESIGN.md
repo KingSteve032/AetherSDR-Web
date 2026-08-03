@@ -303,6 +303,52 @@ match persisted setup. Production standalone path resolution remains Linux-only.
 The gate registers no service, endpoint, account provider, radio caller, or TX
 caller and mutates no setup state.
 
+## Signed release verification boundary
+
+The first M8B increment defines a versioned signed-release manifest and a
+fail-closed verifier over local immutable inputs only. The JSON envelope contains
+one typed payload plus signature metadata. The signature covers the complete
+payload together with the declared algorithm and key identifier through one
+canonical UTF-8 serialization. Parsing rejects unknown fields, duplicate JSON
+properties, integer enum values, comments, trailing commas, excessive depth, and
+manifests larger than the bounded one-megabyte limit.
+
+The payload binds one canonical release identity and strict semantic version to
+Stable, Beta, or exact Pinned channel semantics and one supported architecture:
+`linux-x64` or `linux-arm64`. It requires exactly one package identity and safe
+relative package path for each of gateway/web, broker, AetherRemote agent, and
+station engine. Duplicate identities, paths, or roles; missing or unexpected
+roles; absolute or traversal paths; oversized declarations; local package-set
+drift; length mismatch; and SHA-256 mismatch all fail closed.
+
+Compatibility is explicit and signed. The verifier requires the local
+configuration schema and protocol version to fall inside declared ranges, the
+installed semantic version to satisfy the minimum previous-version transition,
+and the target version to be newer. Configuration-schema changes require one
+exact from/to migration declaration and a gateway restart declaration; declaring
+no migration is valid only when the local and target schemas already match. A
+host restart declaration must include every packaged service, preventing
+contradictory restart metadata.
+
+TX-support capability is descriptive only. Its versioned declaration must state
+that verification enables no transmit function, grants no eligibility, creates
+no browser TX authority, and arms no watchdog. A package may therefore be marked
+TX-support-capable without changing any production TX gate, lease, ownership,
+command, or watchdog state.
+
+The verifier accepts a caller-supplied immutable public-key set and currently
+supports only ECDSA P-256 with SHA-256 and fixed-width signatures. It reads no key
+file, embeds no production trust anchor, and contains no signer. Its typed report
+omits signature bytes, checksums, paths, and key identifiers; unverified manifest
+metadata is not reflected before signature success.
+
+This slice adds no network or GitHub client, polling loop, downloader, archive
+extraction, installer, release-directory mutation, symlink switch, service
+control, migration runner, backup/restore writer, CLI, Admin route, browser
+control, radio caller, watchdog caller, or TX caller. Production trust-store
+composition, published bundles, activation, rollback, and health checks remain
+separate reviewed M8B increments.
+
 ## Trust boundaries
 
 ### Browser
