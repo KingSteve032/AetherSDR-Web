@@ -121,6 +121,9 @@ test("browser shell exposes every setup form without inline script or style", ()
   assert.doesNotMatch(html, /<script(?![^>]*src=)[^>]*>/);
   assert.doesNotMatch(html, /style="/);
   assert.match(stylesheet, /\.setup-step/);
+  assert.match(
+    html,
+    /Issue a new bootstrap token from the local setup\s+CLI, reload this page, and reclaim the preserved workflow\./);
 });
 
 test("setup browser authority stays in cookies and request bodies only", () => {

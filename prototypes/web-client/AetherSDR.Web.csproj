@@ -39,6 +39,14 @@
              Link="tools\validate-production-tx-activation.sh"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="deploy\validate-setup-only-host.sh"
+             Link="tools\validate-setup-only-host.sh"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="deploy\SETUP-ONLY-ACCEPTANCE.md"
+             Link="tools\SETUP-ONLY-ACCEPTANCE.md"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

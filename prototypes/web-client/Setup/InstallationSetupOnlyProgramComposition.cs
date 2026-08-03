@@ -36,6 +36,15 @@ public static class InstallationSetupOnlyProgramComposition
         InstallationSetupStatusReport status = startupPlan.SetupStatus ??
             throw new InvalidOperationException(
                 "Setup-only program composition requires redacted setup status.");
+        InstallationSetupOnlyIdentity identity = startupPlan.SetupOnlyIdentity ??
+            throw new InvalidOperationException(
+                "Setup-only program composition requires the exact setup startup identity.");
+        if (identity.SetupSchemaVersion != status.SchemaVersion ||
+            identity.InitialRevision != status.Revision)
+        {
+            throw new InvalidOperationException(
+                "Setup-only program composition requires matching status and lifecycle identity.");
+        }
         string canonicalAccessUrl =
             startupPlan.SetupOnlyCanonicalAccessUrl ?? string.Empty;
         CanonicalPublicUrl parsedAccessUrl =
@@ -75,8 +84,11 @@ public static class InstallationSetupOnlyProgramComposition
 
         builder.Services.AddSingleton(time);
         builder.Services.AddSingleton(paths);
+        builder.Services.AddSingleton(identity);
         builder.Services.AddSingleton(
             _ => new InstallationSetupStore(paths.SetupStatePath, time));
+        builder.Services.AddSingleton<InstallationSetupOnlyLifecycleEvaluator>();
+        builder.Services.AddHostedService<InstallationSetupOnlyLifecycleMonitor>();
         builder.Services.AddSingleton(security);
         InstallationSetupOnlyHttpAdapter.ConfigureServices(
             builder.Services,

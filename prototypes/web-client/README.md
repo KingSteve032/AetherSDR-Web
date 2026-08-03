@@ -419,8 +419,26 @@ than HTML injection.
 The browser shell stops after preflight review. It still creates no administrator,
 account provider, package, service, proxy change, firewall rule, migration, radio
 action, watchdog action, command path, or TX action. If its process-local session
-is lost or expires, the UI fails closed and directs the operator back to the
-local setup CLI.
+is lost or expires, the UI fails closed and instructs the operator to issue a new
+bootstrap token locally, reload, and reclaim the preserved workflow.
+
+The setup-only lifecycle monitor binds the running host to the exact setup schema,
+creation timestamp, and startup revision. It accepts only monotonically increasing
+revisions for that identity. It stops the isolated host after trusted
+first-administrator completion, when the topology no longer runs the gateway here,
+or when setup state disappears, becomes malformed, is replaced, or rolls back.
+Stopping disposes the process-local browser session, and completed setup cannot
+start again in setup-only mode. Only an exact completed `InstallationRuntime`
+binding may start afterward.
+
+M8A acceptance now exercises configuration through preflight, process restart,
+old-session rejection, local recovery-token reissue, preserved-step reclaim,
+trusted administrator evidence, lifecycle shutdown, setup-only restart rejection,
+and normal-runtime transition. Published builds include
+`tools/validate-setup-only-host.sh` and `tools/SETUP-ONLY-ACCEPTANCE.md`. The smoke
+script is read-only and requires trusted HTTPS. Production administrator creation
+remains M8D work; native installer, proxy, service, package, and firewall mutation
+remains M8C work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled

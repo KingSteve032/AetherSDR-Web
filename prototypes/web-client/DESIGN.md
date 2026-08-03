@@ -260,8 +260,28 @@ adapter. Preflight is rendered with DOM text nodes rather than HTML injection.
 The shell stops after non-mutating preflight review. It creates no administrator,
 account provider, package, service, proxy, firewall rule, migration, radio path,
 watchdog path, command path, or TX caller. Process-local session loss remains
-fail closed and directs the operator back to the local setup CLI rather than
-manufacturing replacement browser authority.
+fail closed and directs the operator to issue a new bootstrap token locally,
+reload, and reclaim the preserved workflow rather than manufacturing replacement
+browser authority.
+
+The M8A lifecycle-acceptance increment binds the running setup-only host to the
+exact setup schema, creation timestamp, and startup revision. A setup-only hosted
+monitor permits only monotonically increasing revisions for that same identity.
+It stops the host when trusted first-administrator handoff completes, the selected
+topology no longer runs the gateway here, the state document disappears or is
+malformed, the setup identity is replaced, or the revision rolls backward.
+Completion therefore disposes all process-local claim authority and a completed
+installation cannot re-enter setup-only startup. Only the exact completed
+normal-runtime binding may start afterward.
+
+Automated acceptance covers the full configuration path, preflight, process
+restart, old-session rejection, local recovery-token issuance, preserved-step
+reclaim, trusted administrator evidence, lifecycle shutdown decision, setup-only
+restart rejection, and exact normal-runtime admission. The published artifact
+also carries a read-only TLS smoke script and clean Ubuntu 24.04 VM runbook. The
+smoke script sends only GET requests and never claims or mutates setup. Production
+administrator creation remains M8D work; native installer, proxy, service, and
+firewall mutation remains M8C work.
 
 The runtime-readiness increment defines the fail-closed binding required before a
 normal runtime may admit the web gateway or a remote station node. The binding

@@ -2680,6 +2680,11 @@ Implementation slices:
 
 ### M8A — Portable configuration and first-run foundation
 
+Status: implemented through the browser preflight, restart-recovery, lifecycle
+shutdown, and clean-host acceptance boundary. Production administrator creation
+remains M8D; installer, proxy, service, package, and firewall mutation remains
+M8C.
+
 - Define versioned configuration, state, secret, release, backup, and log paths
   that do not depend on the W4CAR topology.
 - Add an installation-state model and a resumable first-run setup center.

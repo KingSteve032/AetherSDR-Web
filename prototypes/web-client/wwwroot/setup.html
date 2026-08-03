@@ -109,7 +109,8 @@
         <h2>The browser claim session cannot be resumed</h2>
         <p>
           Process-local setup authority may have expired, been revoked, or been
-          lost after a restart. Continue from the local setup CLI; no token or
+          lost after a restart. Issue a new bootstrap token from the local setup
+          CLI, reload this page, and reclaim the preserved workflow. No token or
           credential has been retained by this page.
         </p>
         <button id="reload-page" class="secondary" type="button">Reload setup state</button>

@@ -51,6 +51,13 @@ public sealed class InstallationSetupOnlyProgramCompositionTests
                 InstallationSetupOnlyProgramCompositionReport>();
         InstallationSetupHttpSecurityPolicy security =
             app.Services.GetRequiredService<InstallationSetupHttpSecurityPolicy>();
+        InstallationSetupOnlyIdentity identity =
+            app.Services.GetRequiredService<InstallationSetupOnlyIdentity>();
+        InstallationSetupOnlyLifecycleEvaluator lifecycle =
+            app.Services.GetRequiredService<InstallationSetupOnlyLifecycleEvaluator>();
+        IHostedService lifecycleMonitor = app.Services
+            .GetServices<IHostedService>()
+            .Single(service => service is InstallationSetupOnlyLifecycleMonitor);
         IReadOnlyList<Endpoint> endpoints =
             ((IEndpointRouteBuilder)app).DataSources
                 .SelectMany(source => source.Endpoints)
@@ -59,6 +66,9 @@ public sealed class InstallationSetupOnlyProgramCompositionTests
         Assert.NotNull(application);
         Assert.Equal(report, resolvedReport);
         Assert.Equal(CanonicalUrl, security.Contract.CanonicalOrigin);
+        Assert.Equal(plan.SetupOnlyIdentity, identity);
+        Assert.NotNull(lifecycle);
+        Assert.IsType<InstallationSetupOnlyLifecycleMonitor>(lifecycleMonitor);
         Assert.Empty(endpoints);
         Assert.Equal(before, await File.ReadAllTextAsync(paths.SetupStatePath));
         Assert.Equal(initial, await store.LoadAsync());
