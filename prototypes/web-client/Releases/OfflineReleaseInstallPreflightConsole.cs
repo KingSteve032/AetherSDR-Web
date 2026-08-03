@@ -303,6 +303,11 @@ public sealed record OfflineReleaseInstallPreflightResult(
     bool StatusStable)
 {
     internal VerifiedReleaseManifestSnapshot? VerifiedManifest { get; init; }
+    internal VerifiedOfflineReleaseBundleSnapshot? VerifiedBundle { get; init; }
+    internal string PinnedReleaseIdentity { get; init; } = string.Empty;
+    internal string InstalledVersion { get; init; } = string.Empty;
+    internal int? ConfigurationSchemaVersion { get; init; }
+    internal int? ProtocolVersion { get; init; }
 
     internal static OfflineReleaseInstallPreflightResult Failure(
         OfflineReleaseInstallPreflightFailureCode failureCode,
@@ -335,7 +340,7 @@ public sealed record OfflineReleaseInstallPreflightResult(
             statusStable);
 
     internal static OfflineReleaseInstallPreflightResult Success(
-        string installedReleaseIdentity,
+        OfflineReleaseInstallPreflightCommandLine commandLine,
         ReleaseStatusReadResult status,
         LocalOfflineReleaseBundleVerificationResult bundleResult)
     {
@@ -349,7 +354,7 @@ public sealed record OfflineReleaseInstallPreflightResult(
             BundleFailureCode: null,
             ManifestFailureCode: null,
             status.UpdateChannel,
-            installedReleaseIdentity,
+            commandLine.InstalledReleaseIdentity,
             bundle.Verification!.ReleaseIdentity,
             bundle.Verification.Version,
             bundle.Verification.Architecture,
@@ -361,7 +366,12 @@ public sealed record OfflineReleaseInstallPreflightResult(
             TargetAbsentFromInventory: true,
             StatusStable: true)
         {
-            VerifiedManifest = bundleResult.VerifiedManifest
+            VerifiedManifest = bundleResult.VerifiedManifest,
+            VerifiedBundle = bundleResult.VerifiedBundle,
+            PinnedReleaseIdentity = status.PinnedReleaseIdentity,
+            InstalledVersion = commandLine.InstalledVersion,
+            ConfigurationSchemaVersion = commandLine.ConfigurationSchemaVersion,
+            ProtocolVersion = commandLine.ProtocolVersion
         };
     }
 }
@@ -564,7 +574,7 @@ public sealed class OfflineReleaseInstallPreflightPlanner
         }
 
         return OfflineReleaseInstallPreflightResult.Success(
-            commandLine.InstalledReleaseIdentity,
+            commandLine,
             secondStatus,
             bundleResult);
     }

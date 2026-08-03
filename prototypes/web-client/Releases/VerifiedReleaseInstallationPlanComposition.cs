@@ -10,7 +10,8 @@ public enum VerifiedReleaseInstallationPlanFailureCode
     VerifiedManifestUnavailable = 2,
     PreflightManifestMismatch = 3,
     InvalidInstallationPaths = 4,
-    InvalidPackagePlan = 5
+    InvalidPackagePlan = 5,
+    VerifiedBundleUnavailable = 6
 }
 
 public sealed record VerifiedReleaseInstallationPlanCompositionResult(
@@ -142,6 +143,7 @@ internal sealed class VerifiedReleaseInstallationPlan
 {
     private readonly ReadOnlyCollection<VerifiedReleaseInstallationPackagePlan>
         m_packages;
+    private readonly byte[] m_manifestSha256;
 
     internal VerifiedReleaseInstallationPlan(
         long setupRevision,
@@ -149,6 +151,12 @@ internal sealed class VerifiedReleaseInstallationPlan
         string targetReleaseIdentity,
         string targetVersion,
         ReleaseManifestArchitecture architecture,
+        InstallationUpdateChannel updateChannel,
+        string pinnedReleaseIdentity,
+        bool installTransmitSupport,
+        string bundleDirectory,
+        long manifestLength,
+        ReadOnlySpan<byte> manifestSha256,
         string releaseRootPath,
         string deploymentRootPath,
         string targetReleasePath,
@@ -171,7 +179,20 @@ internal sealed class VerifiedReleaseInstallationPlan
         InstalledReleaseIdentity = installedReleaseIdentity;
         TargetReleaseIdentity = targetReleaseIdentity;
         TargetVersion = targetVersion;
+        if (manifestLength is < 1 or > SignedReleaseManifestJson.MaximumManifestBytes ||
+            manifestSha256.Length != 32)
+        {
+            throw new ArgumentException(
+                "A verified installation plan requires one bounded manifest digest.");
+        }
+
         Architecture = architecture;
+        UpdateChannel = updateChannel;
+        PinnedReleaseIdentity = pinnedReleaseIdentity;
+        InstallTransmitSupport = installTransmitSupport;
+        BundleDirectory = bundleDirectory;
+        ManifestLength = manifestLength;
+        m_manifestSha256 = manifestSha256.ToArray();
         ReleaseRootPath = releaseRootPath;
         DeploymentRootPath = deploymentRootPath;
         TargetReleasePath = targetReleasePath;
@@ -198,6 +219,12 @@ internal sealed class VerifiedReleaseInstallationPlan
     internal string TargetReleaseIdentity { get; }
     internal string TargetVersion { get; }
     internal ReleaseManifestArchitecture Architecture { get; }
+    internal InstallationUpdateChannel UpdateChannel { get; }
+    internal string PinnedReleaseIdentity { get; }
+    internal bool InstallTransmitSupport { get; }
+    internal string BundleDirectory { get; }
+    internal long ManifestLength { get; }
+    internal ReadOnlySpan<byte> ManifestSha256 => m_manifestSha256;
     internal string ReleaseRootPath { get; }
     internal string DeploymentRootPath { get; }
     internal string TargetReleasePath { get; }
@@ -304,6 +331,23 @@ public sealed class VerifiedReleaseInstallationPlanComposer
                 preflight);
         }
 
+        VerifiedOfflineReleaseBundleSnapshot? bundle = preflight.VerifiedBundle;
+        if (bundle is null ||
+            bundle.ManifestLength is < 1 or >
+                SignedReleaseManifestJson.MaximumManifestBytes ||
+            bundle.ManifestSha256.Length != 32 ||
+            !IsCanonicalAbsolutePath(bundle.BundleDirectory) ||
+            preflight.UpdateChannel is null ||
+            preflight.ConfigurationSchemaVersion is null or < 1 ||
+            preflight.ProtocolVersion is null or < 1 ||
+            string.IsNullOrEmpty(preflight.InstalledVersion))
+        {
+            return VerifiedReleaseInstallationPlanCompositionResult.Failure(
+                VerifiedReleaseInstallationPlanFailureCode.VerifiedBundleUnavailable,
+                "The successful preflight does not retain one canonical verified bundle snapshot.",
+                preflight);
+        }
+
         string releaseRootPath;
         string deploymentRootPath;
         string targetReleasePath;
@@ -354,6 +398,12 @@ public sealed class VerifiedReleaseInstallationPlanComposer
             manifest.ReleaseIdentity,
             manifest.Version,
             manifest.Architecture,
+            preflight.UpdateChannel.Value,
+            preflight.PinnedReleaseIdentity,
+            preflight.SetupInstallTransmitSupport,
+            bundle.BundleDirectory,
+            bundle.ManifestLength,
+            bundle.ManifestSha256,
             releaseRootPath,
             deploymentRootPath,
             targetReleasePath,
@@ -485,6 +535,31 @@ public sealed class VerifiedReleaseInstallationPlanComposer
             .OrderBy(plan => plan.Role)
             .ToArray();
         return true;
+    }
+
+    private static bool IsCanonicalAbsolutePath(string value)
+    {
+        if (string.IsNullOrEmpty(value) ||
+            !Path.IsPathFullyQualified(value))
+        {
+            return false;
+        }
+
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(value),
+                value,
+                OperatingSystem.IsWindows()
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal);
+        }
+        catch (Exception exception)
+            when (exception is ArgumentException or NotSupportedException or
+                PathTooLongException)
+        {
+            return false;
+        }
     }
 
     private static bool IsCanonicalReleaseIdentity(string value)

@@ -609,9 +609,27 @@ extraction, file writes, staging execution, installation, activation, rollback,
 migration execution, service control, Admin/browser, radio, watchdog, command,
 lease, and TX callers remain false.
 
-Publishing, packaged bundle production, network download, staging, extraction,
-installation, activation, rollback, migrations, service health verification,
-Admin/browser workflows, and all update mutation callers remain later M8B work.
+The eighth M8B increment adds the first narrowly scoped mutation boundary:
+`VerifiedReleaseStagingService`. It has no public execution method and no CLI,
+Admin, browser, startup, timer, or background caller. A future reviewed internal
+transaction may provide only the verified plan retained above. Before writing, the
+service rereads completed setup, release inventory, and `current`; requires the
+same setup revision, channel, Pinned identity, TX-support policy, active release,
+and absent target; and requires regular non-symlink deployment/release roots.
+
+The service copies exactly `release-manifest.json` plus the four planned package
+files into a new owner-private directory under `.release-staging`. It rereads the
+exact immutable source layout, streams every file through its retained SHA-256 and
+length, flushes the destination, makes files and directories owner-only and
+non-writable, rehashes the frozen tree, and rereads status before returning an
+internal staged-artifact handle. Any source/layout/status drift removes the
+partial tree. The target release path is never created, `current` is never
+changed, archives are not extracted, and no package is installed or activated.
+
+Publishing, packaged bundle production, network download, archive extraction,
+immutable-directory publication, installation, activation, rollback, migrations,
+service health verification, Admin/browser workflows, and all operational update
+callers remain later M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled
@@ -756,6 +774,48 @@ overrides are enforced directly by the guarded script:
 `releaseInstallPreflightCommandCallerRegistered=false`,
 `releaseInstallPreflightLeaseCallerRegistered=false`,
 `releaseInstallPreflightTxCallerRegistered=false`,
+`releaseInstallationPlanComposerRegistered=true`,
+`releaseInstallationPlanVerifiedManifestInputRegistered=true`,
+`releaseInstallationPlanPathCompositionRegistered=true`,
+`releaseInstallationPlanNetworkDownloadRegistered=false`,
+`releaseInstallationPlanArchiveExtractionRegistered=false`,
+`releaseInstallationPlanFileWriteRegistered=false`,
+`releaseInstallationPlanStagingExecutionRegistered=false`,
+`releaseInstallationPlanInstallationExecutionRegistered=false`,
+`releaseInstallationPlanActivationRegistered=false`,
+`releaseInstallationPlanRollbackRegistered=false`,
+`releaseInstallationPlanMigrationExecutionRegistered=false`,
+`releaseInstallationPlanServiceControlRegistered=false`,
+`releaseInstallationPlanAdminCallerRegistered=false`,
+`releaseInstallationPlanBrowserCallerRegistered=false`,
+`releaseInstallationPlanRadioCallerRegistered=false`,
+`releaseInstallationPlanWatchdogCallerRegistered=false`,
+`releaseInstallationPlanCommandCallerRegistered=false`,
+`releaseInstallationPlanLeaseCallerRegistered=false`,
+`releaseInstallationPlanTxCallerRegistered=false`,
+`releaseStagingServiceRegistered=true`,
+`releaseStagingStatusRevalidationRegistered=true`,
+`releaseStagingVerifiedBundleReadRegistered=true`,
+`releaseStagingFileWriteRegistered=true`,
+`releaseStagingExecutionRegistered=true`,
+`releaseStagingImmutableFreezeRegistered=true`,
+`releaseStagingCleanupRegistered=true`,
+`releaseStagingNetworkDownloadRegistered=false`,
+`releaseStagingArchiveExtractionRegistered=false`,
+`releaseStagingInstallationExecutionRegistered=false`,
+`releaseStagingActivationRegistered=false`,
+`releaseStagingCurrentPointerMutationRegistered=false`,
+`releaseStagingRollbackRegistered=false`,
+`releaseStagingMigrationExecutionRegistered=false`,
+`releaseStagingServiceControlRegistered=false`,
+`releaseStagingCliCallerRegistered=false`,
+`releaseStagingAdminCallerRegistered=false`,
+`releaseStagingBrowserCallerRegistered=false`,
+`releaseStagingRadioCallerRegistered=false`,
+`releaseStagingWatchdogCallerRegistered=false`,
+`releaseStagingCommandCallerRegistered=false`,
+`releaseStagingLeaseCallerRegistered=false`,
+`releaseStagingTxCallerRegistered=false`,
 `txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,
 `txBrowserIntentProtocolVersion=2`,
 `txBrowserIntentValidationRegistered=true`,
