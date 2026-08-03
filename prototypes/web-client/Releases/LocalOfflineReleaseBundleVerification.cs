@@ -55,18 +55,44 @@ public sealed record LocalOfflineReleaseBundleVerificationReport(
             verification);
 }
 
+internal sealed class VerifiedOfflineReleaseBundleSnapshot
+{
+    private readonly byte[] m_manifestSha256;
+
+    internal VerifiedOfflineReleaseBundleSnapshot(
+        string bundleDirectory,
+        ReadOnlySpan<byte> manifest)
+    {
+        if (string.IsNullOrEmpty(bundleDirectory) || manifest.IsEmpty)
+        {
+            throw new ArgumentException(
+                "A verified offline bundle snapshot requires its canonical directory and manifest bytes.");
+        }
+
+        BundleDirectory = bundleDirectory;
+        ManifestLength = manifest.Length;
+        m_manifestSha256 = SHA256.HashData(manifest);
+    }
+
+    internal string BundleDirectory { get; }
+    internal long ManifestLength { get; }
+    internal ReadOnlySpan<byte> ManifestSha256 => m_manifestSha256;
+}
+
 internal sealed record LocalOfflineReleaseBundleVerificationResult(
     LocalOfflineReleaseBundleVerificationReport Report,
-    VerifiedReleaseManifestSnapshot? VerifiedManifest)
+    VerifiedReleaseManifestSnapshot? VerifiedManifest,
+    VerifiedOfflineReleaseBundleSnapshot? VerifiedBundle)
 {
     internal static LocalOfflineReleaseBundleVerificationResult Failure(
         LocalOfflineReleaseBundleVerificationReport report) =>
-        new(report, VerifiedManifest: null);
+        new(report, VerifiedManifest: null, VerifiedBundle: null);
 
     internal static LocalOfflineReleaseBundleVerificationResult Success(
         LocalOfflineReleaseBundleVerificationReport report,
-        VerifiedReleaseManifestSnapshot verifiedManifest) =>
-        new(report, verifiedManifest);
+        VerifiedReleaseManifestSnapshot verifiedManifest,
+        VerifiedOfflineReleaseBundleSnapshot verifiedBundle) =>
+        new(report, verifiedManifest, verifiedBundle);
 }
 
 public sealed record LocalOfflineReleaseBundleVerificationDiagnostics(
@@ -187,7 +213,10 @@ public sealed class LocalOfflineReleaseBundleVerificationService
                     bundle.Packages.Length,
                     bundle.TotalPackageBytes,
                     verification.Report),
-                verification.VerifiedManifest);
+                verification.VerifiedManifest,
+                new VerifiedOfflineReleaseBundleSnapshot(
+                    bundle.RootPath,
+                    bundle.Manifest));
         }
         catch (BundleReadException exception)
         {
@@ -348,7 +377,11 @@ public sealed class LocalOfflineReleaseBundleVerificationService
         }
 
         ValidateDirectory(root);
-        return new BundleSnapshot(manifest, packages, totalPackageBytes);
+        return new BundleSnapshot(
+            rootPath,
+            manifest,
+            packages,
+            totalPackageBytes);
     }
 
     private static string ValidateBundlePath(string? value)
@@ -551,6 +584,7 @@ public sealed class LocalOfflineReleaseBundleVerificationService
     private sealed record BundleFile(string RelativePath, FileInfo File);
 
     private sealed record BundleSnapshot(
+        string RootPath,
         byte[] Manifest,
         LocalImmutableReleasePackage[] Packages,
         long TotalPackageBytes);

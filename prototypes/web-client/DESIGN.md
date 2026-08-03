@@ -492,6 +492,32 @@ read or write and has no download, extraction, staging execution, installation,
 activation, rollback, migration execution, service-control, Admin, browser,
 radio, watchdog, command, lease, or TX method.
 
+The eighth M8B increment introduces a staging-only mutation service behind that
+internal plan. `VerifiedReleaseStagingService` exposes diagnostics publicly but no
+public execution method, route, CLI, hosted service, timer, or background loop.
+Its internal operation accepts only the verified plan. It rereads release status
+before any write and requires the exact completed setup revision, channel/Pinned
+selection, TX-support installation policy, active release identity, and absent
+target retained by the plan.
+
+The writer requires regular non-symlink deployment and release roots, creates or
+validates one owner-private `.release-staging` sibling, and creates a unique
+owner-private transaction directory. It re-enumerates the exact immutable bundle
+and permits only the retained manifest plus four package paths. Each source file
+is streamed once into a new destination while checking length and SHA-256 against
+the retained verified digests, flushing to storage, and revalidating source
+metadata. It then rechecks the complete source layout, freezes the destination
+files and directories owner-only/non-writable, rehashes the frozen tree, and
+rereads release status. Failure, cancellation, target appearance, or status drift
+removes the transaction tree when cleanup remains safe.
+
+A successful result carries the private staging path only in an internal artifact.
+The public report contains no path. The release inventory target is not created,
+`current` is not read as authority beyond status revalidation and is never
+mutated, archives are not extracted, and no install, activation, rollback,
+migration execution, service control, Admin/browser, radio, watchdog, command,
+lease, or TX caller exists.
+
 ## Trust boundaries
 
 ### Browser

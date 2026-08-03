@@ -2701,10 +2701,10 @@ M8C.
 Status: active. The local-only signed-manifest verifier, normal-runtime public-key
 trust composition, immutable local offline-directory bundle reader, read-only
 offline bundle CLI `check`, read-only local release `status`, read-only offline
-install preflight, and verified installation-plan composition are implemented;
-publishing, network download, extraction, staging execution, installation,
-activation, rollback, migration execution, service control, and Admin/browser
-callers remain unimplemented.
+install preflight, verified installation-plan composition, and private verified
+staging execution are implemented; publishing, network download, extraction,
+immutable-directory publication, installation, activation, rollback, migration
+execution, service control, and Admin/browser callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -2808,6 +2808,24 @@ no network, extraction, file write, staging execution, installation, activation,
 rollback, migration execution, service-control, Admin, browser, radio, watchdog,
 command, lease, or TX caller.
 
+The eighth increment adds `VerifiedReleaseStagingService`, the first mutation
+boundary. It is registered for diagnostics but exposes no public execution method
+and has no CLI, Admin, browser, hosted-service, timer, startup, radio, watchdog,
+command, lease, or TX caller. Its internal operation accepts only the verified
+plan, rereads completed setup/inventory/`current`, and requires the same revision,
+channel/Pinned selection, TX-support policy, active release, and absent target.
+
+The service creates one unique owner-private transaction directory under the
+deployment sibling `.release-staging`, re-enumerates exactly the immutable manifest
+and four package files, streams each into a new destination while checking retained
+length and SHA-256 values, flushes them, revalidates source layout, freezes the
+staged tree owner-only/non-writable, rehashes it, and rereads release status. Any
+copy, integrity, layout, cancellation, target, or status failure removes the
+partial tree when cleanup remains safe. Success returns the staging path only in
+an internal artifact. It does not create the target release directory, switch
+`current`, extract archives, install, activate, roll back, execute migrations,
+control services, or touch radio/TX state.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -2868,6 +2886,17 @@ completed with zero warnings and zero errors; the focused composition suite pass
 TX-HIL isolation tests passed 48/48; AetherRemote tests passed 70/70; and browser
 tests passed 135/135. The complete checkpoint covered 1,296 .NET tests and 1,431
 tests overall. No live radio or RF operation was performed or required.
+
+Automated checkpoint on 2026-08-03 for private verified release staging: the
+deployment script passed shell syntax validation; Release solution build completed
+with zero warnings and zero errors; the focused staging suite passed 27/27; web
+tests passed 1,149/1,149; independent-watchdog tests passed 57/57; TX-HIL isolation
+tests passed 48/48; AetherRemote tests passed 70/70; and browser tests passed
+135/135. The complete checkpoint covered 1,324 .NET tests and 1,459 tests overall.
+A live development health probe confirmed staging read/write/freeze/cleanup
+registration while network, extraction, publication, installation, activation,
+rollback, migration, service, CLI/Admin/browser, radio, watchdog, command, lease,
+and TX callers remained absent. No live radio or RF operation was performed.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

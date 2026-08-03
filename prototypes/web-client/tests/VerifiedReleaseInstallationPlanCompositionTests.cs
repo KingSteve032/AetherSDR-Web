@@ -156,6 +156,12 @@ public sealed class VerifiedReleaseInstallationPlanCompositionTests
         Assert.Equal(
             Path.GetDirectoryName(paths.ReleaseDirectory),
             plan.DeploymentRootPath);
+        Assert.Equal(Path.GetFullPath("bundle"), plan.BundleDirectory);
+        Assert.Equal(1, plan.ManifestLength);
+        Assert.Equal(SHA256.HashData([1]), plan.ManifestSha256.ToArray());
+        Assert.Equal(InstallationUpdateChannel.Stable, plan.UpdateChannel);
+        Assert.Equal(string.Empty, plan.PinnedReleaseIdentity);
+        Assert.False(plan.InstallTransmitSupport);
         Assert.Equal(
             [
                 ReleasePackageRole.GatewayWeb,
@@ -281,6 +287,24 @@ public sealed class VerifiedReleaseInstallationPlanCompositionTests
         Assert.False(result.Succeeded);
         Assert.Equal(
             VerifiedReleaseInstallationPlanFailureCode.VerifiedManifestUnavailable,
+            result.FailureCode);
+    }
+
+    [Fact]
+    public void SuccessfulSummaryWithoutVerifiedBundleFailsClosed()
+    {
+        SignedReleaseManifestPayload payload = CreatePayload(CreatePackages());
+        OfflineReleaseInstallPreflightResult preflight =
+            SuccessfulPreflight(payload) with { VerifiedBundle = null };
+
+        VerifiedReleaseInstallationPlanCompositionResult result =
+            new VerifiedReleaseInstallationPlanComposer().Compose(
+                preflight,
+                CreatePaths());
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(
+            VerifiedReleaseInstallationPlanFailureCode.VerifiedBundleUnavailable,
             result.FailureCode);
     }
 
@@ -442,7 +466,14 @@ public sealed class VerifiedReleaseInstallationPlanCompositionTests
             TargetAbsentFromInventory: true,
             StatusStable: true)
         {
-            VerifiedManifest = manifest
+            VerifiedManifest = manifest,
+            VerifiedBundle = new VerifiedOfflineReleaseBundleSnapshot(
+                Path.GetFullPath("bundle"),
+                [1]),
+            PinnedReleaseIdentity = string.Empty,
+            InstalledVersion = "8.1.0",
+            ConfigurationSchemaVersion = 1,
+            ProtocolVersion = 2
         };
     }
 

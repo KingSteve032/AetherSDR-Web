@@ -689,7 +689,10 @@ public sealed class OfflineReleaseInstallPreflightConsoleTests
         };
         return LocalOfflineReleaseBundleVerificationResult.Success(
             report,
-            VerifiedReleaseManifestSnapshot.Create(payload));
+            VerifiedReleaseManifestSnapshot.Create(payload),
+            new VerifiedOfflineReleaseBundleSnapshot(
+                Path.GetFullPath("bundle"),
+                [1]));
     }
 
     private static SignedReleasePackage Package(

@@ -499,6 +499,7 @@ builder.Services.AddSingleton<ReleaseStatusConsole>();
 builder.Services.AddSingleton<OfflineReleaseInstallPreflightPlanner>();
 builder.Services.AddSingleton<OfflineReleaseInstallPreflightConsole>();
 builder.Services.AddSingleton<VerifiedReleaseInstallationPlanComposer>();
+builder.Services.AddSingleton<VerifiedReleaseStagingService>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
 builder.Services.AddSingleton<StationTxCommandEnvelopeCoordinator>();
@@ -600,6 +601,8 @@ OfflineReleaseInstallPreflightConsole releaseInstallPreflightConsole =
     app.Services.GetRequiredService<OfflineReleaseInstallPreflightConsole>();
 VerifiedReleaseInstallationPlanComposer releaseInstallationPlanComposer =
     app.Services.GetRequiredService<VerifiedReleaseInstallationPlanComposer>();
+VerifiedReleaseStagingService verifiedReleaseStagingService =
+    app.Services.GetRequiredService<VerifiedReleaseStagingService>();
 StationTxIndependentWatchdogRegistry independentTxWatchdogRegistry =
     app.Services.GetRequiredService<StationTxIndependentWatchdogRegistry>();
 StationTxCommandTrustRegistry stationTxCommandTrustRegistry =
@@ -663,6 +666,8 @@ app.MapGet(
                 releaseInstallPreflight = releaseInstallPreflightConsole.Snapshot;
             VerifiedReleaseInstallationPlanDiagnostics releaseInstallationPlan =
                 releaseInstallationPlanComposer.Snapshot;
+            VerifiedReleaseStagingDiagnostics releaseStaging =
+                verifiedReleaseStagingService.Snapshot;
             StationTxIndependentWatchdogAggregate watchdog =
                 independentTxWatchdogRegistry.Snapshot;
             StationTxCommandTrustDiagnostics commandTrust =
@@ -860,6 +865,51 @@ app.MapGet(
                     releaseInstallationPlan.LeaseCallerRegistered,
                 releaseInstallationPlanTxCallerRegistered =
                     releaseInstallationPlan.TxCallerRegistered,
+                releaseStagingServiceRegistered = releaseStaging.Registered,
+                releaseStagingStatusRevalidationRegistered =
+                    releaseStaging.StatusRevalidationRegistered,
+                releaseStagingVerifiedBundleReadRegistered =
+                    releaseStaging.VerifiedBundleReadRegistered,
+                releaseStagingFileWriteRegistered =
+                    releaseStaging.FileWriteRegistered,
+                releaseStagingExecutionRegistered =
+                    releaseStaging.StagingExecutionRegistered,
+                releaseStagingImmutableFreezeRegistered =
+                    releaseStaging.ImmutableFreezeRegistered,
+                releaseStagingCleanupRegistered =
+                    releaseStaging.CleanupRegistered,
+                releaseStagingNetworkDownloadRegistered =
+                    releaseStaging.NetworkDownloadRegistered,
+                releaseStagingArchiveExtractionRegistered =
+                    releaseStaging.ArchiveExtractionRegistered,
+                releaseStagingInstallationExecutionRegistered =
+                    releaseStaging.InstallationExecutionRegistered,
+                releaseStagingActivationRegistered =
+                    releaseStaging.ActivationRegistered,
+                releaseStagingCurrentPointerMutationRegistered =
+                    releaseStaging.CurrentPointerMutationRegistered,
+                releaseStagingRollbackRegistered =
+                    releaseStaging.RollbackRegistered,
+                releaseStagingMigrationExecutionRegistered =
+                    releaseStaging.MigrationExecutionRegistered,
+                releaseStagingServiceControlRegistered =
+                    releaseStaging.ServiceControlRegistered,
+                releaseStagingCliCallerRegistered =
+                    releaseStaging.CliCallerRegistered,
+                releaseStagingAdminCallerRegistered =
+                    releaseStaging.AdminCallerRegistered,
+                releaseStagingBrowserCallerRegistered =
+                    releaseStaging.BrowserCallerRegistered,
+                releaseStagingRadioCallerRegistered =
+                    releaseStaging.RadioCallerRegistered,
+                releaseStagingWatchdogCallerRegistered =
+                    releaseStaging.WatchdogCallerRegistered,
+                releaseStagingCommandCallerRegistered =
+                    releaseStaging.CommandCallerRegistered,
+                releaseStagingLeaseCallerRegistered =
+                    releaseStaging.LeaseCallerRegistered,
+                releaseStagingTxCallerRegistered =
+                    releaseStaging.TxCallerRegistered,
                 radioMode = radioSettings.Mode,
                 transmitEnabled =
                     stationTxProductionActivationBinding.BindingApplied,
