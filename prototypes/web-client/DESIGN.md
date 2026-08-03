@@ -448,6 +448,31 @@ durable previous-release pointer has not been implemented. The command owns no
 network, extraction, staging, installation, activation, rollback, migration,
 service-control, Admin, browser, radio, watchdog, command, lease, or TX method.
 
+The sixth M8B increment adds a separate read-only offline-install preflight. Its
+owned parser requires one canonical immutable bundle path, the exact active release
+identity, installed semantic version, configuration-schema version, and protocol
+version. Completed setup remains authoritative for Stable/Beta/Pinned selection,
+Pinned identity, installation paths, and whether TX-support packages belong on the
+host. Process architecture remains authoritative for `linux-x64` or `linux-arm64`.
+
+Preflight first requires a complete setup lock and a validated `current` pointer
+whose identity exactly matches the caller's installed identity. It then submits
+the bundle to the same production-trust-backed immutable reader. Signature,
+inventory, hashes, architecture, channel, version transition, schema, and protocol
+compatibility therefore remain one shared boundary. A verified target is rejected
+when its identity equals the active release, already exists in the immutable
+inventory, or its descriptive TX-support capability differs from completed setup
+policy.
+
+After bundle verification, preflight reads setup, inventory, and `current` again.
+Any setup revision, policy, inventory, or pointer change invalidates the result.
+Success means only that a separately reviewed future transaction may consider the
+bundle; it grants no installation or activation authority. The versioned report
+contains no paths, signatures, checksums, key IDs, or package names. The command
+owns no network, download, extraction, write, staging, installation, activation,
+rollback, migration execution, service-control, Admin, browser, radio, watchdog,
+command, lease, or TX method.
+
 ## Trust boundaries
 
 ### Browser
