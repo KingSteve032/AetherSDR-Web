@@ -44,8 +44,48 @@ For GUI and receive-path development, the prototype includes an isolated
 `FlexRx` adapter that reads FFT, waterfall, meter, and audio packets directly
 from a selected radio and republishes them in the experimental browser frames.
 Supported receive-only controls are mapped back to SmartSDR commands. It is not
-the final gateway architecture, and no transmit command exists. It will be
-replaced by the AetherD stream boundary as that RFC lands.
+the final gateway architecture. Production transmit remains subject to the M7
+station-local ownership, command, emergency-unkey, and independent-watchdog
+boundaries.
+
+## Standalone setup foundation
+
+M8A introduces a versioned setup model before adding a network setup surface.
+The setup model keeps these concerns explicit and separately testable:
+
+- one canonical public AetherSDR URL, normalized to an HTTPS authority with no
+  user information, path, query, or fragment;
+- an installation topology profile that distinguishes personal, local-gateway,
+  remote-gateway, hybrid-gateway, and remote-station-node roles;
+- one `InstallationPaths` configuration object covering configuration, state,
+  secrets, immutable releases, backups, and logs;
+- a resumable, revisioned setup document whose completed-step marker never
+  advances unless the data required by that step validates;
+- an independent first-run lock that can be re-issued without discarding setup
+  progress and becomes complete only after the first administrator exists; and
+- a short-lived random bootstrap token revealed only to the local process. Only
+  its SHA-256 digest and expiry are persisted, and successful claim clears all
+  token material atomically.
+
+The supported production defaults are `/etc/aethersdr`,
+`/var/lib/aethersdr`, `/var/lib/aethersdr/secrets`,
+`/opt/aethersdr/releases`, `/var/backups/aethersdr`, and
+`/var/log/aethersdr`. Development uses one ignored `.aethersdr` tree under the
+content root. Every configured override must be absolute and every directory
+role must remain distinct.
+
+Setup state lives under the resolved state directory at
+`setup/installation.json`. Writes use a complete temporary document, durable
+flush, and atomic replacement. On Unix, the setup directory and state file are
+required to remain mode `0700` and `0600`. Unknown fields, unsupported schema
+versions, stale revisions, non-canonical URLs, invalid topology values, and
+inconsistent lock state fail closed.
+
+This first foundation slice does not add an anonymous setup endpoint, local
+account provider, installer mutation, Docker support, or any executable TX
+surface. Runtime setup-only startup, claim-session protection, preflight, and
+administrator creation are separate reviewed increments built on this state
+boundary.
 
 ## Trust boundaries
 
