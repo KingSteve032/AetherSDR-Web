@@ -335,6 +335,8 @@ builder.Services.AddSingleton<StationTxIndependentWatchdogRegistry>();
 builder.Services.AddSingleton<ReleaseManifestTrustRegistry>();
 builder.Services.AddSingleton<SignedReleaseManifestVerifier>();
 builder.Services.AddSingleton<SignedReleaseManifestVerificationService>();
+builder.Services.AddSingleton<
+    LocalOfflineReleaseBundleVerificationService>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
 builder.Services.AddSingleton<StationTxCommandEnvelopeCoordinator>();
@@ -425,6 +427,9 @@ ReleaseManifestTrustRegistry releaseManifestTrustRegistry =
     app.Services.GetRequiredService<ReleaseManifestTrustRegistry>();
 SignedReleaseManifestVerificationService releaseManifestVerificationService =
     app.Services.GetRequiredService<SignedReleaseManifestVerificationService>();
+LocalOfflineReleaseBundleVerificationService offlineReleaseBundleService =
+    app.Services.GetRequiredService<
+        LocalOfflineReleaseBundleVerificationService>();
 StationTxIndependentWatchdogRegistry independentTxWatchdogRegistry =
     app.Services.GetRequiredService<StationTxIndependentWatchdogRegistry>();
 StationTxCommandTrustRegistry stationTxCommandTrustRegistry =
@@ -478,6 +483,8 @@ app.MapGet(
                 releaseManifestTrustRegistry.Snapshot;
             SignedReleaseManifestVerificationServiceDiagnostics releaseVerification =
                 releaseManifestVerificationService.Snapshot;
+            LocalOfflineReleaseBundleVerificationDiagnostics offlineBundle =
+                offlineReleaseBundleService.Snapshot;
             StationTxIndependentWatchdogAggregate watchdog =
                 independentTxWatchdogRegistry.Snapshot;
             StationTxCommandTrustDiagnostics commandTrust =
@@ -542,6 +549,24 @@ app.MapGet(
                     releaseVerification.InstallationRegistered,
                 releaseManifestActivationRegistered =
                     releaseVerification.ActivationRegistered,
+                releaseOfflineBundleReaderRegistered =
+                    offlineBundle.Registered,
+                releaseOfflineBundleDirectoryReadRegistered =
+                    offlineBundle.DirectoryReadRegistered,
+                releaseOfflineBundleArchiveExtractionRegistered =
+                    offlineBundle.ArchiveExtractionRegistered,
+                releaseOfflineBundleNetworkDownloadRegistered =
+                    offlineBundle.NetworkDownloadRegistered,
+                releaseOfflineBundleInstallationRegistered =
+                    offlineBundle.InstallationRegistered,
+                releaseOfflineBundleActivationRegistered =
+                    offlineBundle.ActivationRegistered,
+                releaseOfflineBundleCliCallerRegistered =
+                    offlineBundle.CliCallerRegistered,
+                releaseOfflineBundleAdminCallerRegistered =
+                    offlineBundle.AdminCallerRegistered,
+                releaseOfflineBundleBrowserCallerRegistered =
+                    offlineBundle.BrowserCallerRegistered,
                 radioMode = radioSettings.Mode,
                 transmitEnabled =
                     stationTxProductionActivationBinding.BindingApplied,

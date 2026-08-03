@@ -2698,10 +2698,11 @@ M8C.
 
 ### M8B — Signed GitHub releases and transactional updates
 
-Status: active. The local-only signed-manifest verifier and the normal-runtime
-public-key trust composition are implemented; publishing, download, staging,
-activation, rollback, migration execution, service control, and Admin/CLI/browser
-callers remain unimplemented.
+Status: active. The local-only signed-manifest verifier, normal-runtime public-key
+trust composition, and immutable local offline-directory bundle reader are
+implemented; publishing, network download, extraction, staging, activation,
+rollback, migration execution, service control, and Admin/CLI/browser callers
+remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -2737,6 +2738,19 @@ migration, backup, radio, watchdog, command, lease, browser, or TX method. Healt
 reports local verification readiness and explicitly reports those update mutation
 surfaces as unregistered.
 
+The third increment adds a typed reader for one pre-existing local offline bundle
+directory containing exactly `release-manifest.json` and four package files. It
+requires one canonical absolute root, manually traverses no more than sixteen
+regular directories, rejects symlinks, reparse points, unsafe paths, empty
+subdirectories, missing or extra files, and empty or oversized inputs, and requires
+all Unix bundle directories and files to have no write bits. The manifest is
+copied under its one-megabyte bound; package files are streamed into immutable
+length and SHA-256 snapshots and rechecked for metadata drift before the existing
+trust-backed verifier decides acceptance. The composed service has no configured
+path, startup scan, polling, archive extraction, download, installation, staging,
+activation, service-control, migration, backup, radio, watchdog, command, lease,
+CLI, Admin, browser, or TX caller.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -2751,6 +2765,14 @@ web tests passed 963/963; independent-watchdog tests passed 57/57; TX-HIL isolat
 tests passed 48/48; AetherRemote tests passed 70/70; and browser tests passed
 135/135. The complete checkpoint covered 1,138 .NET tests and 1,273 tests overall.
 No live radio or RF operation was performed or required.
+
+Automated checkpoint on 2026-08-03 for the immutable local offline bundle reader:
+the deployment script passed shell syntax validation; Release solution build
+completed with zero warnings and zero errors; the focused offline-bundle suite
+passed 31/31; web tests passed 994/994; independent-watchdog tests passed 57/57;
+TX-HIL isolation tests passed 48/48; AetherRemote tests passed 70/70; and browser
+tests passed 135/135. The complete checkpoint covered 1,169 .NET tests and 1,304
+tests overall. No live radio or RF operation was performed or required.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

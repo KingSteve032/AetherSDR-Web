@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AetherSDR.Web.Setup;
@@ -149,6 +150,8 @@ public sealed record ReleaseManifestVerificationContext(
 public sealed class LocalImmutableReleasePackage
 {
     private readonly byte[] m_content;
+    private readonly byte[] m_sha256;
+    private readonly long m_length;
 
     public LocalImmutableReleasePackage(
         string relativePath,
@@ -156,11 +159,69 @@ public sealed class LocalImmutableReleasePackage
     {
         RelativePath = relativePath ?? string.Empty;
         m_content = content.ToArray();
+        m_length = m_content.LongLength;
+        m_sha256 = SHA256.HashData(m_content);
+    }
+
+    internal LocalImmutableReleasePackage(
+        string relativePath,
+        long length,
+        ReadOnlySpan<byte> sha256)
+    {
+        if (length < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(length));
+        }
+        if (sha256.Length != 32)
+        {
+            throw new ArgumentException(
+                "An immutable release package requires one SHA-256 digest.",
+                nameof(sha256));
+        }
+
+        RelativePath = relativePath ?? string.Empty;
+        m_content = [];
+        m_length = length;
+        m_sha256 = sha256.ToArray();
     }
 
     public string RelativePath { get; }
-    public long Length => m_content.LongLength;
+    public long Length => m_length;
     internal ReadOnlySpan<byte> Content => m_content;
+    internal ReadOnlySpan<byte> Sha256 => m_sha256;
+}
+
+internal static class ReleasePackagePath
+{
+    internal const int MaximumLength = 240;
+
+    internal static bool IsSafe(string? path)
+    {
+        if (string.IsNullOrEmpty(path) || path.Length > MaximumLength ||
+            !string.Equals(path, path.Trim(), StringComparison.Ordinal) ||
+            path[0] == '/' || path.Contains('\\', StringComparison.Ordinal) ||
+            path.Contains(':', StringComparison.Ordinal) ||
+            Path.IsPathRooted(path))
+        {
+            return false;
+        }
+
+        foreach (string segment in path.Split('/', StringSplitOptions.None))
+        {
+            if (segment.Length == 0 || segment is "." or "..")
+            {
+                return false;
+            }
+            foreach (char character in segment)
+            {
+                if (char.IsControl(character))
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
 }
 
 public sealed class ReleaseManifestVerificationKey
