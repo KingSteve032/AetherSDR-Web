@@ -306,14 +306,28 @@ adds no account provider, console command, HTTP route, browser claim session, or
 runtime registration; production local-account creation and a browser setup
 center remain separate reviewed work.
 
-The internal runtime-readiness gate then binds a future normal process start to
-the exact completed setup revision, runtime role, topology, canonical public URL,
-resolved paths, and TX-support installation choice. It reads setup state without
-changing it and reports blockers for incomplete setup or any stale or mismatched
-binding. Missing or malformed state fails closed. The gate is intentionally not
-called from `Program.cs` and adds no startup behavior, service registration,
+Normal web startup can now opt into the same exact runtime binding through the
+strict `InstallationRuntime` configuration section. The default remains disabled
+and must retain its empty revision, URL, and TX-support fields. An enabled web
+process requires `RuntimeRole=Gateway`, a topology that runs the gateway here,
+and the exact completed setup revision, canonical public URL, resolved paths, and
+TX-support installation choice:
+
+```text
+InstallationRuntime__Enabled=true
+InstallationRuntime__SetupRevision=<completed setup revision>
+InstallationRuntime__RuntimeRole=Gateway
+InstallationRuntime__Topology=PersonalSingleStation
+InstallationRuntime__CanonicalPublicUrl=https://radio.example.org
+InstallationRuntime__InstallTransmitSupport=false
+```
+
+The check runs before authentication, hosted services, radio discovery, station
+sessions, command transport, or TX supervision are configured. It reads setup
+state without changing it and fails startup for incomplete, missing, malformed,
+stale, or mismatched state. The startup gate adds no service registration,
 installer mutation, account-provider dependency, network endpoint, radio action,
-or TX action in this increment.
+or TX action.
 
 ## Ubuntu 24.04 pilot service
 
