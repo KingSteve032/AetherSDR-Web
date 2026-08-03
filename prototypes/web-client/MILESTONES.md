@@ -2702,9 +2702,10 @@ Status: active. The local-only signed-manifest verifier, normal-runtime public-k
 trust composition, immutable local offline-directory bundle reader, read-only
 offline bundle CLI `check`, read-only local release `status`, read-only offline
 install preflight, verified installation-plan composition, private verified staging,
-and atomic inactive-release publication are implemented; publishing artifacts,
-network download, extraction, activation, rollback, migration execution, service
-control, and Admin/browser callers remain unimplemented.
+atomic inactive-release publication, and activation-transaction plan composition
+are implemented; publishing artifacts, network download, extraction, activation
+execution, rollback execution, migration execution, service control, health probes,
+and Admin/browser callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -2841,6 +2842,24 @@ reconciliation rather than deleted. The boundary never copies files, switches
 touches Admin/browser, AetherRemote runtime, radio, watchdog, command, lease, or
 TX state.
 
+The tenth increment adds `VerifiedReleaseActivationPlanComposer`, a pure planning
+boundary that accepts only a successful immutable inactive publication with an
+exact internal token, consumed staging source, unchanged `current`, no activation,
+and no reconciliation requirement. It validates setup/identity/version/
+architecture/channel/TX-policy agreement, exact publication byte totals, canonical
+release and relative link paths, the four unique package roles, and coherent signed
+schema-migration metadata. The internal plan preserves previous/target paths,
+`current` link values, signed migration/restart/release-note metadata, and service
+roles while the public result remains path-, package-, and digest-redacted.
+
+Every successful activation plan requires future operator approval, closure of new
+TX-lease admission, radio-authoritative idle, disarmed watchdogs, configuration
+backup, staged-copy migration when declared, atomic `current` switching, service
+health verification, and automatic rollback. The composer does not perform or
+assert any of those steps and registers no filesystem write, pointer mutation,
+activation, backup, migration execution, service control, health probe, CLI/Admin/
+browser, AetherRemote runtime, radio, watchdog, command, lease, or TX caller.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -2924,6 +2943,19 @@ root permission transition, atomic directory publication, and published-tree
 validation while file copy, `current` mutation, activation, rollback, migration,
 service, CLI/Admin/browser, radio, watchdog, command, lease, and TX callers
 remained absent. No live radio or RF operation was performed or required.
+
+Automated checkpoint on 2026-08-03 for verified activation-transaction plan
+composition: the deployment script passed shell syntax validation; Release
+solution build completed with zero warnings and zero errors; the focused activation
+plan suite passed 47/47; web tests passed 1,234/1,234; independent-watchdog tests
+passed 57/57; TX-HIL isolation tests passed 48/48; AetherRemote tests passed 70/70;
+and browser tests passed 135/135. The complete checkpoint covered 1,409 .NET tests
+and 1,544 tests overall. A live development health probe confirmed publication
+input, path, TX-quiescence, backup, migration, restart, health-verification, and
+rollback planning while file write, `current` mutation, activation, backup,
+migration execution, service control, health probes, CLI/Admin/browser, radio,
+watchdog, command, lease, and TX callers remained absent. No live radio or RF
+operation was performed or required.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.
