@@ -128,6 +128,55 @@ test("lease acquire uses an exact versioned monotonic envelope", () => {
   assert.equal(controller.requestAcquire(16), false);
 });
 
+test("capability refresh preserves request state and revokes only an absent lease", () => {
+  const sent = [];
+  let requestId = 0;
+  const controller = new BrowserTxController({
+    send: message => sent.push(message),
+    nextRequestId: () => ++requestId,
+    schedule: () => 1,
+    cancel: () => {},
+    now: () => Date.parse("2026-07-31T16:00:00Z"),
+    createIntentId: () => "intent-a"
+  });
+  controller.applyWelcome({
+    ...availableCapability,
+    radioConnected: false,
+    leaseAvailable: false,
+    state: "radio-disconnected"
+  });
+
+  controller.applyCapability(availableCapability);
+  assert.equal(controller.requestAcquire(), true);
+  controller.applyCapability(availableCapability);
+  let snapshot = controller.snapshot();
+  assert.equal(snapshot.sequence, 1);
+  assert.equal(snapshot.pendingCount, 1);
+  assert.equal(snapshot.capability.leaseAvailable, true);
+
+  assert.equal(controller.handleMessage({
+    id: 1,
+    protocolVersion: txProtocolVersion,
+    sequence: 1,
+    ok: true,
+    lease,
+    capability: readyCapability
+  }), true);
+  controller.applyCapability({
+    ...readyCapability,
+    message: "Refreshed while held"
+  });
+  snapshot = controller.snapshot();
+  assert.equal(snapshot.lease.leaseId, lease.leaseId);
+  assert.equal(snapshot.sequence, 1);
+
+  controller.applyCapability(availableCapability);
+  snapshot = controller.snapshot();
+  assert.equal(snapshot.lease, null);
+  assert.equal(snapshot.transmitting, false);
+  assert.equal(snapshot.capability.leaseHeldByBrowser, false);
+});
+
 test("acquire response stores only the exact holder secret and schedules renewal", () => {
   const sent = [];
   const scheduled = [];

@@ -137,6 +137,18 @@ export class BrowserTxController {
     this.#notify();
   }
 
+  applyCapability(capability) {
+    const next = normalizeTxCapability(capability);
+    if (!next.leaseHeldByBrowser) {
+      this.#clearLease();
+    } else if (!next.keyingAvailable) {
+      this.#cancelHeartbeat();
+      this.transmitting = false;
+    }
+    this.capability = next;
+    this.#notify();
+  }
+
   resetForDisconnect() {
     this.#cancelRenewal();
     this.#cancelHeartbeat();

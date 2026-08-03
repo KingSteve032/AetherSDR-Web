@@ -48,7 +48,7 @@ import {
 import {
   BrowserTxController,
   txControlAvailability
-} from "./tx-controls.js?v=production-tx-activation-binding-1";
+} from "./tx-controls.js?v=production-tx-capability-refresh-1";
 
 const controlRole = "Aether.Control";
 const adminRole = "Aether.Admin";
@@ -1123,6 +1123,9 @@ function handleMessage(message) {
   }
 
   if (message.event === "snapshot" && message.snapshot) {
+    if (message.txCapability) {
+      txController.applyCapability(message.txCapability);
+    }
     const preferredSliceId = state.activeSliceId;
     const previousPan = activePan();
     const panMotionActive =

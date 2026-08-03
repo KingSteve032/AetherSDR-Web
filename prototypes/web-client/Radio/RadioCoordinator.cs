@@ -519,11 +519,15 @@ public sealed class RadioCoordinator : IDisposable
         m_txLifecycle?.ObserveEngineConnection(
             connected,
             stationClientHandle);
-        BroadcastJson(new
+        foreach (RadioClientConnection connection in m_clients.Values)
         {
-            @event = "snapshot",
-            snapshot = updated
-        });
+            SendJson(connection, new
+            {
+                @event = "snapshot",
+                snapshot = updated,
+                txCapability = GetBrowserTxCapability(connection)
+            });
+        }
     }
 
     public void SetLiveSlices(IReadOnlyList<SliceSnapshot> slices)

@@ -25,10 +25,10 @@ test("receiver header filter follows the active radio slice", () => {
     /rxFilterLabel\.textContent\s*=\s*formatFilterWidth\(width\)/);
 });
 
-test("radio page uses current production TX binding asset revisions", () => {
+test("radio page uses current production TX capability asset revisions", () => {
   assert.match(
     indexHtml,
-    /src="\/app\.js\?v=production-tx-activation-binding-1"/);
+    /src="\/app\.js\?v=production-tx-capability-refresh-1"/);
   assert.match(
     indexHtml,
     /href="\/styles\.css\?v=2d-only-1"/);
@@ -40,7 +40,10 @@ test("radio page uses current production TX binding asset revisions", () => {
     /\.\/slice-controls\.js\?v=2d-only-1/);
   assert.match(
     applicationSource,
-    /\.\/tx-controls\.js\?v=production-tx-activation-binding-1/);
+    /\.\/tx-controls\.js\?v=production-tx-capability-refresh-1/);
+  assert.match(
+    applicationSource,
+    /txController\.applyCapability\(message\.txCapability\)/);
 });
 
 test("radio page has one fixed 2D spectrum path", () => {
