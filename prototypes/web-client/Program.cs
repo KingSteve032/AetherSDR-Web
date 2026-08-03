@@ -115,10 +115,17 @@ if (installationSetupCommandLine.Command !=
         new(installationSetupStore);
     InstallationSetupConsole installationSetupConsole =
         new(installationSetupStore, installationBootstrapTokenService);
+    bool interactiveConsole =
+        !Console.IsInputRedirected && !Console.IsOutputRedirected;
     await installationSetupConsole.ExecuteAsync(
-        installationSetupCommandLine.Command,
+        installationSetupCommandLine,
+        installationPaths,
         Console.Out,
-        interactiveTokenOutput: !Console.IsOutputRedirected);
+        interactiveTokenOutput: !Console.IsOutputRedirected,
+        interactiveSecretInput: interactiveConsole,
+        secretReader: interactiveConsole
+            ? InstallationSetupConsoleSecretReader.ReadAsync
+            : null);
     return;
 }
 

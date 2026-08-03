@@ -108,6 +108,19 @@ users, repository-backed packages and service units, loopback/public ports,
 files, proxy work, firewall expectations, migrations, and TX-support warnings.
 It applies no package, service, proxy, firewall, migration, radio, or TX change.
 
+The local setup-CLI increment exposes that boundary without adding a network
+surface. Claim reads the bootstrap token from an interactive terminal with echo
+disabled; there is no token-valued command-line option and redirected input is
+rejected. Each configuration command loads the current state, submits that exact
+revision to the workflow, and prints only the existing redacted status projection.
+The paths command records the same resolved path layout used to locate the setup
+store, and preflight serializes the read-only report without advancing setup
+state. Every setup command still returns before authentication, hosted services,
+radio discovery, station sessions, command transport, or TX supervision are
+constructed. Administrator creation, claim-session binding for a future browser
+setup center, installer mutation, and normal runtime startup interlocks remain
+separate reviewed work.
+
 ## Trust boundaries
 
 ### Browser

@@ -240,13 +240,62 @@ The status command is safe to redirect for local diagnostics. It reports only
 setup progress, whether token material exists, and non-secret configuration
 presence flags; it never prints the token digest or canonical public URL.
 
-The typed setup workflow beneath the future guided installer enforces ordered,
-revision-checked collection of topology, canonical public URL, portable paths,
-update channel, backup confirmation, and the explicit TX-support installation
-choice. Its preflight is read-only: it reports planned users, packages, ports,
-files, services, proxy work, firewall expectations, migrations, and warnings,
-but applies none of them. This increment intentionally adds no setup HTTP route,
-installer command, administrator account provider, radio action, or TX command.
+Claim the displayed token from the same local terminal. The token is read with
+echo disabled; no setup option accepts it as a command-line value, and redirected
+input is rejected:
+
+```powershell
+dotnet run --project prototypes/web-client/AetherSDR.Web.csproj -- `
+  --claim-installation-bootstrap-token
+```
+
+After claim, complete the revision-checked setup choices in order. Re-running a
+completed step updates that choice without discarding later progress, while an
+out-of-order or concurrent stale update fails closed:
+
+```powershell
+dotnet run --project prototypes/web-client/AetherSDR.Web.csproj -- `
+  --configure-installation-topology personal-single-station
+
+dotnet run --project prototypes/web-client/AetherSDR.Web.csproj -- `
+  --configure-installation-public-url https://radio.example.org
+
+dotnet run --project prototypes/web-client/AetherSDR.Web.csproj -- `
+  --configure-installation-paths
+
+dotnet run --project prototypes/web-client/AetherSDR.Web.csproj -- `
+  --configure-installation-update-channel stable
+
+dotnet run --project prototypes/web-client/AetherSDR.Web.csproj -- `
+  --confirm-installation-backup-location
+
+dotnet run --project prototypes/web-client/AetherSDR.Web.csproj -- `
+  --configure-installation-transmit-support false
+```
+
+Supported topology values are `personal-single-station`,
+`local-station-gateway`, `remote-station-gateway`, `hybrid-gateway`, and
+`remote-station-node`. Update channels are `stable`, `beta`, and `pinned`; a
+pinned channel also requires
+`--installation-pinned-release <release-identity>`. The path command records the
+already resolved development, Linux-system, or exact absolute configured path
+layout. Selecting `true` for transmit-support installation records package
+intent only; it does not enable TX, grant radio eligibility, register a command
+caller, or arm the watchdog.
+
+Print the non-mutating installer plan after all choices are complete:
+
+```powershell
+dotnet run --project prototypes/web-client/AetherSDR.Web.csproj -- `
+  --installation-setup-preflight
+```
+
+Preflight reports planned users, packages, loopback ports, files, services,
+proxy changes, firewall expectations, and migrations. It changes no file and
+performs no installation. These commands still exit before the web host,
+authentication, radio discovery, station sessions, command transport, or TX
+supervision start. First-administrator creation and any browser setup center
+remain separate reviewed increments.
 
 ## Ubuntu 24.04 pilot service
 
