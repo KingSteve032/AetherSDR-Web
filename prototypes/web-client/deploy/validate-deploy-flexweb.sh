@@ -223,6 +223,14 @@ except (KeyError, json.JSONDecodeError) as exc:
 
 expected = {
     "status": "ok",
+    "releaseManifestTrustVerificationEnabled": False,
+    "releaseManifestTrustedKeyCount": 0,
+    "releaseManifestSignatureVerificationAvailable": False,
+    "releaseManifestLocalVerificationRegistered": True,
+    "releaseManifestLocalVerificationAvailable": False,
+    "releaseManifestNetworkDownloadRegistered": False,
+    "releaseManifestInstallationRegistered": False,
+    "releaseManifestActivationRegistered": False,
     "transmitEnabled": False,
     "browserTxLeaseEnabled": False,
     "txGateLifecycleRegistered": True,

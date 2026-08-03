@@ -212,7 +212,9 @@ public enum ReleaseManifestFailureCode
     ContradictoryRestartDeclaration = 25,
     InvalidMigrationDeclaration = 26,
     InvalidTxSupportDeclaration = 27,
-    InvalidReleaseNotes = 28
+    InvalidReleaseNotes = 28,
+    VerificationTrustDisabled = 29,
+    VerificationTrustUnavailable = 30
 }
 
 public sealed record ReleaseManifestVerificationReport(

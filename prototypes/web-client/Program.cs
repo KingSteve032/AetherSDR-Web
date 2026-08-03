@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json;
 using AetherSDR.Web.Auth;
 using AetherSDR.Web.Radio;
+using AetherSDR.Web.Releases;
 using AetherSDR.Web.Setup;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -208,6 +209,12 @@ IndependentTxWatchdogSettings independentTxWatchdogSettings =
         .GetSection(IndependentTxWatchdogSettings.SectionName)
         .Get<IndependentTxWatchdogSettings>() ??
     new IndependentTxWatchdogSettings();
+ReleaseManifestTrustSettings releaseManifestTrustSettings =
+    builder.Configuration
+        .GetSection(ReleaseManifestTrustSettings.SectionName)
+        .Get<ReleaseManifestTrustSettings>(options =>
+            options.ErrorOnUnknownConfiguration = true) ??
+    new ReleaseManifestTrustSettings();
 StationTxCommandTrustSettings stationTxCommandTrustSettings =
     builder.Configuration
         .GetSection(StationTxCommandTrustSettings.SectionName)
@@ -311,6 +318,7 @@ builder.Services.AddSingleton(Options.Create(authSettings));
 builder.Services.AddSingleton(Options.Create(radioSettings));
 builder.Services.AddSingleton(Options.Create(remoteStationSettings));
 builder.Services.AddSingleton(Options.Create(independentTxWatchdogSettings));
+builder.Services.AddSingleton(Options.Create(releaseManifestTrustSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandTrustSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandSigningSettings));
 builder.Services.AddSingleton(
@@ -324,6 +332,9 @@ builder.Services.AddSingleton(
 builder.Services.AddSingleton(stationTxProductionActivationConfiguration);
 builder.Services.AddSingleton(stationTxProductionActivationBinding);
 builder.Services.AddSingleton<StationTxIndependentWatchdogRegistry>();
+builder.Services.AddSingleton<ReleaseManifestTrustRegistry>();
+builder.Services.AddSingleton<SignedReleaseManifestVerifier>();
+builder.Services.AddSingleton<SignedReleaseManifestVerificationService>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
 builder.Services.AddSingleton<StationTxCommandEnvelopeCoordinator>();
@@ -410,6 +421,10 @@ builder.Services.AddRateLimiter(options =>
 });
 
 WebApplication app = builder.Build();
+ReleaseManifestTrustRegistry releaseManifestTrustRegistry =
+    app.Services.GetRequiredService<ReleaseManifestTrustRegistry>();
+SignedReleaseManifestVerificationService releaseManifestVerificationService =
+    app.Services.GetRequiredService<SignedReleaseManifestVerificationService>();
 StationTxIndependentWatchdogRegistry independentTxWatchdogRegistry =
     app.Services.GetRequiredService<StationTxIndependentWatchdogRegistry>();
 StationTxCommandTrustRegistry stationTxCommandTrustRegistry =
@@ -459,6 +474,10 @@ app.MapGet(
         "/healthz",
         () =>
         {
+            ReleaseManifestTrustDiagnostics releaseTrust =
+                releaseManifestTrustRegistry.Snapshot;
+            SignedReleaseManifestVerificationServiceDiagnostics releaseVerification =
+                releaseManifestVerificationService.Snapshot;
             StationTxIndependentWatchdogAggregate watchdog =
                 independentTxWatchdogRegistry.Snapshot;
             StationTxCommandTrustDiagnostics commandTrust =
@@ -508,6 +527,21 @@ app.MapGet(
             return Results.Ok(new
             {
                 status = "ok",
+                releaseManifestTrustVerificationEnabled =
+                    releaseTrust.VerificationEnabled,
+                releaseManifestTrustedKeyCount = releaseTrust.TrustedKeyCount,
+                releaseManifestSignatureVerificationAvailable =
+                    releaseTrust.SignatureVerificationAvailable,
+                releaseManifestLocalVerificationRegistered =
+                    releaseVerification.Registered,
+                releaseManifestLocalVerificationAvailable =
+                    releaseVerification.LocalVerificationAvailable,
+                releaseManifestNetworkDownloadRegistered =
+                    releaseVerification.NetworkDownloadRegistered,
+                releaseManifestInstallationRegistered =
+                    releaseVerification.InstallationRegistered,
+                releaseManifestActivationRegistered =
+                    releaseVerification.ActivationRegistered,
                 radioMode = radioSettings.Mode,
                 transmitEnabled =
                     stationTxProductionActivationBinding.BindingApplied,

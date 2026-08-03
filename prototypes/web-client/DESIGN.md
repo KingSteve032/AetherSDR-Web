@@ -345,9 +345,34 @@ metadata is not reflected before signature success.
 This slice adds no network or GitHub client, polling loop, downloader, archive
 extraction, installer, release-directory mutation, symlink switch, service
 control, migration runner, backup/restore writer, CLI, Admin route, browser
-control, radio caller, watchdog caller, or TX caller. Production trust-store
-composition, published bundles, activation, rollback, and health checks remain
-separate reviewed M8B increments.
+control, radio caller, watchdog caller, or TX caller. Published bundles,
+activation, rollback, and post-activation health checks remain separate reviewed
+M8B increments.
+
+The second M8B increment adds the production public-key trust composition without
+adding an update caller. `ReleaseManifestTrust` is one strict configuration object
+with a disabled default and a bounded key list. Normal-runtime startup rejects
+unknown fields, unsupported algorithms, duplicate identifiers or files,
+non-canonical paths, missing or oversized files, symlinks, writable-by-group or
+writable-by-other Unix files/directories, multiple PEM blocks, private-key PEM,
+invalid UTF-8, malformed key data, and non-P-256 keys. Setup-only startup still
+returns before this normal-runtime configuration is read.
+
+The registry copies each exact reviewed public key into one immutable verifier key
+and exposes only redacted readiness diagnostics: enablement, availability, key
+count, canonical key identifiers, algorithms, and short public-key fingerprints.
+It does not expose configured paths or key bytes and contains no private-key or
+signing method. The local verification service composes that registry with the
+existing typed manifest verifier. Disabled or unavailable trust fails with a typed
+report before manifest verification begins.
+
+`Program.cs` constructs both objects at normal-runtime startup so malformed
+production trust configuration fails closed even though no check/download/install
+caller exists yet. Health reports only release-verification readiness and explicit
+`false` values for network download, installation, and activation registration.
+No package is opened from a path, no manifest is fetched, and no release, service,
+configuration, radio, watchdog, command, lease, or TX state can be changed by this
+composition.
 
 ## Trust boundaries
 
