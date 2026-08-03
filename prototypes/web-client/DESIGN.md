@@ -192,6 +192,32 @@ caller, or TX caller. A later reviewed integration must translate the published
 contracts mechanically and keep bootstrap and session tokens out of URLs, logs,
 and browser storage.
 
+The setup-center application increment composes the redacted status projection,
+HTTP-security policy, bootstrap claim, process-local claim session, ordered setup
+workflow, and non-mutating preflight behind one endpoint-agnostic façade. Security
+classification runs before state or token operations. Initial page reads return
+only redacted status, the published security contract, and a fresh double-submit
+CSRF value. Bootstrap claim consumes the local token only after the request passes
+the canonical HTTPS/origin/fetch/body boundary, then returns one process-local
+session issue plus a newly rotated CSRF value.
+
+Session reads and preflight require the exact active bearer and setup revision.
+Each repository-defined mutation type validates the same session-and-CSRF boundary,
+applies one exact workflow step, requires one persisted revision advance, and then
+rotates both session and CSRF authority. Once persistence succeeds, bearer rotation
+is completed independently of caller cancellation so a canceled request cannot
+leave a successfully advanced setup document paired with intentionally stale
+browser authority. Replaced, revoked, stale, concurrent, completed, malformed, or
+wrong-revision authority remains fail closed. The façade refuses completed setup
+and any topology that does not run the gateway here, even if the process started
+while an earlier setup state was eligible.
+
+The application remains unregistered and adds no ASP.NET middleware, route,
+cookie writer, body parser, listener, browser asset, account provider, installer
+side effect, radio path, watchdog path, or TX caller. A later reviewed host
+integration must mechanically adapt HTTP metadata and JSON into these typed
+operations without weakening their ordering or redaction guarantees.
+
 The runtime-readiness increment defines the fail-closed binding required before a
 normal runtime may admit the web gateway or a remote station node. The binding
 carries the exact completed setup revision, runtime role, topology, canonical

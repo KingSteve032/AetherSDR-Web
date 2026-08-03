@@ -355,6 +355,29 @@ or TX action. A later reviewed browser setup-center integration must mechanicall
 map these contracts without putting bootstrap or session tokens in URLs, logs, or
 browser storage.
 
+The internal setup-center application now composes the security policy, redacted
+status, bootstrap claim, process-local session, ordered workflow, and read-only
+preflight behind one typed in-process façade. Page reads return only redacted
+status, the security contract, and a fresh CSRF issue. A bootstrap claim is not
+consumed until its request passes the canonical HTTPS, host, origin, fetch, body,
+and CSRF checks. Session status and preflight require the exact bearer and setup
+revision.
+
+Each supported mutation—topology, canonical public URL, paths, update channel,
+backup confirmation, or TX-support installation choice—requires the exact active
+session and matching CSRF evidence. It advances one persisted revision and then
+rotates both the process-local session bearer and CSRF value. Rotation completes
+after successful persistence even when the caller cancels, preventing a completed
+write from deliberately retaining stale browser authority. Old, revoked, stale,
+wrong-revision, concurrent, completed, or malformed sessions fail closed. The
+application also refuses completed setup and topologies that do not run the web
+gateway here.
+
+This façade remains absent from `Program.cs` and adds no middleware, JSON parser,
+route, cookie writer, listener, browser asset, account provider, installer side
+effect, radio action, watchdog action, or TX action. A later reviewed host slice
+must adapt HTTP metadata and bounded JSON mechanically into these typed calls.
+
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled
 and must retain its empty revision, URL, and TX-support fields. An enabled web
