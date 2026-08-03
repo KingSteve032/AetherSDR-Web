@@ -328,11 +328,32 @@ planning continues through the exact completed runtime binding.
 
 The planner is also not called from `Program.cs` and introduces no configuration
 section, listener, route, cookie, service registration, account provider, radio
-action, or TX action. A later reviewed browser setup-center integration must wire
-it before normal authentication and hosted services, then add trusted-origin and
-host checks, CSRF protection, request bounds and rate limits, and a Secure,
-HttpOnly, SameSite=Strict cookie without putting either bootstrap or session
-tokens in URLs, logs, or browser storage.
+action, or TX action.
+
+The internal setup HTTP-security policy now fixes the request contract for a
+future browser setup center. It allows only canonical HTTPS page navigation,
+same-origin bootstrap claims, session reads, and session mutations. It rejects
+foreign host or origin values, cross-site fetch metadata, query strings,
+unexpected or unbounded bodies, non-JSON mutations, missing session cookies, and
+missing, malformed, or mismatched CSRF values. Claim bodies are capped at 4 KiB
+and five requests per minute; mutation bodies are capped at 16 KiB and thirty
+requests per minute. All published fixed-window policies have a zero-length
+queue.
+
+The published session cookie is `__Host-AetherSdrSetup`, Secure, HttpOnly,
+SameSite=Strict, domainless, path `/`, and never longer-lived than the process
+claim session. A separate readable `__Host-AetherSdrSetupCsrf` double-submit
+cookie uses the same origin restrictions. CSRF tokens use independent 256-bit
+random values, canonical base64url encoding, fixed-time comparison, and redacted
+diagnostics. Setup responses are defined as no-store with a restrictive CSP,
+no-referrer, nosniff, same-origin opener/resource policies, and disabled browser
+device permissions.
+
+This policy is still not called from `Program.cs` and adds no middleware, rate
+limiter, cookie, listener, route, browser asset, account provider, radio action,
+or TX action. A later reviewed browser setup-center integration must mechanically
+map these contracts without putting bootstrap or session tokens in URLs, logs, or
+browser storage.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled

@@ -165,11 +165,32 @@ and TX-support-bound readiness gate.
 
 The planner registers no service and adds no configuration section, HTTP route,
 cookie, browser asset, listener, account provider, installer mutation, radio
-caller, or TX caller. A later reviewed integration must wire the planner before
-normal authentication and hosted services, then separately enforce trusted
-origin and host validation, CSRF protection, bounded request bodies and rate
-limits, and a Secure, HttpOnly, SameSite=Strict cookie without placing either
-bootstrap or session tokens in URLs, logs, or browser storage.
+caller, or TX caller.
+
+The setup HTTP-security increment defines the exact browser boundary that a later
+setup-only host must apply. Each request is classified as an initial page read,
+bootstrap claim, session read, or session mutation and is rejected for insecure
+scheme, non-canonical authority or origin, cross-site fetch metadata, query
+strings, unexpected or unbounded bodies, non-JSON mutation content, missing
+session state, or malformed and mismatched CSRF evidence. Bootstrap claims are
+limited to 4 KiB and five requests per minute; session mutations are limited to
+16 KiB and thirty requests per minute. All fixed-window limit contracts use no
+queue.
+
+The same contract publishes a `__Host-` session cookie that is Secure, HttpOnly,
+SameSite=Strict, path `/`, domainless, and bounded by the claim-session maximum
+lifetime; a separate readable `__Host-` CSRF cookie has the same origin and
+lifetime restrictions. CSRF values are independently generated with 256 bits of
+entropy, encoded as canonical base64url, compared in fixed time, and redacted
+from diagnostic rendering. Setup responses are no-store and carry a restrictive
+CSP, no-referrer, nosniff, same-origin opener/resource policies, and a permissions
+policy that disables browser device capabilities.
+
+This policy remains unwired: it registers no middleware, rate limiter, cookie,
+listener, route, browser asset, account provider, installer mutation, radio
+caller, or TX caller. A later reviewed integration must translate the published
+contracts mechanically and keep bootstrap and session tokens out of URLs, logs,
+and browser storage.
 
 The runtime-readiness increment defines the fail-closed binding required before a
 normal runtime may admit the web gateway or a remote station node. The binding
