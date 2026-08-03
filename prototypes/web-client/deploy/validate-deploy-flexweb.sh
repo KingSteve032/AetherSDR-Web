@@ -4,17 +4,18 @@ IFS=$'\n\t'
 
 usage() {
   cat <<'EOF'
-Run the complete pre-push validation gate, publish a receive-only FlexWeb build,
+Run the complete pre-push validation gate, publish a fail-closed FlexWeb build,
 deploy it atomically to the FlexWeb host, and roll back automatically if the
-service or health checks fail.
+service or selected health profile checks fail.
 
 Usage:
   bash prototypes/web-client/deploy/validate-deploy-flexweb.sh [options]
 
 Options:
-  --release NAME   Use an explicit immutable release name.
-  --validate-only  Run all tests and production artifact checks without deploy.
-  -h, --help       Show this help.
+  --release NAME           Use an explicit immutable release name.
+  --health-profile PROFILE Verify rx-only (default) or production-tx health.
+  --validate-only          Run all tests and production artifact checks without deploy.
+  -h, --help               Show this help.
 
 Environment overrides:
   FLEXWEB_HOST       SSH destination (default: flexweb-gateway, which resolves
@@ -33,6 +34,7 @@ REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../../.." && pwd)"
 FLEXWEB_HOST="${FLEXWEB_HOST:-flexweb-gateway}"
 PUBLIC_HEALTH_URL="${PUBLIC_HEALTH_URL:-https://flexweb.w4car.org/healthz}"
 release_name="${RELEASE_NAME:-$(date -u +%Y%m%d-%H%M%S)-flexweb-validation}"
+health_profile="${HEALTH_PROFILE:-rx-only}"
 deploy=true
 
 while [[ "$#" -gt 0 ]]; do
@@ -40,6 +42,11 @@ while [[ "$#" -gt 0 ]]; do
     --release)
       [[ "$#" -ge 2 ]] || { echo "--release requires a value." >&2; exit 2; }
       release_name="$2"
+      shift 2
+      ;;
+    --health-profile)
+      [[ "$#" -ge 2 ]] || { echo "--health-profile requires a value." >&2; exit 2; }
+      health_profile="$2"
       shift 2
       ;;
     --validate-only)
@@ -62,6 +69,13 @@ if [[ ! "${release_name}" =~ ^[0-9A-Za-z._-]{1,96}$ ]]; then
   echo "Invalid release name: ${release_name}" >&2
   exit 2
 fi
+case "${health_profile}" in
+  rx-only|production-tx) ;;
+  *)
+    echo "Invalid health profile: ${health_profile}" >&2
+    exit 2
+    ;;
+esac
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -140,15 +154,68 @@ rollback() {
 }
 trap rollback EXIT INT TERM
 
-assert_health_fail_closed() {
+assert_activation_preflight_ready() {
   local payload="$1"
   local source="$2"
-  HEALTH_PAYLOAD="${payload}" python3 - "${source}" <<'PY'
+  ACTIVATION_PREFLIGHT_PAYLOAD="${payload}" python3 - "${source}" <<'PY'
 import json
 import os
 import sys
 
 source = sys.argv[1]
+try:
+    payload = json.loads(os.environ["ACTIVATION_PREFLIGHT_PAYLOAD"])
+except (KeyError, json.JSONDecodeError) as exc:
+    raise SystemExit(f"{source} did not return valid activation preflight JSON: {exc}")
+expected = {
+    "Version": 1,
+    "ValidationOnly": True,
+    "WebHostStarted": False,
+    "RadioConnectionCreated": False,
+    "WatchdogProcessStarted": False,
+    "ActivationCurrentlyRequested": True,
+    "CandidateConfigurationValid": True,
+    "CandidatePlanAvailable": True,
+    "CandidateBindingApplied": True,
+    "TrustedKeyMaterialReady": True,
+    "TrustedKeyCount": 1,
+    "SigningKeyMaterialReady": True,
+    "SigningKeyTrusted": True,
+    "PrimaryTransportRadioAllowed": True,
+    "EmergencyTransportRadioAllowed": True,
+    "WatchdogRadioAllowed": True,
+    "WatchdogExecutableReady": True,
+    "ReadyForOperatorActivation": True,
+    "Reason": "preflight-ready",
+    "MissingPrerequisites": [],
+}
+for key, value in expected.items():
+    if payload.get(key) != value:
+        raise SystemExit(
+            f"{source} field {key!r} was {payload.get(key)!r}; expected {value!r}")
+if not isinstance(payload.get("TargetRadioId"), str) or not payload["TargetRadioId"]:
+    raise SystemExit(f"{source} did not identify one exact target radio")
+if not isinstance(payload.get("SigningKeyId"), str) or not payload["SigningKeyId"]:
+    raise SystemExit(f"{source} did not identify the signing key")
+if not isinstance(payload.get("SigningKeyFingerprint"), str) or not payload["SigningKeyFingerprint"]:
+    raise SystemExit(f"{source} did not identify the signing key fingerprint")
+print(f"{source} is ready without starting the web host, radio, or watchdog")
+PY
+}
+
+assert_health_fail_closed() {
+  local payload="$1"
+  local source="$2"
+  HEALTH_PAYLOAD="${payload}" HEALTH_PROFILE="${health_profile}" \
+    python3 - "${source}" <<'PY'
+import json
+import os
+import sys
+
+source = sys.argv[1]
+profile = os.environ.get("HEALTH_PROFILE", "rx-only")
+if profile not in {"rx-only", "production-tx"}:
+    raise SystemExit(f"unsupported health profile: {profile!r}")
 try:
     payload = json.loads(os.environ["HEALTH_PAYLOAD"])
 except (KeyError, json.JSONDecodeError) as exc:
@@ -292,6 +359,57 @@ expected = {
     "txCommandTransportAvailable": False,
     "txSafetySupervisorArmingAvailable": False,
 }
+if profile == "production-tx":
+    expected.update({
+        "transmitEnabled": True,
+        "browserTxLeaseEnabled": True,
+        "txStationCommandBoundaryEnabled": True,
+        "txStationCommandTrustVerificationEnabled": True,
+        "txStationCommandTrustedKeyCount": 1,
+        "txStationCommandSignatureVerificationAvailable": True,
+        "txStationCommandSigningEnabled": True,
+        "txStationCommandSigningKeyConfigured": True,
+        "txStationCommandSigningAvailable": True,
+        "txStationCommandGateExecutorTransmitEnabled": True,
+        "txStationCommandTransactionBrowserIngressRegistered": True,
+        "txStationCommandTransactionLifecycleBrowserIngressRegistered": True,
+        "txBrowserTxTransactionIngressExecutionEnabled": True,
+        "txBrowserTxTransactionIngressWebSocketCallerRegistered": True,
+        "txProductionCommandTransportConfiguredEnabled": True,
+        "txProductionCommandTransportAllowedRadioCount": 1,
+        "txProductionCommandTransportReason": "configured-awaiting-session",
+        "txProductionEmergencyUnkeyTransportConfiguredEnabled": True,
+        "txProductionEmergencyUnkeyTransportAllowedRadioCount": 1,
+        "txProductionEmergencyUnkeyTransportReason": "configured-awaiting-session",
+        "txProductionReadinessReason": "command-transport-unavailable",
+        "txProductionActivationRequested": True,
+        "txProductionActivationConfigurationReason": "configuration-ready",
+        "txProductionActivationPlanAvailable": True,
+        "txProductionActivationPlanApplied": True,
+        "txProductionActivationPlanReason": "activation-plan-ready-not-applied",
+        "txProductionActivationPlanCommandBoundaryEnabled": True,
+        "txProductionActivationPlanCommandGateTransmitEnabled": True,
+        "txProductionActivationPlanBrowserIngressExecutionEnabled": True,
+        "txProductionActivationPlanBrowserKeyingCapabilityEnabled": True,
+        "txProductionActivationBindingApplied": True,
+        "txProductionActivationBindingReason": "activation-binding-applied",
+        "txProductionActivationBindingSessionEligible": True,
+        "txProductionActivationBindingCommandBoundaryEnabled": True,
+        "txProductionActivationBindingCommandGateTransmitEnabled": True,
+        "txProductionActivationBindingBrowserIngressExecutionEnabled": True,
+        "txProductionActivationBindingBrowserKeyingCapabilityEnabled": True,
+        "txProductionActivationReason": "command-transport-unavailable",
+        "txProductionActivationCallerRegistered": True,
+        "txStationCommandEnvelopeSubmissionEnabled": True,
+        "txStationCommandEnvelopeSigningAvailable": True,
+        "txStationCommandEnvelopeVerificationAvailable": True,
+        "txStationCommandEnvelopeBoundaryAttached": False,
+        "txStationCommandEnvelopeBoundaryVerificationAvailable": False,
+        "txStationCommandEnvelopeSubmissionAvailable": False,
+        "txIndependentWatchdogUnkeyTransportConfiguredEnabled": True,
+        "txIndependentWatchdogUnkeyTransportAllowedRadioCount": 1,
+        "txIndependentWatchdogArmingConfiguredEnabled": True,
+    })
 for key, value in expected.items():
     if payload.get(key) != value:
         raise SystemExit(
@@ -303,60 +421,85 @@ if not isinstance(missing, list) or not missing:
 if missing[0] != payload["txProductionReadinessReason"]:
     raise SystemExit(
         f"{source} production readiness reason did not match its first missing prerequisite")
-required_missing = {
-    "transmit-disabled",
-    "browser-tx-lease-disabled",
-    "command-submission-disabled",
-    "command-signing-unavailable",
-    "command-verification-unavailable",
-    "command-boundary-disabled",
-    "command-gate-transmit-disabled",
-    "command-transport-unavailable",
-    "set-transmit-unavailable",
-    "emergency-unkey-transport-unavailable",
-    "watchdog-unkey-transport-unavailable",
-    "watchdog-arming-unavailable",
-}
-if not required_missing.issubset(set(missing)):
-    raise SystemExit(
-        f"{source} production readiness omitted required fail-closed prerequisites: {missing!r}")
 if len(missing) != len(set(missing)):
     raise SystemExit(
         f"{source} production readiness repeated a missing prerequisite: {missing!r}")
+if profile == "rx-only":
+    required_missing = {
+        "transmit-disabled",
+        "browser-tx-lease-disabled",
+        "command-submission-disabled",
+        "command-signing-unavailable",
+        "command-verification-unavailable",
+        "command-boundary-disabled",
+        "command-gate-transmit-disabled",
+        "command-transport-unavailable",
+        "set-transmit-unavailable",
+        "emergency-unkey-transport-unavailable",
+        "watchdog-unkey-transport-unavailable",
+        "watchdog-arming-unavailable",
+    }
+    if not required_missing.issubset(set(missing)):
+        raise SystemExit(
+            f"{source} production readiness omitted required fail-closed prerequisites: {missing!r}")
+else:
+    required_missing = {
+        "command-transport-unavailable",
+        "set-transmit-unavailable",
+        "emergency-unkey-transport-unavailable",
+        "watchdog-process-unavailable",
+        "watchdog-ipc-unavailable",
+        "watchdog-unkey-transport-unavailable",
+        "watchdog-arming-unavailable",
+    }
+    if set(missing) != required_missing:
+        raise SystemExit(
+            f"{source} production readiness did not match the idle TX-enabled profile: {missing!r}")
+
 activation_missing = payload.get(
     "txProductionActivationConfigurationMissingPrerequisites")
-if not isinstance(activation_missing, list) or not activation_missing:
+if not isinstance(activation_missing, list):
     raise SystemExit(
-        f"{source} activation configuration prerequisites were not a non-empty list")
-required_activation_missing = {
-    "transmit-disabled",
-    "browser-tx-lease-disabled",
-    "command-trust-verification-disabled",
-    "command-trust-key-unconfigured",
-    "command-signing-disabled",
-    "command-signing-key-unconfigured",
-    "command-submission-disabled",
-    "command-transport-disabled",
-    "command-transport-allowlist-empty",
-    "emergency-unkey-transport-disabled",
-    "emergency-unkey-transport-allowlist-empty",
-    "watchdog-unkey-transport-disabled",
-    "watchdog-unkey-transport-allowlist-empty",
-    "watchdog-arming-disabled",
-}
-if not required_activation_missing.issubset(set(activation_missing)):
-    raise SystemExit(
-        f"{source} activation configuration omitted fail-closed prerequisites: {activation_missing!r}")
+        f"{source} activation configuration prerequisites were not a list")
 if len(activation_missing) != len(set(activation_missing)):
     raise SystemExit(
         f"{source} activation configuration repeated a prerequisite: {activation_missing!r}")
-state = payload.get("txIndependentWatchdogState")
-if state not in {
-        "supervised-empty-disarmed",
-        "supervised-disarmed",
-        "supervised-degraded-disarmed"}:
+if profile == "rx-only":
+    if not activation_missing:
+        raise SystemExit(
+            f"{source} activation configuration prerequisites were unexpectedly empty")
+    required_activation_missing = {
+        "transmit-disabled",
+        "browser-tx-lease-disabled",
+        "command-trust-verification-disabled",
+        "command-trust-key-unconfigured",
+        "command-signing-disabled",
+        "command-signing-key-unconfigured",
+        "command-submission-disabled",
+        "command-transport-disabled",
+        "command-transport-allowlist-empty",
+        "emergency-unkey-transport-disabled",
+        "emergency-unkey-transport-allowlist-empty",
+        "watchdog-unkey-transport-disabled",
+        "watchdog-unkey-transport-allowlist-empty",
+        "watchdog-arming-disabled",
+    }
+    if not required_activation_missing.issubset(set(activation_missing)):
+        raise SystemExit(
+            f"{source} activation configuration omitted fail-closed prerequisites: {activation_missing!r}")
+elif activation_missing:
     raise SystemExit(
-        f"{source} watchdog state was {state!r}; expected a supervised Disarmed state")
+        f"{source} TX-enabled activation configuration was not ready: {activation_missing!r}")
+
+state = payload.get("txIndependentWatchdogState")
+allowed_states = {"supervised-empty-disarmed"} if profile == "production-tx" else {
+    "supervised-empty-disarmed",
+    "supervised-disarmed",
+    "supervised-degraded-disarmed",
+}
+if state not in allowed_states:
+    raise SystemExit(
+        f"{source} watchdog state was {state!r}; expected {sorted(allowed_states)!r}")
 count_fields = [
     "txIndependentWatchdogSessionCount",
     "txIndependentWatchdogProcessCount",
@@ -373,13 +516,27 @@ for key in count_fields:
         raise SystemExit(f"{source} health field {key!r} was not a non-negative integer")
 if payload["txIndependentWatchdogRegisteredIdentityCount"] != 0:
     raise SystemExit(
-        f"{source} reported a registered watchdog identity while browser TX leases are disabled")
+        f"{source} reported a registered watchdog identity during idle deployment verification")
+if profile == "production-tx":
+    idle_zero_fields = [
+        "txIndependentWatchdogSessionCount",
+        "txIndependentWatchdogProcessCount",
+        "txIndependentWatchdogConnectedProcessCount",
+        "txIndependentWatchdogRegisteredIdentityCount",
+        "txIndependentWatchdogArmedProcessCount",
+        "txIndependentWatchdogReconciliationRequiredCount",
+        "txIndependentWatchdogUnkeyAttemptCount",
+    ]
+    nonzero = {key: payload[key] for key in idle_zero_fields if payload[key] != 0}
+    if nonzero:
+        raise SystemExit(
+            f"{source} TX-enabled deployment was not empty and Disarmed: {nonzero!r}")
 if payload["txIndependentWatchdogConnectedProcessCount"] > payload["txIndependentWatchdogProcessCount"]:
     raise SystemExit(f"{source} reported more connected watchdogs than running processes")
 connected = payload.get("txIndependentWatchdogConnected")
 if connected != (payload["txIndependentWatchdogConnectedProcessCount"] > 0):
     raise SystemExit(f"{source} watchdog connected flag did not match its process count")
-print(f"{source} health is fail-closed: {payload}")
+print(f"{source} health matches {profile}: {payload}")
 PY
 }
 
@@ -697,6 +854,33 @@ echo "Activating release ${release_name}..."
 ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
   "install -m 0640 '${remote_dir}/${release_name}.tar.gz' '/home/flexweb/aethersdr/incoming/${release_name}.tar.gz'; bash '${remote_dir}/activate-release.sh' /home/flexweb/aethersdr '${release_name}' '${archive_sha}'"
 activated=true
+
+if [[ "${health_profile}" == production-tx ]]; then
+  echo "Running the deployed non-starting production TX activation preflight..."
+  remote_activation_preflight="$(ssh -o BatchMode=yes "${FLEXWEB_HOST}" '
+    set -Eeuo pipefail
+    environment_file=/home/flexweb/.config/aethersdr-web/environment
+    set -a
+    # The owner-only service environment is sourced only to select its exact
+    # primary radio ID. The reviewed wrapper independently validates the same
+    # file, all three allowlists, trust/signing material, and packaged binaries.
+    # shellcheck disable=SC1090
+    source "${environment_file}"
+    set +a
+    radio_id="${StationTxCommandTransport__AllowedRadioIds__0:-}"
+    [[ -n "${radio_id}" ]] || {
+      echo "The production TX deployment environment has no primary radio target." >&2
+      exit 78
+    }
+    exec /home/flexweb/aethersdr/current/tools/validate-production-tx-activation.sh \
+      "${radio_id}" \
+      "${environment_file}" \
+      /home/flexweb/aethersdr/current/AetherSDR.Web
+  ')"
+  assert_activation_preflight_ready \
+    "${remote_activation_preflight}" \
+    "deployed production TX activation preflight"
+fi
 
 ssh -o BatchMode=yes "${FLEXWEB_HOST}" \
   'systemctl --user restart aethersdr-web.service'

@@ -524,11 +524,12 @@ internal sealed class StationTxSafetySupervisor : IAsyncDisposable
             await m_transport.RequestUnkeyAsync(
                 arm.ProtectedClientHandle,
                 cancellationToken);
+        DateTimeOffset completedAt = m_timeProvider.GetUtcNow();
         int attempts = checked(arm.UnkeyAttempts + 1);
         m_arm = arm with
         {
             UnkeyAttempts = attempts,
-            UnkeyDeadlineAt = now + UnkeyConfirmationTimeout
+            UnkeyDeadlineAt = completedAt + UnkeyConfirmationTimeout
         };
         m_reason = command.Success
             ? reason

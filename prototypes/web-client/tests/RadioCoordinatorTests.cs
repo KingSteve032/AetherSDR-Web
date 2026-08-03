@@ -199,6 +199,41 @@ public sealed class RadioCoordinatorTests
     }
 
     [Fact]
+    public void RadioConnectionSnapshotRefreshesPerBrowserTxCapability()
+    {
+        RadioCoordinator coordinator = CreateCoordinator(
+            mode: "FlexRx",
+            browserTxLeaseEnabled: true,
+            txOccupancyRegistry: IdleOccupancy());
+        RadioClientConnection connection = coordinator.Register(
+            CreateUser("user-a", "Operator A", "Aether.Transmit"));
+
+        BrowserTxCapability disconnected =
+            coordinator.GetBrowserTxCapability(connection);
+        Assert.False(disconnected.RadioConnected);
+        Assert.False(disconnected.LeaseAvailable);
+        Assert.Equal("radio-disconnected", disconnected.State);
+
+        coordinator.SetRadioConnection(
+            connected: true,
+            radioModel: "FLEX-TEST",
+            serial: "TEST-SERIAL",
+            stationClientHandle: 0x10000001);
+
+        Assert.True(connection.Outbox.TryRead(out OutboundMessage? message));
+        using JsonDocument document = JsonDocument.Parse(message.Payload);
+        JsonElement root = document.RootElement;
+        Assert.Equal("snapshot", root.GetProperty("event").GetString());
+        Assert.True(root.GetProperty("snapshot").GetProperty("connected").GetBoolean());
+        JsonElement capability = root.GetProperty("txCapability");
+        Assert.True(capability.GetProperty("radioConnected").GetBoolean());
+        Assert.True(capability.GetProperty("leaseAvailable").GetBoolean());
+        Assert.Equal(
+            "lease-available",
+            capability.GetProperty("state").GetString());
+    }
+
+    [Fact]
     public void AuthorizedBrowserCanHoldLeaseWhileEveryKeyingSurfaceStaysOff()
     {
         RadioTxOccupancyRegistry occupancy = IdleOccupancy();
