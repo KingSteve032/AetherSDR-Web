@@ -435,7 +435,7 @@ public sealed class InstallationSetupCenterApplication : IDisposable
         }
     }
 
-    private static void ValidateMutationTarget(
+    private void ValidateMutationTarget(
         InstallationSetupCenterMutation mutation)
     {
         if (!Enum.IsDefined(mutation.Kind))
@@ -452,6 +452,20 @@ public sealed class InstallationSetupCenterApplication : IDisposable
                 throw new InvalidOperationException(
                     "The browser setup center cannot select a topology that does not " +
                     "run the gateway on this host.");
+            }
+        }
+        if (mutation is InstallationSetupCenterPublicUrlMutation publicUrl)
+        {
+            CanonicalPublicUrl requested =
+                CanonicalPublicUrl.Parse(publicUrl.CanonicalPublicUrl);
+            if (!string.Equals(
+                    requested.Value,
+                    m_security.Contract.CanonicalOrigin,
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "The browser setup center public URL must match its exact startup " +
+                    "access URL.");
             }
         }
     }

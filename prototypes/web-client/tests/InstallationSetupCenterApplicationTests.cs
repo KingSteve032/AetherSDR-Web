@@ -290,6 +290,51 @@ public sealed class InstallationSetupCenterApplicationTests
     }
 
     [Fact]
+    public async Task PublicUrlMustMatchExactStartupAccessOrigin()
+    {
+        using TemporaryDirectory temporary = new();
+        ManualTimeProvider time = new(Start);
+        InstallationSetupStore store = CreateStore(temporary, time);
+        InstallationBootstrapTokenIssue bootstrap = await IssueBootstrapAsync(store, time);
+        using InstallationSetupCenterApplication application =
+            CreateApplication(store, time);
+        InstallationSetupCenterPageResult page =
+            await application.ReadPageAsync(PageRequest());
+        InstallationSetupCenterClaimResult claim =
+            await application.ClaimAsync(
+                ClaimRequest(page.Csrf.Token),
+                bootstrap.State.Revision,
+                bootstrap.Token);
+        InstallationSetupCenterMutationResult topology =
+            await MutateAsync(
+                application,
+                claim.Session,
+                claim.Csrf,
+                new InstallationSetupCenterTopologyMutation(
+                    claim.Session.SetupRevision,
+                    InstallationTopologyKind.PersonalSingleStation));
+        InstallationSetupState before = await store.LoadAsync();
+
+        InvalidOperationException exception =
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => application.MutateAsync(
+                    MutationRequest(topology.Csrf.Token, topology.Csrf.Token),
+                    topology.Session.Token,
+                    new InstallationSetupCenterPublicUrlMutation(
+                        topology.Session.SetupRevision,
+                        "https://other.example.org")));
+
+        Assert.Contains("match its exact startup access URL", exception.Message);
+        Assert.Equal(before, await store.LoadAsync());
+        InstallationSetupCenterSessionResult stillValid =
+            await application.ReadSessionAsync(
+                SessionReadRequest(),
+                topology.Session.Token,
+                topology.Session.SetupRevision);
+        Assert.Equal(topology.Session.SetupRevision, stillValid.Status.Revision);
+    }
+
+    [Fact]
     public async Task StaleRevisionAndReplacedTokenFailClosed()
     {
         using TemporaryDirectory temporary = new();
@@ -426,7 +471,7 @@ public sealed class InstallationSetupCenterApplicationTests
     }
 
     [Fact]
-    public void ApplicationRemainsUnwiredFromProductionProgram()
+    public void ProgramConstructsApplicationOnlyInsideSetupOnlyBranch()
     {
         string programPath = Path.Combine(
             FindRepositoryRoot(),
@@ -435,10 +480,21 @@ public sealed class InstallationSetupCenterApplicationTests
             "Program.cs");
         string source = File.ReadAllText(programPath);
 
-        Assert.DoesNotContain(
-            "InstallationSetupCenterApplication",
-            source,
+        int setupBranch = source.IndexOf(
+            "installationHostStartupPlan.Mode == InstallationHostStartupMode.SetupOnly",
             StringComparison.Ordinal);
+        int application = source.IndexOf(
+            "GetRequiredService<InstallationSetupCenterApplication>",
+            StringComparison.Ordinal);
+        int setupReturn = source.IndexOf(
+            "await setupOnlyApplication.RunAsync();",
+            StringComparison.Ordinal);
+        int auth = source.IndexOf("AuthSettings authSettings", StringComparison.Ordinal);
+
+        Assert.True(setupBranch >= 0);
+        Assert.True(application > setupBranch);
+        Assert.True(setupReturn > application);
+        Assert.True(auth > setupReturn);
         Assert.DoesNotContain(
             "InstallationSetupCenterMutation",
             source,
