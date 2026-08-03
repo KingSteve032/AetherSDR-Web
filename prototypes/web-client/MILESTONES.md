@@ -2698,8 +2698,8 @@ M8C.
 
 ### M8B — Signed GitHub releases and transactional updates
 
-Status: active. The first local-only signed-manifest verification boundary is
-implemented; production trust-store composition, publishing, download, staging,
+Status: active. The local-only signed-manifest verifier and the normal-runtime
+public-key trust composition are implemented; publishing, download, staging,
 activation, rollback, migration execution, service control, and Admin/CLI/browser
 callers remain unimplemented.
 
@@ -2724,12 +2724,33 @@ command, browser, or TX caller. Deterministic signing material exists only in th
 focused test assembly; no production private key or production trust anchor is
 committed.
 
-Automated checkpoint on 2026-08-03: Release solution build completed with zero
-warnings and zero errors; the focused signed-manifest verifier suite passed
-42/42; web tests passed 928/928; independent-watchdog tests passed 57/57; TX-HIL
-isolation tests passed 48/48; AetherRemote tests passed 70/70; and browser tests
-passed 135/135. The complete checkpoint covered 1,103 .NET tests and 1,238 tests
-overall. No live radio or RF operation was performed or required.
+The second increment adds a strict disabled-by-default `ReleaseManifestTrust`
+configuration, a bounded immutable public-key registry, and one local verification
+service composed with the first increment. Normal-runtime startup rejects unknown
+configuration, unsupported algorithms, duplicate identifiers or paths, relative
+or non-canonical paths, missing/empty/oversized keys, symlinks, unsafe Unix write
+permissions, invalid or multiple PEM blocks, private keys, invalid UTF-8, and
+non-P-256 public keys. Enabling verification requires at least one reviewed key.
+The registry exposes only redacted readiness diagnostics and the service has no
+network, download, extraction, installation, activation, service-control,
+migration, backup, radio, watchdog, command, lease, browser, or TX method. Health
+reports local verification readiness and explicitly reports those update mutation
+surfaces as unregistered.
+
+Automated checkpoint on 2026-08-03 for the first increment: Release solution build
+completed with zero warnings and zero errors; the focused signed-manifest verifier
+suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
+57/57; TX-HIL isolation tests passed 48/48; AetherRemote tests passed 70/70; and
+browser tests passed 135/135. The complete checkpoint covered 1,103 .NET tests and
+1,238 tests overall. No live radio or RF operation was performed or required.
+
+Automated checkpoint on 2026-08-03 for the production trust composition: the
+deployment script passed shell syntax validation; Release solution build completed
+with zero warnings and zero errors; the focused release-trust suite passed 35/35;
+web tests passed 963/963; independent-watchdog tests passed 57/57; TX-HIL isolation
+tests passed 48/48; AetherRemote tests passed 70/70; and browser tests passed
+135/135. The complete checkpoint covered 1,138 .NET tests and 1,273 tests overall.
+No live radio or RF operation was performed or required.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

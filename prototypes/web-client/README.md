@@ -466,9 +466,36 @@ code; it omits signature bytes, checksums, package paths, and key identifiers.
 This increment supports ECDSA P-256 with SHA-256 through injected public-key
 material. The repository contains deterministic test-only signing material in the
 focused verifier tests, but no production private key, signer, embedded production
-trust anchor, CLI/Admin composition, or browser update control. Publishing,
-production trust-store composition, offline bundle handling, activation, rollback,
-and health verification remain later M8B work.
+trust anchor, CLI/Admin composition, or browser update control.
+
+The second M8B increment adds normal-runtime production trust composition through
+the disabled-by-default `ReleaseManifestTrust` section:
+
+```json
+{
+  "ReleaseManifestTrust": {
+    "VerificationEnabled": false,
+    "Keys": []
+  }
+}
+```
+
+Each configured key requires a canonical ID, the exact
+`EcdsaP256Sha256` algorithm, and an absolute canonical path to one regular,
+non-symlink `PUBLIC KEY` PEM file. The key file and its containing directory must
+not be writable by group or other users on Unix. Private-key PEM, multiple blocks,
+trailing data, invalid UTF-8, oversized files, duplicate IDs or paths, unsupported
+algorithms, and non-P-256 keys fail startup. Enabling verification requires at
+least one valid key.
+
+The resulting registry retains only immutable public verification material and
+redacted readiness diagnostics. `SignedReleaseManifestVerificationService`
+combines it with the local verifier and exposes only `VerifyLocal`; disabled trust
+returns a typed fail-closed result. Normal health shows trust readiness while
+explicitly reporting that release download, installation, and activation remain
+unregistered. Publishing, offline bundle handling, CLI/Admin callers, activation,
+rollback, migrations, and post-activation health verification remain later M8B
+work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled
@@ -557,6 +584,14 @@ script never commits or pushes; a Browser Bridge acceptance pass against the
 deployed site is required before Git publication. The default `rx-only` profile
 requires the public and internal health contract below; the exact production-TX
 overrides are enforced directly by the guarded script:
+`releaseManifestTrustVerificationEnabled=false`,
+`releaseManifestTrustedKeyCount=0`,
+`releaseManifestSignatureVerificationAvailable=false`,
+`releaseManifestLocalVerificationRegistered=true`,
+`releaseManifestLocalVerificationAvailable=false`,
+`releaseManifestNetworkDownloadRegistered=false`,
+`releaseManifestInstallationRegistered=false`,
+`releaseManifestActivationRegistered=false`,
 `txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,
 `txBrowserIntentProtocolVersion=2`,
 `txBrowserIntentValidationRegistered=true`,
