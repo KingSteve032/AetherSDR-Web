@@ -316,10 +316,23 @@ revocation do not mutate setup state.
 
 This boundary is not registered in `Program.cs` and adds no HTTP route, cookie,
 browser asset, setup-only listener, account provider, installer mutation, radio
-action, or TX action. A later browser setup-center increment must add setup-only
-startup, trusted-origin and host checks, CSRF protection, request bounds and rate
-limits, and a Secure, HttpOnly, SameSite=Strict cookie without putting either
-bootstrap or session tokens in URLs, logs, or browser storage.
+action, or TX action.
+
+The internal host-startup planner now gives a future integration one mutually
+exclusive decision among exact legacy defaults, setup-only eligibility, and exact
+normal-runtime readiness. Setup-only planning requires an existing valid and
+unfinished setup document, rejects completed setup and remote-node-only topology,
+and returns only the redacted setup status. It does not create state, issue a
+bootstrap token, create a claim session, or authorize an endpoint. Normal-runtime
+planning continues through the exact completed runtime binding.
+
+The planner is also not called from `Program.cs` and introduces no configuration
+section, listener, route, cookie, service registration, account provider, radio
+action, or TX action. A later reviewed browser setup-center integration must wire
+it before normal authentication and hosted services, then add trusted-origin and
+host checks, CSRF protection, request bounds and rate limits, and a Secure,
+HttpOnly, SameSite=Strict cookie without putting either bootstrap or session
+tokens in URLs, logs, or browser storage.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled
