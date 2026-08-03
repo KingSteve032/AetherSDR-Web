@@ -518,6 +518,34 @@ mutated, archives are not extracted, and no install, activation, rollback,
 migration execution, service control, Admin/browser, radio, watchdog, command,
 lease, or TX caller exists.
 
+The ninth M8B increment adds a separate verified release publication boundary.
+`VerifiedReleasePublicationService` is registered for diagnostics but exposes no
+public execution method or operational caller. Its internal operation accepts only
+the exact successful staging report and staged artifact, checks their revision,
+identities, counts, byte total, canonical private path, and inactive/unpublished
+flags, rereads release status, and independently rehashes the complete immutable
+staging tree before mutation.
+
+Publication uses one no-overwrite cross-parent directory rename from the private
+staging child into the absent direct release target. Linux requires the moved
+root to be owner-writable while its parent link is changed, so the service changes
+only that root from owner-read/execute to owner-read/write/execute immediately
+before `Directory.Move`, then restores owner-read/execute at the published path.
+Every file and descendant directory remains immutable throughout. The published
+tree is re-enumerated and rehashed, and a second status read must show exactly the
+one target identity added while completed setup policy and the active `current`
+identity remain unchanged.
+
+Cancellation is accepted only before the atomic rename. Once the rename may have
+executed, the service finishes reconciliation without honoring cancellation. A
+failed rename with the source still present restores the staging-root mode. An
+ambiguous or invalid post-rename state is surfaced as reconciliation-required and
+is not automatically deleted because an external actor may have changed `current`.
+The public report contains no path, package name, or digest. Publication does not
+copy files, mutate `current`, activate, roll back, execute migrations, control
+services, or touch Admin/browser, AetherRemote runtime, radio, watchdog, command,
+lease, or TX state.
+
 ## Trust boundaries
 
 ### Browser

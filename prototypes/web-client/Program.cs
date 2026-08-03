@@ -500,6 +500,7 @@ builder.Services.AddSingleton<OfflineReleaseInstallPreflightPlanner>();
 builder.Services.AddSingleton<OfflineReleaseInstallPreflightConsole>();
 builder.Services.AddSingleton<VerifiedReleaseInstallationPlanComposer>();
 builder.Services.AddSingleton<VerifiedReleaseStagingService>();
+builder.Services.AddSingleton<VerifiedReleasePublicationService>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
 builder.Services.AddSingleton<StationTxCommandEnvelopeCoordinator>();
@@ -603,6 +604,8 @@ VerifiedReleaseInstallationPlanComposer releaseInstallationPlanComposer =
     app.Services.GetRequiredService<VerifiedReleaseInstallationPlanComposer>();
 VerifiedReleaseStagingService verifiedReleaseStagingService =
     app.Services.GetRequiredService<VerifiedReleaseStagingService>();
+VerifiedReleasePublicationService verifiedReleasePublicationService =
+    app.Services.GetRequiredService<VerifiedReleasePublicationService>();
 StationTxIndependentWatchdogRegistry independentTxWatchdogRegistry =
     app.Services.GetRequiredService<StationTxIndependentWatchdogRegistry>();
 StationTxCommandTrustRegistry stationTxCommandTrustRegistry =
@@ -668,6 +671,8 @@ app.MapGet(
                 releaseInstallationPlanComposer.Snapshot;
             VerifiedReleaseStagingDiagnostics releaseStaging =
                 verifiedReleaseStagingService.Snapshot;
+            VerifiedReleasePublicationDiagnostics releasePublication =
+                verifiedReleasePublicationService.Snapshot;
             StationTxIndependentWatchdogAggregate watchdog =
                 independentTxWatchdogRegistry.Snapshot;
             StationTxCommandTrustDiagnostics commandTrust =
@@ -910,6 +915,50 @@ app.MapGet(
                     releaseStaging.LeaseCallerRegistered,
                 releaseStagingTxCallerRegistered =
                     releaseStaging.TxCallerRegistered,
+                releasePublicationServiceRegistered =
+                    releasePublication.Registered,
+                releasePublicationStatusRevalidationRegistered =
+                    releasePublication.StatusRevalidationRegistered,
+                releasePublicationFrozenStagingValidationRegistered =
+                    releasePublication.FrozenStagingValidationRegistered,
+                releasePublicationRootPermissionTransitionRegistered =
+                    releasePublication.RootPermissionTransitionRegistered,
+                releasePublicationAtomicDirectoryPublishRegistered =
+                    releasePublication.AtomicDirectoryPublishRegistered,
+                releasePublicationPublishedTreeValidationRegistered =
+                    releasePublication.PublishedTreeValidationRegistered,
+                releasePublicationNetworkDownloadRegistered =
+                    releasePublication.NetworkDownloadRegistered,
+                releasePublicationArchiveExtractionRegistered =
+                    releasePublication.ArchiveExtractionRegistered,
+                releasePublicationFileCopyRegistered =
+                    releasePublication.FileCopyRegistered,
+                releasePublicationCurrentPointerMutationRegistered =
+                    releasePublication.CurrentPointerMutationRegistered,
+                releasePublicationActivationRegistered =
+                    releasePublication.ActivationRegistered,
+                releasePublicationRollbackRegistered =
+                    releasePublication.RollbackRegistered,
+                releasePublicationMigrationExecutionRegistered =
+                    releasePublication.MigrationExecutionRegistered,
+                releasePublicationServiceControlRegistered =
+                    releasePublication.ServiceControlRegistered,
+                releasePublicationCliCallerRegistered =
+                    releasePublication.CliCallerRegistered,
+                releasePublicationAdminCallerRegistered =
+                    releasePublication.AdminCallerRegistered,
+                releasePublicationBrowserCallerRegistered =
+                    releasePublication.BrowserCallerRegistered,
+                releasePublicationRadioCallerRegistered =
+                    releasePublication.RadioCallerRegistered,
+                releasePublicationWatchdogCallerRegistered =
+                    releasePublication.WatchdogCallerRegistered,
+                releasePublicationCommandCallerRegistered =
+                    releasePublication.CommandCallerRegistered,
+                releasePublicationLeaseCallerRegistered =
+                    releasePublication.LeaseCallerRegistered,
+                releasePublicationTxCallerRegistered =
+                    releasePublication.TxCallerRegistered,
                 radioMode = radioSettings.Mode,
                 transmitEnabled =
                     stationTxProductionActivationBinding.BindingApplied,
