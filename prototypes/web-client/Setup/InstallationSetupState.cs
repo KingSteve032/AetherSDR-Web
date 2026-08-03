@@ -210,10 +210,15 @@ public static class InstallationSetupStateValidator
         {
             if (state.UpdateChannel == InstallationUpdateChannel.Pinned)
             {
-                if (string.IsNullOrWhiteSpace(state.PinnedRelease))
+                string releaseIdentity =
+                    InstallationReleaseIdentity.Parse(state.PinnedRelease);
+                if (!string.Equals(
+                        releaseIdentity,
+                        state.PinnedRelease,
+                        StringComparison.Ordinal))
                 {
                     throw new InvalidOperationException(
-                        "The pinned update channel requires an exact release identity.");
+                        "The pinned release identity is not in canonical form.");
                 }
             }
             else if (!string.IsNullOrEmpty(state.PinnedRelease))

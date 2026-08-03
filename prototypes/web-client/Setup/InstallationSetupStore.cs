@@ -41,6 +41,27 @@ public sealed class InstallationSetupStore
 
     public string StatePath => m_statePath;
 
+    public async Task<InstallationSetupState> LoadAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await m_gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (!File.Exists(m_statePath))
+            {
+                throw new FileNotFoundException(
+                    "Installation setup state does not exist.",
+                    m_statePath);
+            }
+
+            return await ReadAsync(cancellationToken);
+        }
+        finally
+        {
+            m_gate.Release();
+        }
+    }
+
     public async Task<InstallationSetupState> LoadOrCreateAsync(
         CancellationToken cancellationToken = default)
     {
