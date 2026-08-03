@@ -129,34 +129,66 @@ if (installationSetupCommandLine.Command !=
     return;
 }
 
+InstallationSetupOnlySettings installationSetupOnlySettings =
+    builder.Configuration
+        .GetSection(InstallationSetupOnlySettings.SectionName)
+        .Get<InstallationSetupOnlySettings>(options =>
+            options.ErrorOnUnknownConfiguration = true) ??
+    new InstallationSetupOnlySettings();
 InstallationRuntimeSettings installationRuntimeSettings =
     builder.Configuration
         .GetSection(InstallationRuntimeSettings.SectionName)
         .Get<InstallationRuntimeSettings>(options =>
             options.ErrorOnUnknownConfiguration = true) ??
     new InstallationRuntimeSettings();
-_ = await InstallationRuntimeStartupGate.RequireReadyAsync(
-    installationRuntimeSettings,
-    () =>
+Func<InstallationPaths> resolveInstallationPaths = () =>
+{
+    InstallationPathSettings installationPathSettings =
+        builder.Configuration
+            .GetSection(InstallationPathSettings.SectionName)
+            .Get<InstallationPathSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new InstallationPathSettings();
+    InstallationPathLayout installationPathLayout =
+        builder.Environment.IsDevelopment()
+            ? InstallationPathLayout.Development
+            : OperatingSystem.IsLinux()
+                ? InstallationPathLayout.LinuxSystem
+                : throw new InvalidOperationException(
+                    "Standalone installation startup requires Linux.");
+    return InstallationPaths.Resolve(
+        builder.Environment.ContentRootPath,
+        installationPathLayout,
+        installationPathSettings);
+};
+InstallationHostStartupPlan installationHostStartupPlan =
+    await InstallationHostStartupPlanner.CreateAsync(
+        installationSetupOnlySettings,
+        installationRuntimeSettings,
+        resolveInstallationPaths);
+if (installationHostStartupPlan.Mode == InstallationHostStartupMode.SetupOnly)
+{
+    if (productionTxPreflightRequested)
     {
-        InstallationPathSettings installationPathSettings =
-            builder.Configuration
-                .GetSection(InstallationPathSettings.SectionName)
-                .Get<InstallationPathSettings>(options =>
-                    options.ErrorOnUnknownConfiguration = true) ??
-            new InstallationPathSettings();
-        InstallationPathLayout installationPathLayout =
-            builder.Environment.IsDevelopment()
-                ? InstallationPathLayout.Development
-                : OperatingSystem.IsLinux()
-                    ? InstallationPathLayout.LinuxSystem
-                    : throw new InvalidOperationException(
-                        "Standalone production runtime requires Linux.");
-        return InstallationPaths.Resolve(
-            builder.Environment.ContentRootPath,
-            installationPathLayout,
-            installationPathSettings);
-    });
+        throw new InvalidOperationException(
+            "Production TX activation preflight cannot run in setup-only mode.");
+    }
+    InstallationSetupHttpSecuritySettings setupHttpSecuritySettings =
+        builder.Configuration
+            .GetSection(InstallationSetupHttpSecuritySettings.SectionName)
+            .Get<InstallationSetupHttpSecuritySettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new InstallationSetupHttpSecuritySettings();
+    _ = InstallationSetupOnlyProgramComposition.Configure(
+        builder,
+        installationHostStartupPlan,
+        setupHttpSecuritySettings);
+    WebApplication setupOnlyApplication = builder.Build();
+    _ = setupOnlyApplication.Services
+        .GetRequiredService<InstallationSetupCenterApplication>();
+    await setupOnlyApplication.RunAsync();
+    return;
+}
 
 AuthSettings authSettings =
     builder.Configuration.GetSection(AuthSettings.SectionName).Get<AuthSettings>() ??

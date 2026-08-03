@@ -326,9 +326,10 @@ and returns only the redacted setup status. It does not create state, issue a
 bootstrap token, create a claim session, or authorize an endpoint. Normal-runtime
 planning continues through the exact completed runtime binding.
 
-The planner is also not called from `Program.cs` and introduces no configuration
-section, listener, route, cookie, service registration, account provider, radio
-action, or TX action.
+`Program.cs` now calls the planner before normal configuration and uses its
+setup-only result to build the isolated route-empty host described below. The
+planner itself still creates no state, listener, route, cookie, service,
+account-provider, radio, watchdog, command, or TX authority.
 
 The internal setup HTTP-security policy now fixes the request contract for a
 future browser setup center. It allows only canonical HTTPS page navigation,
@@ -349,11 +350,11 @@ diagnostics. Setup responses are defined as no-store with a restrictive CSP,
 no-referrer, nosniff, same-origin opener/resource policies, and disabled browser
 device permissions.
 
-This policy is still not called from `Program.cs` and adds no middleware, rate
-limiter, cookie, listener, route, browser asset, account provider, radio action,
-or TX action. A later reviewed browser setup-center integration must mechanically
-map these contracts without putting bootstrap or session tokens in URLs, logs, or
-browser storage.
+The policy is now instantiated only inside explicit setup-only program
+composition. It still adds no middleware, rate limiter, cookie, route, browser
+asset, account provider, radio action, or TX action. A later reviewed HTTP adapter
+must mechanically map these contracts without putting bootstrap or session tokens
+in URLs, logs, or browser storage.
 
 The internal setup-center application now composes the security policy, redacted
 status, bootstrap claim, process-local session, ordered workflow, and read-only
@@ -373,10 +374,28 @@ wrong-revision, concurrent, completed, or malformed sessions fail closed. The
 application also refuses completed setup and topologies that do not run the web
 gateway here.
 
-This façade remains absent from `Program.cs` and adds no middleware, JSON parser,
-route, cookie writer, listener, browser asset, account provider, installer side
-effect, radio action, watchdog action, or TX action. A later reviewed host slice
-must adapt HTTP metadata and bounded JSON mechanically into these typed calls.
+`Program.cs` now selects the unified startup plan before reading normal
+authentication, radio, remote-station, watchdog, command, or TX settings. An
+explicit setup-only process requires:
+
+```text
+InstallationSetupOnly__Enabled=true
+InstallationSetupOnly__CanonicalAccessUrl=https://radio.example.org
+InstallationRuntime__Enabled=false
+```
+
+The canonical access URL must already be the exact HTTPS origin through which the
+operator will reach setup. Disabled setup-only configuration must leave that URL
+empty, setup-only and normal runtime cannot both be enabled, and the public-URL
+workflow step must select the same origin.
+
+An eligible setup-only process registers only installation paths, the setup store,
+the HTTP-security policy, and the setup-center application. It builds a real but
+route-empty ASP.NET host and returns before normal service configuration. No setup
+page or API is exposed yet: there is still no mapped endpoint, middleware, rate
+limiter, JSON parser, cookie writer, browser asset, account provider, installer
+side effect, radio action, watchdog action, or TX action. The next reviewed slice
+must mechanically adapt HTTP metadata and bounded JSON into these typed calls.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled

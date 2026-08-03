@@ -5,6 +5,7 @@ public sealed record InstallationSetupOnlySettings
     public const string SectionName = "InstallationSetupOnly";
 
     public bool Enabled { get; init; }
+    public string CanonicalAccessUrl { get; init; } = string.Empty;
 }
 
 public enum InstallationHostStartupMode
@@ -18,7 +19,8 @@ public sealed record InstallationHostStartupPlan(
     InstallationHostStartupMode Mode,
     InstallationPaths? Paths,
     InstallationSetupStatusReport? SetupStatus,
-    InstallationRuntimeReadinessReport? RuntimeReadiness)
+    InstallationRuntimeReadinessReport? RuntimeReadiness,
+    string? SetupOnlyCanonicalAccessUrl)
 {
     public bool SetupOnlyEligible =>
         Mode == InstallationHostStartupMode.SetupOnly;
@@ -40,6 +42,12 @@ public static class InstallationHostStartupPlanner
         ArgumentNullException.ThrowIfNull(runtimeSettings);
         ArgumentNullException.ThrowIfNull(resolvePaths);
 
+        if (!setupOnlySettings.Enabled &&
+            !string.IsNullOrEmpty(setupOnlySettings.CanonicalAccessUrl))
+        {
+            throw new InvalidOperationException(
+                "Disabled setup-only settings must retain an empty canonical access URL.");
+        }
         if (setupOnlySettings.Enabled && runtimeSettings.Enabled)
         {
             throw new InvalidOperationException(
@@ -58,12 +66,14 @@ public static class InstallationHostStartupPlanner
                     InstallationHostStartupMode.Legacy,
                     Paths: null,
                     SetupStatus: null,
-                    RuntimeReadiness: null)
+                    RuntimeReadiness: null,
+                    SetupOnlyCanonicalAccessUrl: null)
                 : new InstallationHostStartupPlan(
                     InstallationHostStartupMode.NormalRuntime,
                     Paths: null,
                     SetupStatus: null,
-                    runtimeReadiness);
+                    runtimeReadiness,
+                    SetupOnlyCanonicalAccessUrl: null);
         }
 
         _ = await InstallationRuntimeStartupGate.RequireReadyAsync(
@@ -71,6 +81,17 @@ public static class InstallationHostStartupPlanner
             () => throw new InvalidOperationException(
                 "Disabled normal runtime settings unexpectedly requested path resolution."),
             cancellationToken);
+
+        CanonicalPublicUrl accessUrl =
+            CanonicalPublicUrl.Parse(setupOnlySettings.CanonicalAccessUrl);
+        if (!string.Equals(
+                accessUrl.Value,
+                setupOnlySettings.CanonicalAccessUrl,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Enabled setup-only settings require one exact canonical HTTPS access URL.");
+        }
 
         InstallationPaths paths = resolvePaths() ??
             throw new InvalidOperationException(
@@ -102,6 +123,7 @@ public static class InstallationHostStartupPlanner
             InstallationHostStartupMode.SetupOnly,
             paths,
             InstallationSetupStatusReport.From(state),
-            RuntimeReadiness: null);
+            RuntimeReadiness: null,
+            accessUrl.Value);
     }
 }

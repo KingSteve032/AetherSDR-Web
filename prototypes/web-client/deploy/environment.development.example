@@ -1,6 +1,8 @@
 # Temporary receive-only pilot profile for a trusted LAN/VPN.
 # Replace Development authentication with OIDC before production use.
 ASPNETCORE_ENVIRONMENT=Development
+InstallationSetupOnly__Enabled=false
+InstallationSetupOnly__CanonicalAccessUrl=
 InstallationRuntime__Enabled=false
 Auth__Mode=Development
 AllowedHosts='10.2.0.254;localhost;127.0.0.1'

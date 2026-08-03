@@ -389,7 +389,7 @@ public sealed class InstallationSetupHttpSecurityTests
     }
 
     [Fact]
-    public void SecurityPolicyRemainsUnwiredFromProductionProgram()
+    public void SecuritySettingsAreBoundOnlyInsideSetupOnlyProgramBranch()
     {
         string programPath = Path.Combine(
             FindRepositoryRoot(),
@@ -398,12 +398,23 @@ public sealed class InstallationSetupHttpSecurityTests
             "Program.cs");
         string source = File.ReadAllText(programPath);
 
+        int setupBranch = source.IndexOf(
+            "installationHostStartupPlan.Mode == InstallationHostStartupMode.SetupOnly",
+            StringComparison.Ordinal);
+        int settings = source.IndexOf(
+            InstallationSetupHttpSecuritySettings.SectionName,
+            StringComparison.Ordinal);
+        int setupBuild = source.IndexOf(
+            "WebApplication setupOnlyApplication = builder.Build()",
+            StringComparison.Ordinal);
+        int auth = source.IndexOf("AuthSettings authSettings", StringComparison.Ordinal);
+
+        Assert.True(setupBranch >= 0);
+        Assert.True(settings > setupBranch);
+        Assert.True(setupBuild > settings);
+        Assert.True(auth > setupBuild);
         Assert.DoesNotContain(
             "InstallationSetupHttpSecurityPolicy",
-            source,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            InstallationSetupHttpSecuritySettings.SectionName,
             source,
             StringComparison.Ordinal);
     }

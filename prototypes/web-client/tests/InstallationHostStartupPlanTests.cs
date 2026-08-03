@@ -30,6 +30,7 @@ public sealed class InstallationHostStartupPlanTests
         Assert.Null(plan.Paths);
         Assert.Null(plan.SetupStatus);
         Assert.Null(plan.RuntimeReadiness);
+        Assert.Null(plan.SetupOnlyCanonicalAccessUrl);
         Assert.False(resolved);
     }
 
@@ -41,7 +42,7 @@ public sealed class InstallationHostStartupPlanTests
         InvalidOperationException exception =
             await Assert.ThrowsAsync<InvalidOperationException>(
                 () => InstallationHostStartupPlanner.CreateAsync(
-                    new InstallationSetupOnlySettings { Enabled = true },
+                    EnabledSetupOnly(),
                     new InstallationRuntimeSettings { Enabled = true },
                     () =>
                     {
@@ -65,7 +66,7 @@ public sealed class InstallationHostStartupPlanTests
         InvalidOperationException exception =
             await Assert.ThrowsAsync<InvalidOperationException>(
                 () => InstallationHostStartupPlanner.CreateAsync(
-                    new InstallationSetupOnlySettings { Enabled = true },
+                    EnabledSetupOnly(),
                     partial,
                     () =>
                     {
@@ -85,7 +86,7 @@ public sealed class InstallationHostStartupPlanTests
 
         await Assert.ThrowsAsync<FileNotFoundException>(
             () => InstallationHostStartupPlanner.CreateAsync(
-                new InstallationSetupOnlySettings { Enabled = true },
+                EnabledSetupOnly(),
                 new InstallationRuntimeSettings(),
                 () => paths));
 
@@ -104,7 +105,7 @@ public sealed class InstallationHostStartupPlanTests
 
         InstallationHostStartupPlan plan =
             await InstallationHostStartupPlanner.CreateAsync(
-                new InstallationSetupOnlySettings { Enabled = true },
+                EnabledSetupOnly(),
                 new InstallationRuntimeSettings(),
                 () => paths);
         string after = await File.ReadAllTextAsync(store.StatePath);
@@ -118,6 +119,7 @@ public sealed class InstallationHostStartupPlanTests
         Assert.Equal(InstallationSetupLockMode.BootstrapRequired, plan.SetupStatus.LockMode);
         Assert.False(plan.SetupStatus.BootstrapTokenPresent);
         Assert.Null(plan.RuntimeReadiness);
+        Assert.Equal("https://radio.example.org", plan.SetupOnlyCanonicalAccessUrl);
         Assert.Equal(before, after);
         Assert.Equal(initial, await store.LoadAsync());
     }
@@ -136,7 +138,7 @@ public sealed class InstallationHostStartupPlanTests
 
         InstallationHostStartupPlan plan =
             await InstallationHostStartupPlanner.CreateAsync(
-                new InstallationSetupOnlySettings { Enabled = true },
+                EnabledSetupOnly(),
                 new InstallationRuntimeSettings(),
                 () => paths);
         string json = JsonSerializer.Serialize(plan);
@@ -161,7 +163,7 @@ public sealed class InstallationHostStartupPlanTests
 
         InstallationHostStartupPlan plan =
             await InstallationHostStartupPlanner.CreateAsync(
-                new InstallationSetupOnlySettings { Enabled = true },
+                EnabledSetupOnly(),
                 new InstallationRuntimeSettings(),
                 () => paths);
 
@@ -188,7 +190,7 @@ public sealed class InstallationHostStartupPlanTests
         InvalidOperationException exception =
             await Assert.ThrowsAsync<InvalidOperationException>(
                 () => InstallationHostStartupPlanner.CreateAsync(
-                    new InstallationSetupOnlySettings { Enabled = true },
+                    EnabledSetupOnly(),
                     new InstallationRuntimeSettings(),
                     () => paths));
 
@@ -212,7 +214,7 @@ public sealed class InstallationHostStartupPlanTests
         InvalidOperationException exception =
             await Assert.ThrowsAsync<InvalidOperationException>(
                 () => InstallationHostStartupPlanner.CreateAsync(
-                    new InstallationSetupOnlySettings { Enabled = true },
+                    EnabledSetupOnly(),
                     new InstallationRuntimeSettings(),
                     () => paths));
 
@@ -257,10 +259,33 @@ public sealed class InstallationHostStartupPlanTests
         Assert.NotNull(plan.RuntimeReadiness);
         Assert.True(plan.RuntimeReadiness!.Ready);
         Assert.Equal(completed.Revision, plan.RuntimeReadiness.SetupRevision);
+        Assert.Null(plan.SetupOnlyCanonicalAccessUrl);
     }
 
     [Fact]
-    public void PlannerRemainsUnwiredFromProductionProgram()
+    public async Task DisabledSetupOnlyRejectsResidualAccessUrl()
+    {
+        bool resolved = false;
+        InvalidOperationException exception =
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => InstallationHostStartupPlanner.CreateAsync(
+                    new InstallationSetupOnlySettings
+                    {
+                        CanonicalAccessUrl = "https://radio.example.org"
+                    },
+                    new InstallationRuntimeSettings(),
+                    () =>
+                    {
+                        resolved = true;
+                        throw new InvalidOperationException();
+                    }));
+
+        Assert.Contains("empty canonical access URL", exception.Message);
+        Assert.False(resolved);
+    }
+
+    [Fact]
+    public void PlannerIsWiredBeforeNormalProgramConfiguration()
     {
         string programPath = Path.Combine(
             FindRepositoryRoot(),
@@ -269,9 +294,27 @@ public sealed class InstallationHostStartupPlanTests
             "Program.cs");
         string source = File.ReadAllText(programPath);
 
-        Assert.DoesNotContain("InstallationHostStartupPlanner", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("InstallationSetupOnlySettings", source, StringComparison.Ordinal);
+        int planner = source.IndexOf(
+            "InstallationHostStartupPlanner.CreateAsync",
+            StringComparison.Ordinal);
+        int setupComposition = source.IndexOf(
+            "InstallationSetupOnlyProgramComposition.Configure",
+            StringComparison.Ordinal);
+        int auth = source.IndexOf("AuthSettings authSettings", StringComparison.Ordinal);
+        int radio = source.IndexOf("RadioSettings radioSettings", StringComparison.Ordinal);
+
+        Assert.True(planner >= 0);
+        Assert.True(setupComposition > planner);
+        Assert.True(auth > setupComposition);
+        Assert.True(radio > setupComposition);
     }
+
+    private static InstallationSetupOnlySettings EnabledSetupOnly() =>
+        new()
+        {
+            Enabled = true,
+            CanonicalAccessUrl = "https://radio.example.org"
+        };
 
     private static async Task<InstallationSetupState> ClaimAsync(
         InstallationSetupStore store,
