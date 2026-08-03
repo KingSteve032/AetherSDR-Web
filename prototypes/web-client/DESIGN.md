@@ -87,6 +87,16 @@ surface. Runtime setup-only startup, claim-session protection, preflight, and
 administrator creation are separate reviewed increments built on this state
 boundary.
 
+The next console-only increment adds two process-local commands over that state:
+a redacted setup-status report and short-lived bootstrap-token issuance. Both
+commands terminate before authentication, radio discovery, station sessions,
+command transport, or TX supervision are configured. Status output reports only
+progress and non-secret presence flags. Token issuance writes only the digest and
+expiry, prints the raw token once, and is refused when standard output is
+redirected so service logs and shell pipelines cannot silently retain it. No
+HTTP, WebSocket, AetherRemote, browser, timer, or startup path can issue or reveal
+a bootstrap token.
+
 ## Trust boundaries
 
 ### Browser
