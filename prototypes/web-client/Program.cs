@@ -498,6 +498,7 @@ builder.Services.AddSingleton(
 builder.Services.AddSingleton<ReleaseStatusConsole>();
 builder.Services.AddSingleton<OfflineReleaseInstallPreflightPlanner>();
 builder.Services.AddSingleton<OfflineReleaseInstallPreflightConsole>();
+builder.Services.AddSingleton<VerifiedReleaseInstallationPlanComposer>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
 builder.Services.AddSingleton<StationTxCommandEnvelopeCoordinator>();
@@ -597,6 +598,8 @@ ReleaseStatusConsole releaseStatusConsole =
     app.Services.GetRequiredService<ReleaseStatusConsole>();
 OfflineReleaseInstallPreflightConsole releaseInstallPreflightConsole =
     app.Services.GetRequiredService<OfflineReleaseInstallPreflightConsole>();
+VerifiedReleaseInstallationPlanComposer releaseInstallationPlanComposer =
+    app.Services.GetRequiredService<VerifiedReleaseInstallationPlanComposer>();
 StationTxIndependentWatchdogRegistry independentTxWatchdogRegistry =
     app.Services.GetRequiredService<StationTxIndependentWatchdogRegistry>();
 StationTxCommandTrustRegistry stationTxCommandTrustRegistry =
@@ -658,6 +661,8 @@ app.MapGet(
                 releaseStatusConsole.Snapshot;
             OfflineReleaseInstallPreflightConsoleDiagnostics
                 releaseInstallPreflight = releaseInstallPreflightConsole.Snapshot;
+            VerifiedReleaseInstallationPlanDiagnostics releaseInstallationPlan =
+                releaseInstallationPlanComposer.Snapshot;
             StationTxIndependentWatchdogAggregate watchdog =
                 independentTxWatchdogRegistry.Snapshot;
             StationTxCommandTrustDiagnostics commandTrust =
@@ -817,6 +822,44 @@ app.MapGet(
                     releaseInstallPreflight.LeaseCallerRegistered,
                 releaseInstallPreflightTxCallerRegistered =
                     releaseInstallPreflight.TxCallerRegistered,
+                releaseInstallationPlanComposerRegistered =
+                    releaseInstallationPlan.Registered,
+                releaseInstallationPlanVerifiedManifestInputRegistered =
+                    releaseInstallationPlan.VerifiedManifestInputRegistered,
+                releaseInstallationPlanPathCompositionRegistered =
+                    releaseInstallationPlan.InstallationPathCompositionRegistered,
+                releaseInstallationPlanNetworkDownloadRegistered =
+                    releaseInstallationPlan.NetworkDownloadRegistered,
+                releaseInstallationPlanArchiveExtractionRegistered =
+                    releaseInstallationPlan.ArchiveExtractionRegistered,
+                releaseInstallationPlanFileWriteRegistered =
+                    releaseInstallationPlan.FileWriteRegistered,
+                releaseInstallationPlanStagingExecutionRegistered =
+                    releaseInstallationPlan.StagingExecutionRegistered,
+                releaseInstallationPlanInstallationExecutionRegistered =
+                    releaseInstallationPlan.InstallationExecutionRegistered,
+                releaseInstallationPlanActivationRegistered =
+                    releaseInstallationPlan.ActivationRegistered,
+                releaseInstallationPlanRollbackRegistered =
+                    releaseInstallationPlan.RollbackRegistered,
+                releaseInstallationPlanMigrationExecutionRegistered =
+                    releaseInstallationPlan.MigrationExecutionRegistered,
+                releaseInstallationPlanServiceControlRegistered =
+                    releaseInstallationPlan.ServiceControlRegistered,
+                releaseInstallationPlanAdminCallerRegistered =
+                    releaseInstallationPlan.AdminCallerRegistered,
+                releaseInstallationPlanBrowserCallerRegistered =
+                    releaseInstallationPlan.BrowserCallerRegistered,
+                releaseInstallationPlanRadioCallerRegistered =
+                    releaseInstallationPlan.RadioCallerRegistered,
+                releaseInstallationPlanWatchdogCallerRegistered =
+                    releaseInstallationPlan.WatchdogCallerRegistered,
+                releaseInstallationPlanCommandCallerRegistered =
+                    releaseInstallationPlan.CommandCallerRegistered,
+                releaseInstallationPlanLeaseCallerRegistered =
+                    releaseInstallationPlan.LeaseCallerRegistered,
+                releaseInstallationPlanTxCallerRegistered =
+                    releaseInstallationPlan.TxCallerRegistered,
                 radioMode = radioSettings.Mode,
                 transmitEnabled =
                     stationTxProductionActivationBinding.BindingApplied,

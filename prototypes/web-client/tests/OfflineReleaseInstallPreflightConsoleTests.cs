@@ -501,7 +501,7 @@ public sealed class OfflineReleaseInstallPreflightConsoleTests
         ReleaseStatusReadResult first = StatusResult(revision: 4);
         ReleaseStatusReadResult second = StatusResult(revision: 5);
         Queue<ReleaseStatusReadResult> statuses = new([first, second]);
-        LocalOfflineReleaseBundleVerificationReport bundle = BundleSuccess();
+        LocalOfflineReleaseBundleVerificationResult bundle = BundleSuccess();
         OfflineReleaseInstallPreflightPlanner planner = new(
             _ => Task.FromResult(statuses.Dequeue()),
             (_, _) => bundle,
@@ -613,7 +613,7 @@ public sealed class OfflineReleaseInstallPreflightConsoleTests
             "aethersdr-8.1.0");
     }
 
-    private static LocalOfflineReleaseBundleVerificationReport BundleSuccess()
+    private static LocalOfflineReleaseBundleVerificationResult BundleSuccess()
     {
         ReleaseManifestVerificationReport verification = new(
             true,
@@ -625,14 +625,86 @@ public sealed class OfflineReleaseInstallPreflightConsoleTests
             ReleaseManifestChannel.Stable,
             4,
             false);
-        return new LocalOfflineReleaseBundleVerificationReport(
+        LocalOfflineReleaseBundleVerificationReport report = new(
             true,
             LocalOfflineReleaseBundleFailureCode.None,
             "verified",
             4,
             100,
             verification);
+        SignedReleaseManifestPayload payload = new()
+        {
+            SchemaVersion = SignedReleaseManifestPayload.CurrentSchemaVersion,
+            ReleaseIdentity = "aethersdr-8.2.0",
+            Version = "8.2.0",
+            Channel = ReleaseManifestChannel.Stable,
+            Architecture = ReleaseManifestArchitecture.LinuxX64,
+            Packages =
+            [
+                Package("gateway", ReleasePackageRole.GatewayWeb, "gateway.tar", '1'),
+                Package("broker", ReleasePackageRole.Broker, "broker.tar", '2'),
+                Package("agent", ReleasePackageRole.AetherRemoteAgent, "agent.tar", '3'),
+                Package("engine", ReleasePackageRole.StationEngine, "engine.tar", '4')
+            ],
+            Configuration = new ReleaseConfigurationCompatibility
+            {
+                TargetSchemaVersion = 1,
+                MinimumCompatibleSchemaVersion = 1,
+                MaximumCompatibleSchemaVersion = 1
+            },
+            Protocol = new ReleaseProtocolCompatibility
+            {
+                MinimumVersion = 1,
+                MaximumVersion = 2
+            },
+            MinimumPreviousVersion = "8.1.0",
+            Restart = new ReleaseRestartDeclaration
+            {
+                GatewayWeb = true,
+                Broker = true,
+                AetherRemoteAgent = true,
+                StationEngine = true,
+                Host = false
+            },
+            Migration = new ReleaseMigrationDeclaration
+            {
+                Kind = ReleaseMigrationKind.None,
+                MigrationIdentity = string.Empty
+            },
+            TxSupport = new ReleaseTxSupportDeclaration
+            {
+                DeclarationVersion =
+                    ReleaseTxSupportDeclaration.CurrentDeclarationVersion,
+                Capability = ReleaseTxSupportCapability.None,
+                EnablesTransmit = false,
+                GrantsTransmitEligibility = false,
+                CreatesBrowserTransmitAuthority = false,
+                ArmsWatchdog = false
+            },
+            ReleaseNotes = new ReleaseNotesMetadata
+            {
+                Title = "Release",
+                Summary = "Verified test release."
+            }
+        };
+        return LocalOfflineReleaseBundleVerificationResult.Success(
+            report,
+            VerifiedReleaseManifestSnapshot.Create(payload));
     }
+
+    private static SignedReleasePackage Package(
+        string identity,
+        ReleasePackageRole role,
+        string fileName,
+        char digestCharacter) =>
+        new()
+        {
+            PackageIdentity = identity,
+            Role = role,
+            FileName = fileName,
+            Length = 25,
+            Sha256 = new string(digestCharacter, 64)
+        };
 
     private static InstallationSetupState CompleteState(long revision) =>
         new()

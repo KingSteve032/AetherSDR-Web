@@ -302,6 +302,8 @@ public sealed record OfflineReleaseInstallPreflightResult(
     bool TargetAbsentFromInventory,
     bool StatusStable)
 {
+    internal VerifiedReleaseManifestSnapshot? VerifiedManifest { get; init; }
+
     internal static OfflineReleaseInstallPreflightResult Failure(
         OfflineReleaseInstallPreflightFailureCode failureCode,
         string message,
@@ -335,8 +337,10 @@ public sealed record OfflineReleaseInstallPreflightResult(
     internal static OfflineReleaseInstallPreflightResult Success(
         string installedReleaseIdentity,
         ReleaseStatusReadResult status,
-        LocalOfflineReleaseBundleVerificationReport bundle) =>
-        new(
+        LocalOfflineReleaseBundleVerificationResult bundleResult)
+    {
+        LocalOfflineReleaseBundleVerificationReport bundle = bundleResult.Report;
+        return new OfflineReleaseInstallPreflightResult(
             true,
             OfflineReleaseInstallPreflightFailureCode.None,
             "The verified offline release bundle is eligible for a future reviewed installation transaction.",
@@ -355,7 +359,11 @@ public sealed record OfflineReleaseInstallPreflightResult(
             bundle.Verification.TxSupportCapable,
             CurrentPointerVerified: true,
             TargetAbsentFromInventory: true,
-            StatusStable: true);
+            StatusStable: true)
+        {
+            VerifiedManifest = bundleResult.VerifiedManifest
+        };
+    }
 }
 
 public sealed record OfflineReleaseInstallPreflightConsoleDiagnostics(
@@ -417,7 +425,7 @@ public sealed class OfflineReleaseInstallPreflightPlanner
     private readonly Func<
         string,
         ReleaseManifestVerificationContext,
-        LocalOfflineReleaseBundleVerificationReport> m_bundleVerifier;
+        LocalOfflineReleaseBundleVerificationResult> m_bundleVerifier;
     private readonly Func<ReleaseManifestArchitecture> m_architectureResolver;
 
     public OfflineReleaseInstallPreflightPlanner(
@@ -435,7 +443,7 @@ public sealed class OfflineReleaseInstallPreflightPlanner
         Func<
             string,
             ReleaseManifestVerificationContext,
-            LocalOfflineReleaseBundleVerificationReport> bundleVerifier,
+            LocalOfflineReleaseBundleVerificationResult> bundleVerifier,
         Func<ReleaseManifestArchitecture> architectureResolver)
     {
         m_statusReader = statusReader ??
@@ -480,10 +488,11 @@ public sealed class OfflineReleaseInstallPreflightPlanner
                 throw new InvalidOperationException(
                     "The offline release install preflight requires a protocol version."));
 
-        LocalOfflineReleaseBundleVerificationReport bundle =
+        LocalOfflineReleaseBundleVerificationResult bundleResult =
             m_bundleVerifier(
                 commandLine.BundleDirectory,
                 context);
+        LocalOfflineReleaseBundleVerificationReport bundle = bundleResult.Report;
         if (!bundle.Succeeded)
         {
             return OfflineReleaseInstallPreflightResult.Failure(
@@ -557,7 +566,7 @@ public sealed class OfflineReleaseInstallPreflightPlanner
         return OfflineReleaseInstallPreflightResult.Success(
             commandLine.InstalledReleaseIdentity,
             secondStatus,
-            bundle);
+            bundleResult);
     }
 
     private static OfflineReleaseInstallPreflightResult? ValidateStatus(
@@ -643,11 +652,11 @@ public sealed class OfflineReleaseInstallPreflightPlanner
     private static Func<
         string,
         ReleaseManifestVerificationContext,
-        LocalOfflineReleaseBundleVerificationReport> CreateBundleVerifier(
+        LocalOfflineReleaseBundleVerificationResult> CreateBundleVerifier(
             LocalOfflineReleaseBundleVerificationService bundleVerificationService)
     {
         ArgumentNullException.ThrowIfNull(bundleVerificationService);
-        return bundleVerificationService.VerifyDirectory;
+        return bundleVerificationService.VerifyDirectoryDetailed;
     }
 
     private static ReleaseManifestArchitecture ResolveCurrentArchitecture()
