@@ -133,8 +133,23 @@ and records the completion timestamp after verification succeeds.
 No administrator provider, dependency-injection registration, console command,
 HTTP route, browser claim session, or normal-runtime caller is included in this
 handoff increment. Production local-account creation remains M8D work, while
-claim-session binding for a future browser setup center, installer mutation, and
-normal runtime startup interlocks remain separate reviewed work.
+claim-session binding for a future browser setup center and installer mutation
+remain separate reviewed work.
+
+The runtime-readiness increment defines the fail-closed binding required before a
+future normal-runtime startup interlock may admit the web gateway or a remote
+station node. The binding carries the exact completed setup revision, runtime
+role, topology, canonical public URL, resolved path layout, and TX-support
+installation choice. Evaluation reads existing setup state without creating or
+modifying it and rejects incomplete setup, stale revisions, topology or role
+mismatches, URL or path drift, and TX-support installation drift. Missing or
+malformed setup state remains an error rather than an implicit development
+fallback.
+
+This readiness type has no Program.cs caller, hosted-service registration,
+console switch, HTTP or WebSocket route, account-provider dependency, installer
+mutation, radio path, or TX path. Wiring it into supported production startup is
+a later reviewed increment after installer-produced runtime configuration exists.
 
 ## Trust boundaries
 
