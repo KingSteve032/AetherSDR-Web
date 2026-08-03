@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en"
+      data-setup-schema-version="{{SCHEMA_VERSION}}"
+      data-setup-revision="{{REVISION}}"
+      data-setup-lock-mode="{{LOCK_MODE}}"
+      data-setup-last-step="{{LAST_STEP}}"
+      data-setup-complete="{{SETUP_COMPLETE}}"
+      data-bootstrap-token-present="{{BOOTSTRAP_TOKEN_PRESENT}}"
+      data-bootstrap-token-expires-at="{{BOOTSTRAP_TOKEN_EXPIRES_AT}}"
+      data-topology="{{TOPOLOGY}}"
+      data-canonical-url-configured="{{CANONICAL_URL_CONFIGURED}}"
+      data-installation-paths-configured="{{PATHS_CONFIGURED}}"
+      data-update-channel="{{UPDATE_CHANNEL}}"
+      data-install-transmit-support="{{INSTALL_TRANSMIT_SUPPORT}}"
+      data-canonical-access-url="{{CANONICAL_ACCESS_URL}}"
+      data-default-configuration-directory="{{CONFIGURATION_DIRECTORY}}"
+      data-default-state-directory="{{STATE_DIRECTORY}}"
+      data-default-secret-directory="{{SECRET_DIRECTORY}}"
+      data-default-release-directory="{{RELEASE_DIRECTORY}}"
+      data-default-backup-directory="{{BACKUP_DIRECTORY}}"
+      data-default-log-directory="{{LOG_DIRECTORY}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#07101d">
+  <meta name="description"
+        content="Secure first-run setup for a standalone AetherSDR installation.">
+  <title>First-run setup · AetherSDR</title>
+  <link rel="stylesheet" href="/setup/assets/setup.css">
+  <script type="module" src="/setup/assets/setup.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/setup/center" aria-label="AetherSDR setup home">
+      <span class="brand-mark" aria-hidden="true">A</span>
+      <span>
+        <strong>AetherSDR</strong>
+        <small>First-run setup</small>
+      </span>
+    </a>
+    <div class="mode-badge">SETUP-ONLY MODE</div>
+  </header>
+
+  <main class="layout">
+    <aside class="rail" aria-label="Setup progress">
+      <p class="eyebrow">INSTALLATION</p>
+      <h1>Configure this gateway safely.</h1>
+      <p class="intro">
+        Setup runs without normal authentication, radio discovery, transmit
+        services, or installer side effects.
+      </p>
+      <ol class="steps" id="setup-steps">
+        <li data-step="bootstrapClaim"><span>1</span>Claim setup</li>
+        <li data-step="topology"><span>2</span>Deployment topology</li>
+        <li data-step="publicUrl"><span>3</span>Public URL</li>
+        <li data-step="paths"><span>4</span>Data locations</li>
+        <li data-step="updateChannel"><span>5</span>Update channel</li>
+        <li data-step="backup"><span>6</span>Backup readiness</li>
+        <li data-step="transmitSupport"><span>7</span>TX-support package</li>
+        <li data-step="preflight"><span>8</span>Review preflight</li>
+      </ol>
+      <div class="safety-note">
+        <strong>Transmit remains unavailable.</strong>
+        Installing TX support does not enable TX, grant a lease, arm a watchdog,
+        or create browser command authority.
+      </div>
+    </aside>
+
+    <section class="workspace" aria-live="polite">
+      <div class="status-row">
+        <div>
+          <p class="eyebrow">CURRENT STATE</p>
+          <p id="status-summary" class="status-summary">Loading setup state…</p>
+        </div>
+        <div class="revision-pill">Revision <span id="revision-value">—</span></div>
+      </div>
+
+      <div id="notice" class="notice" hidden role="status"></div>
+      <div id="error" class="notice notice-error" hidden role="alert"></div>
+
+      <section id="claim-panel" class="card" hidden>
+        <p class="eyebrow">LOCAL PROOF REQUIRED</p>
+        <h2>Claim this unfinished installation</h2>
+        <p>
+          Enter the one-time bootstrap token shown only in the local interactive
+          terminal. It is submitted in the JSON request body and is never placed
+          in a URL or browser storage.
+        </p>
+        <form id="claim-form" autocomplete="off">
+          <label>
+            Bootstrap token
+            <input id="bootstrap-token"
+                   name="bootstrapToken"
+                   type="password"
+                   inputmode="text"
+                   maxlength="256"
+                   autocomplete="off"
+                   spellcheck="false"
+                   required>
+          </label>
+          <button class="primary" type="submit">Claim setup</button>
+        </form>
+        <p id="bootstrap-status" class="fine-print"></p>
+      </section>
+
+      <section id="session-recovery" class="card" hidden>
+        <p class="eyebrow">SESSION UNAVAILABLE</p>
+        <h2>The browser claim session cannot be resumed</h2>
+        <p>
+          Process-local setup authority may have expired, been revoked, or been
+          lost after a restart. Continue from the local setup CLI; no token or
+          credential has been retained by this page.
+        </p>
+        <button id="reload-page" class="secondary" type="button">Reload setup state</button>
+      </section>
+
+      <section id="workflow-panel" hidden>
+        <section id="step-topology" class="card setup-step" hidden>
+          <p class="eyebrow">STEP 2</p>
+          <h2>Choose the deployment topology</h2>
+          <p>Select a topology that runs the web gateway on this host.</p>
+          <form id="topology-form">
+            <label>
+              Topology
+              <select id="topology" name="topology" required>
+                <option value="personalSingleStation">Personal single station</option>
+                <option value="localStationGateway">Local-station gateway</option>
+                <option value="remoteStationGateway">Remote-station gateway</option>
+                <option value="hybridGateway">Hybrid local and remote gateway</option>
+              </select>
+            </label>
+            <p id="topology-help" class="field-help"></p>
+            <button class="primary" type="submit">Save topology</button>
+          </form>
+        </section>
+
+        <section id="step-public-url" class="card setup-step" hidden>
+          <p class="eyebrow">STEP 3</p>
+          <h2>Confirm the canonical public URL</h2>
+          <p>
+            Setup is bound to the exact HTTPS origin used to open this page. The
+            configured public URL must match it exactly.
+          </p>
+          <form id="public-url-form">
+            <label>
+              Canonical HTTPS origin
+              <input id="canonical-public-url"
+                     name="canonicalPublicUrl"
+                     type="url"
+                     readonly
+                     required>
+            </label>
+            <button class="primary" type="submit">Confirm public URL</button>
+          </form>
+        </section>
+
+        <section id="step-paths" class="card setup-step" hidden>
+          <p class="eyebrow">STEP 4</p>
+          <h2>Confirm installation data locations</h2>
+          <p>
+            Each directory must be absolute and distinct. These choices record
+            intent only; setup does not create packages or services.
+          </p>
+          <form id="paths-form" class="form-grid">
+            <label>Configuration directory<input id="configuration-directory" required></label>
+            <label>State directory<input id="state-directory" required></label>
+            <label>Secret directory<input id="secret-directory" required></label>
+            <label>Release directory<input id="release-directory" required></label>
+            <label>Backup directory<input id="backup-directory" required></label>
+            <label>Log directory<input id="log-directory" required></label>
+            <button class="primary full" type="submit">Save data locations</button>
+          </form>
+        </section>
+
+        <section id="step-update-channel" class="card setup-step" hidden>
+          <p class="eyebrow">STEP 5</p>
+          <h2>Select the update channel</h2>
+          <form id="update-channel-form">
+            <label>
+              Channel
+              <select id="update-channel" required>
+                <option value="stable">Stable</option>
+                <option value="beta">Beta</option>
+                <option value="pinned">Pinned release</option>
+              </select>
+            </label>
+            <label id="pinned-release-row" hidden>
+              Exact release identity
+              <input id="pinned-release" maxlength="256" spellcheck="false">
+            </label>
+            <button class="primary" type="submit">Save update channel</button>
+          </form>
+        </section>
+
+        <section id="step-backup" class="card setup-step" hidden>
+          <p class="eyebrow">STEP 6</p>
+          <h2>Confirm backup readiness</h2>
+          <form id="backup-form">
+            <label class="check-row">
+              <input id="backup-confirmed" type="checkbox" required>
+              <span>
+                I reviewed the configured backup location and understand that
+                this step does not create a backup yet.
+              </span>
+            </label>
+            <button class="primary" type="submit">Confirm backup location</button>
+          </form>
+        </section>
+
+        <section id="step-transmit-support" class="card setup-step" hidden>
+          <p class="eyebrow">STEP 7</p>
+          <h2>Choose whether to install TX-support components</h2>
+          <form id="transmit-support-form">
+            <fieldset>
+              <legend>Package intent</legend>
+              <label class="radio-row">
+                <input type="radio" name="installTransmitSupport" value="false" checked>
+                <span>Receive-only installation</span>
+              </label>
+              <label class="radio-row">
+                <input type="radio" name="installTransmitSupport" value="true">
+                <span>Install TX-support packages disabled and unarmed</span>
+              </label>
+            </fieldset>
+            <label class="check-row warning-row">
+              <input id="tx-acknowledgement" type="checkbox" required>
+              <span>
+                I understand that installing TX support does not enable transmit,
+                grant radio eligibility, arm a watchdog, or create browser TX authority.
+              </span>
+            </label>
+            <button class="primary" type="submit">Save TX-support choice</button>
+          </form>
+        </section>
+
+        <section id="step-preflight" class="card setup-step" hidden>
+          <p class="eyebrow">STEP 8</p>
+          <h2>Review the non-mutating preflight</h2>
+          <p>
+            Preflight reports planned users, packages, ports, files, services,
+            proxy changes, firewall expectations, migrations, and warnings. It
+            applies none of them.
+          </p>
+          <button id="run-preflight" class="primary" type="button">Generate preflight</button>
+          <div id="preflight-report" class="preflight" hidden></div>
+        </section>
+
+        <section id="configured-panel" class="card success-card" hidden>
+          <p class="eyebrow">M8A CONFIGURATION READY</p>
+          <h2>The first-run choices are ready for installer review</h2>
+          <p>
+            No account, package, service, proxy, firewall, radio, watchdog, or TX
+            change has been made. Production administrator creation and installer
+            activation remain separate reviewed stages.
+          </p>
+        </section>
+
+        <div class="session-actions">
+          <button id="revoke-session" class="quiet" type="button">End browser setup session</button>
+        </div>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

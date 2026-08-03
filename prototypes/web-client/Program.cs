@@ -187,6 +187,7 @@ if (installationHostStartupPlan.Mode == InstallationHostStartupMode.SetupOnly)
     _ = setupOnlyApplication.Services
         .GetRequiredService<InstallationSetupCenterApplication>();
     _ = InstallationSetupOnlyHttpAdapter.Map(setupOnlyApplication);
+    _ = InstallationSetupBrowserShell.Map(setupOnlyApplication);
     await setupOnlyApplication.RunAsync();
     return;
 }
