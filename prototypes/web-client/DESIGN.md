@@ -423,6 +423,31 @@ paths, and checksums. The CLI adds no network, extraction, staging, installation
 activation, rollback, migration, service-control, Admin, browser, radio, watchdog,
 command, lease, or TX method.
 
+The fifth M8B increment adds a separate read-only `--release-status` command. It
+resolves the supported installation layout from the same strict configuration,
+loads the existing setup document without creating it, and requires the persisted
+path object to equal the currently resolved object before reading release storage.
+An incomplete, missing, malformed, permission-invalid, or mismatched setup state
+fails before release-directory access.
+
+The status reader considers only direct children of the configured release
+directory. It accepts at most 64 regular non-symlink directories with exact
+canonical release identities and rejects files, aliases, reparse points, unsafe
+Unix group/other write permissions, and excess inventory. The sibling `current`
+entry may be absent. When present it must be one canonical symbolic-link target,
+either absolute or relative to the deployment root, resolving directly to one
+inventoried release without traversal or escape. The reader does not descend into
+release contents and does not resolve any other link.
+
+Exit `0` means a trustworthy snapshot was produced, including an empty or inactive
+installation; exit `2` means the setup or release layout was unsafe or unreadable.
+The report exposes only bounded setup progress, update-channel and pinned identity,
+TX-support installation intent, sorted release identities, and the active identity.
+It emits no paths and always reports that no rollback candidate is known because a
+durable previous-release pointer has not been implemented. The command owns no
+network, extraction, staging, installation, activation, rollback, migration,
+service-control, Admin, browser, radio, watchdog, command, lease, or TX method.
+
 ## Trust boundaries
 
 ### Browser

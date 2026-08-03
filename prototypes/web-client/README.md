@@ -539,6 +539,30 @@ non-canonical, or contradictory CLI values fail before bundle access. The report
 contains no bundle path, trust-key path, key material, signature, package path, or
 checksum.
 
+The fifth M8B increment adds the second read-only CLI workflow:
+
+```text
+AetherSDR.Web --release-status
+```
+
+It reads the existing setup document, requires its completed path selection to
+match the currently resolved `InstallationPaths`, enumerates at most 64 direct
+canonical release directories, and validates only the sibling `current` symbolic
+link. Missing release storage or a missing `current` link is a successful empty or
+inactive status. Files, nested aliases, non-canonical identities, symbolic-link
+release entries, group/other-writable Unix directories, an oversized inventory,
+a non-link `current` entry, a non-canonical link target, or a target outside the
+configured release directory fail closed.
+
+The versioned JSON report includes only setup progress, channel and pinned-release
+selection, TX-support installation intent, sorted release identities, and the
+active release identity. It never emits configuration, setup-state, release, or
+link paths. `rollbackCandidateKnown` remains false because no durable previous-
+release pointer exists yet. Exit `0` means a trustworthy status snapshot was read,
+even when no release is installed; exit `2` means setup or release-layout state
+was unsafe or unreadable. The command returns before any web host, service, radio,
+watchdog, command, lease, or TX composition.
+
 Publishing, packaged bundle production, network download, staging, extraction,
 installation, activation, rollback, migrations, service health verification,
 Admin/browser workflows, and all update mutation callers remain later M8B work.
@@ -647,6 +671,25 @@ overrides are enforced directly by the guarded script:
 `releaseOfflineBundleCliCallerRegistered=true`,
 `releaseOfflineBundleAdminCallerRegistered=false`,
 `releaseOfflineBundleBrowserCallerRegistered=false`,
+`releaseStatusCliRegistered=true`,
+`releaseStatusSetupStateReadRegistered=true`,
+`releaseStatusReleaseInventoryReadRegistered=true`,
+`releaseStatusCurrentPointerReadRegistered=true`,
+`releaseStatusNetworkDownloadRegistered=false`,
+`releaseStatusArchiveExtractionRegistered=false`,
+`releaseStatusStagingRegistered=false`,
+`releaseStatusInstallationRegistered=false`,
+`releaseStatusActivationRegistered=false`,
+`releaseStatusRollbackRegistered=false`,
+`releaseStatusMigrationRegistered=false`,
+`releaseStatusServiceControlRegistered=false`,
+`releaseStatusAdminCallerRegistered=false`,
+`releaseStatusBrowserCallerRegistered=false`,
+`releaseStatusRadioCallerRegistered=false`,
+`releaseStatusWatchdogCallerRegistered=false`,
+`releaseStatusCommandCallerRegistered=false`,
+`releaseStatusLeaseCallerRegistered=false`,
+`releaseStatusTxCallerRegistered=false`,
 `txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,
 `txBrowserIntentProtocolVersion=2`,
 `txBrowserIntentValidationRegistered=true`,
