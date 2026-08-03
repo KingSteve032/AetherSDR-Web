@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json;
 using AetherSDR.Web.Auth;
 using AetherSDR.Web.Radio;
+using AetherSDR.Web.Setup;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -19,12 +20,17 @@ const string ProductionTxPreflightSwitch =
     "--validate-production-tx-activation";
 const string ProductionTxRadioIdSwitch =
     "--production-tx-radio-id";
+InstallationSetupConsoleCommandLine installationSetupCommandLine =
+    InstallationSetupConsoleCommandParser.Parse(args);
 bool productionTxPreflightRequested = false;
 string? productionTxPreflightRadioId = null;
 List<string> applicationArguments = [];
-for (int index = 0; index < args.Length; index++)
+for (int index = 0;
+     index < installationSetupCommandLine.ApplicationArguments.Count;
+     index++)
 {
-    string argument = args[index];
+    string argument =
+        installationSetupCommandLine.ApplicationArguments[index];
     if (string.Equals(
             argument,
             ProductionTxPreflightSwitch,
@@ -44,12 +50,13 @@ for (int index = 0; index < args.Length; index++)
             StringComparison.Ordinal))
     {
         if (productionTxPreflightRadioId is not null ||
-            index + 1 >= args.Length)
+            index + 1 >= installationSetupCommandLine.ApplicationArguments.Count)
         {
             throw new InvalidOperationException(
                 "Production TX activation preflight requires one exact radio ID.");
         }
-        productionTxPreflightRadioId = args[++index];
+        productionTxPreflightRadioId =
+            installationSetupCommandLine.ApplicationArguments[++index];
         continue;
     }
     applicationArguments.Add(argument);
@@ -65,6 +72,13 @@ if (productionTxPreflightRequested &&
     throw new InvalidOperationException(
         "Production TX activation preflight requires --production-tx-radio-id.");
 }
+if (productionTxPreflightRequested &&
+    installationSetupCommandLine.Command !=
+        InstallationSetupConsoleCommandKind.None)
+{
+    throw new InvalidOperationException(
+        "Installation setup commands cannot run with production TX preflight.");
+}
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(
     [.. applicationArguments]);
@@ -74,6 +88,39 @@ builder.Logging.AddSimpleConsole(options =>
     options.SingleLine = true;
     options.TimestampFormat = "HH:mm:ss ";
 });
+
+if (installationSetupCommandLine.Command !=
+    InstallationSetupConsoleCommandKind.None)
+{
+    InstallationPathSettings installationPathSettings =
+        builder.Configuration
+            .GetSection(InstallationPathSettings.SectionName)
+            .Get<InstallationPathSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new InstallationPathSettings();
+    InstallationPathLayout installationPathLayout =
+        builder.Environment.IsDevelopment()
+            ? InstallationPathLayout.Development
+            : OperatingSystem.IsLinux()
+                ? InstallationPathLayout.LinuxSystem
+                : throw new InvalidOperationException(
+                    "Standalone production setup commands require Linux.");
+    InstallationPaths installationPaths = InstallationPaths.Resolve(
+        builder.Environment.ContentRootPath,
+        installationPathLayout,
+        installationPathSettings);
+    InstallationSetupStore installationSetupStore =
+        new(installationPaths.SetupStatePath);
+    InstallationBootstrapTokenService installationBootstrapTokenService =
+        new(installationSetupStore);
+    InstallationSetupConsole installationSetupConsole =
+        new(installationSetupStore, installationBootstrapTokenService);
+    await installationSetupConsole.ExecuteAsync(
+        installationSetupCommandLine.Command,
+        Console.Out,
+        interactiveTokenOutput: !Console.IsOutputRedirected);
+    return;
+}
 
 AuthSettings authSettings =
     builder.Configuration.GetSection(AuthSettings.SectionName).Get<AuthSettings>() ??

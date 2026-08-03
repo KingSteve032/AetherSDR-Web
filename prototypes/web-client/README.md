@@ -208,6 +208,38 @@ Run the focused browser-renderer tests:
 node --test prototypes/web-client/tests-ui/*.test.mjs
 ```
 
+### First-run setup console
+
+The first M8 setup commands are local console operations. They exit before the
+web host, authentication, radio discovery, station sessions, command transport,
+or TX supervision are configured.
+
+Inspect the resumable setup state without exposing its bootstrap-token hash:
+
+```powershell
+dotnet run --project prototypes/web-client/AetherSDR.Web.csproj -- `
+  --installation-setup-status
+```
+
+Issue or replace the short-lived first-administrator bootstrap token:
+
+```powershell
+dotnet run --project prototypes/web-client/AetherSDR.Web.csproj -- `
+  --issue-installation-bootstrap-token
+```
+
+Token issuance requires an interactive local terminal and refuses redirected
+stdout so the token is not accidentally captured by a service log or pipeline.
+Only the token digest and expiry are written to setup state. The displayed token
+is not accepted in a URL, configuration file, or application log. Development
+commands use the ignored `.aethersdr` tree under the content root; a
+non-Development Linux build uses the standalone system paths or exact absolute
+`InstallationPaths` overrides.
+
+The status command is safe to redirect for local diagnostics. It reports only
+setup progress, whether token material exists, and non-secret configuration
+presence flags; it never prints the token digest or canonical public URL.
+
 ## Ubuntu 24.04 pilot service
 
 Publish a self-contained build so the server does not require a machine-wide
