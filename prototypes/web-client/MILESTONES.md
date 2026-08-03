@@ -814,28 +814,36 @@ Acceptance criteria:
 
 ## M7 — Transmit safety
 
-Status: **Active — browser intent validation implemented; executable production TX outstanding**
+Status: **Complete — production browser MOX/PTT and every required loss path accepted**
 
 Goal: enable transmit only after engine-side arbitration can prove deliberate
 operator intent and force-unkey on every loss path.
 
-Foundation deployed and corrected on 2026-07-29. Corrective candidate:
-`20260729-m7-interlock-occupancy-1`.
+Final production release: `20260803-m7-browser-tx-capability-refresh-1`.
+The accepted source was merged by PR #37 as merge commit
+`e7754f43863b1d12da59884de6510ebace9f1277`.
 
 Milestone state:
 
-- **Safety foundation and loss-path HIL: Complete.** The single-radio lease,
-  exact-owner gate, independent unkey-only supervisor, production/HIL binary
-  separation, and every required owner/liveness loss path have accepted evidence.
-- **Production browser TX integration: Validation-only Phase 2F implemented.**
-  The browser can manage the exact ownership lease and submit deliberate TX
-  intents through a strict replay-resistant protocol when separately configured,
-  but every fully valid request stops at `transport-unavailable`. The production
-  server still exposes no reachable MOX/PTT, TUNE, CW, microphone-audio, key, or
-  unkey radio path and continues to report `transmitEnabled=false`.
-- **M7 remains Active** until an authorized operator can deliberately transmit
-  from the production browser through the accepted station-local safety boundary
-  and the complete browser-driven workflow passes production HIL acceptance.
+- **Safety foundation and loss-path HIL: Complete.** The physical-radio lease,
+  exact-owner gate, signed station-local command path, independent unkey-only
+  supervisor, production/HIL binary separation, and every required owner and
+  liveness loss path have accepted evidence.
+- **Production browser TX integration: Complete for MOX/PTT.** An authorized
+  browser can acquire the exact physical-radio lease, deliberately key and unkey
+  through the station-local safety boundary, maintain purpose-bound heartbeats,
+  and receive success only after radio-authoritative confirmation.
+- **Additional transmit surfaces remain deliberately unavailable.** Browser
+  TUNE, microphone transmit audio, and CW expose no executable production path.
+  Enabling any of those surfaces requires a separate milestone increment with
+  explicit operator action, exact ownership, loss-path safety, and production
+  HIL acceptance.
+- **Production and mainline are aligned.** The merged main tree is byte-identical
+  to the accepted deployed tree; no post-merge redeployment was required.
+
+The detailed evidence below is chronological. Present-tense statements in older
+phase entries describe the state at that checkpoint and are superseded by the
+final closure evidence immediately above the acceptance criteria.
 
 - Replaced the per-browser prototype lease with one process-wide authority keyed
   by the normalized physical radio ID. Separate browser sessions using the same
@@ -2593,6 +2601,33 @@ Milestone state:
   and no key command was available. The full state-changing no-RF frequency
   preflight remains pending an operator-supplied clear-frequency/camera/remote-
   off confirmation; no token was fabricated and no live RF operation was run.
+- Final live M7 acceptance on 2026-08-02 proved normal production-browser key
+  and unkey plus browser/session loss, authentication loss, gateway-process loss,
+  engine command-channel loss, and engine process/TCP loss. Every keyed loss path
+  returned the reviewed radio to authoritative idle through the ownership-safe
+  command or independent-watchdog path without disturbing external transmitters.
+  Final no-RF restoration confirmed the radio idle defaults and zero leaked
+  browser authority.
+- A delayed emergency transport exposed a duplicate-unkey retry window because
+  confirmation timeout measurement began before the awaited transport completed.
+  The supervisor now starts that window after transport completion. Regression
+  coverage proves a slow accepted unkey cannot immediately trigger a duplicate
+  retry.
+- Post-deployment Browser Bridge acceptance exposed one final fail-closed UI
+  defect: the browser retained its initial pre-radio `radio-disconnected` TX
+  capability after a receive session became healthy. Connection snapshots now
+  carry a fresh per-browser TX capability, while the client preserves monotonic
+  request state and discards local authority immediately when the server revokes
+  it. The accepted page reached `LIVE`, advertised `LEASE AVAILABLE`, and enabled
+  only lease acquisition; no lease, TX intent, or RF command was used during the
+  corrective acceptance.
+- The final guarded production gate passed a zero-warning solution build plus
+  747 FlexWeb server tests, 57 independent-watchdog tests, 48 TX-HIL isolation
+  tests, 70 AetherRemote tests, and 128 browser tests. Artifact inspection kept
+  the exact reviewed key/unkey and watchdog surfaces with no additional TUNE,
+  CWX, microphone-TX, or HIL path. GitHub CI passed after PR #37 merged, and
+  production returned to zero web operators, zero browser GUI clients, zero
+  remote receive sessions, and an empty Disarmed watchdog state.
 
 Acceptance criteria:
 
@@ -2614,22 +2649,193 @@ Acceptance criteria:
   modulation, TUNE and CW where enabled, unkey, final radio-authoritative idle,
   resource cleanup, restart/reconnect behavior, and external-client protection.
 
-## M8 — Production release
+## M8 — Standalone self-hosted production release
 
-Status: **Planned — blocked on completion of M7 production browser TX integration**
+Status: **Active — standalone installation, onboarding, and lifecycle planning**
 
-Goal: make the gateway supportable as a maintained station service.
+Goal: let an individual radio owner install, secure, operate, update, back up,
+and recover AetherSDR without requiring an existing enterprise network, Entra ID
+tenant, reverse proxy, or hand-edited application configuration.
 
-Scope:
+Product direction:
 
-- Repeatable install, upgrade, rollback, backup, and restore procedures.
-- Security review, dependency scanning, rate limits, structured logs, metrics,
-  alerting, and operational runbooks.
-- Versioned release notes and a supported-browser/device matrix.
+- The primary supported deployment is a native standalone installation on
+  Ubuntu Server 24.04 with hardened systemd services. Container packaging is
+  outside M8 scope.
+- One guided installer supports a personal single-site station, a public gateway
+  with remote radios, or an existing gateway adding another remote station.
+- Setup collects one canonical public URL and uses it for authentication
+  callbacks, browser and station WebSockets, generated proxy configuration,
+  AetherRemote enrollment, hosted downloads, health links, and diagnostics.
+- Production TX remains disabled by default. Server-wide activation and explicit
+  per-radio eligibility are both required; receive-only radios retain no
+  reachable keying path.
+- Human identities, station device credentials, release-signing trust, command
+  signing keys, and radio TX leases remain separate least-privilege authorities.
+- Installation and update operations provide a dry run, preserve live state,
+  install immutable releases, verify health, and roll back automatically on any
+  failed activation or migration.
+
+Implementation slices:
+
+### M8A — Portable configuration and first-run foundation
+
+- Define versioned configuration, state, secret, release, backup, and log paths
+  that do not depend on the W4CAR topology.
+- Add an installation-state model and a resumable first-run setup center.
+- Print a short-lived, local-only first-administrator setup token; an unfinished
+  Internet-facing installation cannot be claimed without that token.
+- Collect deployment topology, canonical public URL, data location, update
+  channel, backup location, and whether TX support will be installed. Installing
+  TX support does not enable TX.
+- Provide a non-mutating preflight that reports planned users, packages, ports,
+  files, services, proxy changes, firewall expectations, and migrations.
+
+### M8B — Signed GitHub releases and transactional updates
+
+- Publish architecture-specific gateway, broker, AetherRemote agent, and station-
+  engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.
+- Publish a signed release manifest containing checksums, configuration schema,
+  protocol compatibility, minimum previous version, release channel, restart
+  requirements, and release notes.
+- Embed only the release-signing public key in the installer. Reject any package
+  whose signature, checksum, architecture, or compatibility declaration fails.
+- Provide Admin and CLI workflows for `check`, `download`, `install`, `status`,
+  and `rollback`. Support Stable, Beta, and exact-version Pinned channels.
+- Default TX-capable stations to automatic download with administrator-approved
+  installation. Never silently restart a station or change TX software.
+- Before activation, stop new TX leases, require radio-authoritative idle and
+  Disarmed watchdogs, back up state, migrate a staged copy, install a new
+  immutable release, switch atomically, and verify every service and health
+  contract. Restore the previous release and configuration automatically on
+  failure.
+- Support offline installation of a downloaded signed release bundle through the
+  same verification, migration, health, and rollback path.
+
+### M8C — Guided standalone installer, reverse proxy, and TLS
+
+- Provide one supported native installer that creates dedicated service users,
+  directories, permissions, hardened systemd units, release directories, and
+  required firewall guidance.
+- Ask whether the operator already has a reverse proxy. For an existing proxy,
+  generate and validate forwarding, TLS termination, forwarded headers, request
+  limits, authentication callback, health endpoint, and both browser and station
+  WebSocket upgrades.
+- Provide reviewed templates for Caddy and Nginx plus explicit requirements for
+  other proxies.
+- When no proxy exists, offer to install and configure Caddy for HTTPS,
+  certificate renewal, WebSocket forwarding, security headers, and health
+  routing. LAN-only deployments require an explicit internal-certificate plan
+  and never silently fall back to insecure public HTTP.
+- Re-running the installer must be idempotent and must not regenerate credentials,
+  overwrite operator policy, or lose the current rollback release.
+
+### M8D — Production local authentication and role administration
+
+- Add production local accounts for operators who do not use Entra ID. The
+  development authentication handler remains development-only.
+- Support local accounts, Microsoft Entra ID, and generic OpenID Connect, with an
+  optional combined local and external-provider deployment.
+- Local authentication has no default password and requires secure password
+  hashing, rate limiting, lockout, passkeys or TOTP MFA, recovery codes, session
+  revocation, administrator reset, and durable audit records.
+- Preserve the explicit Observe, Control, Transmit, and Admin roles. Role changes
+  and authentication-provider changes require administrator reauthentication and
+  revoke affected active authority where appropriate.
+
+### M8E — Radio onboarding and per-radio TX policy
+
+- Discover local and remote radios, let administrators assign stable labels, and
+  show exact source, health, client capacity, and station ownership before use.
+- Add per-radio Admin policy states: Receive only, TX eligible, Temporarily
+  disabled, and Unavailable because prerequisites failed.
+- TX eligibility never bypasses the server master switch, trusted signing keys,
+  exact radio allowlists, command transport, ownership gate, independent
+  watchdog, or activation preflight.
+- Enabling a radio requires administrator reauthentication, exact-radio preflight,
+  a human-readable prerequisite report, and an audit record. It applies only to
+  safely created or restarted sessions.
+- Disabling a radio immediately removes browser TX capability, rejects new
+  leases, releases idle authority, and ownership-safely unkeys only TX proven to
+  belong to AetherSDR. It must not interrupt SmartSDR, Maestro, or hardware PTT.
+- Keep room for later per-radio maximum power, antenna, and frequency constraints
+  implemented beneath the browser rather than as UI-only limits.
+
+### M8F — AetherRemote bootstrap and guided station enrollment
+
+- Host the exact compatible signed AetherRemote packages and installer from the
+  operator's own gateway.
+- Publish non-secret discovery metadata under
+  `/.well-known/aethersdr`, including gateway version, compatible agent range,
+  broker WebSocket URL, enrollment endpoint, release manifest, and download
+  locations.
+- The remote installer asks for or accepts the operator's AetherSDR URL, detects
+  architecture, downloads the matching signed package, installs dedicated users
+  and systemd services, validates DNS/TLS/WebSockets, and discovers local FLEX
+  radios before enrollment.
+- Enrollment codes remain separate from URLs, command lines, downloaded scripts,
+  and shell history. The installer prompts locally for the short-lived code and
+  stores the resulting station credential with restrictive permissions.
+- Admin guides station naming, code creation, installation command, connection
+  wait, identity confirmation, discovered-radio approval, naming, and receive-
+  only or TX-eligible policy selection.
+- The gateway tracks agent and station-engine versions and may request only a
+  specific signed release update. It never exposes an arbitrary remote shell or
+  arbitrary-command channel. The station stages, verifies, restarts, reconnects,
+  and rolls back locally if its health check fails.
+
+### M8G — Backup, restore, diagnostics, and operations
+
+- Provide one supported encrypted backup workflow covering local users and MFA,
+  authentication configuration, Data Protection keys, radio policies, station
+  credentials, signing/trust configuration, audit state, managed proxy state,
+  and current/rollback release identities.
+- Support restore on the same host and migration to a replacement VM, with an
+  explicit list of secrets that require separate handling when not included.
+- Add security and dependency scanning, rate-limit review, structured logs,
+  metrics, alerts, service health, storage health, certificate expiry, backup
+  age, release compatibility, and operational runbooks.
+- Provide a downloadable diagnostic bundle that redacts passwords, private keys,
+  station credentials, tokens, enrollment codes, and other sensitive identifiers.
+- The setup center and Admin diagnostics test public URL, TLS, proxy headers,
+  browser and station WebSockets, authentication callback, radio discovery,
+  AetherRemote compatibility, TX prerequisites, backup readiness, update
+  readiness, and rollback readiness with actionable operator-facing errors.
+- Publish versioned release notes and a supported browser, device, architecture,
+  reverse-proxy, and station-topology matrix.
+
+### M8H — Standalone release acceptance
+
+- Rehearse clean installation, update, failed-update rollback, backup, restore,
+  and uninstall on supported Ubuntu Server 24.04 architectures.
+- Run the complete automated suite, multi-client hardware soak, mobile/VPN
+  recovery suite, security review, and operator acceptance checklist against the
+  packaged release rather than a source checkout.
+- Retain the previous immutable release and all credentials, policies, and audit
+  state through both successful and automatically rolled-back updates.
 
 Acceptance criteria:
 
-- A clean Ubuntu Server 24.04 VM can be installed and rolled back from the
-  documented procedure.
-- A release candidate passes the full automated suite, multi-client hardware
-  soak, mobile/VPN recovery suite, and operator acceptance checklist.
+- A personal operator can install a LAN or public AetherSDR gateway on a clean
+  Ubuntu Server 24.04 machine without Entra ID or a pre-existing reverse proxy,
+  create a protected local administrator, and connect one local radio in
+  receive-only mode.
+- An operator with an existing reverse proxy and Entra ID or generic OIDC can
+  validate and use that infrastructure without the installer replacing it.
+- A clean remote Linux station can download AetherRemote from its own gateway,
+  ask for the gateway URL, enroll with a one-time code, discover its radios, and
+  appear in Admin without hand-editing the W4CAR broker URL or source files.
+- Two radios can have different TX policies. Enabling one cannot expose TX for
+  the other, and disabling an eligible radio removes browser authority and safely
+  handles only an AetherSDR-owned active transmission.
+- A signed GitHub release can be checked, downloaded, installed, verified, and
+  rolled back from Admin or CLI without losing users, station credentials,
+  radio policy, certificates, signing/trust state, audit history, or the prior
+  release.
+- A compatible remote station can update from the gateway's signed package,
+  reconnect successfully, and roll back locally when post-update health fails.
+- A supported backup can restore the installation onto a replacement VM with
+  documented handling for every secret and external dependency.
+- The final release candidate passes the full automated suite, clean-machine
+  installation matrix, update/rollback rehearsal, multi-client hardware soak,
+  mobile/VPN recovery suite, and operator acceptance checklist.
