@@ -258,6 +258,36 @@ public sealed class StationTxSafetySupervisorTests
     }
 
     [Fact]
+    public async Task UnkeyConfirmationWindowStartsAfterTransportCompletion()
+    {
+        SafetyFixture fixture = CreateFixture();
+        await using StationTxSafetySupervisor supervisor = fixture.Supervisor;
+        ObserveIdle(fixture, ProtectedHandle);
+        await supervisor.ArmAsync(Arm());
+        ObserveProtectedTx(fixture);
+        fixture.Transport.ElapsedOnRequest =
+            StationTxSafetySupervisor.UnkeyConfirmationTimeout;
+
+        StationTxSafetyResult requested = await supervisor.AbortAsync(
+            "engine-process-lost");
+
+        DateTimeOffset completedAt = fixture.Time.GetUtcNow();
+        Assert.True(requested.Success);
+        Assert.Equal(
+            completedAt + StationTxSafetySupervisor.UnkeyConfirmationTimeout,
+            requested.Snapshot.UnkeyDeadlineAt);
+        Assert.Single(fixture.Transport.Commands);
+
+        ObserveProtectedTx(fixture);
+        StationTxSafetyResult immediate = await supervisor.EvaluateAsync();
+
+        Assert.True(immediate.Success);
+        Assert.Equal("unkey_pending", immediate.Code);
+        Assert.Equal(1, immediate.Snapshot.UnkeyAttempts);
+        Assert.Single(fixture.Transport.Commands);
+    }
+
+    [Fact]
     public async Task EmergencyUnkeyRetriesAreBounded()
     {
         SafetyFixture fixture = CreateFixture();
@@ -337,7 +367,7 @@ public sealed class StationTxSafetySupervisorTests
         ManualTimeProvider time = new(
             new DateTimeOffset(2026, 7, 30, 12, 0, 0, TimeSpan.Zero));
         RadioTxOccupancyRegistry occupancy = new(time);
-        FakeEmergencyTransport transport = new();
+        FakeEmergencyTransport transport = new(time);
         StationTxSafetySupervisor supervisor = new(
             RadioId,
             occupancy,
@@ -440,10 +470,11 @@ public sealed class StationTxSafetySupervisorTests
         FakeEmergencyTransport Transport,
         StationTxSafetySupervisor Supervisor);
 
-    private sealed class FakeEmergencyTransport
+    private sealed class FakeEmergencyTransport(ManualTimeProvider time)
         : IStationTxEmergencyUnkeyTransport
     {
         public bool IsConnected { get; set; } = true;
+        public TimeSpan ElapsedOnRequest { get; set; }
         public List<bool> Commands { get; } = [];
         public Queue<StationTxTransportResult> Results { get; } = new();
 
@@ -453,6 +484,7 @@ public sealed class StationTxSafetySupervisorTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             Commands.Add(false);
+            time.Advance(ElapsedOnRequest);
             return Task.FromResult(
                 Results.Count > 0
                     ? Results.Dequeue()

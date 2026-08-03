@@ -233,6 +233,24 @@ pre-push deployment gate from the exact working tree:
 bash prototypes/web-client/deploy/validate-deploy-flexweb.sh
 ```
 
+The default `rx-only` health profile requires the deployed service to retain all
+fail-closed receive-only settings. A station whose reviewed production TX
+configuration is already staged and operator-validated must select the explicit
+profile instead:
+
+```bash
+bash prototypes/web-client/deploy/validate-deploy-flexweb.sh \
+  --health-profile production-tx
+```
+
+That profile does not enable TX or alter the owner-only environment. Before the
+service restart it runs the packaged non-starting activation preflight against
+the configured primary radio and requires the trust ring, signing key, all three
+allowlists, watchdog executable, and activation binding to match. After restart
+it requires internal and public health to show the exact TX-enabled configuration
+while remaining idle, session-empty, command-transport unavailable, and
+independent-watchdog Disarmed.
+
 The gate has no skip-tests option. It builds the complete solution, runs the
 server, independent-watchdog, TX-HIL isolation, AetherRemote, and browser test
 suites, publishes the web gateway plus the independent watchdog, inspects both
@@ -251,10 +269,11 @@ restart or automatic rollback. The existing configuration and credentials are
 preserved, the previous immutable release remains available, and a failed
 activation or health check rolls the `current` link back automatically. The
 script never commits or pushes; a Browser Bridge acceptance pass against the
-deployed site is required before Git publication. TX-lifecycle changes must
-also keep the public and internal health contract at
+deployed site is required before Git publication. The default `rx-only` profile
+requires the public and internal health contract below; the exact production-TX
+overrides are enforced directly by the guarded script:
 `txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,
-`txBrowserIntentProtocolVersion=1`,
+`txBrowserIntentProtocolVersion=2`,
 `txBrowserIntentValidationRegistered=true`,
 `txBrowserIntentCommandTransportRegistered=false`,
 `txStationCommandProtocolVersion=1`,
