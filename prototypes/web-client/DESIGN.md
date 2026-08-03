@@ -117,9 +117,24 @@ The paths command records the same resolved path layout used to locate the setup
 store, and preflight serializes the read-only report without advancing setup
 state. Every setup command still returns before authentication, hosted services,
 radio discovery, station sessions, command transport, or TX supervision are
-constructed. Administrator creation, claim-session binding for a future browser
-setup center, installer mutation, and normal runtime startup interlocks remain
-separate reviewed work.
+constructed.
+
+The first-administrator handoff adds a dedicated typed transition to the terminal
+setup state. It runs the same read-only preflight, sends the exact schema,
+revision, creation identity, topology, and canonical URL to a trusted verifier,
+and requires evidence for one durable, enabled subject holding the exact
+`Aether.Admin` role. Unknown or duplicate roles, stale or mismatched setup
+identity, invalid timestamps, verifier failure, and concurrent setup changes all
+leave the lock claimed. A safe retry may verify an already-created administrator
+against the new exact revision. The setup document stores no subject identity,
+credential, provider secret, or role list; it advances only to `Administrator`
+and records the completion timestamp after verification succeeds.
+
+No administrator provider, dependency-injection registration, console command,
+HTTP route, browser claim session, or normal-runtime caller is included in this
+handoff increment. Production local-account creation remains M8D work, while
+claim-session binding for a future browser setup center, installer mutation, and
+normal runtime startup interlocks remain separate reviewed work.
 
 ## Trust boundaries
 

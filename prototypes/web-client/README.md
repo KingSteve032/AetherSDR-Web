@@ -294,8 +294,17 @@ Preflight reports planned users, packages, loopback ports, files, services,
 proxy changes, firewall expectations, and migrations. It changes no file and
 performs no installation. These commands still exit before the web host,
 authentication, radio discovery, station sessions, command transport, or TX
-supervision start. First-administrator creation and any browser setup center
-remain separate reviewed increments.
+supervision start.
+
+The internal first-administrator handoff can complete the setup lock only after a
+future trusted account provider verifies one durable, enabled subject with the
+exact `Aether.Admin` role for the current setup schema, revision, creation
+identity, topology, and canonical URL. Failed verification or a concurrent setup
+change leaves setup claimed and retryable. The setup document retains no account
+identity, credential, provider secret, or role list. This increment deliberately
+adds no account provider, console command, HTTP route, browser claim session, or
+runtime registration; production local-account creation and a browser setup
+center remain separate reviewed work.
 
 ## Ubuntu 24.04 pilot service
 
