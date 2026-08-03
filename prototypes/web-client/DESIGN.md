@@ -137,19 +137,24 @@ claim-session binding for a future browser setup center and installer mutation
 remain separate reviewed work.
 
 The runtime-readiness increment defines the fail-closed binding required before a
-future normal-runtime startup interlock may admit the web gateway or a remote
-station node. The binding carries the exact completed setup revision, runtime
-role, topology, canonical public URL, resolved path layout, and TX-support
-installation choice. Evaluation reads existing setup state without creating or
-modifying it and rejects incomplete setup, stale revisions, topology or role
-mismatches, URL or path drift, and TX-support installation drift. Missing or
-malformed setup state remains an error rather than an implicit development
-fallback.
+normal runtime may admit the web gateway or a remote station node. The binding
+carries the exact completed setup revision, runtime role, topology, canonical
+public URL, resolved path layout, and TX-support installation choice. Evaluation
+reads existing setup state without creating or modifying it and rejects
+incomplete setup, stale revisions, topology or role mismatches, URL or path drift,
+and TX-support installation drift. Missing or malformed setup state remains an
+error rather than an implicit development fallback.
 
-This readiness type has no Program.cs caller, hosted-service registration,
-console switch, HTTP or WebSocket route, account-provider dependency, installer
-mutation, radio path, or TX path. Wiring it into supported production startup is
-a later reviewed increment after installer-produced runtime configuration exists.
+The startup-gate increment wires that check into `Program.cs` before authentication
+settings, hosted services, radio discovery, station sessions, command transport,
+or TX supervision are configured. `InstallationRuntime:Enabled` defaults false;
+its disabled state permits only the exact empty binding defaults and does not even
+resolve installation paths. When enabled for this web process, the role must be
+`Gateway`, the selected topology must run a gateway here, and the exact completed
+revision, canonical URL, resolved paths, and TX-support installation choice must
+match persisted setup. Production standalone path resolution remains Linux-only.
+The gate registers no service, endpoint, account provider, radio caller, or TX
+caller and mutates no setup state.
 
 ## Trust boundaries
 

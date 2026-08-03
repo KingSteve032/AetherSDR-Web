@@ -129,6 +129,35 @@ if (installationSetupCommandLine.Command !=
     return;
 }
 
+InstallationRuntimeSettings installationRuntimeSettings =
+    builder.Configuration
+        .GetSection(InstallationRuntimeSettings.SectionName)
+        .Get<InstallationRuntimeSettings>(options =>
+            options.ErrorOnUnknownConfiguration = true) ??
+    new InstallationRuntimeSettings();
+_ = await InstallationRuntimeStartupGate.RequireReadyAsync(
+    installationRuntimeSettings,
+    () =>
+    {
+        InstallationPathSettings installationPathSettings =
+            builder.Configuration
+                .GetSection(InstallationPathSettings.SectionName)
+                .Get<InstallationPathSettings>(options =>
+                    options.ErrorOnUnknownConfiguration = true) ??
+            new InstallationPathSettings();
+        InstallationPathLayout installationPathLayout =
+            builder.Environment.IsDevelopment()
+                ? InstallationPathLayout.Development
+                : OperatingSystem.IsLinux()
+                    ? InstallationPathLayout.LinuxSystem
+                    : throw new InvalidOperationException(
+                        "Standalone production runtime requires Linux.");
+        return InstallationPaths.Resolve(
+            builder.Environment.ContentRootPath,
+            installationPathLayout,
+            installationPathSettings);
+    });
+
 AuthSettings authSettings =
     builder.Configuration.GetSection(AuthSettings.SectionName).Get<AuthSettings>() ??
     new AuthSettings();
