@@ -31,6 +31,7 @@ public sealed class InstallationHostStartupPlanTests
         Assert.Null(plan.SetupStatus);
         Assert.Null(plan.RuntimeReadiness);
         Assert.Null(plan.SetupOnlyCanonicalAccessUrl);
+        Assert.Null(plan.SetupOnlyIdentity);
         Assert.False(resolved);
     }
 
@@ -120,6 +121,12 @@ public sealed class InstallationHostStartupPlanTests
         Assert.False(plan.SetupStatus.BootstrapTokenPresent);
         Assert.Null(plan.RuntimeReadiness);
         Assert.Equal("https://radio.example.org", plan.SetupOnlyCanonicalAccessUrl);
+        Assert.Equal(
+            new InstallationSetupOnlyIdentity(
+                initial.SchemaVersion,
+                initial.CreatedAt,
+                initial.Revision),
+            plan.SetupOnlyIdentity);
         Assert.Equal(before, after);
         Assert.Equal(initial, await store.LoadAsync());
     }
@@ -260,6 +267,7 @@ public sealed class InstallationHostStartupPlanTests
         Assert.True(plan.RuntimeReadiness!.Ready);
         Assert.Equal(completed.Revision, plan.RuntimeReadiness.SetupRevision);
         Assert.Null(plan.SetupOnlyCanonicalAccessUrl);
+        Assert.Null(plan.SetupOnlyIdentity);
     }
 
     [Fact]

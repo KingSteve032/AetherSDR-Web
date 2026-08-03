@@ -15,12 +15,18 @@ public enum InstallationHostStartupMode
     NormalRuntime = 2
 }
 
+public sealed record InstallationSetupOnlyIdentity(
+    int SetupSchemaVersion,
+    DateTimeOffset SetupCreatedAt,
+    long InitialRevision);
+
 public sealed record InstallationHostStartupPlan(
     InstallationHostStartupMode Mode,
     InstallationPaths? Paths,
     InstallationSetupStatusReport? SetupStatus,
     InstallationRuntimeReadinessReport? RuntimeReadiness,
-    string? SetupOnlyCanonicalAccessUrl)
+    string? SetupOnlyCanonicalAccessUrl,
+    InstallationSetupOnlyIdentity? SetupOnlyIdentity)
 {
     public bool SetupOnlyEligible =>
         Mode == InstallationHostStartupMode.SetupOnly;
@@ -67,13 +73,15 @@ public static class InstallationHostStartupPlanner
                     Paths: null,
                     SetupStatus: null,
                     RuntimeReadiness: null,
-                    SetupOnlyCanonicalAccessUrl: null)
+                    SetupOnlyCanonicalAccessUrl: null,
+                    SetupOnlyIdentity: null)
                 : new InstallationHostStartupPlan(
                     InstallationHostStartupMode.NormalRuntime,
                     Paths: null,
                     SetupStatus: null,
                     runtimeReadiness,
-                    SetupOnlyCanonicalAccessUrl: null);
+                    SetupOnlyCanonicalAccessUrl: null,
+                    SetupOnlyIdentity: null);
         }
 
         _ = await InstallationRuntimeStartupGate.RequireReadyAsync(
@@ -124,6 +132,10 @@ public static class InstallationHostStartupPlanner
             paths,
             InstallationSetupStatusReport.From(state),
             RuntimeReadiness: null,
-            accessUrl.Value);
+            accessUrl.Value,
+            new InstallationSetupOnlyIdentity(
+                state.SchemaVersion,
+                state.CreatedAt,
+                state.Revision));
     }
 }
