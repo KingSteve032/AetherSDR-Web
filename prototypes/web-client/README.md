@@ -493,8 +493,28 @@ redacted readiness diagnostics. `SignedReleaseManifestVerificationService`
 combines it with the local verifier and exposes only `VerifyLocal`; disabled trust
 returns a typed fail-closed result. Normal health shows trust readiness while
 explicitly reporting that release download, installation, and activation remain
-unregistered. Publishing, offline bundle handling, CLI/Admin callers, activation,
-rollback, migrations, and post-activation health verification remain later M8B
+unregistered.
+
+The third M8B increment adds
+`LocalOfflineReleaseBundleVerificationService`. Its only operation reads one
+pre-existing canonical absolute directory containing exactly
+`release-manifest.json` plus four package files. It rejects symlinks, reparse
+points, unsafe relative paths, empty directories, missing or extra files, empty or
+oversized inputs, and directory trees above the bounded directory count. On Unix every
+bundle directory and file must already have all write bits cleared.
+
+The manifest is copied under the existing one-megabyte cap. Package files are
+streamed through a bounded buffer into immutable length and SHA-256 snapshots, so
+multi-gigabyte declarations do not require loading package content into memory.
+The reader rechecks file metadata after hashing and then delegates all signed
+identity, channel, architecture, compatibility, inventory, length, and checksum
+decisions to the existing production-trust-backed verifier.
+
+No path is configured or scanned automatically. Health reports the reader and
+local directory-read boundary as registered while archive extraction, network
+download, installation, activation, CLI, Admin, and browser callers remain false.
+Publishing, packaged bundle production, staging, activation, rollback, migrations,
+service health verification, and all update mutation callers remain later M8B
 work.
 
 Normal web startup can now opt into the same exact runtime binding through the
@@ -592,6 +612,15 @@ overrides are enforced directly by the guarded script:
 `releaseManifestNetworkDownloadRegistered=false`,
 `releaseManifestInstallationRegistered=false`,
 `releaseManifestActivationRegistered=false`,
+`releaseOfflineBundleReaderRegistered=true`,
+`releaseOfflineBundleDirectoryReadRegistered=true`,
+`releaseOfflineBundleArchiveExtractionRegistered=false`,
+`releaseOfflineBundleNetworkDownloadRegistered=false`,
+`releaseOfflineBundleInstallationRegistered=false`,
+`releaseOfflineBundleActivationRegistered=false`,
+`releaseOfflineBundleCliCallerRegistered=false`,
+`releaseOfflineBundleAdminCallerRegistered=false`,
+`releaseOfflineBundleBrowserCallerRegistered=false`,
 `txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,
 `txBrowserIntentProtocolVersion=2`,
 `txBrowserIntentValidationRegistered=true`,

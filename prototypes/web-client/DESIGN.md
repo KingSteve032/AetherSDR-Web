@@ -374,6 +374,31 @@ No package is opened from a path, no manifest is fetched, and no release, servic
 configuration, radio, watchdog, command, lease, or TX state can be changed by this
 composition.
 
+The third M8B increment adds one local offline-directory verification boundary.
+It accepts one canonical absolute directory containing exactly
+`release-manifest.json` and four package files. The reader manually traverses a
+bounded directory tree, rejects reparse points and symbolic links, requires safe
+relative package paths, and rejects missing, extra, empty, or oversized entries.
+On Unix, the bundle root, subdirectories, manifest, and packages must have no
+owner, group, or other write bit, so the input is already immutable before it is
+opened.
+
+The manifest is copied under the existing one-megabyte bound. Packages are not
+copied into process memory: each regular file is read sequentially through a
+bounded buffer and reduced to an immutable relative path, exact length, and
+SHA-256 digest. Length and last-write metadata are rechecked after the read, and
+the root is revalidated before verification. The resulting snapshot is submitted
+to the existing production-trust-backed verifier, which remains authoritative for
+signature, channel, architecture, compatibility, package inventory, length, and
+digest acceptance.
+
+Normal-runtime composition registers only this typed reader service and redacted
+health diagnostics. There is still no configured bundle path, startup scan,
+polling loop, archive or package extraction, downloader, CLI, Admin route, browser
+control, installer, staging write, release activation, symlink mutation, service
+control, migration runner, backup/restore writer, radio caller, watchdog caller,
+command or lease caller, or TX authority.
+
 ## Trust boundaries
 
 ### Browser

@@ -6,9 +6,9 @@ namespace AetherSDR.Web.Releases;
 
 public sealed class SignedReleaseManifestVerifier
 {
-    private const long MaximumDeclaredPackageLength = 8L * 1024 * 1024 * 1024;
+    internal const long MaximumDeclaredPackageLength =
+        8L * 1024 * 1024 * 1024;
     private const int MaximumPackageIdentityLength = 96;
-    private const int MaximumPackagePathLength = 240;
     private const int MaximumKeyIdLength = 64;
     private const int MaximumMigrationIdentityLength = 96;
     private const int MaximumReleaseNotesTitleLength = 120;
@@ -523,7 +523,7 @@ public sealed class SignedReleaseManifestVerifier
                     "The signed release contains a duplicate package identity.",
                     payload);
             }
-            if (!IsSafeRelativePackagePath(package.FileName))
+            if (!ReleasePackagePath.IsSafe(package.FileName))
             {
                 return Failure(
                     ReleaseManifestFailureCode.InvalidPackagePath,
@@ -569,7 +569,8 @@ public sealed class SignedReleaseManifestVerifier
             new(StringComparer.Ordinal);
         foreach (LocalImmutableReleasePackage package in localPackages)
         {
-            if (package is null || !IsSafeRelativePackagePath(package.RelativePath))
+            if (package is null ||
+                !ReleasePackagePath.IsSafe(package.RelativePath))
             {
                 return Failure(
                     ReleaseManifestFailureCode.InvalidPackagePath,
@@ -602,9 +603,10 @@ public sealed class SignedReleaseManifestVerifier
                     payload);
             }
 
-            byte[] actualHash = SHA256.HashData(local.Content);
             _ = TryParseCanonicalSha256(declared.Sha256, out byte[] expectedHash);
-            if (!CryptographicOperations.FixedTimeEquals(actualHash, expectedHash))
+            if (!CryptographicOperations.FixedTimeEquals(
+                    local.Sha256,
+                    expectedHash))
             {
                 return Failure(
                     ReleaseManifestFailureCode.PackageSha256Mismatch,
@@ -651,35 +653,6 @@ public sealed class SignedReleaseManifestVerifier
                 character is not '.' and not '_' and not '-')
             {
                 return false;
-            }
-        }
-        return true;
-    }
-
-    private static bool IsSafeRelativePackagePath(string? path)
-    {
-        if (string.IsNullOrEmpty(path) || path.Length > MaximumPackagePathLength ||
-            !string.Equals(path, path.Trim(), StringComparison.Ordinal) ||
-            path[0] == '/' || path.Contains('\\', StringComparison.Ordinal) ||
-            path.Contains(':', StringComparison.Ordinal) ||
-            Path.IsPathRooted(path))
-        {
-            return false;
-        }
-
-        string[] segments = path.Split('/', StringSplitOptions.None);
-        foreach (string segment in segments)
-        {
-            if (segment.Length == 0 || segment is "." or "..")
-            {
-                return false;
-            }
-            foreach (char character in segment)
-            {
-                if (char.IsControl(character))
-                {
-                    return false;
-                }
             }
         }
         return true;
