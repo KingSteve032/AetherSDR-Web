@@ -306,6 +306,15 @@ adds no account provider, console command, HTTP route, browser claim session, or
 runtime registration; production local-account creation and a browser setup
 center remain separate reviewed work.
 
+The internal runtime-readiness gate then binds a future normal process start to
+the exact completed setup revision, runtime role, topology, canonical public URL,
+resolved paths, and TX-support installation choice. It reads setup state without
+changing it and reports blockers for incomplete setup or any stale or mismatched
+binding. Missing or malformed state fails closed. The gate is intentionally not
+called from `Program.cs` and adds no startup behavior, service registration,
+installer mutation, account-provider dependency, network endpoint, radio action,
+or TX action in this increment.
+
 ## Ubuntu 24.04 pilot service
 
 Publish a self-contained build so the server does not require a machine-wide
