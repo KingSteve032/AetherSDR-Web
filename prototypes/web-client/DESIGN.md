@@ -394,10 +394,34 @@ digest acceptance.
 
 Normal-runtime composition registers only this typed reader service and redacted
 health diagnostics. There is still no configured bundle path, startup scan,
-polling loop, archive or package extraction, downloader, CLI, Admin route, browser
+polling loop, archive or package extraction, downloader, Admin route, browser
 control, installer, staging write, release activation, symlink mutation, service
 control, migration runner, backup/restore writer, radio caller, watchdog caller,
 command or lease caller, or TX authority.
+
+The fourth M8B increment adds one read-only CLI adapter around that boundary. A
+separate parser owns the complete release-check option set and strips it before
+ASP.NET Core receives the remaining application arguments. The command is
+mutually exclusive with installation-setup commands and production-TX preflight.
+It executes immediately after configuration is built and returns before setup-only
+planning, authentication, hosted services, radio discovery, station sessions,
+watchdog supervision, or web routing.
+
+The operator must provide one canonical absolute bundle directory, the exact
+installed semantic version, Stable/Beta/Pinned channel, the pinned identity only
+for Pinned, and positive canonical configuration-schema and protocol versions.
+The adapter derives `linux-x64` or `linux-arm64` from the current process rather
+than trusting a caller-selected architecture. Duplicate, missing, contradictory,
+or non-canonical values fail at the CLI boundary before any bundle access.
+
+Execution constructs the same strict production public-key registry and delegates
+to the existing immutable directory reader. Disabled or unavailable trust rejects
+before filesystem traversal. The only output is a versioned redacted JSON report;
+exit `0` means the complete signed bundle verified and exit `2` means it did not.
+The report omits the bundle path, trust paths, key material, signature, package
+paths, and checksums. The CLI adds no network, extraction, staging, installation,
+activation, rollback, migration, service-control, Admin, browser, radio, watchdog,
+command, lease, or TX method.
 
 ## Trust boundaries
 
