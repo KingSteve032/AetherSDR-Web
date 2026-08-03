@@ -440,6 +440,36 @@ script is read-only and requires trusted HTTPS. Production administrator creatio
 remains M8D work; native installer, proxy, service, package, and firewall mutation
 remains M8C work.
 
+The first M8B increment adds a typed signed-release manifest and local verification
+boundary under `Releases/`. It accepts only caller-provided manifest bytes,
+immutable copied package bytes, an exact local compatibility/channel context, and
+an immutable public-key set. It performs no network request, download, extraction,
+installation, release activation, service control, migration, backup/restore,
+radio, watchdog, command, or TX operation.
+
+The manifest signs one canonical payload plus its signature algorithm and key
+identifier. Strict JSON parsing rejects unknown or duplicate fields. Verification
+requires a canonical release identity and semantic version, exact Stable/Beta/
+Pinned relationship, `linux-x64` or `linux-arm64`, and exactly one safe relative
+package for gateway/web, broker, AetherRemote agent, and station engine. Package
+lengths and SHA-256 values must match the exact local set, with no missing or
+undeclared input.
+
+Signed compatibility declarations bind configuration schema, protocol range,
+minimum previous version, restart requirements, migration metadata, bounded
+release-note metadata, and a versioned TX-support capability statement. A
+TX-support-capable release must explicitly state that it enables no transmit,
+grants no TX eligibility, creates no browser TX authority, and arms no watchdog.
+The redacted report returns only the verified release summary and typed failure
+code; it omits signature bytes, checksums, package paths, and key identifiers.
+
+This increment supports ECDSA P-256 with SHA-256 through injected public-key
+material. The repository contains deterministic test-only signing material in the
+focused verifier tests, but no production private key, signer, embedded production
+trust anchor, CLI/Admin composition, or browser update control. Publishing,
+production trust-store composition, offline bundle handling, activation, rollback,
+and health verification remain later M8B work.
+
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled
 and must retain its empty revision, URL, and TX-support fields. An enabled web
