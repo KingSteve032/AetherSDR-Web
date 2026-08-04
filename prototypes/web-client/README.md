@@ -912,10 +912,32 @@ radio, watchdog, command, lease, or TX action. Production resolves diagnostics o
 and has no CLI, Admin, browser, HTTP, WebSocket, hosted-service, timer,
 AetherRemote, or operational caller.
 
+The twenty-first M8B increment adds
+`VerifiedReleaseActivationHealthVerificationPlanComposer`, a pure callerless
+boundary bound to the exact retained service-control plan and its exact activation
+plan. It always covers the four repository-owned service roles, requires every unit
+to be active, and uses one fixed dependency order: station engine, broker,
+AetherRemote agent, then gateway.
+
+The station engine, broker, and gateway receive loopback-only `/healthz` contracts
+with expected HTTP 200 responses and bounded 45/30/45-second deadlines. Gateway
+verification additionally requires the runtime canonical host binding. The agent
+receives a fresh broker-link observation contract with a bounded 60-second deadline.
+Host-restart plans mark the same complete contract set as post-boot verification;
+ordinary and no-restart plans remain post-switch verification. Public reports expose
+counts and booleans but no unit names, ports, paths, endpoints, or contract details.
+
+This increment performs no network request, socket use, `HttpClient` call, process
+launch, `systemctl` command, journal read, health evidence, `current` mutation,
+rollback, activation, radio, watchdog, command, lease, or TX action. Production
+resolves diagnostics only and has no CLI, Admin, browser, HTTP, WebSocket, hosted-
+service, timer, AetherRemote, service-control, or operational caller.
+
 Packaged bundle production, network download, archive extraction, operational
-backup orchestration, service-control execution and evidence, health probing,
-rollback preparation/execution, operator-approval authority, activation execution,
-Admin/browser workflows, and all operational update callers remain later M8B work.
+backup orchestration, service-control execution and evidence, health-probe execution
+and evidence, rollback preparation/execution, operator-approval authority,
+activation execution, Admin/browser workflows, and all operational update callers
+remain later M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled

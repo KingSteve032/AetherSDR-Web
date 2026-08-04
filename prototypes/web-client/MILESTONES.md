@@ -2708,11 +2708,12 @@ collection, exact-plan TX-lease admission closure/drain composition, exact-plan
 configuration-backup planning and atomic execution, exact-plan staged-copy
 migration planning, disabled-by-default locally pinned migration-runner trust and
 exact selection, callerless probe-only runner invocation, exact staged-copy migration
-execution, exact-plan migration evidence, and exact service-control transaction
-planning are implemented; publishing artifacts, network download, extraction,
-operational backup orchestration, activation execution, rollback preparation and
-execution, service-control execution and evidence, health probes, operator-approval
-authority, and Admin/browser callers remain unimplemented.
+execution, exact-plan migration evidence, exact service-control transaction
+planning, and exact post-switch health-verification planning are implemented;
+publishing artifacts, network download, extraction, operational backup orchestration,
+activation execution, rollback preparation and execution, service-control execution
+and evidence, health-probe execution and evidence, operator-approval authority, and
+Admin/browser callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -3124,6 +3125,30 @@ activation, radio, watchdog, command, lease, or TX action. Production resolves o
 diagnostics and adds no CLI, Admin, browser, HTTP, WebSocket, hosted-service, timer,
 AetherRemote, or operational caller.
 
+The twenty-first increment adds
+`VerifiedReleaseActivationHealthVerificationPlanComposer`, a callerless pure
+boundary that accepts only the successful service-control report and retained exact
+plan. It revalidates the exact activation-plan binding, complete four-package role
+coverage, signed restart declaration, deterministic service actions, and all still-
+mandatory activation obligations before retaining a separate health-plan token.
+
+Every health plan covers the station engine, broker, AetherRemote agent, and gateway
+in fixed dependency order and requires the corresponding repository-owned unit to
+be active. Station engine, broker, and gateway receive loopback-only `GET /healthz`
+contracts expecting HTTP 200 under bounded 45/30/45-second deadlines. Gateway health
+also requires the runtime canonical host binding. The agent receives one fresh
+broker-link observation contract under a bounded 60-second deadline. Host-restart
+plans identify the same complete set as post-boot verification; ordinary and no-
+restart plans identify post-switch verification.
+
+Public reports expose counts and booleans only and redact unit names, ports, paths,
+endpoint authorities, and contract internals. The planner performs no network
+request, socket use, `HttpClient` call, process launch, `systemctl` command, journal
+read, health evidence, `current` mutation, rollback, activation, radio, watchdog,
+command, lease, or TX action. Production resolves diagnostics only and adds no CLI,
+Admin, browser, HTTP, WebSocket, hosted-service, timer, AetherRemote, service-control,
+or operational caller.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -3418,6 +3443,44 @@ authority remained false. Runner trust remained disabled with zero artifacts; th
 independent watchdog started empty and Disarmed; production TX remained unavailable.
 
 Interactive Browser Bridge acceptance then passed against the deployed release. The
+authenticated fixed-2D radio desk connected PSOC2/HF/XVTR and reported the explicit
+RX-only/live footer. The validation-only panel stated that it had no radio command
+or microphone-audio transport; MOX, TUNE, and CWX were hidden and disabled; intent
+selection and validation, SPLIT, DVK, and FDX were disabled; PC MIC remained off;
+the harmless FILL display state toggled and was restored; and console errors and
+warnings were both zero. The tab was closed afterward to release the session. No TX
+lease, keying action, transmit-control command, or RF operation was performed.
+
+Automated checkpoint on 2026-08-04 for exact post-switch health-verification
+planning: independent post-merge `main` CI run `30915908898` passed; the deployment
+script passed shell syntax validation; Release solution build completed with zero
+warnings and zero errors; the focused activation-plan, service-control-plan, health-
+verification-plan, readiness, and evidence suite passed 158/158; web tests passed
+1,425/1,425; independent-watchdog tests passed 57/57; TX-HIL isolation tests passed
+48/48; AetherRemote tests passed 70/70; and browser tests passed 135/135. The
+complete checkpoint covered 1,600 .NET tests and 1,735 tests overall.
+
+Focused tests proved exact service-control and activation-plan object binding,
+complete four-service coverage independent of restart subset, deterministic station-
+engine/broker/agent/gateway health ordering, fixed loopback `/healthz` contracts,
+HTTP 200 expectations, canonical gateway host binding, fresh agent broker-link
+planning, bounded 30/45/60-second deadlines, post-host-restart phase selection,
+internal-action tamper rejection, distinct exact tokens, and public unit/port/path
+redaction. Production has no composition or probe caller and resolves only planner
+diagnostics.
+
+The guarded production-TX deployment gate passed against release
+`/home/flexweb/aethersdr/releases/20260804-140609-flexweb-validation`, retaining
+`/home/flexweb/aethersdr/releases/20260804-132134-flexweb-validation` for rollback.
+Deployed health confirmed exact health planning registered while network requests,
+sockets, `HttpClient`, process launch, `systemctl`, journal reads, health evidence,
+operational/CLI/Admin/browser/HTTP/WebSocket/hosted-service/timer/AetherRemote/
+service-control callers, rollback, radio/watchdog/command/lease/TX callers, `current`
+mutation, and activation authority remained false. Runner trust remained disabled
+with zero artifacts; the independent watchdog started empty and Disarmed;
+production TX remained unavailable.
+
+Interactive Browser Bridge acceptance passed against the deployed release. The
 authenticated fixed-2D radio desk connected PSOC2/HF/XVTR and reported the explicit
 RX-only/live footer. The validation-only panel stated that it had no radio command
 or microphone-audio transport; MOX, TUNE, and CWX were hidden and disabled; intent

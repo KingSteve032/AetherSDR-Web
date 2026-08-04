@@ -524,6 +524,8 @@ builder.Services.AddSingleton<
     VerifiedReleaseActivationMigrationExecutionService>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationServiceControlPlanComposer>();
+builder.Services.AddSingleton<
+    VerifiedReleaseActivationHealthVerificationPlanComposer>();
 builder.Services.AddSingleton<VerifiedReleaseActivationReadinessEvaluator>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationLeaseQuiescenceBoundary>();
@@ -665,6 +667,10 @@ VerifiedReleaseActivationServiceControlPlanComposer
     releaseActivationServiceControlPlanComposer =
         app.Services.GetRequiredService<
             VerifiedReleaseActivationServiceControlPlanComposer>();
+VerifiedReleaseActivationHealthVerificationPlanComposer
+    releaseActivationHealthVerificationPlanComposer =
+        app.Services.GetRequiredService<
+            VerifiedReleaseActivationHealthVerificationPlanComposer>();
 VerifiedReleaseActivationReadinessEvaluator releaseActivationReadinessEvaluator =
     app.Services.GetRequiredService<
         VerifiedReleaseActivationReadinessEvaluator>();
@@ -774,6 +780,9 @@ app.MapGet(
             VerifiedReleaseActivationServiceControlPlanDiagnostics
                 releaseActivationServiceControlPlan =
                     releaseActivationServiceControlPlanComposer.Snapshot;
+            VerifiedReleaseActivationHealthVerificationPlanDiagnostics
+                releaseActivationHealthVerificationPlan =
+                    releaseActivationHealthVerificationPlanComposer.Snapshot;
             VerifiedReleaseActivationReadinessDiagnostics
                 releaseActivationReadiness =
                     releaseActivationReadinessEvaluator.Snapshot;
@@ -1930,6 +1939,108 @@ app.MapGet(
                     releaseActivationServiceControlPlan.LeaseCallerRegistered,
                 releaseActivationServiceControlPlanTxCallerRegistered =
                     releaseActivationServiceControlPlan.TxCallerRegistered,
+                releaseActivationHealthVerificationPlanRegistered =
+                    releaseActivationHealthVerificationPlan.Registered,
+                releaseActivationHealthVerificationPlanServiceControlInputRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .ServiceControlPlanInputRegistered,
+                releaseActivationHealthVerificationPlanExactServiceControlBindingRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .ExactServiceControlPlanBindingRegistered,
+                releaseActivationHealthVerificationPlanExactActivationBindingRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .ExactActivationPlanBindingRegistered,
+                releaseActivationHealthVerificationPlanCompleteCoverageRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .CompleteServiceCoverageRegistered,
+                releaseActivationHealthVerificationPlanUnitActivityRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .UnitActivityPlanningRegistered,
+                releaseActivationHealthVerificationPlanLoopbackHttpRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .LoopbackHttpPlanningRegistered,
+                releaseActivationHealthVerificationPlanFreshBrokerLinkRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .FreshBrokerLinkPlanningRegistered,
+                releaseActivationHealthVerificationPlanCanonicalGatewayHostRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .CanonicalGatewayHostBindingRegistered,
+                releaseActivationHealthVerificationPlanFixedMappingRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .FixedHealthContractMappingRegistered,
+                releaseActivationHealthVerificationPlanOrderingRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .DeterministicOrderingRegistered,
+                releaseActivationHealthVerificationPlanBoundedDeadlineRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .BoundedDeadlinePlanningRegistered,
+                releaseActivationHealthVerificationPlanPostSwitchRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .PostSwitchPhasePlanningRegistered,
+                releaseActivationHealthVerificationPlanPostHostRestartRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .PostHostRestartPhasePlanningRegistered,
+                releaseActivationHealthVerificationPlanNetworkRequestRegistered =
+                    releaseActivationHealthVerificationPlan.NetworkRequestRegistered,
+                releaseActivationHealthVerificationPlanSocketCallerRegistered =
+                    releaseActivationHealthVerificationPlan.SocketCallerRegistered,
+                releaseActivationHealthVerificationPlanHttpClientCallerRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .HttpClientCallerRegistered,
+                releaseActivationHealthVerificationPlanProcessInvocationRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .ProcessInvocationRegistered,
+                releaseActivationHealthVerificationPlanSystemdCommandRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .SystemdCommandRegistered,
+                releaseActivationHealthVerificationPlanJournalReadRegistered =
+                    releaseActivationHealthVerificationPlan.JournalReadRegistered,
+                releaseActivationHealthVerificationPlanEvidenceRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .HealthEvidenceRegistered,
+                releaseActivationHealthVerificationPlanCurrentPointerMutationRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .CurrentPointerMutationRegistered,
+                releaseActivationHealthVerificationPlanActivationAuthorityRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .ActivationAuthorityRegistered,
+                releaseActivationHealthVerificationPlanOperationalCallerRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .OperationalCallerRegistered,
+                releaseActivationHealthVerificationPlanCliCallerRegistered =
+                    releaseActivationHealthVerificationPlan.CliCallerRegistered,
+                releaseActivationHealthVerificationPlanAdminCallerRegistered =
+                    releaseActivationHealthVerificationPlan.AdminCallerRegistered,
+                releaseActivationHealthVerificationPlanBrowserCallerRegistered =
+                    releaseActivationHealthVerificationPlan.BrowserCallerRegistered,
+                releaseActivationHealthVerificationPlanHttpCallerRegistered =
+                    releaseActivationHealthVerificationPlan.HttpCallerRegistered,
+                releaseActivationHealthVerificationPlanWebSocketCallerRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .WebSocketCallerRegistered,
+                releaseActivationHealthVerificationPlanHostedServiceCallerRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .HostedServiceCallerRegistered,
+                releaseActivationHealthVerificationPlanTimerCallerRegistered =
+                    releaseActivationHealthVerificationPlan.TimerCallerRegistered,
+                releaseActivationHealthVerificationPlanAetherRemoteCallerRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .AetherRemoteCallerRegistered,
+                releaseActivationHealthVerificationPlanServiceControlCallerRegistered =
+                    releaseActivationHealthVerificationPlan
+                        .ServiceControlCallerRegistered,
+                releaseActivationHealthVerificationPlanRollbackCallerRegistered =
+                    releaseActivationHealthVerificationPlan.RollbackCallerRegistered,
+                releaseActivationHealthVerificationPlanRadioCallerRegistered =
+                    releaseActivationHealthVerificationPlan.RadioCallerRegistered,
+                releaseActivationHealthVerificationPlanWatchdogCallerRegistered =
+                    releaseActivationHealthVerificationPlan.WatchdogCallerRegistered,
+                releaseActivationHealthVerificationPlanCommandCallerRegistered =
+                    releaseActivationHealthVerificationPlan.CommandCallerRegistered,
+                releaseActivationHealthVerificationPlanLeaseCallerRegistered =
+                    releaseActivationHealthVerificationPlan.LeaseCallerRegistered,
+                releaseActivationHealthVerificationPlanTxCallerRegistered =
+                    releaseActivationHealthVerificationPlan.TxCallerRegistered,
                 releaseActivationLeaseQuiescenceRegistered =
                     releaseActivationLeaseQuiescenceDiagnostics.Registered,
                 releaseActivationLeaseQuiescencePlanInputRegistered =
