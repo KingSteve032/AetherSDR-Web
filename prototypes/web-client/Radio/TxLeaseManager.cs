@@ -8,6 +8,19 @@ public sealed record TxLeaseChange(
     string Reason,
     DateTimeOffset OccurredAt);
 
+internal sealed class TxLeaseAdmissionClosureAuthority
+{
+}
+
+internal sealed record TxLeaseAdmissionClosureObservation(
+    bool AdmissionClosed,
+    bool DifferentClosureActive,
+    DateTimeOffset? ClosedAt,
+    IReadOnlyList<TxLease> Leases)
+{
+    internal bool Drained => AdmissionClosed && Leases.Count == 0;
+}
+
 public sealed class TxLeaseManager(TimeProvider? timeProvider = null)
 {
     public static readonly TimeSpan MinimumLeaseDuration =
@@ -20,6 +33,8 @@ public sealed class TxLeaseManager(TimeProvider? timeProvider = null)
         timeProvider ?? TimeProvider.System;
     private readonly Dictionary<string, TxLease> m_leases =
         new(StringComparer.OrdinalIgnoreCase);
+    private TxLeaseAdmissionClosureAuthority? m_admissionClosureAuthority;
+    private DateTimeOffset? m_admissionClosedAt;
 
     public event Action<TxLeaseChange>? Changed;
 
@@ -63,10 +78,40 @@ public sealed class TxLeaseManager(TimeProvider? timeProvider = null)
     {
         lock (m_gate)
         {
-            return m_leases.Values
-                .OrderBy(lease => lease.RadioId, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(lease => lease.LeaseId, StringComparer.Ordinal)
-                .ToArray();
+            return CreateLeaseObservationLocked();
+        }
+    }
+
+    internal bool TryCloseAdmission(
+        TxLeaseAdmissionClosureAuthority authority,
+        out TxLeaseAdmissionClosureObservation observation)
+    {
+        ArgumentNullException.ThrowIfNull(authority);
+
+        lock (m_gate)
+        {
+            if (m_admissionClosureAuthority is null)
+            {
+                m_admissionClosureAuthority = authority;
+                m_admissionClosedAt = m_timeProvider.GetUtcNow();
+            }
+            else if (!ReferenceEquals(m_admissionClosureAuthority, authority))
+            {
+                observation = CreateAdmissionObservationLocked(authority);
+                return false;
+            }
+
+            observation = CreateAdmissionObservationLocked(authority);
+            return true;
+        }
+    }
+
+    internal TxLeaseAdmissionClosureObservation ObserveAdmissionClosure(
+        TxLeaseAdmissionClosureAuthority? authority)
+    {
+        lock (m_gate)
+        {
+            return CreateAdmissionObservationLocked(authority);
         }
     }
 
@@ -99,6 +144,13 @@ public sealed class TxLeaseManager(TimeProvider? timeProvider = null)
         TxLeaseChange? acquired = null;
         lock (m_gate)
         {
+            if (m_admissionClosureAuthority is not null)
+            {
+                error =
+                    "TX lease admission is closed for a verified release activation transaction.";
+                return false;
+            }
+
             expired = ExpireRadioLocked(normalizedRadioId, now);
             if (m_leases.TryGetValue(
                     normalizedRadioId,
@@ -162,6 +214,13 @@ public sealed class TxLeaseManager(TimeProvider? timeProvider = null)
         bool success = false;
         lock (m_gate)
         {
+            if (m_admissionClosureAuthority is not null)
+            {
+                error =
+                    "TX lease renewal is closed for a verified release activation transaction.";
+                return false;
+            }
+
             expired = ExpireRadioLocked(normalizedRadioId, now);
             if (!m_leases.TryGetValue(
                     normalizedRadioId,
@@ -366,6 +425,26 @@ public sealed class TxLeaseManager(TimeProvider? timeProvider = null)
         }
         Publish(expired);
         return expired.Count;
+    }
+
+    private TxLease[] CreateLeaseObservationLocked() =>
+        m_leases.Values
+            .OrderBy(lease => lease.RadioId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(lease => lease.LeaseId, StringComparer.Ordinal)
+            .ToArray();
+
+    private TxLeaseAdmissionClosureObservation CreateAdmissionObservationLocked(
+        TxLeaseAdmissionClosureAuthority? authority)
+    {
+        bool closureActive = m_admissionClosureAuthority is not null;
+        bool exactClosure = closureActive &&
+            authority is not null &&
+            ReferenceEquals(m_admissionClosureAuthority, authority);
+        return new TxLeaseAdmissionClosureObservation(
+            exactClosure,
+            closureActive && !exactClosure,
+            exactClosure ? m_admissionClosedAt : null,
+            CreateLeaseObservationLocked());
     }
 
     private TxLeaseChange? ExpireRadioLocked(

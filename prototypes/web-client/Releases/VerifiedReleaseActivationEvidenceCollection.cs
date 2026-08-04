@@ -183,11 +183,11 @@ internal sealed class VerifiedReleaseActivationEvidenceCollection
 
 /// <summary>
 /// Collects one bounded observation-only activation evidence snapshot from the
-/// existing release-status reader, TX lease manager, radio-session registry, and
-/// independent-watchdog registry. It deliberately leaves lease-admission closure,
-/// backup, required migration, required service control, health verification,
-/// rollback, and operator approval unavailable until separately reviewed
-/// authoritative boundaries exist. It performs no write, pointer mutation,
+/// existing release-status reader, exact-plan TX-lease quiescence boundary,
+/// radio-session registry, and independent-watchdog registry. It deliberately
+/// leaves backup, required migration, required service control, health
+/// verification, rollback, and operator approval unavailable until separately
+/// reviewed authoritative boundaries exist. It performs no write, pointer mutation,
 /// activation, lease mutation, radio/watchdog command, service control, health
 /// probe, rollback, browser/Admin operation, hosted service, timer, AetherRemote,
 /// command, or transmit action.
@@ -199,7 +199,10 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
 
     private readonly Func<CancellationToken, Task<ReleaseStatusReadResult>>
         m_statusReader;
-    private readonly Func<IReadOnlyList<TxLease>> m_leaseSnapshotReader;
+    private readonly Func<
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationLeaseQuiescenceObservation>
+        m_leaseQuiescenceReader;
     private readonly Func<IReadOnlyList<RadioSessionDiagnostics>>
         m_sessionSnapshotReader;
     private readonly Func<StationTxIndependentWatchdogAggregate>
@@ -211,12 +214,12 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
 
     public VerifiedReleaseActivationEvidenceCollector(
         ReleaseInstallationStatusReader statusReader,
-        TxLeaseManager txLeaseManager,
+        VerifiedReleaseActivationLeaseQuiescenceBoundary leaseQuiescence,
         RadioSessionRegistry radioSessions,
         StationTxIndependentWatchdogRegistry independentWatchdogs)
         : this(
             CreateStatusReader(statusReader),
-            CreateLeaseSnapshotReader(txLeaseManager),
+            CreateLeaseQuiescenceReader(leaseQuiescence),
             CreateSessionSnapshotReader(radioSessions),
             CreateWatchdogSnapshotReader(independentWatchdogs),
             TimeProvider.System)
@@ -231,11 +234,32 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         TimeProvider timeProvider,
         Func<RadioSessionDiagnostics, VerifiedReleaseActivationSessionEvidence>?
             sessionEvidenceCapture = null)
+        : this(
+            statusReader,
+            CreateLeaseQuiescenceReader(leaseSnapshotReader),
+            sessionSnapshotReader,
+            watchdogSnapshotReader,
+            timeProvider,
+            sessionEvidenceCapture)
+    {
+    }
+
+    internal VerifiedReleaseActivationEvidenceCollector(
+        Func<CancellationToken, Task<ReleaseStatusReadResult>> statusReader,
+        Func<
+            VerifiedReleaseActivationPlan,
+            VerifiedReleaseActivationLeaseQuiescenceObservation>
+            leaseQuiescenceReader,
+        Func<IReadOnlyList<RadioSessionDiagnostics>> sessionSnapshotReader,
+        Func<StationTxIndependentWatchdogAggregate> watchdogSnapshotReader,
+        TimeProvider timeProvider,
+        Func<RadioSessionDiagnostics, VerifiedReleaseActivationSessionEvidence>?
+            sessionEvidenceCapture = null)
     {
         m_statusReader = statusReader ??
             throw new ArgumentNullException(nameof(statusReader));
-        m_leaseSnapshotReader = leaseSnapshotReader ??
-            throw new ArgumentNullException(nameof(leaseSnapshotReader));
+        m_leaseQuiescenceReader = leaseQuiescenceReader ??
+            throw new ArgumentNullException(nameof(leaseQuiescenceReader));
         m_sessionSnapshotReader = sessionSnapshotReader ??
             throw new ArgumentNullException(nameof(sessionSnapshotReader));
         m_watchdogSnapshotReader = watchdogSnapshotReader ??
@@ -255,7 +279,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             WatchdogAggregateSnapshotRegistered: true,
             BoundedCollectionWindowRegistered: true,
             MissingPrerequisitesFailClosedRegistered: true,
-            TxLeaseAdmissionClosureEvidenceRegistered: false,
+            TxLeaseAdmissionClosureEvidenceRegistered: true,
             ConfigurationBackupEvidenceRegistered: false,
             MigrationExecutionEvidenceRegistered: false,
             ServiceControlEvidenceRegistered: false,
@@ -324,6 +348,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         DateTimeOffset startedAt = m_timeProvider.GetUtcNow();
         ReleaseStatusReadResult? beforeStatus;
         ReleaseStatusReadResult? afterStatus;
+        VerifiedReleaseActivationLeaseQuiescenceObservation? leaseQuiescence;
         IReadOnlyList<TxLease>? leases;
         IReadOnlyList<RadioSessionDiagnostics>? sessions;
         StationTxIndependentWatchdogAggregate? watchdogs;
@@ -331,7 +356,8 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         {
             beforeStatus = await m_statusReader(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            leases = m_leaseSnapshotReader();
+            leaseQuiescence = m_leaseQuiescenceReader(plan);
+            leases = leaseQuiescence.ActiveTxLeases;
             sessions = m_sessionSnapshotReader();
             watchdogs = m_watchdogSnapshotReader();
             cancellationToken.ThrowIfCancellationRequested();
@@ -365,6 +391,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         }
         if (beforeStatus is null ||
             afterStatus is null ||
+            leaseQuiescence is null ||
             leases is null ||
             sessions is null ||
             watchdogs is null)
@@ -421,7 +448,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         VerifiedReleaseActivationReadinessEvidence evidence = new(
             startedAt,
             frozenStatus,
-            TxLeaseAdmissionClosed: false,
+            leaseQuiescence.AdmissionClosed,
             leases.ToArray(),
             sessionEvidence,
             watchdogs,
@@ -446,11 +473,26 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         return statusReader.ReadAsync;
     }
 
-    private static Func<IReadOnlyList<TxLease>> CreateLeaseSnapshotReader(
-        TxLeaseManager txLeaseManager)
+    private static Func<
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationLeaseQuiescenceObservation>
+        CreateLeaseQuiescenceReader(
+            VerifiedReleaseActivationLeaseQuiescenceBoundary leaseQuiescence)
     {
-        ArgumentNullException.ThrowIfNull(txLeaseManager);
-        return txLeaseManager.GetObservationSnapshot;
+        ArgumentNullException.ThrowIfNull(leaseQuiescence);
+        return leaseQuiescence.Observe;
+    }
+
+    private static Func<
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationLeaseQuiescenceObservation>
+        CreateLeaseQuiescenceReader(
+            Func<IReadOnlyList<TxLease>> leaseSnapshotReader)
+    {
+        ArgumentNullException.ThrowIfNull(leaseSnapshotReader);
+        return _ => new VerifiedReleaseActivationLeaseQuiescenceObservation(
+            AdmissionClosed: false,
+            leaseSnapshotReader());
     }
 
     private static Func<IReadOnlyList<RadioSessionDiagnostics>>

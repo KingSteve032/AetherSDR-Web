@@ -2703,11 +2703,12 @@ trust composition, immutable local offline-directory bundle reader, read-only
 offline bundle CLI `check`, read-only local release `status`, read-only offline
 install preflight, verified installation-plan composition, private verified staging,
 atomic inactive-release publication, activation-transaction plan composition,
-activation-readiness evidence evaluation, and authoritative runtime evidence
-collection are implemented; publishing artifacts, network download, extraction,
-TX-lease admission closure, backup, activation execution, rollback preparation and
-execution, migration execution, service control, health probes, operator-approval
-authority, and Admin/browser callers remain unimplemented.
+activation-readiness evidence evaluation, authoritative runtime evidence
+collection, and exact-plan TX-lease admission closure/drain composition are
+implemented; publishing artifacts, network download, extraction, backup,
+activation execution, rollback preparation and execution, migration execution,
+service control, health probes, operator-approval authority, and Admin/browser
+callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -2905,14 +2906,38 @@ public report exposes only counts and booleans and omits paths, inventory,
 radio/session/lease identities, occupants, watchdog process data, package names,
 and digests.
 
-The collector marks lease-admission closure, configuration backup, required
-migration execution, required service/host control, health verification, rollback,
-and operator approval unavailable because no authoritative sources exist yet. A
-signed no-migration or no-restart plan may satisfy only that corresponding no-op
-prerequisite. It exposes no public collection method and adds no filesystem write,
-pointer mutation, activation, lease mutation, radio/watchdog command, backup,
-migration, service control, health probe, rollback, CLI/Admin/browser, hosted-
-service, timer, AetherRemote, command, lease, or TX caller.
+The collector marks configuration backup, required migration execution, required
+service/host control, health verification, rollback, and operator approval
+unavailable because no authoritative sources exist yet. A signed no-migration or
+no-restart plan may satisfy only that corresponding no-op prerequisite. It exposes
+no public collection method and adds no filesystem write, pointer mutation,
+activation, lease mutation, radio/watchdog command, backup, migration, service
+control, health probe, rollback, CLI/Admin/browser, hosted-service, timer,
+AetherRemote, command, lease, or TX caller.
+
+The thirteenth increment adds
+`VerifiedReleaseActivationLeaseQuiescenceBoundary`, a callerless internal boundary
+that composes one exact verified activation plan into an opaque lease-admission
+closure token. Composition is non-mutating. Closure is serialized under the same
+`TxLeaseManager` lock as acquisition and renewal, so an active transaction rejects
+both new leases and renewals without racing either path. Independently composed or
+equivalent-but-distinct plan tokens cannot reuse or take over the active closure.
+
+Existing leases remain owner-controlled and are never force-released. Validation
+and release remain available, while ordinary expiry continues through the existing
+watchdog/event safety lifecycle. Drain evaluation is observation-only and leaves
+expired stored leases visible until that normal expiry boundary resolves them.
+Zero stored leases proves only lease drain; it never infers radio-authoritative
+idle, watchdog safety, or activation authority. Normal lease behavior is unchanged
+when no activation closure exists.
+
+The evidence collector now reads exact-plan closure state and the stored lease set
+from the same serialized observation. Public health diagnostics separately report
+composition, closure authority, active state, acquisition and renewal suppression,
+drain evaluation, absence of force-release and lease mutation, absence of radio-idle
+inference, operational callers, and activation authority. The closure operation has
+no public method and no CLI, Admin, browser, HTTP, WebSocket, hosted-service, timer,
+AetherRemote, command, radio, watchdog, TX, or activation caller.
 
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
@@ -3038,6 +3063,20 @@ while file write, `current` mutation, activation, lease/radio/watchdog mutation,
 backup/migration/service/health/rollback execution, CLI/Admin/browser, hosted-
 service, timer, AetherRemote, command, lease, and TX callers remained absent. No
 live radio or RF operation was performed or required.
+
+Automated checkpoint on 2026-08-03 for exact-plan TX-lease admission closure and
+drain composition: Release solution build completed with zero warnings and zero
+errors; the focused lease-quiescence, lease-manager, and activation-evidence suite
+passed 57/57; web tests passed 1,327/1,327; independent-watchdog tests passed
+57/57; TX-HIL isolation tests passed 48/48; AetherRemote tests passed 70/70; and
+browser tests passed 135/135. The complete checkpoint covered 1,502 .NET tests and
+1,637 tests overall. A live development health probe confirmed exact-plan
+composition, admission authority, acquisition and renewal suppression,
+observation-only drain evaluation, and fail-closed inactive state while
+force-release, lease-mutation authority, radio-idle inference, activation
+authority, CLI/Admin/browser/HTTP/WebSocket, hosted-service, timer, AetherRemote,
+command, radio, watchdog, and TX callers remained absent. Transmit remained
+disabled. No live radio or RF operation was performed or required.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

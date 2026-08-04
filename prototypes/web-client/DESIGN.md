@@ -618,15 +618,47 @@ registry. Release inventory, lease, and session collections are defensively copi
 before the internal token is retained.
 
 The collector deliberately supplies false for every prerequisite without an
-implemented authoritative source: lease-admission closure, configuration backup,
-required migration execution, required service/host control, post-switch health
-verification, rollback readiness, and operator approval. Only a signed no-migration
-or no-restart plan may satisfy the corresponding no-op prerequisite. The public
-report exposes counts and booleans but no paths, inventory, radio/session/lease
-identifiers, occupants, watchdog process data, package names, or digests. There is
-still no filesystem write, pointer mutation, activation, lease mutation,
-radio/watchdog command, backup, migration, service control, health probe, rollback,
+implemented authoritative source: configuration backup, required migration
+execution, required service/host control, post-switch health verification,
+rollback readiness, and operator approval. Only a signed no-migration or no-restart
+plan may satisfy the corresponding no-op prerequisite. The public report exposes
+counts and booleans but no paths, inventory, radio/session/lease identifiers,
+occupants, watchdog process data, package names, or digests. There is still no
+filesystem write, pointer mutation, activation, lease mutation, radio/watchdog
+command, backup, migration, service control, health probe, rollback,
 CLI/Admin/browser, hosted-service, timer, AetherRemote, command, lease, or TX caller.
+
+The thirteenth M8B increment adds the first authoritative TX-lease admission
+closure boundary without adding an activation orchestrator.
+`VerifiedReleaseActivationLeaseQuiescenceBoundary` composes one opaque internal
+transaction token from the exact verified activation-plan object. Public summaries
+are revalidated against that internal object, and independently composed tokens—even
+for equivalent plan metadata—are not interchangeable.
+
+Closing admission is serialized by the existing `TxLeaseManager` lock used for
+acquisition and renewal. The first exact token may establish the station-wide
+closure; a different active token fails closed. While closure is active, new lease
+acquisition and lease renewal are rejected at the manager boundary. Exact-owner
+validation and release remain available, and no existing lease is force-released.
+Normal acquisition and renewal behavior is unchanged when no closure transaction
+exists.
+
+The boundary observes closure state and the stored lease set under the same lock.
+Observation does not expire leases, publish change events, command a radio, mutate
+a watchdog, or infer radio state. Existing leases must release or be removed by the
+ordinary bounded expiry/watchdog lifecycle before drain is satisfied. Even after
+drain, radio-authoritative idle, session safety, watchdog state, backup, migration,
+service, health, rollback, and operator approval remain independent evidence.
+
+The evidence collector consumes this exact-plan closure observation atomically
+with the lease snapshot. A closure owned by an equivalent-but-distinct activation
+plan is reported open for the supplied plan. Public health diagnostics separate
+plan composition, closure authority, active state, acquisition/renewal suppression,
+drain evaluation, force-release absence, lease-mutation absence, radio-idle
+non-inference, operational callers, and activation authority. The boundary exposes
+no public close or evaluate method and has no CLI, Admin, browser, HTTP, WebSocket,
+hosted-service, timer, AetherRemote, command, radio, watchdog, TX, or activation
+caller.
 
 ## Trust boundaries
 

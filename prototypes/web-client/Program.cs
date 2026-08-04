@@ -503,6 +503,8 @@ builder.Services.AddSingleton<VerifiedReleaseStagingService>();
 builder.Services.AddSingleton<VerifiedReleasePublicationService>();
 builder.Services.AddSingleton<VerifiedReleaseActivationPlanComposer>();
 builder.Services.AddSingleton<VerifiedReleaseActivationReadinessEvaluator>();
+builder.Services.AddSingleton<
+    VerifiedReleaseActivationLeaseQuiescenceBoundary>();
 builder.Services.AddSingleton<VerifiedReleaseActivationEvidenceCollector>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
@@ -614,6 +616,10 @@ VerifiedReleaseActivationPlanComposer releaseActivationPlanComposer =
 VerifiedReleaseActivationReadinessEvaluator releaseActivationReadinessEvaluator =
     app.Services.GetRequiredService<
         VerifiedReleaseActivationReadinessEvaluator>();
+VerifiedReleaseActivationLeaseQuiescenceBoundary
+    releaseActivationLeaseQuiescence =
+        app.Services.GetRequiredService<
+            VerifiedReleaseActivationLeaseQuiescenceBoundary>();
 VerifiedReleaseActivationEvidenceCollector releaseActivationEvidenceCollector =
     app.Services.GetRequiredService<
         VerifiedReleaseActivationEvidenceCollector>();
@@ -689,6 +695,12 @@ app.MapGet(
             VerifiedReleaseActivationReadinessDiagnostics
                 releaseActivationReadiness =
                     releaseActivationReadinessEvaluator.Snapshot;
+            VerifiedReleaseActivationLeaseQuiescenceDiagnostics
+                releaseActivationLeaseQuiescenceDiagnostics =
+                    releaseActivationLeaseQuiescence.Snapshot;
+            VerifiedReleaseActivationLeaseQuiescenceStateDiagnostics
+                releaseActivationLeaseQuiescenceState =
+                    releaseActivationLeaseQuiescence.State;
             VerifiedReleaseActivationEvidenceCollectionDiagnostics
                 releaseActivationEvidence =
                     releaseActivationEvidenceCollector.Snapshot;
@@ -1030,6 +1042,99 @@ app.MapGet(
                     releaseActivationPlan.LeaseCallerRegistered,
                 releaseActivationPlanTxCallerRegistered =
                     releaseActivationPlan.TxCallerRegistered,
+                releaseActivationLeaseQuiescenceRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics.Registered,
+                releaseActivationLeaseQuiescencePlanInputRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .ActivationPlanInputRegistered,
+                releaseActivationLeaseQuiescenceTransactionPlanRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .TransactionBoundPlanCompositionRegistered,
+                releaseActivationLeaseQuiescenceAdmissionAuthorityRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .AdmissionClosureAuthorityRegistered,
+                releaseActivationLeaseQuiescenceActiveStateRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .ActiveClosureStateRegistered,
+                releaseActivationLeaseQuiescenceAcquisitionSuppressionRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .AcquisitionSuppressionRegistered,
+                releaseActivationLeaseQuiescenceRenewalSuppressionRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .RenewalSuppressionRegistered,
+                releaseActivationLeaseQuiescenceObservationRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .ObservationOnlyLeaseSnapshotRegistered,
+                releaseActivationLeaseQuiescenceDrainEvaluationRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .DrainEvaluationRegistered,
+                releaseActivationLeaseQuiescenceForceReleaseRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .ExistingLeaseForceReleaseRegistered,
+                releaseActivationLeaseQuiescenceTxLeaseMutationRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .TxLeaseMutationRegistered,
+                releaseActivationLeaseQuiescenceRadioIdleInferenceRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .RadioIdleInferenceRegistered,
+                releaseActivationLeaseQuiescenceRadioCommandRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .RadioCommandRegistered,
+                releaseActivationLeaseQuiescenceWatchdogMutationRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .WatchdogMutationRegistered,
+                releaseActivationLeaseQuiescenceActivationAuthorityRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .ActivationAuthorityRegistered,
+                releaseActivationLeaseQuiescenceOperationalCallerRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .OperationalCallerRegistered,
+                releaseActivationLeaseQuiescenceCliCallerRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .CliCallerRegistered,
+                releaseActivationLeaseQuiescenceAdminCallerRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .AdminCallerRegistered,
+                releaseActivationLeaseQuiescenceBrowserCallerRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .BrowserCallerRegistered,
+                releaseActivationLeaseQuiescenceHttpCallerRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .HttpCallerRegistered,
+                releaseActivationLeaseQuiescenceWebSocketCallerRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .WebSocketCallerRegistered,
+                releaseActivationLeaseQuiescenceHostedServiceCallerRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .HostedServiceCallerRegistered,
+                releaseActivationLeaseQuiescenceTimerCallerRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .TimerCallerRegistered,
+                releaseActivationLeaseQuiescenceAetherRemoteCallerRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .AetherRemoteCallerRegistered,
+                releaseActivationLeaseQuiescenceCommandCallerRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics
+                        .CommandCallerRegistered,
+                releaseActivationLeaseQuiescenceTxCallerRegistered =
+                    releaseActivationLeaseQuiescenceDiagnostics.TxCallerRegistered,
+                releaseActivationLeaseQuiescenceActive =
+                    releaseActivationLeaseQuiescenceState.AdmissionClosureActive,
+                releaseActivationLeaseQuiescenceExactTransactionActive =
+                    releaseActivationLeaseQuiescenceState
+                        .ExactTransactionBoundClosureActive,
+                releaseActivationLeaseQuiescenceObservedLeaseCount =
+                    releaseActivationLeaseQuiescenceState.ObservedTxLeaseCount,
+                releaseActivationLeaseQuiescenceDrainSatisfied =
+                    releaseActivationLeaseQuiescenceState.DrainSatisfied,
+                releaseActivationLeaseQuiescenceLeaseMutationAuthorityAvailable =
+                    releaseActivationLeaseQuiescenceState
+                        .TxLeaseMutationAuthorityAvailable,
+                releaseActivationLeaseQuiescenceRadioIdleProven =
+                    releaseActivationLeaseQuiescenceState
+                        .RadioAuthoritativeIdleProven,
+                releaseActivationLeaseQuiescenceActivationAuthorized =
+                    releaseActivationLeaseQuiescenceState.ActivationAuthorized,
                 releaseActivationReadinessEvaluatorRegistered =
                     releaseActivationReadiness.Registered,
                 releaseActivationReadinessPlanInputRegistered =
