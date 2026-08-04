@@ -841,6 +841,31 @@ migration, and creates no evidence. There is no CLI, Admin, browser, HTTP,
 WebSocket, hosted-service, timer, AetherRemote, service-control, health-probe,
 rollback, current-pointer, activation, radio, watchdog, command, lease, or TX caller.
 
+The eighteenth M8B increment adds
+`VerifiedReleaseActivationMigrationRunnerInvocationService`, a callerless
+probe-only process boundary behind the exact successful runner selection. Signed
+no-migration plans remain a no-process no-op. Required plans revalidate the exact
+runner's canonical path, regular-file status, immutable permissions, length,
+timestamp, and pinned SHA-256 immediately before every invocation.
+
+The service starts the reviewed artifact directly with no shell, no arguments, a
+cleared environment, and only protocol/locale variables. It sends one bounded JSON
+probe over stdin containing setup/release identities, runner and signed migration
+identities, and schema numbers—never configuration, state, secret, backup, staging,
+publication, deployment, or manifest paths. Stdout and stderr are independently
+bounded, stderr must remain empty, the process has a five-second hard timeout, and
+timeout or oversized output terminates the complete process tree.
+
+A successful response must exactly echo the request nonce, runner identity, signed
+migration identity, schema transition, and protocol version while explicitly
+reporting no migration execution, filesystem mutation, or migration-source paths.
+Unknown JSON fields, malformed or noisy output, nonzero exit, rejection, mismatch,
+timeout, or runner drift fail closed. Probe success is not migration readiness or
+evidence. Production registers diagnostics only; no CLI, Admin, browser, HTTP,
+WebSocket, hosted-service, timer, AetherRemote, service-control, health-probe,
+rollback, current-pointer, activation, radio, watchdog, command, lease, or TX caller
+can invoke it.
+
 Packaged bundle production, network download, archive extraction, operational
 backup orchestration, migration execution, service control, health probing,
 rollback preparation/execution, operator-approval authority, activation execution,

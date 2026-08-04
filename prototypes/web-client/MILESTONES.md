@@ -2706,10 +2706,11 @@ atomic inactive-release publication, activation-transaction plan composition,
 activation-readiness evidence evaluation, authoritative runtime evidence
 collection, exact-plan TX-lease admission closure/drain composition, exact-plan
 configuration-backup planning and atomic execution, exact-plan staged-copy
-migration planning, and disabled-by-default locally pinned migration-runner trust
-and exact selection are implemented; publishing artifacts, network download,
-extraction, operational backup orchestration, activation execution, rollback
-preparation and execution, migration execution, service control, health probes,
+migration planning, disabled-by-default locally pinned migration-runner trust and
+exact selection, and callerless probe-only runner invocation are implemented;
+publishing artifacts, network download, extraction, operational backup orchestration,
+activation execution, rollback preparation and execution, migration execution,
+service control, health probes,
 operator-approval authority, and Admin/browser callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
@@ -3049,6 +3050,31 @@ HTTP, WebSocket, hosted-service, timer, AetherRemote, service-control, health-pr
 rollback, current-pointer, activation, radio, watchdog, command, lease, or TX caller
 is added.
 
+The eighteenth increment adds
+`VerifiedReleaseActivationMigrationRunnerInvocationService`, a callerless probe-only
+process boundary. It accepts only the exact successful runner-selection report and
+retained internal selection. Signed no-migration plans remain a no-process no-op;
+required plans must preserve the exact selected runner, mapping, protocol, migration
+identity, and schema transition.
+
+Immediately before process start the service revalidates the runner's canonical
+path, containing directory, link status, regular-file shape, immutable Linux mode,
+length, timestamp, and pinned SHA-256. The reviewed artifact is launched directly
+without a shell or arguments, with stdin/stdout/stderr redirected, the environment
+cleared, and only fixed locale and protocol variables restored. One JSON request is
+bounded to 4 KiB, stdout to 16 KiB, stderr to 8 KiB, and the process to five seconds;
+oversized output or timeout terminates the complete process tree.
+
+The probe request contains setup/release, runner, migration, and schema identities
+only and explicitly states that migration execution was not requested and no source
+paths were provided. The strict response rejects unknown fields and must echo the
+exact protocol, nonce, runner, migration, and schemas while reporting no migration
+execution, filesystem mutation, or source-path receipt. Nonzero exit, stderr,
+malformed or mismatched output, rejection, timeout, and artifact drift fail closed.
+Probe success creates no migration readiness evidence and no production caller,
+file mutation, current-pointer change, activation authority, service control,
+rollback, radio, watchdog, command, lease, or TX surface.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -3256,6 +3282,29 @@ remained unavailable because command transport and safety-supervisor prerequisit
 were absent. The separate interactive Browser Bridge acceptance could not run because
 the extension was disconnected and therefore remains pending. No live radio or RF
 operation was performed or required.
+
+Automated checkpoint on 2026-08-04 for exact probe-only migration-runner invocation:
+the guarded production-TX deployment gate completed successfully; Release solution
+build completed with zero warnings and zero errors; the focused configuration-backup,
+migration-plan, runner-trust, exact-selection, and probe-invocation suite passed
+62/62; web tests passed 1,389/1,389; independent-watchdog tests passed 57/57;
+TX-HIL isolation tests passed 48/48; AetherRemote tests passed 70/70; and automated
+browser tests passed 135/135. The complete checkpoint covered 1,564 .NET tests and
+1,699 tests overall. Focused process-boundary tests additionally proved exact artifact
+rehashing, direct no-shell/no-argument launch, cleared environment, bounded JSON
+stdin/stdout/stderr, strict unknown-field and identity/schema/nonce validation,
+nonzero/stderr/rejection/malformed/mismatch failure, hard timeout, output-bound
+process-tree termination, no source paths, and no filesystem mutation or migration
+execution. Deployed public and internal health confirmed probe registration while
+shell invocation, source-path input, source reads, writes, directory mutation,
+migration execution and evidence, current-pointer mutation, activation authority,
+operational callers, and TX surface remained absent. Runner trust remained disabled
+with zero trusted artifacts; the independent watchdog started empty and Disarmed;
+production TX remained unavailable because command-transport and safety-supervisor
+prerequisites were absent. Browser Bridge was connected, but the FlexWeb acceptance
+tab redirected to Microsoft sign-in because no authenticated FlexWeb browser session
+was available; interactive acceptance therefore remains pending and no credentials
+were entered. No live radio or RF operation was performed or required.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.
