@@ -185,12 +185,12 @@ internal sealed class VerifiedReleaseActivationEvidenceCollection
 /// Collects one bounded observation-only activation evidence snapshot from the
 /// existing release-status reader, exact-plan TX-lease quiescence boundary,
 /// radio-session registry, and independent-watchdog registry. It deliberately
-/// leaves backup, required migration, required service control, health
-/// verification, rollback, and operator approval unavailable until separately
-/// reviewed authoritative boundaries exist. It performs no write, pointer mutation,
-/// activation, lease mutation, radio/watchdog command, service control, health
-/// probe, rollback, browser/Admin operation, hosted service, timer, AetherRemote,
-/// command, or transmit action.
+/// reads exact-plan configuration-backup, migration, and post-switch health
+/// observations from separately reviewed boundaries while leaving required service
+/// control, rollback, and operator approval unavailable. It never invokes the health
+/// executor. It performs no write, pointer mutation, activation, lease mutation,
+/// radio/watchdog command, service control, health probe, rollback, browser/Admin
+/// operation, hosted service, timer, AetherRemote command, or transmit action.
 /// </summary>
 public sealed class VerifiedReleaseActivationEvidenceCollector
 {
@@ -210,6 +210,10 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
     private readonly Func<
         VerifiedReleaseActivationPlan,
         VerifiedReleaseActivationMigrationObservation> m_migrationReader;
+    private readonly Func<
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationHealthVerificationObservation>
+        m_healthVerificationReader;
     private readonly Func<IReadOnlyList<RadioSessionDiagnostics>>
         m_sessionSnapshotReader;
     private readonly Func<StationTxIndependentWatchdogAggregate>
@@ -224,6 +228,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         VerifiedReleaseActivationLeaseQuiescenceBoundary leaseQuiescence,
         VerifiedReleaseActivationConfigurationBackupService configurationBackup,
         VerifiedReleaseActivationMigrationExecutionService migrationExecution,
+        VerifiedReleaseActivationHealthVerificationService healthVerification,
         RadioSessionRegistry radioSessions,
         StationTxIndependentWatchdogRegistry independentWatchdogs)
         : this(
@@ -234,7 +239,9 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             TimeProvider.System,
             configurationBackupReader:
                 CreateConfigurationBackupReader(configurationBackup),
-            migrationReader: CreateMigrationReader(migrationExecution))
+            migrationReader: CreateMigrationReader(migrationExecution),
+            healthVerificationReader:
+                CreateHealthVerificationReader(healthVerification))
     {
     }
 
@@ -245,14 +252,19 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         Func<StationTxIndependentWatchdogAggregate> watchdogSnapshotReader,
         TimeProvider timeProvider,
         Func<RadioSessionDiagnostics, VerifiedReleaseActivationSessionEvidence>?
-            sessionEvidenceCapture = null)
+            sessionEvidenceCapture = null,
+        Func<
+            VerifiedReleaseActivationPlan,
+            VerifiedReleaseActivationHealthVerificationObservation>?
+            healthVerificationReader = null)
         : this(
             statusReader,
             CreateLeaseQuiescenceReader(leaseSnapshotReader),
             sessionSnapshotReader,
             watchdogSnapshotReader,
             timeProvider,
-            sessionEvidenceCapture)
+            sessionEvidenceCapture,
+            healthVerificationReader: healthVerificationReader)
     {
     }
 
@@ -273,7 +285,11 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             configurationBackupReader = null,
         Func<
             VerifiedReleaseActivationPlan,
-            VerifiedReleaseActivationMigrationObservation>? migrationReader = null)
+            VerifiedReleaseActivationMigrationObservation>? migrationReader = null,
+        Func<
+            VerifiedReleaseActivationPlan,
+            VerifiedReleaseActivationHealthVerificationObservation>?
+            healthVerificationReader = null)
     {
         m_statusReader = statusReader ??
             throw new ArgumentNullException(nameof(statusReader));
@@ -282,6 +298,8 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         m_configurationBackupReader = configurationBackupReader ??
             CreateUnavailableConfigurationBackupReader();
         m_migrationReader = migrationReader ?? CreateUnavailableMigrationReader();
+        m_healthVerificationReader = healthVerificationReader ??
+            CreateUnavailableHealthVerificationReader();
         m_sessionSnapshotReader = sessionSnapshotReader ??
             throw new ArgumentNullException(nameof(sessionSnapshotReader));
         m_watchdogSnapshotReader = watchdogSnapshotReader ??
@@ -305,7 +323,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             ConfigurationBackupEvidenceRegistered: true,
             MigrationExecutionEvidenceRegistered: true,
             ServiceControlEvidenceRegistered: false,
-            HealthVerificationEvidenceRegistered: false,
+            HealthVerificationEvidenceRegistered: true,
             RollbackEvidenceRegistered: false,
             OperatorApprovalEvidenceRegistered: false,
             FileWriteRegistered: false,
@@ -377,6 +395,8 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         VerifiedReleaseActivationConfigurationBackupObservation?
             configurationBackup;
         VerifiedReleaseActivationMigrationObservation? migration;
+        VerifiedReleaseActivationHealthVerificationObservation?
+            healthVerification;
         try
         {
             beforeStatus = await m_statusReader(cancellationToken);
@@ -385,6 +405,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             leases = leaseQuiescence.ActiveTxLeases;
             configurationBackup = m_configurationBackupReader(plan);
             migration = m_migrationReader(plan);
+            healthVerification = m_healthVerificationReader(plan);
             sessions = m_sessionSnapshotReader();
             watchdogs = m_watchdogSnapshotReader();
             cancellationToken.ThrowIfCancellationRequested();
@@ -422,6 +443,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             leases is null ||
             configurationBackup is null ||
             migration is null ||
+            healthVerification is null ||
             sessions is null ||
             watchdogs is null)
         {
@@ -441,7 +463,8 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         }
         if (!ValidateCollectedShape(leases, sessions, watchdogs) ||
             !ValidateConfigurationBackupObservation(configurationBackup) ||
-            !ValidateMigrationObservation(migration, plan))
+            !ValidateMigrationObservation(migration, plan) ||
+            !ValidateHealthVerificationObservation(healthVerification))
         {
             return VerifiedReleaseActivationEvidenceCollectionReport.Failure(
                 VerifiedReleaseActivationEvidenceCollectionFailureCode
@@ -486,7 +509,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             configurationBackup.ConfigurationBackupReady,
             migrationReady,
             serviceControlReady,
-            HealthVerificationReady: false,
+            healthVerification.HealthVerificationReady,
             RollbackReady: false,
             OperatorApproved: false);
         VerifiedReleaseActivationEvidenceCollection collection = new(
@@ -569,6 +592,30 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             FileCount: 0,
             MigrationBytes: 0,
             CompletedAt: plan.MigrationRequired ? null : DateTimeOffset.UnixEpoch,
+            ReconciliationRequired: false);
+
+    private static Func<
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationHealthVerificationObservation>
+        CreateHealthVerificationReader(
+            VerifiedReleaseActivationHealthVerificationService healthVerification)
+    {
+        ArgumentNullException.ThrowIfNull(healthVerification);
+        return healthVerification.Observe;
+    }
+
+    private static Func<
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationHealthVerificationObservation>
+        CreateUnavailableHealthVerificationReader() =>
+        _ => new VerifiedReleaseActivationHealthVerificationObservation(
+            HealthVerificationReady: false,
+            HealthTargetCount: 0,
+            VerifiedTargetCount: 0,
+            UnitActivityCheckCount: 0,
+            LoopbackHttpCheckCount: 0,
+            FreshBrokerLinkCheckCount: 0,
+            CompletedAt: null,
             ReconciliationRequired: false);
 
     private static Func<IReadOnlyList<RadioSessionDiagnostics>>
@@ -732,6 +779,28 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             observation.FileCount == 0 &&
             observation.MigrationBytes == 0 &&
             observation.CompletedAt is null;
+    }
+
+    private static bool ValidateHealthVerificationObservation(
+        VerifiedReleaseActivationHealthVerificationObservation observation)
+    {
+        if (observation.HealthVerificationReady)
+        {
+            return observation.HealthTargetCount == 4 &&
+                observation.VerifiedTargetCount == 4 &&
+                observation.UnitActivityCheckCount == 3 &&
+                observation.LoopbackHttpCheckCount == 3 &&
+                observation.FreshBrokerLinkCheckCount is 0 or 1 &&
+                observation.CompletedAt is not null &&
+                !observation.ReconciliationRequired;
+        }
+        return observation.HealthTargetCount == 0 &&
+            observation.VerifiedTargetCount == 0 &&
+            observation.UnitActivityCheckCount == 0 &&
+            observation.LoopbackHttpCheckCount == 0 &&
+            observation.FreshBrokerLinkCheckCount == 0 &&
+            observation.CompletedAt is null &&
+            !observation.ReconciliationRequired;
     }
 
     private static bool ValidateCollectedShape(

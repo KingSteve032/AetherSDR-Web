@@ -269,20 +269,20 @@ public sealed class VerifiedReleaseActivationReadinessTests
 
     [Theory]
     [InlineData("revision")]
-    [InlineData("active-target")]
+    [InlineData("active-installed")]
     [InlineData("target-missing")]
     [InlineData("inventory-duplicate")]
     [InlineData("channel")]
     [InlineData("tx-policy")]
-    public void ReleaseStatusMustMatchInactivePlan(string mismatch)
+    public void ReleaseStatusMustMatchExactReadinessPhase(string mismatch)
     {
         Fixture fixture = new();
         ReleaseStatusReadResult status = mismatch switch
         {
             "revision" => fixture.Status with { SetupRevision = 8 },
-            "active-target" => fixture.Status with
+            "active-installed" => fixture.Status with
             {
-                ActiveReleaseIdentity = "aethersdr-8.2.0"
+                ActiveReleaseIdentity = "aethersdr-8.1.0"
             },
             "target-missing" => fixture.Status with
             {
@@ -522,6 +522,10 @@ public sealed class VerifiedReleaseActivationReadinessTests
             "service" => fixture.Evidence with { ServiceControlReady = false },
             "health" => fixture.Evidence with
             {
+                ReleaseStatus = fixture.Status with
+                {
+                    ActiveReleaseIdentity = "aethersdr-8.1.0"
+                },
                 HealthVerificationReady = false
             },
             "rollback" => fixture.Evidence with { RollbackReady = false },
@@ -676,7 +680,7 @@ public sealed class VerifiedReleaseActivationReadinessTests
                 AvailableReleaseIdentities:
                     ["aethersdr-8.1.0", "aethersdr-8.2.0"],
                 CurrentPointerPresent: true,
-                ActiveReleaseIdentity: "aethersdr-8.1.0",
+                ActiveReleaseIdentity: "aethersdr-8.2.0",
                 RollbackCandidateKnown: false);
             Evidence = new VerifiedReleaseActivationReadinessEvidence(
                 Now,
