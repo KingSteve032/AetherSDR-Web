@@ -880,6 +880,29 @@ host-restart execution, service-control evidence, current-pointer mutation, heal
 probe, rollback, activation authority, CLI, Admin, browser, HTTP, WebSocket, hosted
 service, timer, AetherRemote, radio, watchdog, command, lease, or TX caller.
 
+The twenty-first M8B increment adds a separate exact post-switch health-verification
+plan without adding a health probe. `VerifiedReleaseActivationHealthVerificationPlanComposer`
+accepts only the successful service-control report and retained internal plan. It
+revalidates that plan's exact activation object, signed restart shape, action counts,
+fixed unit identities, deterministic stop/start ordering, complete four-role package
+coverage, and the still-unperformed activation obligations.
+
+The internal health plan always covers station engine, broker, AetherRemote agent,
+and gateway in dependency order. Every role requires its fixed unit to be active.
+Station engine, broker, and gateway additionally require loopback-only `GET /healthz`
+with HTTP 200 under bounded 45/30/45-second deadlines; gateway verification also
+requires the runtime canonical host header. The agent requires one fresh broker-link
+observation under a bounded 60-second deadline. A host-restart declaration marks the
+same complete contract set as post-boot verification; all other plans remain post-
+switch verification.
+
+Public reports expose target and contract counts plus phase booleans, never unit
+identities, ports, paths, endpoint authorities, or contract internals. Production
+resolves diagnostics only. There is no socket, network request, `HttpClient`, process,
+`systemctl`, journal read, health evidence, current-pointer mutation, rollback,
+activation authority, CLI, Admin, browser, HTTP, WebSocket, hosted service, timer,
+AetherRemote, service-control, radio, watchdog, command, lease, or TX caller.
+
 ## Trust boundaries
 
 ### Browser
