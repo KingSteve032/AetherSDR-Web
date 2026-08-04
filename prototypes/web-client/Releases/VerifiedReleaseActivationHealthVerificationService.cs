@@ -36,7 +36,8 @@ public enum VerifiedReleaseActivationHealthVerificationFailureCode
     HealthAlreadyVerified = 14,
     UnsupportedTopology = 15,
     StationIdentityMismatch = 16,
-    ServiceControlUnavailable = 17
+    ServiceControlUnavailable = 17,
+    CurrentPointerSwitchUnavailable = 18
 }
 
 public sealed record VerifiedReleaseActivationHealthVerificationReport(
@@ -179,6 +180,7 @@ public sealed record VerifiedReleaseActivationHealthVerificationDiagnostics(
     bool ExactHealthPlanInputRegistered,
     bool ExactHealthPlanBindingRegistered,
     bool ExactActivationPlanBindingRegistered,
+    bool CurrentPointerSwitchEvidenceInputRegistered,
     bool ServiceControlEvidenceInputRegistered,
     bool ReleaseStatusDoubleReadRegistered,
     bool SetupStateDoubleReadRegistered,
@@ -750,6 +752,10 @@ public sealed class VerifiedReleaseActivationHealthVerificationService
     private readonly Func<RemoteStationAdministrationSnapshot>
         m_remoteStationSnapshotReader;
     private readonly Func<
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationCurrentPointerSwitchObservation>
+        m_pointerSwitchReader;
+    private readonly Func<
         VerifiedReleaseActivationServiceControlPlan,
         VerifiedReleaseActivationServiceControlObservation>
         m_serviceControlReader;
@@ -765,6 +771,7 @@ public sealed class VerifiedReleaseActivationHealthVerificationService
         ReleaseInstallationStatusReader statusReader,
         InstallationSetupStore setupStore,
         RemoteStationCatalogService remoteStations,
+        VerifiedReleaseActivationCurrentPointerSwitchService pointerSwitch,
         VerifiedReleaseActivationServiceControlExecutionService serviceControl,
         IOptions<ReleaseActivationHealthVerificationSettings> settings)
         : this(
@@ -777,6 +784,9 @@ public sealed class VerifiedReleaseActivationHealthVerificationService
             remoteStations is null
                 ? throw new ArgumentNullException(nameof(remoteStations))
                 : remoteStations.GetAdministrationSnapshot,
+            pointerSwitch is null
+                ? throw new ArgumentNullException(nameof(pointerSwitch))
+                : pointerSwitch.Observe,
             serviceControl is null
                 ? throw new ArgumentNullException(nameof(serviceControl))
                 : serviceControl.ObservePlan,
@@ -792,6 +802,10 @@ public sealed class VerifiedReleaseActivationHealthVerificationService
         Func<CancellationToken, Task<InstallationSetupState>> setupReader,
         Func<RemoteStationAdministrationSnapshot> remoteStationSnapshotReader,
         Func<
+            VerifiedReleaseActivationPlan,
+            VerifiedReleaseActivationCurrentPointerSwitchObservation>
+            pointerSwitchReader,
+        Func<
             VerifiedReleaseActivationServiceControlPlan,
             VerifiedReleaseActivationServiceControlObservation>
             serviceControlReader,
@@ -806,6 +820,8 @@ public sealed class VerifiedReleaseActivationHealthVerificationService
             throw new ArgumentNullException(nameof(setupReader));
         m_remoteStationSnapshotReader = remoteStationSnapshotReader ??
             throw new ArgumentNullException(nameof(remoteStationSnapshotReader));
+        m_pointerSwitchReader = pointerSwitchReader ??
+            throw new ArgumentNullException(nameof(pointerSwitchReader));
         m_serviceControlReader = serviceControlReader ??
             throw new ArgumentNullException(nameof(serviceControlReader));
         m_runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
@@ -825,6 +841,7 @@ public sealed class VerifiedReleaseActivationHealthVerificationService
             ExactHealthPlanInputRegistered: true,
             ExactHealthPlanBindingRegistered: true,
             ExactActivationPlanBindingRegistered: true,
+            CurrentPointerSwitchEvidenceInputRegistered: true,
             ServiceControlEvidenceInputRegistered: true,
             ReleaseStatusDoubleReadRegistered: true,
             SetupStateDoubleReadRegistered: true,
@@ -956,6 +973,18 @@ public sealed class VerifiedReleaseActivationHealthVerificationService
                 "The health-verification plan no longer matches its exact activation transaction.",
                 m_settings,
                 planReport);
+        }
+        VerifiedReleaseActivationCurrentPointerSwitchObservation pointerSwitch =
+            m_pointerSwitchReader(plan.ActivationPlan);
+        if (!ValidatePointerSwitchObservation(pointerSwitch))
+        {
+            return VerifiedReleaseActivationHealthVerificationReport.Failure(
+                VerifiedReleaseActivationHealthVerificationFailureCode
+                    .CurrentPointerSwitchUnavailable,
+                "Exact current-pointer switch evidence is required before post-switch health verification.",
+                m_settings,
+                planReport,
+                exactPlanBound: true);
         }
         VerifiedReleaseActivationServiceControlObservation serviceControl =
             m_serviceControlReader(plan.ServiceControlPlan);
@@ -1628,6 +1657,15 @@ public sealed class VerifiedReleaseActivationHealthVerificationService
         }
         return true;
     }
+
+    private static bool ValidatePointerSwitchObservation(
+        VerifiedReleaseActivationCurrentPointerSwitchObservation observation) =>
+        observation.PointerSwitchReady &&
+        observation.ExactServiceControlPlanBound &&
+        observation.ExactActivationPlanBound &&
+        observation.PreSwitchServiceControlReady &&
+        observation.CompletedAt is not null &&
+        !observation.ReconciliationRequired;
 
     private static bool ValidateServiceControlObservation(
         VerifiedReleaseActivationServiceControlObservation observation,

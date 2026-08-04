@@ -377,6 +377,14 @@ ReleaseActivationServiceControlSettings
             .Get<ReleaseActivationServiceControlSettings>(options =>
                 options.ErrorOnUnknownConfiguration = true) ??
         new ReleaseActivationServiceControlSettings();
+ReleaseActivationCurrentPointerSwitchSettings
+    releaseActivationCurrentPointerSwitchSettings =
+        builder.Configuration
+            .GetSection(
+                ReleaseActivationCurrentPointerSwitchSettings.SectionName)
+            .Get<ReleaseActivationCurrentPointerSwitchSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new ReleaseActivationCurrentPointerSwitchSettings();
 ReleaseActivationHealthVerificationSettings
     releaseActivationHealthVerificationSettings =
         builder.Configuration
@@ -493,6 +501,8 @@ builder.Services.AddSingleton(Options.Create(releaseMigrationRunnerTrustSettings
 builder.Services.AddSingleton(
     Options.Create(releaseActivationServiceControlSettings));
 builder.Services.AddSingleton(
+    Options.Create(releaseActivationCurrentPointerSwitchSettings));
+builder.Services.AddSingleton(
     Options.Create(releaseActivationHealthVerificationSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandTrustSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandSigningSettings));
@@ -551,6 +561,8 @@ builder.Services.AddSingleton<
     VerifiedReleaseActivationServiceControlPlanComposer>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationServiceControlExecutionService>();
+builder.Services.AddSingleton<
+    VerifiedReleaseActivationCurrentPointerSwitchService>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationHealthVerificationPlanComposer>();
 builder.Services.AddSingleton<
@@ -700,6 +712,10 @@ VerifiedReleaseActivationServiceControlExecutionService
     releaseActivationServiceControlExecutionService =
         app.Services.GetRequiredService<
             VerifiedReleaseActivationServiceControlExecutionService>();
+VerifiedReleaseActivationCurrentPointerSwitchService
+    releaseActivationCurrentPointerSwitchService =
+        app.Services.GetRequiredService<
+            VerifiedReleaseActivationCurrentPointerSwitchService>();
 VerifiedReleaseActivationHealthVerificationPlanComposer
     releaseActivationHealthVerificationPlanComposer =
         app.Services.GetRequiredService<
@@ -823,6 +839,12 @@ app.MapGet(
             VerifiedReleaseActivationServiceControlExecutionStateDiagnostics
                 releaseActivationServiceControlExecutionState =
                     releaseActivationServiceControlExecutionService.State;
+            VerifiedReleaseActivationCurrentPointerSwitchDiagnostics
+                releaseActivationCurrentPointerSwitch =
+                    releaseActivationCurrentPointerSwitchService.Snapshot;
+            VerifiedReleaseActivationCurrentPointerSwitchStateDiagnostics
+                releaseActivationCurrentPointerSwitchState =
+                    releaseActivationCurrentPointerSwitchService.State;
             VerifiedReleaseActivationHealthVerificationPlanDiagnostics
                 releaseActivationHealthVerificationPlan =
                     releaseActivationHealthVerificationPlanComposer.Snapshot;
@@ -2006,6 +2028,9 @@ app.MapGet(
                 releaseActivationServiceControlExecutionExactActivationBindingRegistered =
                     releaseActivationServiceControlExecution
                         .ExactActivationPlanBindingRegistered,
+                releaseActivationServiceControlExecutionPointerSwitchEvidenceInputRegistered =
+                    releaseActivationServiceControlExecution
+                        .ExactCurrentPointerSwitchEvidenceInputRegistered,
                 releaseActivationServiceControlExecutionStatusDoubleReadRegistered =
                     releaseActivationServiceControlExecution
                         .ReleaseStatusDoubleReadRegistered,
@@ -2171,6 +2196,147 @@ app.MapGet(
                 releaseActivationServiceControlActivationAuthorized =
                     releaseActivationServiceControlExecutionState
                         .ActivationAuthorized,
+                releaseActivationCurrentPointerSwitchRegistered =
+                    releaseActivationCurrentPointerSwitch.Registered,
+                releaseActivationCurrentPointerSwitchConfigurationRegistered =
+                    releaseActivationCurrentPointerSwitch.ConfigurationRegistered,
+                releaseActivationCurrentPointerSwitchEnabled =
+                    releaseActivationCurrentPointerSwitch.ExecutionEnabled,
+                releaseActivationCurrentPointerSwitchAvailable =
+                    releaseActivationCurrentPointerSwitch.ExecutionAvailable,
+                releaseActivationCurrentPointerSwitchServiceControlPlanInputRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .ExactServiceControlPlanInputRegistered,
+                releaseActivationCurrentPointerSwitchExactServiceControlBindingRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .ExactServiceControlPlanBindingRegistered,
+                releaseActivationCurrentPointerSwitchExactActivationBindingRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .ExactActivationPlanBindingRegistered,
+                releaseActivationCurrentPointerSwitchPreSwitchEvidenceRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .ExactPreSwitchEvidenceRegistered,
+                releaseActivationCurrentPointerSwitchStatusDoubleReadRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .ReleaseStatusDoubleReadRegistered,
+                releaseActivationCurrentPointerSwitchSetupDoubleReadRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .SetupStateDoubleReadRegistered,
+                releaseActivationCurrentPointerSwitchInstalledActiveRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .InstalledActiveRequirementRegistered,
+                releaseActivationCurrentPointerSwitchTargetActiveVerificationRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .TargetActiveVerificationRegistered,
+                releaseActivationCurrentPointerSwitchImmutableTargetRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .ImmutableTargetRevalidationRegistered,
+                releaseActivationCurrentPointerSwitchInstalledLinkTargetRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .ExactInstalledLinkTargetRegistered,
+                releaseActivationCurrentPointerSwitchTargetLinkTargetRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .ExactTargetLinkTargetRegistered,
+                releaseActivationCurrentPointerSwitchTemporaryLinkRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .SameDirectoryTemporaryLinkRegistered,
+                releaseActivationCurrentPointerSwitchAtomicReplacementRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .AtomicLinkReplacementRegistered,
+                releaseActivationCurrentPointerSwitchPostSwitchObservationRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .PostSwitchObservationRegistered,
+                releaseActivationCurrentPointerSwitchEvidenceRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .ExactPlanEvidenceRegistered,
+                releaseActivationCurrentPointerSwitchReconciliationRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .PartialFailureReconciliationRegistered,
+                releaseActivationCurrentPointerSwitchAutomaticRetryRegistered =
+                    releaseActivationCurrentPointerSwitch.AutomaticRetryRegistered,
+                releaseActivationCurrentPointerSwitchServiceStartRegistered =
+                    releaseActivationCurrentPointerSwitch.ServiceStartRegistered,
+                releaseActivationCurrentPointerSwitchHostRestartRegistered =
+                    releaseActivationCurrentPointerSwitch.HostRestartRegistered,
+                releaseActivationCurrentPointerSwitchRemoteServiceControlRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .RemoteServiceControlRegistered,
+                releaseActivationCurrentPointerSwitchHealthProbeRegistered =
+                    releaseActivationCurrentPointerSwitch.HealthProbeRegistered,
+                releaseActivationCurrentPointerSwitchRollbackRegistered =
+                    releaseActivationCurrentPointerSwitch.RollbackRegistered,
+                releaseActivationCurrentPointerSwitchActivationAuthorityRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .ActivationAuthorityRegistered,
+                releaseActivationCurrentPointerSwitchOperationalCallerRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .OperationalCallerRegistered,
+                releaseActivationCurrentPointerSwitchCliCallerRegistered =
+                    releaseActivationCurrentPointerSwitch.CliCallerRegistered,
+                releaseActivationCurrentPointerSwitchAdminCallerRegistered =
+                    releaseActivationCurrentPointerSwitch.AdminCallerRegistered,
+                releaseActivationCurrentPointerSwitchBrowserCallerRegistered =
+                    releaseActivationCurrentPointerSwitch.BrowserCallerRegistered,
+                releaseActivationCurrentPointerSwitchHttpCallerRegistered =
+                    releaseActivationCurrentPointerSwitch.HttpCallerRegistered,
+                releaseActivationCurrentPointerSwitchWebSocketCallerRegistered =
+                    releaseActivationCurrentPointerSwitch.WebSocketCallerRegistered,
+                releaseActivationCurrentPointerSwitchHostedServiceCallerRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .HostedServiceCallerRegistered,
+                releaseActivationCurrentPointerSwitchTimerCallerRegistered =
+                    releaseActivationCurrentPointerSwitch.TimerCallerRegistered,
+                releaseActivationCurrentPointerSwitchAetherRemoteCommandCallerRegistered =
+                    releaseActivationCurrentPointerSwitch
+                        .AetherRemoteCommandCallerRegistered,
+                releaseActivationCurrentPointerSwitchRadioCallerRegistered =
+                    releaseActivationCurrentPointerSwitch.RadioCallerRegistered,
+                releaseActivationCurrentPointerSwitchWatchdogCallerRegistered =
+                    releaseActivationCurrentPointerSwitch.WatchdogCallerRegistered,
+                releaseActivationCurrentPointerSwitchCommandCallerRegistered =
+                    releaseActivationCurrentPointerSwitch.CommandCallerRegistered,
+                releaseActivationCurrentPointerSwitchLeaseCallerRegistered =
+                    releaseActivationCurrentPointerSwitch.LeaseCallerRegistered,
+                releaseActivationCurrentPointerSwitchTxCallerRegistered =
+                    releaseActivationCurrentPointerSwitch.TxCallerRegistered,
+                releaseActivationCurrentPointerSwitchReady =
+                    releaseActivationCurrentPointerSwitchState.PointerSwitchReady,
+                releaseActivationCurrentPointerSwitchExactServiceControlActive =
+                    releaseActivationCurrentPointerSwitchState
+                        .ExactServiceControlPlanBound,
+                releaseActivationCurrentPointerSwitchExactActivationActive =
+                    releaseActivationCurrentPointerSwitchState
+                        .ExactActivationPlanBound,
+                releaseActivationCurrentPointerSwitchPreSwitchReady =
+                    releaseActivationCurrentPointerSwitchState
+                        .PreSwitchServiceControlReady,
+                releaseActivationCurrentPointerSwitchCurrentPointerChanged =
+                    releaseActivationCurrentPointerSwitchState
+                        .CurrentPointerChanged,
+                releaseActivationCurrentPointerSwitchTargetActive =
+                    releaseActivationCurrentPointerSwitchState.TargetReleaseActive,
+                releaseActivationCurrentPointerSwitchSetupStable =
+                    releaseActivationCurrentPointerSwitchState.SetupStable,
+                releaseActivationCurrentPointerSwitchTargetImmutable =
+                    releaseActivationCurrentPointerSwitchState
+                        .TargetReleaseImmutable,
+                releaseActivationCurrentPointerSwitchAtomicCompleted =
+                    releaseActivationCurrentPointerSwitchState
+                        .AtomicSwitchCompleted,
+                releaseActivationCurrentPointerSwitchReconciliationRequired =
+                    releaseActivationCurrentPointerSwitchState
+                        .ReconciliationRequired,
+                releaseActivationCurrentPointerSwitchPostServiceControlReady =
+                    releaseActivationCurrentPointerSwitchState
+                        .PostSwitchServiceControlReady,
+                releaseActivationCurrentPointerSwitchHealthReady =
+                    releaseActivationCurrentPointerSwitchState
+                        .HealthVerificationReady,
+                releaseActivationCurrentPointerSwitchRollbackPerformed =
+                    releaseActivationCurrentPointerSwitchState.RollbackPerformed,
+                releaseActivationCurrentPointerSwitchActivationAuthorized =
+                    releaseActivationCurrentPointerSwitchState
+                        .ActivationAuthorized,
                 releaseActivationHealthVerificationPlanRegistered =
                     releaseActivationHealthVerificationPlan.Registered,
                 releaseActivationHealthVerificationPlanServiceControlInputRegistered =
@@ -2293,6 +2459,9 @@ app.MapGet(
                 releaseActivationHealthVerificationExecutorExactActivationBindingRegistered =
                     releaseActivationHealthVerification
                         .ExactActivationPlanBindingRegistered,
+                releaseActivationHealthVerificationExecutorPointerSwitchEvidenceInputRegistered =
+                    releaseActivationHealthVerification
+                        .CurrentPointerSwitchEvidenceInputRegistered,
                 releaseActivationHealthVerificationExecutorServiceControlInputRegistered =
                     releaseActivationHealthVerification
                         .ServiceControlEvidenceInputRegistered,

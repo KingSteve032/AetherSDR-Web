@@ -976,6 +976,45 @@ and zeroed state only with execution disabled and no operational caller. No `cur
 mutation, host restart, remote command, rollback, activation authority, radio,
 watchdog, lease, command, keying, or TX action is introduced.
 
+The twenty-fourth M8B increment adds a separate disabled-by-default atomic pointer
+boundary. `VerifiedReleaseActivationCurrentPointerSwitchService` accepts only the
+exact service-control plan and its retained pre-switch evidence token. The installed
+release must remain active while completed setup, channel, pinned identity, TX-support
+choice, release root, release inventory, and exact installed `current` link are
+double-read. A no-op service-control plan is eligible only through its exact ready
+observation; restart plans require the exact stop-phase token. Host-restart plans are
+not eligible.
+
+Before mutation, the entire target release is traversed with bounded directory and
+file counts. The tree must contain exactly one signed manifest plus the four planned
+package files. Every entry must be a regular non-writable file or non-writable real
+directory; symbolic links, reparse points, empty nested directories, unsafe relative
+paths, unexpected or missing files, and manifest/package path, length, or SHA-256
+drift fail closed. The
+pointer operation accepts no arbitrary source path, destination path, or link value.
+
+The Linux runtime creates one unpredictable `.current-switch-*` symlink in the same
+deployment directory with the exact relative target value. Native `rename(2)` then
+atomically replaces the existing `current` symlink. The temporary entry must be
+consumed, the new link must be exact, the target release must be active, setup must
+remain unchanged, and the complete immutable tree must still validate. The operation
+retains no alternate mutable pointer and performs no service or host action.
+
+Any unknown atomic outcome, cancellation after rename begins, post-switch observation
+drift, or inability to remove a pre-switch temporary entry enters reference-bound
+reconciliation state and blocks retry. A successful switch retains one in-memory
+evidence object bound to the exact activation, service-control, and pre-switch tokens.
+Post-switch service starts require that exact report, and health execution requires
+the exact switch observation before any local process, loopback request, or broker
+snapshot read. Equivalent public metadata or independently composed plans cannot
+advance either boundary.
+
+Production resolves only disabled diagnostics and zeroed state. There is no CLI,
+Admin, browser, HTTP, WebSocket, hosted-service, timer, AetherRemote, or operational
+pointer caller. The boundary does not start services, restart the host, control a
+remote node, probe health, roll back, authorize activation, operate a radio, mutate a
+lease or watchdog, send a command, key, or transmit.
+
 ## Trust boundaries
 
 ### Browser

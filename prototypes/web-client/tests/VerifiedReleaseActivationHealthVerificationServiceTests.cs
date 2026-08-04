@@ -99,6 +99,8 @@ public sealed class VerifiedReleaseActivationHealthVerificationServiceTests
         Assert.True(valid.Service.Snapshot.ExecutionAvailable);
         Assert.True(valid.Service.Snapshot.TopologyBindingRegistered);
         Assert.True(
+            valid.Service.Snapshot.CurrentPointerSwitchEvidenceInputRegistered);
+        Assert.True(
             valid.Service.Snapshot.ServiceControlEvidenceInputRegistered);
         Assert.True(
             valid.Service.Snapshot.ExpectedStationIdentityConfigured);
@@ -184,6 +186,33 @@ public sealed class VerifiedReleaseActivationHealthVerificationServiceTests
         Assert.True(state.ServiceControlReady);
         Assert.False(state.CurrentPointerChanged);
         Assert.False(state.ActivationAuthorized);
+    }
+
+    [Fact]
+    public async Task MissingExactPointerSwitchEvidenceFailsBeforeAnyProbe()
+    {
+        Fixture fixture = new();
+        fixture.PointerSwitchObservationFactory = _ =>
+            new VerifiedReleaseActivationCurrentPointerSwitchObservation(
+                PointerSwitchReady: false,
+                ExactServiceControlPlanBound: false,
+                ExactActivationPlanBound: false,
+                PreSwitchServiceControlReady: false,
+                CompletedAt: null,
+                ReconciliationRequired: false);
+
+        VerifiedReleaseActivationHealthVerificationReport report =
+            await fixture.Service.ExecuteAsync(fixture.HealthPlanReport);
+
+        AssertFailure(
+            report,
+            VerifiedReleaseActivationHealthVerificationFailureCode
+                .CurrentPointerSwitchUnavailable);
+        Assert.Equal(0, fixture.StatusReads);
+        Assert.Equal(0, fixture.SetupReads);
+        Assert.Empty(fixture.Runtime.UnitCalls);
+        Assert.Empty(fixture.Runtime.HttpCalls);
+        Assert.Equal(0, fixture.RemoteSnapshotReads);
     }
 
     [Fact]
@@ -693,6 +722,14 @@ public sealed class VerifiedReleaseActivationHealthVerificationServiceTests
                 TargetIdentity);
             SetupFactory = () => Setup;
             RemoteSnapshotFactory = () => CreateRemoteSnapshot(ExpectedStationId);
+            PointerSwitchObservationFactory = _ =>
+                new VerifiedReleaseActivationCurrentPointerSwitchObservation(
+                    PointerSwitchReady: true,
+                    ExactServiceControlPlanBound: true,
+                    ExactActivationPlanBound: true,
+                    PreSwitchServiceControlReady: true,
+                    CompletedAt: m_time.GetUtcNow(),
+                    ReconciliationRequired: false);
             ServiceControlObservationFactory = CreateReadyServiceControlObservation;
             ReleaseActivationHealthVerificationSettings settings = new()
             {
@@ -721,6 +758,7 @@ public sealed class VerifiedReleaseActivationHealthVerificationServiceTests
                     }
                     return snapshot;
                 },
+                plan => PointerSwitchObservationFactory(plan),
                 plan => ServiceControlObservationFactory(plan),
                 Runtime,
                 settings,
@@ -762,6 +800,14 @@ public sealed class VerifiedReleaseActivationHealthVerificationServiceTests
         internal Func<InstallationSetupState> SetupFactory { get; set; }
         internal Func<RemoteStationAdministrationSnapshot>
             RemoteSnapshotFactory
+        {
+            get;
+            set;
+        }
+        internal Func<
+            VerifiedReleaseActivationPlan,
+            VerifiedReleaseActivationCurrentPointerSwitchObservation>
+            PointerSwitchObservationFactory
         {
             get;
             set;

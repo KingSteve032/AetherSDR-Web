@@ -65,6 +65,7 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionTests
         Assert.True(snapshot.ExactServiceControlPlanInputRegistered);
         Assert.True(snapshot.ExactServiceControlPlanBindingRegistered);
         Assert.True(snapshot.ExactActivationPlanBindingRegistered);
+        Assert.True(snapshot.ExactCurrentPointerSwitchEvidenceInputRegistered);
         Assert.True(snapshot.ReleaseStatusDoubleReadRegistered);
         Assert.True(snapshot.SetupStateDoubleReadRegistered);
         Assert.True(snapshot.TopologyBindingRegistered);
@@ -717,7 +718,43 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionTests
 
         internal Task<VerifiedReleaseActivationServiceControlExecutionReport>
             ExecutePostAsync() =>
-            Service.ExecutePostSwitchStartAsync(PlanReport);
+            Service.ExecutePostSwitchStartAsync(
+                PlanReport,
+                CreatePointerSwitchReport());
+
+        private VerifiedReleaseActivationCurrentPointerSwitchReport
+            CreatePointerSwitchReport()
+        {
+            VerifiedReleaseActivationServiceControlPreSwitchEvidence? pre =
+                Service.GetPreSwitchEvidence(
+                    Assert.IsType<VerifiedReleaseActivationServiceControlPlan>(
+                        PlanReport.Plan));
+            if (pre is null)
+            {
+                return VerifiedReleaseActivationCurrentPointerSwitchReport.Failure(
+                    VerifiedReleaseActivationCurrentPointerSwitchFailureCode
+                        .PreSwitchServiceControlUnavailable,
+                    "The exact pre-switch token is unavailable.",
+                    new ReleaseActivationCurrentPointerSwitchSettings
+                    {
+                        ExecutionEnabled = true
+                    },
+                    PlanReport);
+            }
+            VerifiedReleaseActivationCurrentPointerSwitchEvidence evidence =
+                new(
+                    pre.Plan,
+                    pre,
+                    pre.CompletedAt,
+                    pre.CompletedAt.AddMilliseconds(1));
+            return VerifiedReleaseActivationCurrentPointerSwitchReport.Success(
+                new ReleaseActivationCurrentPointerSwitchSettings
+                {
+                    ExecutionEnabled = true
+                },
+                PlanReport,
+                evidence);
+        }
 
         internal VerifiedReleaseActivationPlanCompositionResult
             ComposeEquivalentActivation() =>
