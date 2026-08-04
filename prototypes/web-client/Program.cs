@@ -506,6 +506,8 @@ builder.Services.AddSingleton<
     VerifiedReleaseActivationConfigurationBackupPlanner>(
         _ => new VerifiedReleaseActivationConfigurationBackupPlanner(
             resolveInstallationPaths()));
+builder.Services.AddSingleton<
+    VerifiedReleaseActivationConfigurationBackupService>();
 builder.Services.AddSingleton<VerifiedReleaseActivationReadinessEvaluator>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationLeaseQuiescenceBoundary>();
@@ -621,6 +623,10 @@ VerifiedReleaseActivationConfigurationBackupPlanner
     releaseActivationConfigurationBackupPlanner =
         app.Services.GetRequiredService<
             VerifiedReleaseActivationConfigurationBackupPlanner>();
+VerifiedReleaseActivationConfigurationBackupService
+    releaseActivationConfigurationBackupService =
+        app.Services.GetRequiredService<
+            VerifiedReleaseActivationConfigurationBackupService>();
 VerifiedReleaseActivationReadinessEvaluator releaseActivationReadinessEvaluator =
     app.Services.GetRequiredService<
         VerifiedReleaseActivationReadinessEvaluator>();
@@ -703,6 +709,12 @@ app.MapGet(
             VerifiedReleaseActivationConfigurationBackupPlanDiagnostics
                 releaseActivationConfigurationBackup =
                     releaseActivationConfigurationBackupPlanner.Snapshot;
+            VerifiedReleaseActivationConfigurationBackupDiagnostics
+                releaseActivationConfigurationBackupExecution =
+                    releaseActivationConfigurationBackupService.Snapshot;
+            VerifiedReleaseActivationConfigurationBackupStateDiagnostics
+                releaseActivationConfigurationBackupState =
+                    releaseActivationConfigurationBackupService.State;
             VerifiedReleaseActivationReadinessDiagnostics
                 releaseActivationReadiness =
                     releaseActivationReadinessEvaluator.Snapshot;
@@ -1143,6 +1155,135 @@ app.MapGet(
                     releaseActivationConfigurationBackup.LeaseCallerRegistered,
                 releaseActivationConfigurationBackupTxCallerRegistered =
                     releaseActivationConfigurationBackup.TxCallerRegistered,
+                releaseActivationConfigurationBackupExecutorRegistered =
+                    releaseActivationConfigurationBackupExecution.Registered,
+                releaseActivationConfigurationBackupExecutorPlanInputRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .ExactBackupPlanInputRegistered,
+                releaseActivationConfigurationBackupExecutorStatusDoubleReadRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .ReleaseStatusDoubleReadRegistered,
+                releaseActivationConfigurationBackupExecutorBoundedTraversalRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .BoundedSourceTraversalRegistered,
+                releaseActivationConfigurationBackupExecutorLinkRejectionRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .SymbolicLinkRejectionRegistered,
+                releaseActivationConfigurationBackupExecutorDigestValidationRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .SourceDigestValidationRegistered,
+                releaseActivationConfigurationBackupExecutorPrivateStagingRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .PrivateStagingRegistered,
+                releaseActivationConfigurationBackupExecutorManifestWriteRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .ManifestWriteRegistered,
+                releaseActivationConfigurationBackupExecutorDurableFlushRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .DurableFlushRegistered,
+                releaseActivationConfigurationBackupExecutorImmutableFreezeRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .ImmutableFreezeRegistered,
+                releaseActivationConfigurationBackupExecutorAtomicPublishRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .AtomicDirectoryPublishRegistered,
+                releaseActivationConfigurationBackupExecutorTreeValidationRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .PublishedTreeValidationRegistered,
+                releaseActivationConfigurationBackupExecutorCleanupRegistered =
+                    releaseActivationConfigurationBackupExecution.CleanupRegistered,
+                releaseActivationConfigurationBackupExecutorExactEvidenceRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .ExactPlanEvidenceRegistered,
+                releaseActivationConfigurationBackupExecutorOverwriteRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .ExistingBackupOverwriteRegistered,
+                releaseActivationConfigurationBackupExecutorCurrentPointerMutationRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .CurrentPointerMutationRegistered,
+                releaseActivationConfigurationBackupExecutorActivationRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .ActivationExecutionRegistered,
+                releaseActivationConfigurationBackupExecutorMigrationRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .MigrationExecutionRegistered,
+                releaseActivationConfigurationBackupExecutorServiceControlRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .ServiceControlRegistered,
+                releaseActivationConfigurationBackupExecutorHealthProbeCallerRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .HealthProbeCallerRegistered,
+                releaseActivationConfigurationBackupExecutorRollbackRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .RollbackExecutionRegistered,
+                releaseActivationConfigurationBackupExecutorOperationalCallerRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .OperationalCallerRegistered,
+                releaseActivationConfigurationBackupExecutorCliCallerRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .CliCallerRegistered,
+                releaseActivationConfigurationBackupExecutorAdminCallerRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .AdminCallerRegistered,
+                releaseActivationConfigurationBackupExecutorBrowserCallerRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .BrowserCallerRegistered,
+                releaseActivationConfigurationBackupExecutorHttpCallerRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .HttpCallerRegistered,
+                releaseActivationConfigurationBackupExecutorWebSocketCallerRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .WebSocketCallerRegistered,
+                releaseActivationConfigurationBackupExecutorHostedServiceCallerRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .HostedServiceCallerRegistered,
+                releaseActivationConfigurationBackupExecutorTimerCallerRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .TimerCallerRegistered,
+                releaseActivationConfigurationBackupExecutorAetherRemoteCallerRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .AetherRemoteCallerRegistered,
+                releaseActivationConfigurationBackupExecutorRadioCallerRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .RadioCallerRegistered,
+                releaseActivationConfigurationBackupExecutorWatchdogCallerRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .WatchdogCallerRegistered,
+                releaseActivationConfigurationBackupExecutorCommandCallerRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .CommandCallerRegistered,
+                releaseActivationConfigurationBackupExecutorLeaseCallerRegistered =
+                    releaseActivationConfigurationBackupExecution
+                        .LeaseCallerRegistered,
+                releaseActivationConfigurationBackupExecutorTxCallerRegistered =
+                    releaseActivationConfigurationBackupExecution.TxCallerRegistered,
+                releaseActivationConfigurationBackupReady =
+                    releaseActivationConfigurationBackupState
+                        .ConfigurationBackupReady,
+                releaseActivationConfigurationBackupExactPlanActive =
+                    releaseActivationConfigurationBackupState
+                        .ExactActivationPlanBound,
+                releaseActivationConfigurationBackupSourceDirectoryCount =
+                    releaseActivationConfigurationBackupState
+                        .SourceDirectoryCount,
+                releaseActivationConfigurationBackupDirectoryCount =
+                    releaseActivationConfigurationBackupState.DirectoryCount,
+                releaseActivationConfigurationBackupFileCount =
+                    releaseActivationConfigurationBackupState.FileCount,
+                releaseActivationConfigurationBackupBytes =
+                    releaseActivationConfigurationBackupState.BackupBytes,
+                releaseActivationConfigurationBackupManifestPresent =
+                    releaseActivationConfigurationBackupState.ManifestPresent,
+                releaseActivationConfigurationBackupTreeImmutable =
+                    releaseActivationConfigurationBackupState
+                        .PublishedTreeImmutable,
+                releaseActivationConfigurationBackupReconciliationRequired =
+                    releaseActivationConfigurationBackupState
+                        .ReconciliationRequired,
+                releaseActivationConfigurationBackupExecutorCurrentPointerChanged =
+                    releaseActivationConfigurationBackupState.CurrentPointerChanged,
+                releaseActivationConfigurationBackupExecutorActivationAuthorized =
+                    releaseActivationConfigurationBackupState.ActivationAuthorized,
                 releaseActivationLeaseQuiescenceRegistered =
                     releaseActivationLeaseQuiescenceDiagnostics.Registered,
                 releaseActivationLeaseQuiescencePlanInputRegistered =

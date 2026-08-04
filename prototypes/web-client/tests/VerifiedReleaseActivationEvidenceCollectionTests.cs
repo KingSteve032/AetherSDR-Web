@@ -39,7 +39,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollectionTests
         Assert.True(snapshot.BoundedCollectionWindowRegistered);
         Assert.True(snapshot.MissingPrerequisitesFailClosedRegistered);
         Assert.True(snapshot.TxLeaseAdmissionClosureEvidenceRegistered);
-        Assert.False(snapshot.ConfigurationBackupEvidenceRegistered);
+        Assert.True(snapshot.ConfigurationBackupEvidenceRegistered);
         Assert.False(snapshot.MigrationExecutionEvidenceRegistered);
         Assert.False(snapshot.ServiceControlEvidenceRegistered);
         Assert.False(snapshot.HealthVerificationEvidenceRegistered);
@@ -785,7 +785,9 @@ public sealed class VerifiedReleaseActivationEvidenceCollectionTests
         internal string NullSource { get; set; } = string.Empty;
         internal int StatusReadCount { get; private set; }
         internal Func<RadioSessionDiagnostics,
-            VerifiedReleaseActivationSessionEvidence> SessionCapture { get; set; }
+            VerifiedReleaseActivationSessionEvidence>
+        SessionCapture
+        { get; set; }
         internal VerifiedReleaseActivationEvidenceCollector Collector { get; private set; }
             = null!;
 

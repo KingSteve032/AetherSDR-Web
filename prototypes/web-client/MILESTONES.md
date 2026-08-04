@@ -2965,6 +2965,34 @@ public composition or execution method and no CLI, Admin, browser, HTTP, WebSock
 hosted-service, timer, AetherRemote, service-control, radio, watchdog, command,
 lease, TX, or activation caller.
 
+The fifteenth increment adds
+`VerifiedReleaseActivationConfigurationBackupService`, a callerless Linux-only
+executor for that exact internal plan. It rechecks the planning report, canonical
+layout, exact activation-plan object, completed setup revision and policy, inactive
+target inventory, and unchanged previous `current` identity before reading source
+content. The dedicated backup root must already be one owner-private non-link
+directory.
+
+Configuration, state, and secret traversal rejects links, reparse points, shared
+write permissions, and every shared secret permission. It is bounded to 512
+directories, 4,096 files, 128 MiB per file, and 1 GiB total. Files are copied into
+create-new mode-0600 private staging while SHA-256 is computed and writes are
+flushed. The service then re-enumerates and rehashes every source; any path,
+metadata, mode, length, digest, or release-status drift removes staging and fails
+closed.
+
+A path-redacted manifest records exact setup/release identities and bounded relative
+entry metadata. Files and directories are frozen mode 0400/0500, the complete tree
+is revalidated, and one absent final identity is atomically renamed into place.
+Existing staging or final identities are never reused, deleted, or overwritten.
+Ambiguous publication or failed post-publication validation retains the tree and
+requires reconciliation. Success retains exact-plan in-memory evidence consumed by
+the read-only evidence collector; equivalent-but-distinct plans cannot reuse it.
+The public surface exposes only diagnostics and state, and no CLI, Admin, browser,
+HTTP, WebSocket, hosted-service, timer, AetherRemote, migration, service, health,
+rollback, current-pointer, activation, radio, watchdog, command, lease, or TX caller
+is added.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -3118,6 +3146,25 @@ manifest planning, and future atomic-publication requirements while source reads
 file or directory mutation, overwrite, backup execution, readiness evidence,
 current-pointer mutation, operational callers, activation authority, and transmit
 remained absent. No live radio or RF operation was performed or required.
+
+Automated checkpoint on 2026-08-04 for atomic exact-plan configuration backup:
+the deployment script passed shell syntax validation; Release solution build
+completed with zero warnings and zero errors; the focused configuration-backup,
+activation-evidence, lease-quiescence, and readiness suite passed 116/116; web
+tests passed 1,350/1,350; independent-watchdog tests passed 57/57; TX-HIL isolation
+tests passed 48/48; AetherRemote tests passed 70/70; and browser tests passed
+135/135. The complete checkpoint covered 1,525 .NET tests and 1,660 tests overall.
+A live development health probe with simulation-only radio settings and all
+writable paths redirected to a temporary directory confirmed exact-plan input,
+release-status double reads, bounded no-link traversal, source digest validation,
+private staging, durable manifest writes, immutable freeze, atomic publication,
+published-tree validation, cleanup, and exact-plan evidence registration while
+backup readiness and reconciliation remained false before execution. Existing-
+backup overwrite, current-pointer mutation, migration, service control, health-
+probe and rollback callers, CLI/Admin/browser/HTTP/WebSocket, hosted-service,
+timer, AetherRemote, radio, watchdog, command, lease, TX, activation authority,
+and transmit remained absent. No live radio or RF operation was performed or
+required.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.
