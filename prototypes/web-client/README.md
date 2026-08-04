@@ -966,10 +966,41 @@ target release when exact post-switch health evidence is present. Equivalent pla
 objects cannot reuse the observation. Production resolves disabled diagnostics and
 zeroed state only; no execution caller is registered.
 
+The twenty-third M8B increment adds
+`VerifiedReleaseActivationServiceControlExecutionService`, a separate strict
+configuration that remains disabled by default. The internal transaction is split
+into exact phases: deterministic pre-switch stops are allowed only while the signed
+installed release remains active; deterministic post-switch starts require the same
+retained pre-switch token and the signed target release to be active. Setup and
+release status are double-read around each phase, and topology must remain identical.
+The service does not perform the pointer switch between phases.
+
+Only topology-owned local units are eligible. Personal and local-station gateways
+control gateway, broker, and station engine locally while the absent agent action is
+an explicit topology no-op. Any required hybrid or remote-node action fails before a
+process because no reviewed remote service-control transport exists. Signed host
+restart plans also fail closed and remain outside this boundary.
+
+The Linux runtime invokes absolute `/usr/bin/systemctl` directly with only the exact
+`stop <fixed-unit>` or `start <fixed-unit>` vector; the gateway is explicitly a user
+unit. There is no shell, the environment is cleared, output is bounded, and a hard
+timeout terminates the process tree. Actions are never automatically retried. Any
+partial or unknown result, cancellation after launch, or post-action status drift
+retains reconciliation-required state and prevents every later phase.
+
+Success retains exact-plan in-memory stop/start evidence. The read-only activation
+evidence collector observes it without calling the executor, and the health executor
+requires the same exact completed service-control plan before issuing any probe.
+Production resolves disabled diagnostics and zeroed state only; there is no CLI,
+Admin, browser, HTTP, WebSocket, hosted-service, timer, AetherRemote command, or other
+operational caller. No `current` mutation, host restart, rollback, activation
+authority, radio, watchdog, command, lease, keying, or TX action is added.
+
 Packaged bundle production, network download, archive extraction, operational
-backup orchestration, service-control execution and evidence, rollback preparation/
-execution, operator-approval authority, activation execution, Admin/browser
-workflows, and all operational update callers remain later M8B work.
+backup orchestration, pointer-switch activation execution, rollback preparation and
+execution, host-restart/remote service-control transports, operator-approval
+authority, Admin/browser workflows, and all operational update callers remain later
+M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled

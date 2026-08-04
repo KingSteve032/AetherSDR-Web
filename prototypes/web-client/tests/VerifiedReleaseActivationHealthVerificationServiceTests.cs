@@ -99,6 +99,8 @@ public sealed class VerifiedReleaseActivationHealthVerificationServiceTests
         Assert.True(valid.Service.Snapshot.ExecutionAvailable);
         Assert.True(valid.Service.Snapshot.TopologyBindingRegistered);
         Assert.True(
+            valid.Service.Snapshot.ServiceControlEvidenceInputRegistered);
+        Assert.True(
             valid.Service.Snapshot.ExpectedStationIdentityConfigured);
     }
 
@@ -129,7 +131,7 @@ public sealed class VerifiedReleaseActivationHealthVerificationServiceTests
         Assert.False(report.RemoteStationSnapshotRead);
         Assert.True(report.HealthEvidenceProduced);
         Assert.True(report.ServiceHealthReady);
-        Assert.False(report.ServiceControlReady);
+        Assert.True(report.ServiceControlReady);
         Assert.False(report.CurrentPointerChanged);
         Assert.False(report.ActivationAuthorized);
         Assert.Equal(4, report.HealthTargetCount);
@@ -179,9 +181,40 @@ public sealed class VerifiedReleaseActivationHealthVerificationServiceTests
         Assert.True(state.AllUnitsActive);
         Assert.True(state.AllHealthContractsPassed);
         Assert.False(state.ReconciliationRequired);
-        Assert.False(state.ServiceControlReady);
+        Assert.True(state.ServiceControlReady);
         Assert.False(state.CurrentPointerChanged);
         Assert.False(state.ActivationAuthorized);
+    }
+
+    [Fact]
+    public async Task MissingExactServiceControlEvidenceFailsBeforeAnyProbe()
+    {
+        Fixture fixture = new();
+        fixture.ServiceControlObservationFactory = plan =>
+            new VerifiedReleaseActivationServiceControlObservation(
+                ServiceControlReady: false,
+                ServiceControlRequired: plan.ServiceControlRequired,
+                PlannedStopActionCount: 0,
+                ExecutedStopActionCount: 0,
+                TopologyNoOpStopActionCount: 0,
+                PlannedStartActionCount: 0,
+                ExecutedStartActionCount: 0,
+                TopologyNoOpStartActionCount: 0,
+                CompletedAt: null,
+                ReconciliationRequired: false);
+
+        VerifiedReleaseActivationHealthVerificationReport report =
+            await fixture.Service.ExecuteAsync(fixture.HealthPlanReport);
+
+        AssertFailure(
+            report,
+            VerifiedReleaseActivationHealthVerificationFailureCode
+                .ServiceControlUnavailable);
+        Assert.Equal(0, fixture.StatusReads);
+        Assert.Equal(0, fixture.SetupReads);
+        Assert.Empty(fixture.Runtime.UnitCalls);
+        Assert.Empty(fixture.Runtime.HttpCalls);
+        Assert.Equal(0, fixture.RemoteSnapshotReads);
     }
 
     [Fact]
@@ -660,6 +693,7 @@ public sealed class VerifiedReleaseActivationHealthVerificationServiceTests
                 TargetIdentity);
             SetupFactory = () => Setup;
             RemoteSnapshotFactory = () => CreateRemoteSnapshot(ExpectedStationId);
+            ServiceControlObservationFactory = CreateReadyServiceControlObservation;
             ReleaseActivationHealthVerificationSettings settings = new()
             {
                 ExecutionEnabled = executionEnabled,
@@ -687,6 +721,7 @@ public sealed class VerifiedReleaseActivationHealthVerificationServiceTests
                     }
                     return snapshot;
                 },
+                plan => ServiceControlObservationFactory(plan),
                 Runtime,
                 settings,
                 m_time,
@@ -731,10 +766,33 @@ public sealed class VerifiedReleaseActivationHealthVerificationServiceTests
             get;
             set;
         }
+        internal Func<
+            VerifiedReleaseActivationServiceControlPlan,
+            VerifiedReleaseActivationServiceControlObservation>
+            ServiceControlObservationFactory
+        {
+            get;
+            set;
+        }
         internal TimeSpan AdvanceOnRemoteSnapshot { get; set; }
         internal int StatusReads { get; private set; }
         internal int SetupReads { get; private set; }
         internal int RemoteSnapshotReads { get; private set; }
+
+        internal VerifiedReleaseActivationServiceControlObservation
+            CreateReadyServiceControlObservation(
+                VerifiedReleaseActivationServiceControlPlan plan) =>
+            new(
+                ServiceControlReady: true,
+                ServiceControlRequired: plan.ServiceControlRequired,
+                PlannedStopActionCount: plan.StopActions.Count,
+                ExecutedStopActionCount: plan.StopActions.Count,
+                TopologyNoOpStopActionCount: 0,
+                PlannedStartActionCount: plan.StartActions.Count,
+                ExecutedStartActionCount: plan.StartActions.Count,
+                TopologyNoOpStartActionCount: 0,
+                CompletedAt: m_time.GetUtcNow(),
+                ReconciliationRequired: false);
 
         internal RemoteStationAdministrationSnapshot CreateRemoteSnapshot(
             string stationId)

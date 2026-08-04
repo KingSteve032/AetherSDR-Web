@@ -2709,12 +2709,13 @@ configuration-backup planning and atomic execution, exact-plan staged-copy
 migration planning, disabled-by-default locally pinned migration-runner trust and
 exact selection, callerless probe-only runner invocation, exact staged-copy migration
 execution, exact-plan migration evidence, exact service-control transaction
-planning, exact post-switch health-verification planning, disabled-by-default exact
+planning, disabled-by-default exact local two-phase service-control execution and
+evidence, exact post-switch health-verification planning, disabled-by-default exact
 health execution, and exact-plan health evidence are implemented; publishing
-artifacts, network download, extraction, operational backup orchestration, activation
-execution, rollback preparation and execution, service-control execution and
-evidence, operator-approval authority, and Admin/browser callers remain
-unimplemented.
+artifacts, network download, extraction, operational backup orchestration, pointer-
+switch activation execution, rollback preparation and execution, host-restart and
+remote-node service-control transports, operator-approval authority, and Admin/browser
+callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -3185,6 +3186,36 @@ with execution disabled and no CLI, Admin, browser, HTTP, WebSocket, hosted-serv
 timer, AetherRemote command, service-control, rollback, pointer, activation, radio,
 watchdog, command, lease, or TX caller.
 
+The twenty-third increment adds
+`VerifiedReleaseActivationServiceControlExecutionService`, one strict disabled-by-
+default and callerless two-phase execution boundary. The pre-switch phase accepts
+only the exact service-control token, requires the signed installed release active,
+double-reads completed setup and release status, and performs the deterministic stop
+list. The post-switch phase requires the same retained pre-switch token plus the
+signed target release active and performs the deterministic start list. This boundary
+never changes `current` between phases.
+
+Personal and local-station gateways control only locally owned gateway, broker, and
+station-engine units; the topology-declared absent agent action is an explicit no-op.
+Hybrid or remote-gateway plans requiring a remote-node action fail before any process
+because no reviewed remote service-control transport exists. Host-restart plans also
+fail closed and perform no host action.
+
+The runtime invokes absolute `/usr/bin/systemctl` directly with exact fixed units,
+exact stop/start verbs, and explicit user scope for the gateway. There is no shell,
+the environment is cleared, output and execution time are bounded, and timeout kills
+the process tree. No automatic action retry exists. A partial or unknown outcome,
+cancellation after launch, or status/setup drift enters reconciliation-required state
+and blocks all later phases.
+
+Successful post-switch completion retains exact in-memory service-control evidence.
+The read-only collector observes but never invokes it, and health verification now
+requires the same exact service-control plan to be complete before any probe. Public
+reports remain unit-, topology-, path-, and action-redacted. Production registers
+disabled diagnostics and zeroed state only and adds no CLI, Admin, browser, HTTP,
+WebSocket, hosted-service, timer, AetherRemote command, health-probe orchestration,
+rollback, pointer, activation, radio, watchdog, command, lease, keying, or TX caller.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -3561,6 +3592,52 @@ microphone-audio transport; MOX, TUNE, and CWX were hidden and disabled; intent,
 validation, SPLIT, DVK, and FDX were disabled; PC MIC remained off; FILL toggled and
 was restored; and console errors and warnings were both zero. The tab was closed to
 release the session. No lease, keying action, transmit-control command, or RF
+operation was performed.
+
+Automated checkpoint on 2026-08-04 for exact two-phase service-control execution and
+evidence: independent post-merge `main` CI run 30930631062 passed; the deployment
+script passed shell syntax validation; formatting and whitespace validation passed;
+Release solution build completed with zero warnings and zero errors; the focused
+activation-plan, service-control-plan, service-control-execution, health-plan,
+health-execution, readiness, and evidence suite passed 154/154; web tests passed
+1,468/1,468; independent-watchdog tests passed 57/57; TX-HIL isolation tests passed
+48/48; AetherRemote tests passed 70/70; and browser tests passed 135/135. The complete
+checkpoint covered 1,643 .NET tests and 1,778 tests overall.
+
+Focused execution tests proved strict unknown-configuration rejection, disabled
+empty defaults, exact retained-plan and phase ordering, installed-before/target-after
+status double reads, setup/topology binding, local user/system unit ownership,
+personal/local agent no-op semantics, remote-node and host-restart rejection before
+process launch, exact direct no-shell `systemctl` stop/start argument vectors under a
+cleared environment, bounded output, hard timeout with process-tree termination, no
+automatic action retry, cancellation-after-launch reconciliation, partial and unknown
+outcome reconciliation, one-shot exact evidence, public redaction, and reference-
+bound observation. Health execution now requires the same completed service-control
+plan token before any probe, and the read-only evidence collector observes but never
+invokes service control.
+
+The first guarded production-TX deployment attempt rolled back safely because an
+unrelated actively streaming operator session kept the independent watchdog transport
+available. Admin diagnostics confirmed that session was connected, Disarmed, had no
+lease and zero unkey attempts; it was left untouched. After the operator session ended
+naturally, the unchanged gate completed successfully with active release
+`20260804-173906-flexweb-validation` and retained
+`20260804-161356-flexweb-validation` for rollback. Deployed health confirmed the
+service-control executor registered with execution disabled and unavailable, zero
+phase/action/evidence state, exact topology and status binding, no operational/CLI/
+Admin/browser/HTTP/WebSocket/hosted-service/timer/AetherRemote-command/health-probe
+caller, no pointer mutation, host restart, rollback, activation authority, radio,
+watchdog mutation, command, lease, keying, or TX caller. The independent watchdog
+started empty and Disarmed; no live RF operation occurred.
+
+Authenticated Browser Bridge acceptance then passed against the newly deployed release
+using `ODU-6400 · FLEX-6400 · Remote`, leaving the unrelated PSOC2 operator path
+untouched. The selected radio identity was exact, the footer reported `FLEX-6400`,
+`RX-ONLY`, and `RADIO: LIVE`, and the TX surface remained locked and validation-only.
+MOX, TUNE, and CWX were hidden and disabled; intent, validation, SPLIT, DVK, and FDX
+were disabled; PC MIC remained off; FILL toggled and was restored; and console errors
+and warnings were both zero. The ODU-6400 tab was closed afterward to release the
+remote receive session. No TX lease, keying action, transmit-control command, or RF
 operation was performed.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
