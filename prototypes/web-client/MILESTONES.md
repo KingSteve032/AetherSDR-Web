@@ -2939,6 +2939,32 @@ inference, operational callers, and activation authority. The closure operation 
 no public method and no CLI, Admin, browser, HTTP, WebSocket, hosted-service, timer,
 AetherRemote, command, radio, watchdog, TX, or activation caller.
 
+The fourteenth increment adds
+`VerifiedReleaseActivationConfigurationBackupPlanner`, a callerless pure boundary
+that composes the exact internal activation plan with the resolved installation
+layout. It rejects missing, ineligible, or public-summary-mismatched plans; requires
+the resolved release root to match the activation plan; and rejects non-canonical,
+filesystem-root, nested, or otherwise overlapping configuration, state, secret,
+release, backup, and log roots. Non-release installation roots must also remain
+outside the activation deployment root.
+
+The internal plan maps exactly the dedicated configuration, state, and secret roots
+into distinct private staging children beneath one bounded activation-backup
+identity. It also records a separate manifest and final publication path, requires
+future atomic publication, forbids overwrite, defensively copies the source plan,
+and retains the exact activation-plan object rather than trusting equivalent public
+metadata. Public reports remain path-redacted.
+
+Composition does not inspect whether a source or backup exists, read configuration
+or secret content, create a directory, write a manifest or backup, alter permissions,
+rename or overwrite a tree, provide configuration-backup evidence, mutate `current`,
+or authorize activation. Health diagnostics separately report source/path/identity/
+manifest/atomic planning and the absence of reads, writes, mutation, overwrite,
+execution, evidence, operational callers, and activation authority. There is no
+public composition or execution method and no CLI, Admin, browser, HTTP, WebSocket,
+hosted-service, timer, AetherRemote, service-control, radio, watchdog, command,
+lease, TX, or activation caller.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -3077,6 +3103,21 @@ force-release, lease-mutation authority, radio-idle inference, activation
 authority, CLI/Admin/browser/HTTP/WebSocket, hosted-service, timer, AetherRemote,
 command, radio, watchdog, and TX callers remained absent. Transmit remained
 disabled. No live radio or RF operation was performed or required.
+
+Automated checkpoint on 2026-08-03 for exact-plan configuration-backup planning:
+the deployment script passed shell syntax validation; Release solution build
+completed with zero warnings and zero errors; the focused activation-plan and
+configuration-backup planning suite passed 58/58; web tests passed 1,338/1,338;
+independent-watchdog tests passed 57/57; TX-HIL isolation tests passed 48/48;
+AetherRemote tests passed 70/70; and browser tests passed 135/135. The complete
+checkpoint covered 1,513 .NET tests and 1,648 tests overall. A live development
+health probe with simulation-only radio settings and all writable paths redirected
+to a temporary directory confirmed exact-plan binding, dedicated configuration,
+state, and secret source planning, release-root agreement, backup-root separation,
+manifest planning, and future atomic-publication requirements while source reads,
+file or directory mutation, overwrite, backup execution, readiness evidence,
+current-pointer mutation, operational callers, activation authority, and transmit
+remained absent. No live radio or RF operation was performed or required.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

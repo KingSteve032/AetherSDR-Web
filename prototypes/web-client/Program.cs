@@ -502,6 +502,10 @@ builder.Services.AddSingleton<VerifiedReleaseInstallationPlanComposer>();
 builder.Services.AddSingleton<VerifiedReleaseStagingService>();
 builder.Services.AddSingleton<VerifiedReleasePublicationService>();
 builder.Services.AddSingleton<VerifiedReleaseActivationPlanComposer>();
+builder.Services.AddSingleton<
+    VerifiedReleaseActivationConfigurationBackupPlanner>(
+        _ => new VerifiedReleaseActivationConfigurationBackupPlanner(
+            resolveInstallationPaths()));
 builder.Services.AddSingleton<VerifiedReleaseActivationReadinessEvaluator>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationLeaseQuiescenceBoundary>();
@@ -613,6 +617,10 @@ VerifiedReleasePublicationService verifiedReleasePublicationService =
     app.Services.GetRequiredService<VerifiedReleasePublicationService>();
 VerifiedReleaseActivationPlanComposer releaseActivationPlanComposer =
     app.Services.GetRequiredService<VerifiedReleaseActivationPlanComposer>();
+VerifiedReleaseActivationConfigurationBackupPlanner
+    releaseActivationConfigurationBackupPlanner =
+        app.Services.GetRequiredService<
+            VerifiedReleaseActivationConfigurationBackupPlanner>();
 VerifiedReleaseActivationReadinessEvaluator releaseActivationReadinessEvaluator =
     app.Services.GetRequiredService<
         VerifiedReleaseActivationReadinessEvaluator>();
@@ -692,6 +700,9 @@ app.MapGet(
                 verifiedReleasePublicationService.Snapshot;
             VerifiedReleaseActivationPlanDiagnostics releaseActivationPlan =
                 releaseActivationPlanComposer.Snapshot;
+            VerifiedReleaseActivationConfigurationBackupPlanDiagnostics
+                releaseActivationConfigurationBackup =
+                    releaseActivationConfigurationBackupPlanner.Snapshot;
             VerifiedReleaseActivationReadinessDiagnostics
                 releaseActivationReadiness =
                     releaseActivationReadinessEvaluator.Snapshot;
@@ -1042,6 +1053,96 @@ app.MapGet(
                     releaseActivationPlan.LeaseCallerRegistered,
                 releaseActivationPlanTxCallerRegistered =
                     releaseActivationPlan.TxCallerRegistered,
+                releaseActivationConfigurationBackupPlannerRegistered =
+                    releaseActivationConfigurationBackup.Registered,
+                releaseActivationConfigurationBackupPlanInputRegistered =
+                    releaseActivationConfigurationBackup
+                        .ActivationPlanInputRegistered,
+                releaseActivationConfigurationBackupPathsInputRegistered =
+                    releaseActivationConfigurationBackup
+                        .InstallationPathsInputRegistered,
+                releaseActivationConfigurationBackupExactPlanBindingRegistered =
+                    releaseActivationConfigurationBackup
+                        .ExactActivationPlanBindingRegistered,
+                releaseActivationConfigurationBackupConfigurationSourcePlanningRegistered =
+                    releaseActivationConfigurationBackup
+                        .ConfigurationSourcePlanningRegistered,
+                releaseActivationConfigurationBackupStateSourcePlanningRegistered =
+                    releaseActivationConfigurationBackup
+                        .StateSourcePlanningRegistered,
+                releaseActivationConfigurationBackupSecretSourcePlanningRegistered =
+                    releaseActivationConfigurationBackup
+                        .SecretSourcePlanningRegistered,
+                releaseActivationConfigurationBackupReleaseRootAgreementRegistered =
+                    releaseActivationConfigurationBackup
+                        .ReleaseRootAgreementRegistered,
+                releaseActivationConfigurationBackupRootSeparationRegistered =
+                    releaseActivationConfigurationBackup
+                        .BackupRootSeparationRegistered,
+                releaseActivationConfigurationBackupIdentityPlanningRegistered =
+                    releaseActivationConfigurationBackup
+                        .BackupIdentityPlanningRegistered,
+                releaseActivationConfigurationBackupManifestPlanningRegistered =
+                    releaseActivationConfigurationBackup
+                        .BackupManifestPlanningRegistered,
+                releaseActivationConfigurationBackupAtomicPublicationPlanningRegistered =
+                    releaseActivationConfigurationBackup
+                        .AtomicPublicationPlanningRegistered,
+                releaseActivationConfigurationBackupSourceReadRegistered =
+                    releaseActivationConfigurationBackup.SourceReadRegistered,
+                releaseActivationConfigurationBackupFileWriteRegistered =
+                    releaseActivationConfigurationBackup.FileWriteRegistered,
+                releaseActivationConfigurationBackupDirectoryMutationRegistered =
+                    releaseActivationConfigurationBackup
+                        .DirectoryMutationRegistered,
+                releaseActivationConfigurationBackupExistingOverwriteRegistered =
+                    releaseActivationConfigurationBackup
+                        .ExistingBackupOverwriteRegistered,
+                releaseActivationConfigurationBackupExecutionRegistered =
+                    releaseActivationConfigurationBackup.BackupExecutionRegistered,
+                releaseActivationConfigurationBackupEvidenceRegistered =
+                    releaseActivationConfigurationBackup
+                        .ConfigurationBackupEvidenceRegistered,
+                releaseActivationConfigurationBackupCurrentPointerMutationRegistered =
+                    releaseActivationConfigurationBackup
+                        .CurrentPointerMutationRegistered,
+                releaseActivationConfigurationBackupActivationAuthorityRegistered =
+                    releaseActivationConfigurationBackup
+                        .ActivationAuthorityRegistered,
+                releaseActivationConfigurationBackupOperationalCallerRegistered =
+                    releaseActivationConfigurationBackup
+                        .OperationalCallerRegistered,
+                releaseActivationConfigurationBackupCliCallerRegistered =
+                    releaseActivationConfigurationBackup.CliCallerRegistered,
+                releaseActivationConfigurationBackupAdminCallerRegistered =
+                    releaseActivationConfigurationBackup.AdminCallerRegistered,
+                releaseActivationConfigurationBackupBrowserCallerRegistered =
+                    releaseActivationConfigurationBackup.BrowserCallerRegistered,
+                releaseActivationConfigurationBackupHttpCallerRegistered =
+                    releaseActivationConfigurationBackup.HttpCallerRegistered,
+                releaseActivationConfigurationBackupWebSocketCallerRegistered =
+                    releaseActivationConfigurationBackup.WebSocketCallerRegistered,
+                releaseActivationConfigurationBackupHostedServiceCallerRegistered =
+                    releaseActivationConfigurationBackup
+                        .HostedServiceCallerRegistered,
+                releaseActivationConfigurationBackupTimerCallerRegistered =
+                    releaseActivationConfigurationBackup.TimerCallerRegistered,
+                releaseActivationConfigurationBackupAetherRemoteCallerRegistered =
+                    releaseActivationConfigurationBackup
+                        .AetherRemoteCallerRegistered,
+                releaseActivationConfigurationBackupServiceControlCallerRegistered =
+                    releaseActivationConfigurationBackup
+                        .ServiceControlCallerRegistered,
+                releaseActivationConfigurationBackupRadioCallerRegistered =
+                    releaseActivationConfigurationBackup.RadioCallerRegistered,
+                releaseActivationConfigurationBackupWatchdogCallerRegistered =
+                    releaseActivationConfigurationBackup.WatchdogCallerRegistered,
+                releaseActivationConfigurationBackupCommandCallerRegistered =
+                    releaseActivationConfigurationBackup.CommandCallerRegistered,
+                releaseActivationConfigurationBackupLeaseCallerRegistered =
+                    releaseActivationConfigurationBackup.LeaseCallerRegistered,
+                releaseActivationConfigurationBackupTxCallerRegistered =
+                    releaseActivationConfigurationBackup.TxCallerRegistered,
                 releaseActivationLeaseQuiescenceRegistered =
                     releaseActivationLeaseQuiescenceDiagnostics.Registered,
                 releaseActivationLeaseQuiescencePlanInputRegistered =
