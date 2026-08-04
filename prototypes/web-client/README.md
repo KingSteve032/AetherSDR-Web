@@ -744,7 +744,28 @@ absence of operational or activation callers. There is still no CLI, Admin,
 browser, HTTP, WebSocket, hosted-service, timer, AetherRemote, command, radio,
 watchdog, TX, or activation caller for the closure operation.
 
-Packaged bundle production, network download, archive extraction, backup,
+The fourteenth M8B increment adds
+`VerifiedReleaseActivationConfigurationBackupPlanner`, a pure callerless
+composition boundary for the configuration backup required by the exact internal
+activation plan. It accepts the resolved installation layout only when the release
+root agrees with that plan and the configuration, state, secret, release, backup,
+and log roots are canonical, dedicated, and non-overlapping. Configuration, state,
+and secret roots are mapped into one private staging identity beneath the dedicated
+backup root, alongside a planned manifest and a distinct final publication path.
+Equivalent public metadata does not replace the retained exact activation-plan
+object.
+
+Composition performs no source existence check or content read, creates no staging
+or destination directory, writes no manifest or backup byte, and never overwrites
+an existing backup. The future backup transaction is required to publish atomically,
+but this increment provides no execution or evidence authority and therefore keeps
+configuration-backup readiness false. Public reports and health diagnostics expose
+only counts and planning/caller booleans—never configuration, state, secret, release,
+backup, log, staging, manifest, or publication paths. There is no CLI, Admin,
+browser, HTTP, WebSocket, hosted-service, timer, AetherRemote, service-control,
+radio, watchdog, command, lease, TX, current-pointer, or activation caller.
+
+Packaged bundle production, network download, archive extraction, backup execution,
 migration execution, service control, health probing, rollback
 preparation/execution, operator-approval authority, activation execution,
 Admin/browser workflows, and all operational update callers remain later M8B work.

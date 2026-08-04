@@ -660,6 +660,36 @@ no public close or evaluate method and has no CLI, Admin, browser, HTTP, WebSock
 hosted-service, timer, AetherRemote, command, radio, watchdog, TX, or activation
 caller.
 
+The fourteenth M8B increment adds a pure exact-plan configuration-backup planning
+boundary without adding a backup executor or activation orchestrator.
+`VerifiedReleaseActivationConfigurationBackupPlanner` accepts only a successful
+non-mutating activation-plan result that still retains the exact internal plan
+object. Public-summary fields are revalidated against that object before any path
+composition occurs.
+
+The planner consumes the resolved installation layout and requires its release root
+to equal the activation plan's verified release root. Configuration, state, secret,
+release, backup, and log roots must already be canonical absolute non-root paths and
+must not overlap one another. Configuration, state, secret, backup, and log roots
+must also remain outside the activation deployment root. The plan maps exactly the
+dedicated configuration, state, and secret roots into separate children of one
+private staging identity under the backup root, with a separate final publication
+path and manifest path. The internal source list is defensively copied and the
+retained exact activation-plan reference is not replaceable by equivalent metadata.
+
+This increment deliberately performs no source existence check, content read,
+staging-directory creation, manifest or backup write, permission mutation,
+publication rename, overwrite, readiness evidence, current-pointer mutation, or
+activation. Atomic publication and an immutable manifest are requirements recorded
+for the future executor, not claims that a backup exists. Public reports expose
+only plan identities, counts, and booleans; all installation and backup paths remain
+internal. Health diagnostics separate path/source/identity/manifest/atomic planning
+from absent reads, writes, mutation, overwrite, execution, evidence, operational
+callers, and activation authority. The planner exposes no public composition or
+execution method and has no CLI, Admin, browser, HTTP, WebSocket, hosted-service,
+timer, AetherRemote, service-control, radio, watchdog, command, lease, TX, or
+activation caller.
+
 ## Trust boundaries
 
 ### Browser
