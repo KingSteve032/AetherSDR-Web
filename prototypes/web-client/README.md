@@ -765,9 +765,29 @@ backup, log, staging, manifest, or publication paths. There is no CLI, Admin,
 browser, HTTP, WebSocket, hosted-service, timer, AetherRemote, service-control,
 radio, watchdog, command, lease, TX, current-pointer, or activation caller.
 
-Packaged bundle production, network download, archive extraction, backup execution,
-migration execution, service control, health probing, rollback
-preparation/execution, operator-approval authority, activation execution,
+The fifteenth M8B increment adds
+`VerifiedReleaseActivationConfigurationBackupService`, a Linux-only private
+executor behind that exact plan. It requires an owner-private backup root, rejects
+linked or shared-writable source entries, bounds configuration/state/secret
+traversal, copies into a create-new private staging tree, computes and rechecks
+SHA-256 for every file, writes a path-redacted manifest, flushes all writes, and
+freezes files/directories mode 0400/0500 before one non-overwriting atomic rename.
+Source or release-status drift removes staging and fails closed; an ambiguous
+rename or failed post-publication validation retains the tree and requires local
+reconciliation.
+
+Successful execution retains only exact-plan in-memory evidence. The activation
+evidence collector can observe it but cannot execute the backup, and an equivalent
+independently composed activation plan cannot reuse it. Production startup registers
+only diagnostics and begins with backup readiness false because no CLI, Admin,
+browser, HTTP, WebSocket, hosted-service, timer, or other operational caller exists.
+The executor never mutates `current`, activates, migrates, controls services, probes
+health, rolls back, or touches AetherRemote, radio, watchdog, command, lease, or TX
+state.
+
+Packaged bundle production, network download, archive extraction, operational
+backup orchestration, migration execution, service control, health probing,
+rollback preparation/execution, operator-approval authority, activation execution,
 Admin/browser workflows, and all operational update callers remain later M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the

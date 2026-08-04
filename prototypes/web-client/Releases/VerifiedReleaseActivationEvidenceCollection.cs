@@ -203,6 +203,10 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         VerifiedReleaseActivationPlan,
         VerifiedReleaseActivationLeaseQuiescenceObservation>
         m_leaseQuiescenceReader;
+    private readonly Func<
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationConfigurationBackupObservation>
+        m_configurationBackupReader;
     private readonly Func<IReadOnlyList<RadioSessionDiagnostics>>
         m_sessionSnapshotReader;
     private readonly Func<StationTxIndependentWatchdogAggregate>
@@ -215,6 +219,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
     public VerifiedReleaseActivationEvidenceCollector(
         ReleaseInstallationStatusReader statusReader,
         VerifiedReleaseActivationLeaseQuiescenceBoundary leaseQuiescence,
+        VerifiedReleaseActivationConfigurationBackupService configurationBackup,
         RadioSessionRegistry radioSessions,
         StationTxIndependentWatchdogRegistry independentWatchdogs)
         : this(
@@ -222,7 +227,9 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             CreateLeaseQuiescenceReader(leaseQuiescence),
             CreateSessionSnapshotReader(radioSessions),
             CreateWatchdogSnapshotReader(independentWatchdogs),
-            TimeProvider.System)
+            TimeProvider.System,
+            configurationBackupReader:
+                CreateConfigurationBackupReader(configurationBackup))
     {
     }
 
@@ -254,12 +261,18 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         Func<StationTxIndependentWatchdogAggregate> watchdogSnapshotReader,
         TimeProvider timeProvider,
         Func<RadioSessionDiagnostics, VerifiedReleaseActivationSessionEvidence>?
-            sessionEvidenceCapture = null)
+            sessionEvidenceCapture = null,
+        Func<
+            VerifiedReleaseActivationPlan,
+            VerifiedReleaseActivationConfigurationBackupObservation>?
+            configurationBackupReader = null)
     {
         m_statusReader = statusReader ??
             throw new ArgumentNullException(nameof(statusReader));
         m_leaseQuiescenceReader = leaseQuiescenceReader ??
             throw new ArgumentNullException(nameof(leaseQuiescenceReader));
+        m_configurationBackupReader = configurationBackupReader ??
+            CreateUnavailableConfigurationBackupReader();
         m_sessionSnapshotReader = sessionSnapshotReader ??
             throw new ArgumentNullException(nameof(sessionSnapshotReader));
         m_watchdogSnapshotReader = watchdogSnapshotReader ??
@@ -280,7 +293,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             BoundedCollectionWindowRegistered: true,
             MissingPrerequisitesFailClosedRegistered: true,
             TxLeaseAdmissionClosureEvidenceRegistered: true,
-            ConfigurationBackupEvidenceRegistered: false,
+            ConfigurationBackupEvidenceRegistered: true,
             MigrationExecutionEvidenceRegistered: false,
             ServiceControlEvidenceRegistered: false,
             HealthVerificationEvidenceRegistered: false,
@@ -352,12 +365,15 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         IReadOnlyList<TxLease>? leases;
         IReadOnlyList<RadioSessionDiagnostics>? sessions;
         StationTxIndependentWatchdogAggregate? watchdogs;
+        VerifiedReleaseActivationConfigurationBackupObservation?
+            configurationBackup;
         try
         {
             beforeStatus = await m_statusReader(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             leaseQuiescence = m_leaseQuiescenceReader(plan);
             leases = leaseQuiescence.ActiveTxLeases;
+            configurationBackup = m_configurationBackupReader(plan);
             sessions = m_sessionSnapshotReader();
             watchdogs = m_watchdogSnapshotReader();
             cancellationToken.ThrowIfCancellationRequested();
@@ -393,6 +409,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             afterStatus is null ||
             leaseQuiescence is null ||
             leases is null ||
+            configurationBackup is null ||
             sessions is null ||
             watchdogs is null)
         {
@@ -410,7 +427,8 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
                 "Release status changed while activation evidence was being collected.",
                 planResult);
         }
-        if (!ValidateCollectedShape(leases, sessions, watchdogs))
+        if (!ValidateCollectedShape(leases, sessions, watchdogs) ||
+            !ValidateConfigurationBackupObservation(configurationBackup))
         {
             return VerifiedReleaseActivationEvidenceCollectionReport.Failure(
                 VerifiedReleaseActivationEvidenceCollectionFailureCode
@@ -452,7 +470,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             leases.ToArray(),
             sessionEvidence,
             watchdogs,
-            ConfigurationBackupReady: false,
+            configurationBackup.ConfigurationBackupReady,
             migrationReady,
             serviceControlReady,
             HealthVerificationReady: false,
@@ -494,6 +512,29 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             AdmissionClosed: false,
             leaseSnapshotReader());
     }
+
+    private static Func<
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationConfigurationBackupObservation>
+        CreateConfigurationBackupReader(
+            VerifiedReleaseActivationConfigurationBackupService configurationBackup)
+    {
+        ArgumentNullException.ThrowIfNull(configurationBackup);
+        return configurationBackup.Observe;
+    }
+
+    private static Func<
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationConfigurationBackupObservation>
+        CreateUnavailableConfigurationBackupReader() =>
+        _ => new VerifiedReleaseActivationConfigurationBackupObservation(
+            ConfigurationBackupReady: false,
+            SourceDirectoryCount: 0,
+            DirectoryCount: 0,
+            FileCount: 0,
+            BackupBytes: 0,
+            CompletedAt: null,
+            ReconciliationRequired: false);
 
     private static Func<IReadOnlyList<RadioSessionDiagnostics>>
         CreateSessionSnapshotReader(RadioSessionRegistry radioSessions)
@@ -590,6 +631,31 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             right.ActiveReleaseIdentity,
             StringComparison.Ordinal) &&
         left.RollbackCandidateKnown == right.RollbackCandidateKnown;
+
+    private static bool ValidateConfigurationBackupObservation(
+        VerifiedReleaseActivationConfigurationBackupObservation observation)
+    {
+        if (observation.ConfigurationBackupReady)
+        {
+            return observation.SourceDirectoryCount == 3 &&
+                observation.DirectoryCount >= 3 &&
+                observation.DirectoryCount <=
+                    VerifiedReleaseActivationConfigurationBackupService
+                        .MaximumDirectoryCount &&
+                observation.FileCount >= 0 &&
+                observation.FileCount <=
+                    VerifiedReleaseActivationConfigurationBackupService
+                        .MaximumFileCount &&
+                observation.BackupBytes > 0 &&
+                observation.CompletedAt is not null &&
+                !observation.ReconciliationRequired;
+        }
+        return observation.SourceDirectoryCount == 0 &&
+            observation.DirectoryCount == 0 &&
+            observation.FileCount == 0 &&
+            observation.BackupBytes == 0 &&
+            observation.CompletedAt is null;
+    }
 
     private static bool ValidateCollectedShape(
         IReadOnlyList<TxLease> leases,

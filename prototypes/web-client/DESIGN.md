@@ -690,6 +690,42 @@ execution method and has no CLI, Admin, browser, HTTP, WebSocket, hosted-service
 timer, AetherRemote, service-control, radio, watchdog, command, lease, TX, or
 activation caller.
 
+The fifteenth M8B increment adds a private exact-plan configuration-backup
+executor without adding an activation orchestrator or operational caller.
+`VerifiedReleaseActivationConfigurationBackupService` accepts only the successful
+planning report and its retained internal plan. It revalidates public summary,
+canonical backup layout, exact activation-plan identity, completed setup, inactive
+target inventory, and the unchanged previous `current` identity before any source
+read.
+
+Execution is Linux-only and requires the dedicated backup root to exist as an
+owner-private non-link directory. Configuration, state, and secret roots are
+traversed without following symbolic links or reparse points and are bounded to
+512 directories, 4,096 files, 128 MiB per file, and 1 GiB total. Group/other write
+permissions are rejected everywhere; secret directories and files reject all
+shared permissions. The service snapshots source paths, lengths, timestamps, and
+modes, copies each file once into create-new mode-0600 private staging while
+computing SHA-256 and flushing to storage, then re-enumerates and rehashes the full
+source set. Any layout, metadata, permission, length, or digest drift removes the
+private staging tree and fails closed.
+
+A bounded manifest records only source kind, safe relative path, entry type,
+length, and digest plus the exact setup and release identities—never absolute paths
+or file content. The manifest is flushed, every backup file is frozen mode 0400,
+every directory is frozen mode 0500, and the complete tree is rehashed before an
+absent final identity is atomically renamed into place. Existing staging and final
+identities are never reused, removed, or overwritten. An ambiguous rename or any
+post-publication validation/status failure retains the tree, marks reconciliation
+required, and withholds readiness evidence.
+
+Successful publication retains one in-memory evidence token bound by reference to
+the exact activation-plan object. The evidence collector may observe that token but
+cannot execute a backup; an equivalent independently composed plan cannot reuse it.
+The public executor surface exposes only diagnostics and redacted state. No CLI,
+Admin, browser, HTTP, WebSocket, hosted-service, timer, AetherRemote, migration,
+service-control, health-probe, rollback, current-pointer, activation, radio,
+watchdog, command, lease, or TX caller is added.
+
 ## Trust boundaries
 
 ### Browser
