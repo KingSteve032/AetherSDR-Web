@@ -377,12 +377,17 @@ public sealed class VerifiedReleaseActivationReadinessEvaluator
                 planResult,
                 evidence);
         }
-        if (!MatchesReleaseStatus(evidence.ReleaseStatus, plan))
+        if (!MatchesReleaseStatus(
+                evidence.ReleaseStatus,
+                plan,
+                evidence.HealthVerificationReady))
         {
             return VerifiedReleaseActivationReadinessReport.Failure(
                 VerifiedReleaseActivationReadinessFailureCode
                     .ReleaseStatusMismatch,
-                "Release status no longer matches the verified inactive activation plan.",
+                evidence.HealthVerificationReady
+                    ? "Release status no longer matches the exact post-switch health-verification phase."
+                    : "Release status no longer matches the verified inactive activation plan.",
                 planResult,
                 evidence);
         }
@@ -615,8 +620,15 @@ public sealed class VerifiedReleaseActivationReadinessEvaluator
 
     private static bool MatchesReleaseStatus(
         ReleaseStatusReadResult status,
-        VerifiedReleaseActivationPlan plan)
+        VerifiedReleaseActivationPlan plan,
+        bool healthVerificationReady)
     {
+        string expectedActiveIdentity = healthVerificationReady
+            ? plan.TargetReleaseIdentity
+            : plan.InstalledReleaseIdentity;
+        string prohibitedActiveIdentity = healthVerificationReady
+            ? plan.InstalledReleaseIdentity
+            : plan.TargetReleaseIdentity;
         if (status.FailureCode != ReleaseStatusFailureCode.None ||
             status.SetupSchemaVersion is null or < 1 ||
             status.SetupRevision != plan.SetupRevision ||
@@ -638,11 +650,11 @@ public sealed class VerifiedReleaseActivationReadinessEvaluator
             !status.CurrentPointerPresent ||
             !string.Equals(
                 status.ActiveReleaseIdentity,
-                plan.InstalledReleaseIdentity,
+                expectedActiveIdentity,
                 StringComparison.Ordinal) ||
             string.Equals(
                 status.ActiveReleaseIdentity,
-                plan.TargetReleaseIdentity,
+                prohibitedActiveIdentity,
                 StringComparison.Ordinal))
         {
             return false;

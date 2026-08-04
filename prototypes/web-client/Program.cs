@@ -370,6 +370,14 @@ ReleaseMigrationRunnerTrustSettings releaseMigrationRunnerTrustSettings =
         .Get<ReleaseMigrationRunnerTrustSettings>(options =>
             options.ErrorOnUnknownConfiguration = true) ??
     new ReleaseMigrationRunnerTrustSettings();
+ReleaseActivationHealthVerificationSettings
+    releaseActivationHealthVerificationSettings =
+        builder.Configuration
+            .GetSection(
+                ReleaseActivationHealthVerificationSettings.SectionName)
+            .Get<ReleaseActivationHealthVerificationSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new ReleaseActivationHealthVerificationSettings();
 StationTxCommandTrustSettings stationTxCommandTrustSettings =
     builder.Configuration
         .GetSection(StationTxCommandTrustSettings.SectionName)
@@ -475,6 +483,8 @@ builder.Services.AddSingleton(Options.Create(remoteStationSettings));
 builder.Services.AddSingleton(Options.Create(independentTxWatchdogSettings));
 builder.Services.AddSingleton(Options.Create(releaseManifestTrustSettings));
 builder.Services.AddSingleton(Options.Create(releaseMigrationRunnerTrustSettings));
+builder.Services.AddSingleton(
+    Options.Create(releaseActivationHealthVerificationSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandTrustSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandSigningSettings));
 builder.Services.AddSingleton(
@@ -495,11 +505,17 @@ builder.Services.AddSingleton<
     LocalOfflineReleaseBundleVerificationService>();
 builder.Services.AddSingleton<OfflineReleaseBundleCheckConsole>();
 builder.Services.AddSingleton(
+    _ =>
+    {
+        InstallationPaths statusPaths = resolveInstallationPaths();
+        return new InstallationSetupStore(statusPaths.SetupStatePath);
+    });
+builder.Services.AddSingleton(
     services =>
     {
         InstallationPaths statusPaths = resolveInstallationPaths();
         return new ReleaseInstallationStatusReader(
-            new InstallationSetupStore(statusPaths.SetupStatePath),
+            services.GetRequiredService<InstallationSetupStore>(),
             statusPaths);
     });
 builder.Services.AddSingleton<ReleaseStatusConsole>();
@@ -526,6 +542,8 @@ builder.Services.AddSingleton<
     VerifiedReleaseActivationServiceControlPlanComposer>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationHealthVerificationPlanComposer>();
+builder.Services.AddSingleton<
+    VerifiedReleaseActivationHealthVerificationService>();
 builder.Services.AddSingleton<VerifiedReleaseActivationReadinessEvaluator>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationLeaseQuiescenceBoundary>();
@@ -671,6 +689,10 @@ VerifiedReleaseActivationHealthVerificationPlanComposer
     releaseActivationHealthVerificationPlanComposer =
         app.Services.GetRequiredService<
             VerifiedReleaseActivationHealthVerificationPlanComposer>();
+VerifiedReleaseActivationHealthVerificationService
+    releaseActivationHealthVerificationService =
+        app.Services.GetRequiredService<
+            VerifiedReleaseActivationHealthVerificationService>();
 VerifiedReleaseActivationReadinessEvaluator releaseActivationReadinessEvaluator =
     app.Services.GetRequiredService<
         VerifiedReleaseActivationReadinessEvaluator>();
@@ -783,6 +805,12 @@ app.MapGet(
             VerifiedReleaseActivationHealthVerificationPlanDiagnostics
                 releaseActivationHealthVerificationPlan =
                     releaseActivationHealthVerificationPlanComposer.Snapshot;
+            VerifiedReleaseActivationHealthVerificationDiagnostics
+                releaseActivationHealthVerification =
+                    releaseActivationHealthVerificationService.Snapshot;
+            VerifiedReleaseActivationHealthVerificationStateDiagnostics
+                releaseActivationHealthVerificationState =
+                    releaseActivationHealthVerificationService.State;
             VerifiedReleaseActivationReadinessDiagnostics
                 releaseActivationReadiness =
                     releaseActivationReadinessEvaluator.Snapshot;
@@ -2041,6 +2069,160 @@ app.MapGet(
                     releaseActivationHealthVerificationPlan.LeaseCallerRegistered,
                 releaseActivationHealthVerificationPlanTxCallerRegistered =
                     releaseActivationHealthVerificationPlan.TxCallerRegistered,
+                releaseActivationHealthVerificationExecutorRegistered =
+                    releaseActivationHealthVerification.Registered,
+                releaseActivationHealthVerificationExecutorConfigurationRegistered =
+                    releaseActivationHealthVerification.ConfigurationRegistered,
+                releaseActivationHealthVerificationExecutorEnabled =
+                    releaseActivationHealthVerification.ExecutionEnabled,
+                releaseActivationHealthVerificationExecutorAvailable =
+                    releaseActivationHealthVerification.ExecutionAvailable,
+                releaseActivationHealthVerificationExecutorStationIdentityConfigured =
+                    releaseActivationHealthVerification
+                        .ExpectedStationIdentityConfigured,
+                releaseActivationHealthVerificationExecutorPlanInputRegistered =
+                    releaseActivationHealthVerification
+                        .ExactHealthPlanInputRegistered,
+                releaseActivationHealthVerificationExecutorExactPlanBindingRegistered =
+                    releaseActivationHealthVerification
+                        .ExactHealthPlanBindingRegistered,
+                releaseActivationHealthVerificationExecutorExactActivationBindingRegistered =
+                    releaseActivationHealthVerification
+                        .ExactActivationPlanBindingRegistered,
+                releaseActivationHealthVerificationExecutorStatusDoubleReadRegistered =
+                    releaseActivationHealthVerification
+                        .ReleaseStatusDoubleReadRegistered,
+                releaseActivationHealthVerificationExecutorSetupDoubleReadRegistered =
+                    releaseActivationHealthVerification
+                        .SetupStateDoubleReadRegistered,
+                releaseActivationHealthVerificationExecutorTopologyBindingRegistered =
+                    releaseActivationHealthVerification.TopologyBindingRegistered,
+                releaseActivationHealthVerificationExecutorTargetActiveRegistered =
+                    releaseActivationHealthVerification
+                        .TargetActiveRequirementRegistered,
+                releaseActivationHealthVerificationExecutorCanonicalGatewayHostRegistered =
+                    releaseActivationHealthVerification
+                        .CanonicalGatewayHostBindingRegistered,
+                releaseActivationHealthVerificationExecutorUnitProcessRegistered =
+                    releaseActivationHealthVerification
+                        .UnitActivityProcessRegistered,
+                releaseActivationHealthVerificationExecutorDirectProcessRegistered =
+                    releaseActivationHealthVerification.DirectProcessRegistered,
+                releaseActivationHealthVerificationExecutorShellRegistered =
+                    releaseActivationHealthVerification.ShellRegistered,
+                releaseActivationHealthVerificationExecutorClearedEnvironmentRegistered =
+                    releaseActivationHealthVerification
+                        .ClearedEnvironmentRegistered,
+                releaseActivationHealthVerificationExecutorLoopbackHttpRegistered =
+                    releaseActivationHealthVerification.LoopbackHttpRegistered,
+                releaseActivationHealthVerificationExecutorProxyBypassRegistered =
+                    releaseActivationHealthVerification.ProxyBypassRegistered,
+                releaseActivationHealthVerificationExecutorRedirectRejectionRegistered =
+                    releaseActivationHealthVerification.RedirectRejectionRegistered,
+                releaseActivationHealthVerificationExecutorBoundedHttpBodyRegistered =
+                    releaseActivationHealthVerification.BoundedHttpBodyRegistered,
+                releaseActivationHealthVerificationExecutorFreshBrokerSnapshotRegistered =
+                    releaseActivationHealthVerification
+                        .FreshBrokerSnapshotRegistered,
+                releaseActivationHealthVerificationExecutorExactStationRegistered =
+                    releaseActivationHealthVerification
+                        .ExactStationIdentityRegistered,
+                releaseActivationHealthVerificationExecutorBoundedDeadlineRegistered =
+                    releaseActivationHealthVerification.BoundedDeadlineRegistered,
+                releaseActivationHealthVerificationExecutorOrderingRegistered =
+                    releaseActivationHealthVerification
+                        .DeterministicOrderingRegistered,
+                releaseActivationHealthVerificationExecutorEvidenceRegistered =
+                    releaseActivationHealthVerification.ExactPlanEvidenceRegistered,
+                releaseActivationHealthVerificationExecutorJournalReadRegistered =
+                    releaseActivationHealthVerification.JournalReadRegistered,
+                releaseActivationHealthVerificationExecutorCredentialReadRegistered =
+                    releaseActivationHealthVerification.CredentialReadRegistered,
+                releaseActivationHealthVerificationExecutorServiceControlRegistered =
+                    releaseActivationHealthVerification.ServiceControlRegistered,
+                releaseActivationHealthVerificationExecutorCurrentPointerMutationRegistered =
+                    releaseActivationHealthVerification
+                        .CurrentPointerMutationRegistered,
+                releaseActivationHealthVerificationExecutorRollbackRegistered =
+                    releaseActivationHealthVerification.RollbackRegistered,
+                releaseActivationHealthVerificationExecutorActivationAuthorityRegistered =
+                    releaseActivationHealthVerification
+                        .ActivationAuthorityRegistered,
+                releaseActivationHealthVerificationExecutorOperationalCallerRegistered =
+                    releaseActivationHealthVerification.OperationalCallerRegistered,
+                releaseActivationHealthVerificationExecutorCliCallerRegistered =
+                    releaseActivationHealthVerification.CliCallerRegistered,
+                releaseActivationHealthVerificationExecutorAdminCallerRegistered =
+                    releaseActivationHealthVerification.AdminCallerRegistered,
+                releaseActivationHealthVerificationExecutorBrowserCallerRegistered =
+                    releaseActivationHealthVerification.BrowserCallerRegistered,
+                releaseActivationHealthVerificationExecutorHttpCallerRegistered =
+                    releaseActivationHealthVerification.HttpCallerRegistered,
+                releaseActivationHealthVerificationExecutorWebSocketCallerRegistered =
+                    releaseActivationHealthVerification.WebSocketCallerRegistered,
+                releaseActivationHealthVerificationExecutorHostedServiceCallerRegistered =
+                    releaseActivationHealthVerification.HostedServiceCallerRegistered,
+                releaseActivationHealthVerificationExecutorTimerCallerRegistered =
+                    releaseActivationHealthVerification.TimerCallerRegistered,
+                releaseActivationHealthVerificationExecutorAetherRemoteCommandCallerRegistered =
+                    releaseActivationHealthVerification
+                        .AetherRemoteCommandCallerRegistered,
+                releaseActivationHealthVerificationExecutorRadioCallerRegistered =
+                    releaseActivationHealthVerification.RadioCallerRegistered,
+                releaseActivationHealthVerificationExecutorWatchdogCallerRegistered =
+                    releaseActivationHealthVerification.WatchdogCallerRegistered,
+                releaseActivationHealthVerificationExecutorCommandCallerRegistered =
+                    releaseActivationHealthVerification.CommandCallerRegistered,
+                releaseActivationHealthVerificationExecutorLeaseCallerRegistered =
+                    releaseActivationHealthVerification.LeaseCallerRegistered,
+                releaseActivationHealthVerificationExecutorTxCallerRegistered =
+                    releaseActivationHealthVerification.TxCallerRegistered,
+                releaseActivationHealthVerificationReady =
+                    releaseActivationHealthVerificationState
+                        .HealthVerificationReady,
+                releaseActivationHealthVerificationExactPlanActive =
+                    releaseActivationHealthVerificationState.ExactHealthPlanBound,
+                releaseActivationHealthVerificationExactActivationActive =
+                    releaseActivationHealthVerificationState
+                        .ExactActivationPlanBound,
+                releaseActivationHealthVerificationTargetCount =
+                    releaseActivationHealthVerificationState.HealthTargetCount,
+                releaseActivationHealthVerificationVerifiedTargetCount =
+                    releaseActivationHealthVerificationState.VerifiedTargetCount,
+                releaseActivationHealthVerificationUnitCheckCount =
+                    releaseActivationHealthVerificationState
+                        .UnitActivityCheckCount,
+                releaseActivationHealthVerificationHttpCheckCount =
+                    releaseActivationHealthVerificationState
+                        .LoopbackHttpCheckCount,
+                releaseActivationHealthVerificationBrokerLinkCheckCount =
+                    releaseActivationHealthVerificationState
+                        .FreshBrokerLinkCheckCount,
+                releaseActivationHealthVerificationTargetActiveBefore =
+                    releaseActivationHealthVerificationState
+                        .TargetActiveBeforeVerification,
+                releaseActivationHealthVerificationTargetActiveAfter =
+                    releaseActivationHealthVerificationState
+                        .TargetActiveAfterVerification,
+                releaseActivationHealthVerificationSetupStable =
+                    releaseActivationHealthVerificationState.SetupStable,
+                releaseActivationHealthVerificationCanonicalHostBound =
+                    releaseActivationHealthVerificationState
+                        .CanonicalGatewayHostBound,
+                releaseActivationHealthVerificationAllUnitsActive =
+                    releaseActivationHealthVerificationState.AllUnitsActive,
+                releaseActivationHealthVerificationAllContractsPassed =
+                    releaseActivationHealthVerificationState
+                        .AllHealthContractsPassed,
+                releaseActivationHealthVerificationReconciliationRequired =
+                    releaseActivationHealthVerificationState
+                        .ReconciliationRequired,
+                releaseActivationHealthVerificationServiceControlReady =
+                    releaseActivationHealthVerificationState.ServiceControlReady,
+                releaseActivationHealthVerificationCurrentPointerChanged =
+                    releaseActivationHealthVerificationState.CurrentPointerChanged,
+                releaseActivationHealthVerificationActivationAuthorized =
+                    releaseActivationHealthVerificationState.ActivationAuthorized,
                 releaseActivationLeaseQuiescenceRegistered =
                     releaseActivationLeaseQuiescenceDiagnostics.Registered,
                 releaseActivationLeaseQuiescencePlanInputRegistered =

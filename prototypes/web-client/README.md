@@ -933,11 +933,43 @@ rollback, activation, radio, watchdog, command, lease, or TX action. Production
 resolves diagnostics only and has no CLI, Admin, browser, HTTP, WebSocket, hosted-
 service, timer, AetherRemote, service-control, or operational caller.
 
+The twenty-second M8B increment adds the separately bounded
+`VerifiedReleaseActivationHealthVerificationService`. Its strict configuration is
+disabled by default. A reviewed exact station identity is required only for a hybrid
+gateway that accepts remote stations and is forbidden for personal or local-only
+topologies. The internal one-shot operation accepts only the exact retained health
+plan, requires the target release to be active before and after the sequence,
+double-reads setup and release status, and binds the persisted topology and canonical
+gateway authority.
+
+Topology decides which host owns each contract. Personal and local-station gateways
+verify the local station engine, broker, and gateway; their non-running agent target
+is an explicit no-op. Hybrid gateways verify those same local services and require
+one fresh uniquely matching remote-agent broker observation. Remote-station gateways
+fail closed because no reviewed remote station-engine health transport exists yet.
+No local process is used to impersonate a remote unit.
+
+Local station-engine and broker units use direct no-shell
+`systemctl is-active --quiet`; the gateway user unit uses
+`systemctl --user is-active --quiet`. The environment is cleared and only fixed locale
+plus a canonical matching user D-Bus runtime binding may be restored. The three local
+services then receive fixed loopback-only HTTP/1.1 `GET /healthz` checks with proxy,
+redirect, cookies, and decompression disabled, bounded JSON bodies, and the canonical
+gateway host where required. The hybrid agent contract reads only the existing
+runtime broker snapshot and reads no enrollment or administrative credential and no
+journal.
+
+Success retains one exact-plan in-memory health observation. The activation evidence
+collector reads that observation without invoking the executor. Phase-aware
+readiness requires the previous release while health evidence is absent and the
+target release when exact post-switch health evidence is present. Equivalent plan
+objects cannot reuse the observation. Production resolves disabled diagnostics and
+zeroed state only; no execution caller is registered.
+
 Packaged bundle production, network download, archive extraction, operational
-backup orchestration, service-control execution and evidence, health-probe execution
-and evidence, rollback preparation/execution, operator-approval authority,
-activation execution, Admin/browser workflows, and all operational update callers
-remain later M8B work.
+backup orchestration, service-control execution and evidence, rollback preparation/
+execution, operator-approval authority, activation execution, Admin/browser
+workflows, and all operational update callers remain later M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled

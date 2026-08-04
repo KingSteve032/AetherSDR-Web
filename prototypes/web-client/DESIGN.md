@@ -903,6 +903,45 @@ resolves diagnostics only. There is no socket, network request, `HttpClient`, pr
 activation authority, CLI, Admin, browser, HTTP, WebSocket, hosted service, timer,
 AetherRemote, service-control, radio, watchdog, command, lease, or TX caller.
 
+The twenty-second M8B increment adds a separate disabled-by-default health execution
+boundary. `VerifiedReleaseActivationHealthVerificationService` accepts only the
+successful health-plan report and exact retained health and activation objects. It
+requires the target identity to be the active `current` release before and after the
+bounded sequence and double-reads both release status and completed setup. The
+persisted topology and canonical public URL bind host ownership and the gateway Host
+authority; arbitrary probe destinations are never accepted.
+
+Topology is authoritative. Personal and local-station gateways run gateway, broker,
+and station engine locally and do not run an agent, so the agent target resolves as a
+signed topology no-op. Hybrid gateways run the same three local services and must
+configure one exact remote station identity for a fresh broker-link observation.
+Remote-station gateways are rejected because their station engine is remote and no
+reviewed remote health-probe protocol is registered. Remote-station nodes cannot run
+this gateway-owned boundary. The executor never sends a local process check for a
+remote role.
+
+The Linux runtime invokes absolute `/usr/bin/systemctl` directly. Broker and station
+engine use `is-active --quiet <fixed-unit>`; the gateway user unit uses
+`--user is-active --quiet <fixed-unit>`. There is no shell, output is redirected and
+bounded, timeouts kill the process tree, and the environment is cleared. The only
+optional user-service environment restored is a canonical `/run/user/<uid>` runtime
+directory and its exact matching D-Bus address. HTTP contracts are fixed to local
+loopback ports and `/healthz`, HTTP/1.1, no proxy, no cookies, no redirects, no
+decompression, bounded headers and body, and strict JSON `status=ok`. The hybrid
+agent contract consumes the existing read-only runtime broker snapshot and requires
+one fresh uniquely matching configured station ID, heartbeat, and inventory
+observation. It reads no runtime or administration credential and no journal.
+
+A successful one-shot sequence retains an internal observation bound by reference to
+the exact activation plan. The evidence collector observes but never calls this
+executor. Readiness status is explicitly phase-aware: before health evidence,
+`current` must remain the installed release; with exact post-switch health evidence,
+`current` must be the target release. Public diagnostics and reports remain unit-,
+endpoint-, host-, station-, path-, and credential-redacted. Production registers no
+executor caller and keeps execution disabled, unavailable, and zero-state by default.
+No service control, pointer mutation, rollback, activation authority, radio,
+watchdog, command, lease, or TX action is added.
+
 ## Trust boundaries
 
 ### Browser
