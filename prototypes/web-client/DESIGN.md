@@ -789,6 +789,40 @@ No CLI, Admin, browser, HTTP, WebSocket, hosted-service, timer, AetherRemote,
 service-control, health-probe, rollback, radio, watchdog, command, lease, or TX
 caller is added.
 
+The eighteenth M8B increment adds a separate probe-only process invocation boundary
+without supplying migration paths or performing migration execution.
+`VerifiedReleaseActivationMigrationRunnerInvocationService` accepts only the exact
+successful runner-selection report and retained internal selection. It rechecks the
+public/internal selection agreement, no-op versus required declaration, exact
+runner/mapping/schema binding, and startup validation metadata before any process is
+started.
+
+For required migrations the runner artifact is reopened immediately before launch.
+The service revalidates canonical path, containing directory, link status, regular-
+file shape, immutable Linux mode, exact length and timestamp, and SHA-256 using a
+fixed-time digest comparison. Drift prevents process creation. The reviewed artifact
+is then started directly with `UseShellExecute=false`, no arguments, redirected
+stdin/stdout/stderr, a cleared environment, and a fixed working directory. Only
+locale and migration-runner protocol variables are restored.
+
+Protocol version 1 is one probe request and one response. The bounded request
+contains exact setup/release, runner, migration, and schema identities plus explicit
+`MigrationExecutionRequested=false` and `MigrationSourcePathsProvided=false` flags.
+No configuration, state, secret, backup, staging, publication, manifest, or
+deployment path crosses the process boundary. Stdout is capped at 16 KiB, stderr at
+8 KiB, stderr must be empty, and a five-second timeout or oversized channel kills
+the process tree.
+
+The strict response parser rejects unknown fields and requires exact protocol,
+request nonce, runner identity, migration identity, and schema echoes plus explicit
+false values for migration execution, filesystem mutation, and source-path receipt.
+A successful probe provides no migration-readiness evidence and retains no process
+output, request nonce, runner path, digest, or migration identity in public reports.
+Production resolves only diagnostics and has no route, CLI, hosted service, timer,
+or activation orchestrator caller. Current-pointer mutation, staged-copy creation,
+migration execution, evidence, service control, rollback, radio, watchdog, command,
+lease, and TX authority remain absent.
+
 ## Trust boundaries
 
 ### Browser
