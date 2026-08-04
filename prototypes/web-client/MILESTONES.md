@@ -2707,11 +2707,11 @@ activation-readiness evidence evaluation, authoritative runtime evidence
 collection, exact-plan TX-lease admission closure/drain composition, exact-plan
 configuration-backup planning and atomic execution, exact-plan staged-copy
 migration planning, disabled-by-default locally pinned migration-runner trust and
-exact selection, and callerless probe-only runner invocation are implemented;
-publishing artifacts, network download, extraction, operational backup orchestration,
-activation execution, rollback preparation and execution, migration execution,
-service control, health probes,
-operator-approval authority, and Admin/browser callers remain unimplemented.
+exact selection, callerless probe-only runner invocation, exact staged-copy migration
+execution, and exact-plan migration evidence are implemented; publishing artifacts,
+network download, extraction, operational backup orchestration, activation execution,
+rollback preparation and execution, service control, health probes, operator-approval
+authority, and Admin/browser callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -3075,6 +3075,34 @@ Probe success creates no migration readiness evidence and no production caller,
 file mutation, current-pointer change, activation authority, service control,
 rollback, radio, watchdog, command, lease, or TX surface.
 
+The nineteenth increment adds
+`VerifiedReleaseActivationMigrationExecutionService`, a callerless Linux-only
+single-use staged-copy executor. It accepts only the successful probe report and
+retained exact selection token. Signed no-migration plans become ready without
+process or filesystem work. Required plans double-read release status, revalidate
+the exact immutable backup manifest and every bounded regular non-link entry, then
+copy configuration, state, and secrets into a fresh private staging identity.
+
+The selected runner is rehashed immediately before direct execution and receives
+only staging paths. It receives no live configuration, immutable backup-source,
+deployment, release-pointer, or credential content. The strict bounded protocol
+requires staged-copy mutation while explicitly denying backup-source receipt,
+`current` mutation, activation, service control, radio commands, and TX commands.
+Timeout, output overflow, stderr, rejection, malformed output, tree drift, links,
+unsafe permissions, or digest mismatch fail closed and clean staging while the
+outcome is known.
+
+Success independently inventories and hashes the migrated tree, writes and durably
+flushes a host-owned manifest, freezes files and directories, atomically publishes
+the exact identity, and validates it again. Existing identities are never
+overwritten; an ambiguous publication is frozen and marked for reconciliation.
+The retained evidence is reference-bound to the exact activation plan, and the
+activation evidence collector now reads required-migration readiness only from that
+exact observation. Production resolves diagnostics and zeroed state only. No route,
+CLI, Admin/browser, hosted service, timer, AetherRemote, `current` mutation,
+activation authority, service control, health probe, rollback, radio, watchdog,
+command, lease, or TX caller is added.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -3305,6 +3333,42 @@ prerequisites were absent. Browser Bridge was connected, but the FlexWeb accepta
 tab redirected to Microsoft sign-in because no authenticated FlexWeb browser session
 was available; interactive acceptance therefore remains pending and no credentials
 were entered. No live radio or RF operation was performed or required.
+
+Automated checkpoint on 2026-08-04 for exact staged-copy migration execution and
+evidence: the guarded production-TX deployment gate completed successfully; the
+deployment script passed shell syntax validation; Release solution build completed
+with zero warnings and zero errors; the focused backup, migration planning, runner
+trust/selection/invocation, execution, and evidence suite passed 110/110; web tests
+passed 1,399/1,399; independent-watchdog tests passed 57/57; TX-HIL isolation tests
+passed 48/48; AetherRemote tests passed 70/70; and browser tests passed 135/135.
+The complete checkpoint covered 1,574 .NET tests and 1,709 tests overall.
+
+The Linux process-boundary suite created a real immutable exact-plan backup, copied
+only backup content into a new private staging identity, revalidated the pinned
+runner after probe, and passed only staging paths to one direct no-shell execution.
+It proved bounded JSON, cleared environment, strict source-path/current/activation/
+service/radio/TX denials, immutable host-owned manifest publication, exact evidence,
+no-op readiness, runner-drift rejection, malformed/rejected/nonzero/timeout cleanup,
+existing-publication refusal, and reconciliation after an ambiguous atomic rename.
+The original immutable backup remained unchanged.
+
+Deployed health confirmed the executor and migration evidence boundary registered
+with zero active plan, directories, files, bytes, manifest, readiness, or
+reconciliation. Operational, CLI, Admin, browser, HTTP, WebSocket, hosted-service,
+timer, AetherRemote, service-control, health-probe, rollback, radio, watchdog,
+command, lease, TX, `current` mutation, and activation-authority callers remained
+false. Runner trust remained disabled with zero artifacts; the independent watchdog
+started empty and Disarmed; production TX remained unavailable because command-
+transport and safety-supervisor prerequisites were absent.
+
+Interactive Browser Bridge acceptance used the updated fixed-2D playbook. The
+authenticated radio desk reported four radios online and ready; PSOC2/HF/XVTR
+connected; the footer reported `AETHER-WEB`, `FLEX-6700`, `RX-ONLY`, and
+`RADIO: LIVE`; MOX and CWX were hidden and disabled; TUNE, SPLIT, DVK, FDX, and the
+validation-only intent action were disabled; the TX panel stated that it had no
+radio command or microphone-audio transport; PC MIC remained off; the local FILL
+display control toggled and was restored; and console errors and warnings were both
+zero. No lease was acquired and no live radio command or RF operation was performed.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

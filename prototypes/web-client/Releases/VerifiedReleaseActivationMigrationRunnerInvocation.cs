@@ -52,6 +52,12 @@ public sealed record VerifiedReleaseActivationMigrationRunnerInvocationReport(
     bool CurrentPointerChanged,
     bool ActivationAuthorized)
 {
+    internal VerifiedReleaseActivationMigrationRunnerInvocation? Invocation
+    {
+        get;
+        init;
+    }
+
     internal static VerifiedReleaseActivationMigrationRunnerInvocationReport Failure(
         VerifiedReleaseActivationMigrationRunnerInvocationFailureCode failureCode,
         string message,
@@ -124,7 +130,13 @@ public sealed record VerifiedReleaseActivationMigrationRunnerInvocationReport(
             MigrationExecutionPerformed: false,
             MigrationReady: !selection.Plan.MigrationRequired,
             CurrentPointerChanged: false,
-            ActivationAuthorized: false);
+            ActivationAuthorized: false)
+        {
+            Invocation = new VerifiedReleaseActivationMigrationRunnerInvocation(
+                selection,
+                runnerInvoked,
+                artifactRevalidated)
+        };
 }
 
 public sealed record VerifiedReleaseActivationMigrationRunnerInvocationDiagnostics(
@@ -194,6 +206,24 @@ internal sealed record ReleaseMigrationRunnerProbeResponse(
     bool MigrationExecutionPerformed,
     bool FilesystemMutationPerformed,
     bool MigrationSourcePathsReceived);
+
+internal sealed class VerifiedReleaseActivationMigrationRunnerInvocation
+{
+    internal VerifiedReleaseActivationMigrationRunnerInvocation(
+        VerifiedReleaseActivationMigrationRunnerSelection selection,
+        bool runnerInvoked,
+        bool artifactRevalidated)
+    {
+        Selection = selection ??
+            throw new ArgumentNullException(nameof(selection));
+        RunnerInvoked = runnerInvoked;
+        ArtifactRevalidated = artifactRevalidated;
+    }
+
+    internal VerifiedReleaseActivationMigrationRunnerSelection Selection { get; }
+    internal bool RunnerInvoked { get; }
+    internal bool ArtifactRevalidated { get; }
+}
 
 /// <summary>
 /// Callerless probe-only process boundary for one exact locally pinned migration
@@ -662,7 +692,7 @@ public sealed class VerifiedReleaseActivationMigrationRunnerInvocationService
                 plan.ToConfigurationSchemaVersion;
     }
 
-    private static bool RevalidateRunnerArtifact(
+    internal static bool RevalidateRunnerArtifact(
         ReleaseMigrationTrustedRunner runner)
     {
         byte[]? digest = null;

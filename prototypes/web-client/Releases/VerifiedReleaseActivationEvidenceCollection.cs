@@ -207,6 +207,9 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         VerifiedReleaseActivationPlan,
         VerifiedReleaseActivationConfigurationBackupObservation>
         m_configurationBackupReader;
+    private readonly Func<
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationMigrationObservation> m_migrationReader;
     private readonly Func<IReadOnlyList<RadioSessionDiagnostics>>
         m_sessionSnapshotReader;
     private readonly Func<StationTxIndependentWatchdogAggregate>
@@ -220,6 +223,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         ReleaseInstallationStatusReader statusReader,
         VerifiedReleaseActivationLeaseQuiescenceBoundary leaseQuiescence,
         VerifiedReleaseActivationConfigurationBackupService configurationBackup,
+        VerifiedReleaseActivationMigrationExecutionService migrationExecution,
         RadioSessionRegistry radioSessions,
         StationTxIndependentWatchdogRegistry independentWatchdogs)
         : this(
@@ -229,7 +233,8 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             CreateWatchdogSnapshotReader(independentWatchdogs),
             TimeProvider.System,
             configurationBackupReader:
-                CreateConfigurationBackupReader(configurationBackup))
+                CreateConfigurationBackupReader(configurationBackup),
+            migrationReader: CreateMigrationReader(migrationExecution))
     {
     }
 
@@ -265,7 +270,10 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         Func<
             VerifiedReleaseActivationPlan,
             VerifiedReleaseActivationConfigurationBackupObservation>?
-            configurationBackupReader = null)
+            configurationBackupReader = null,
+        Func<
+            VerifiedReleaseActivationPlan,
+            VerifiedReleaseActivationMigrationObservation>? migrationReader = null)
     {
         m_statusReader = statusReader ??
             throw new ArgumentNullException(nameof(statusReader));
@@ -273,6 +281,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             throw new ArgumentNullException(nameof(leaseQuiescenceReader));
         m_configurationBackupReader = configurationBackupReader ??
             CreateUnavailableConfigurationBackupReader();
+        m_migrationReader = migrationReader ?? CreateUnavailableMigrationReader();
         m_sessionSnapshotReader = sessionSnapshotReader ??
             throw new ArgumentNullException(nameof(sessionSnapshotReader));
         m_watchdogSnapshotReader = watchdogSnapshotReader ??
@@ -294,7 +303,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             MissingPrerequisitesFailClosedRegistered: true,
             TxLeaseAdmissionClosureEvidenceRegistered: true,
             ConfigurationBackupEvidenceRegistered: true,
-            MigrationExecutionEvidenceRegistered: false,
+            MigrationExecutionEvidenceRegistered: true,
             ServiceControlEvidenceRegistered: false,
             HealthVerificationEvidenceRegistered: false,
             RollbackEvidenceRegistered: false,
@@ -367,6 +376,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         StationTxIndependentWatchdogAggregate? watchdogs;
         VerifiedReleaseActivationConfigurationBackupObservation?
             configurationBackup;
+        VerifiedReleaseActivationMigrationObservation? migration;
         try
         {
             beforeStatus = await m_statusReader(cancellationToken);
@@ -374,6 +384,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             leaseQuiescence = m_leaseQuiescenceReader(plan);
             leases = leaseQuiescence.ActiveTxLeases;
             configurationBackup = m_configurationBackupReader(plan);
+            migration = m_migrationReader(plan);
             sessions = m_sessionSnapshotReader();
             watchdogs = m_watchdogSnapshotReader();
             cancellationToken.ThrowIfCancellationRequested();
@@ -410,6 +421,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             leaseQuiescence is null ||
             leases is null ||
             configurationBackup is null ||
+            migration is null ||
             sessions is null ||
             watchdogs is null)
         {
@@ -428,7 +440,8 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
                 planResult);
         }
         if (!ValidateCollectedShape(leases, sessions, watchdogs) ||
-            !ValidateConfigurationBackupObservation(configurationBackup))
+            !ValidateConfigurationBackupObservation(configurationBackup) ||
+            !ValidateMigrationObservation(migration, plan))
         {
             return VerifiedReleaseActivationEvidenceCollectionReport.Failure(
                 VerifiedReleaseActivationEvidenceCollectionFailureCode
@@ -460,7 +473,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             AvailableReleaseIdentities =
                 afterStatus.AvailableReleaseIdentities.ToArray()
         };
-        bool migrationReady = !plan.MigrationRequired;
+        bool migrationReady = migration.MigrationReady;
         bool serviceControlReady =
             plan.RestartServiceCount == 0 && !plan.RestartHost;
         VerifiedReleaseActivationReadinessEvidence evidence = new(
@@ -534,6 +547,28 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             FileCount: 0,
             BackupBytes: 0,
             CompletedAt: null,
+            ReconciliationRequired: false);
+
+    private static Func<
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationMigrationObservation> CreateMigrationReader(
+            VerifiedReleaseActivationMigrationExecutionService migrationExecution)
+    {
+        ArgumentNullException.ThrowIfNull(migrationExecution);
+        return migrationExecution.Observe;
+    }
+
+    private static Func<
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationMigrationObservation>
+        CreateUnavailableMigrationReader() =>
+        plan => new VerifiedReleaseActivationMigrationObservation(
+            MigrationReady: !plan.MigrationRequired,
+            MigrationRequired: plan.MigrationRequired,
+            DirectoryCount: 0,
+            FileCount: 0,
+            MigrationBytes: 0,
+            CompletedAt: plan.MigrationRequired ? null : DateTimeOffset.UnixEpoch,
             ReconciliationRequired: false);
 
     private static Func<IReadOnlyList<RadioSessionDiagnostics>>
@@ -654,6 +689,48 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             observation.DirectoryCount == 0 &&
             observation.FileCount == 0 &&
             observation.BackupBytes == 0 &&
+            observation.CompletedAt is null;
+    }
+
+    private static bool ValidateMigrationObservation(
+        VerifiedReleaseActivationMigrationObservation observation,
+        VerifiedReleaseActivationPlan plan)
+    {
+        if (observation.MigrationRequired != plan.MigrationRequired)
+        {
+            return false;
+        }
+        if (!plan.MigrationRequired)
+        {
+            return observation.MigrationReady &&
+                observation.DirectoryCount == 0 &&
+                observation.FileCount == 0 &&
+                observation.MigrationBytes == 0 &&
+                observation.CompletedAt is not null &&
+                !observation.ReconciliationRequired;
+        }
+        if (observation.MigrationReady)
+        {
+            return observation.DirectoryCount >= 3 &&
+                observation.DirectoryCount <=
+                    VerifiedReleaseActivationMigrationExecutionService
+                        .MaximumDirectoryCount &&
+                observation.FileCount >= 0 &&
+                observation.FileCount <=
+                    VerifiedReleaseActivationMigrationExecutionService
+                        .MaximumFileCount &&
+                observation.MigrationBytes > 0 &&
+                observation.MigrationBytes <=
+                    VerifiedReleaseActivationMigrationExecutionService
+                        .MaximumMigrationBytes +
+                    VerifiedReleaseActivationMigrationExecutionService
+                        .MaximumManifestBytes &&
+                observation.CompletedAt is not null &&
+                !observation.ReconciliationRequired;
+        }
+        return observation.DirectoryCount == 0 &&
+            observation.FileCount == 0 &&
+            observation.MigrationBytes == 0 &&
             observation.CompletedAt is null;
     }
 

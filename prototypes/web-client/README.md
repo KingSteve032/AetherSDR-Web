@@ -866,8 +866,34 @@ WebSocket, hosted-service, timer, AetherRemote, service-control, health-probe,
 rollback, current-pointer, activation, radio, watchdog, command, lease, or TX caller
 can invoke it.
 
+The nineteenth M8B increment adds
+`VerifiedReleaseActivationMigrationExecutionService`, a callerless Linux-only
+staged-copy executor bound to that exact successful probe token. Signed no-migration
+plans become ready without process or filesystem mutation. Required plans first
+re-read release status, verify the exact immutable backup manifest and every bounded
+non-link entry, and copy configuration, state, and secrets into a new private
+staging tree. The runner is rehashed again immediately before direct no-shell
+execution and receives only the copied staging paths—never live paths or immutable
+backup-source paths.
+
+The execution protocol explicitly denies `current` mutation, activation, service
+control, radio commands, and TX commands. Output, stderr, and runtime remain bounded;
+rejection, drift, timeout, malformed output, source-tree mismatch, unexpected links,
+or permission changes fail closed and clean private staging. Success writes one
+host-owned bounded manifest, durably flushes it, freezes files and directories,
+atomically publishes the immutable migration tree, validates it again, and retains
+one exact in-memory evidence token. Ambiguous publication requires reconciliation
+and cannot become ready.
+
+Activation evidence now reads migration readiness only from the same in-memory
+activation-plan reference. Public health exposes counts and booleans but no paths,
+runner identities, digests, source contents, or migration identities. The service
+has no production execution caller, route, CLI, Admin/browser entry, hosted service,
+timer, AetherRemote path, pointer mutation, activation authority, service control,
+health probe, rollback, radio, watchdog, command, lease, or TX surface.
+
 Packaged bundle production, network download, archive extraction, operational
-backup orchestration, migration execution, service control, health probing,
+backup orchestration, service control, health probing,
 rollback preparation/execution, operator-approval authority, activation execution,
 Admin/browser workflows, and all operational update callers remain later M8B work.
 
