@@ -2702,8 +2702,9 @@ Status: active. The local-only signed-manifest verifier, normal-runtime public-k
 trust composition, immutable local offline-directory bundle reader, read-only
 offline bundle CLI `check`, read-only local release `status`, read-only offline
 install preflight, verified installation-plan composition, private verified staging,
-atomic inactive-release publication, and activation-transaction plan composition
-are implemented; publishing artifacts, network download, extraction, activation
+atomic inactive-release publication, activation-transaction plan composition, and
+activation-readiness evidence evaluation are implemented; publishing artifacts,
+network download, extraction, authoritative evidence collection, activation
 execution, rollback execution, migration execution, service control, health probes,
 and Admin/browser callers remain unimplemented.
 
@@ -2860,6 +2861,33 @@ assert any of those steps and registers no filesystem write, pointer mutation,
 activation, backup, migration execution, service control, health probe, CLI/Admin/
 browser, AetherRemote runtime, radio, watchdog, command, lease, or TX caller.
 
+The eleventh increment adds `VerifiedReleaseActivationReadinessEvaluator`. It is
+registered for diagnostics but exposes no public evaluation method and has no
+evidence collector or operational caller. Its internal evaluation accepts only the
+successful activation plan plus one bounded snapshot no more than five seconds old.
+It rechecks plan/public-summary agreement and requires release status to retain the
+same completed setup revision, channel/Pinned policy, TX-support installation
+selection, previous active identity, and published inactive target inventory.
+
+Readiness requires explicit closure of TX-lease admission, zero active leases, and
+unique bounded session evidence. Every active session must be connected, report
+fresh radio-authoritative idle with no occupants, have an idle/no-intent gate,
+disarmed inactive safety state, no active or reconciliation-required command
+transaction, and a disarmed reconciliation-free independent watchdog. The global
+watchdog aggregate must agree and may not be degraded, armed, or awaiting
+reconciliation; TX-support installations additionally require exact session,
+running, connected, and registered watchdog counts.
+
+The same evidence snapshot must prove a prepared configuration backup, resolved
+signed migration requirement, required service/host restart control, post-switch
+health verification, automatic rollback, and explicit operator approval. Success
+returns an internal defensive readiness token while the public report contains only
+counts and booleans. It exposes no paths, package names, digests, radio/session/
+lease identities, occupants, or process data and adds no filesystem write, lease
+mutation, radio/watchdog command, pointer switch, activation, backup, migration,
+service, health-probe, rollback, CLI/Admin/browser, hosted-service, timer,
+AetherRemote, command, lease, or TX caller.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -2956,6 +2984,20 @@ rollback planning while file write, `current` mutation, activation, backup,
 migration execution, service control, health probes, CLI/Admin/browser, radio,
 watchdog, command, lease, and TX callers remained absent. No live radio or RF
 operation was performed or required.
+
+Automated checkpoint on 2026-08-03 for verified activation-readiness evaluation:
+the deployment script passed shell syntax validation; Release solution build
+completed with zero warnings and zero errors; the focused readiness suite passed
+47/47; web tests passed 1,281/1,281; independent-watchdog tests passed 57/57;
+TX-HIL isolation tests passed 48/48; AetherRemote tests passed 70/70; and browser
+tests passed 135/135. The complete checkpoint covered 1,456 .NET tests and 1,591
+tests overall. A live development health probe confirmed plan/status, lease-
+admission, session-safety, radio-idle, watchdog, backup, migration, service,
+health, rollback, and operator-approval evaluation while file write, `current`
+mutation, activation, lease/radio/watchdog mutation, backup/migration/service/
+health/rollback execution, CLI/Admin/browser, hosted-service, timer, AetherRemote,
+command, lease, and TX callers remained absent. No live radio or RF operation was
+performed or required.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

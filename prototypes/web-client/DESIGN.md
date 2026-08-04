@@ -572,6 +572,35 @@ mutation, activation, backup, migration execution, service control, health probe
 CLI/Admin/browser, AetherRemote runtime, radio, watchdog, command, lease, or TX
 caller.
 
+The eleventh M8B increment adds a pure readiness evidence boundary without adding
+an activation orchestrator. `VerifiedReleaseActivationReadinessEvaluator` exposes
+only diagnostics publicly; its internal evaluation method accepts the exact
+successful activation-plan result plus one bounded evidence snapshot captured no
+more than five seconds earlier. It rechecks the public/internal plan agreement and
+requires release status to retain the same completed setup revision, update
+channel/Pinned policy, TX-support installation choice, inactive target inventory,
+and previous active `current` identity.
+
+The evidence contract requires TX-lease admission closed and an exact empty lease
+snapshot. Each active session must be connected and carry fresh idle occupancy for
+its own radio with no occupants, an idle/no-intent gate, a disarmed inactive safety
+supervisor, no active or reconciliation-required command transaction, and a
+disarmed reconciliation-free independent watchdog. The bounded global watchdog
+aggregate must be registered, non-degraded, unarmed, reconciliation-free, and—when
+TX support is installed—have exact running, connected, and registered counts equal
+to the session count.
+
+Readiness further requires a prepared configuration backup, the signed migration
+step resolved, required service/host restart control available, post-switch health
+verification available, automatic rollback prepared, and explicit operator
+approval. Success retains only an internal defensive copy of the activation plan
+and session evidence. The public report reveals counts and booleans but no paths,
+package names, digests, radio/session/lease identifiers, occupants, or watchdog
+process details. No evidence collector, route, CLI, Admin/browser caller, hosted
+service, timer, filesystem write, lease mutation, radio/watchdog command, pointer
+mutation, activation, backup, migration, service control, health probe, rollback,
+AetherRemote, command, lease, or TX execution path is added.
+
 ## Trust boundaries
 
 ### Browser
