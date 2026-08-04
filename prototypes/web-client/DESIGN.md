@@ -756,6 +756,39 @@ No CLI, Admin, browser, HTTP, WebSocket, hosted-service, timer, AetherRemote,
 service-control, health-probe, rollback, radio, watchdog, command, lease, or TX
 caller is added.
 
+The seventeenth M8B increment adds a separate local runner-trust and exact-selection
+boundary without adding migration execution. `ReleaseMigrationRunnerTrust` is one
+strict feature-owned configuration object whose default disables selection and
+contains no runners. `ReleaseMigrationRunnerTrustRegistry` bounds the trust set to
+eight artifacts, sixteen migrations per artifact, and sixty-four exact declarations
+overall. Runner identity, protocol version, canonical path, SHA-256 pin, signed
+migration identity, and increasing from/to schema pair are all validated before the
+registry becomes available.
+
+Registry startup reads each configured artifact once. The artifact must be a regular
+non-link file from 1 byte through 16 MiB in one regular non-link containing directory.
+On Linux the directory may not be group/other writable, and the artifact must be
+owner-readable and owner-executable with no user, group, or other write bit. Length,
+last-write time, Unix mode, and path safety are checked before and after hashing; any
+drift or digest mismatch fails startup. Duplicate runner identities, canonical
+paths, digests, or signed migration identities are rejected. The registry retains
+defensive immutable metadata and exposes only counts and booleans publicly—never a
+path, runner identity, signed migration identity, or digest.
+
+`VerifiedReleaseActivationMigrationRunnerSelector` is a pure internal exact-plan
+boundary. It accepts only the successful migration-plan report and retained exact
+plan, revalidates report flags and the exact backup/activation binding, and resolves
+a signed no-migration declaration without trust. A required declaration must match
+exactly one trusted migration identity plus from/to schema pair. Success retains one
+internal token containing the exact migration-plan reference and startup-validated
+runner metadata. It does not reopen the runner, read backup content, invoke a
+process, write a staged copy, execute a migration, produce readiness evidence,
+change `current`, or authorize activation. Required migration therefore remains not
+ready until a separately reviewed executor revalidates and invokes the artifact.
+No CLI, Admin, browser, HTTP, WebSocket, hosted-service, timer, AetherRemote,
+service-control, health-probe, rollback, radio, watchdog, command, lease, or TX
+caller is added.
+
 ## Trust boundaries
 
 ### Browser

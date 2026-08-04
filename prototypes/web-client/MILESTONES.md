@@ -2705,8 +2705,9 @@ install preflight, verified installation-plan composition, private verified stag
 atomic inactive-release publication, activation-transaction plan composition,
 activation-readiness evidence evaluation, authoritative runtime evidence
 collection, exact-plan TX-lease admission closure/drain composition, exact-plan
-configuration-backup planning and atomic execution, and exact-plan staged-copy
-migration planning are implemented; publishing artifacts, network download,
+configuration-backup planning and atomic execution, exact-plan staged-copy
+migration planning, and disabled-by-default locally pinned migration-runner trust
+and exact selection are implemented; publishing artifacts, network download,
 extraction, operational backup orchestration, activation execution, rollback
 preparation and execution, migration execution, service control, health probes,
 operator-approval authority, and Admin/browser callers remain unimplemented.
@@ -3020,6 +3021,34 @@ mutation, and activation authority remain absent. There is no CLI, Admin, browse
 HTTP, WebSocket, hosted-service, timer, AetherRemote, service-control, health-probe,
 rollback, radio, watchdog, command, lease, or TX caller.
 
+The seventeenth increment adds `ReleaseMigrationRunnerTrust`, one strict
+feature-owned configuration object that defaults to disabled with no trusted
+artifacts. `ReleaseMigrationRunnerTrustRegistry` accepts at most eight runner
+artifacts, sixteen exact signed migrations per runner, and sixty-four mappings in
+total. Every runner requires a unique bounded identity, protocol version `1`, an
+absolute canonical path, one canonical lowercase SHA-256 pin, and at least one
+unique signed migration identity with an increasing positive schema transition.
+
+Startup rejects unknown configuration, missing or empty enabled trust, duplicate
+runner identities, paths, digests, or migration identities, unsupported protocols,
+unsafe schema transitions, and missing, empty, oversized, linked, mutable, changed,
+or digest-mismatched files. Linux artifacts must be owner-readable and
+owner-executable with no write bit; their immediate trust directory must be regular,
+non-link, and not group/other writable. The registry reads each artifact only for
+startup validation, retains defensive immutable metadata, and exposes only counts
+and readiness booleans publicly.
+
+`VerifiedReleaseActivationMigrationRunnerSelector` accepts only the exact successful
+migration-plan report and retained internal plan. A signed no-op resolves without
+trust. A required migration must match exactly one trusted signed identity and
+from/to schema pair; selection retains an internal token bound to that exact plan
+and startup-validated runner metadata. The selector reopens no artifact, reads no
+backup content, invokes no runner, writes no staged copy, executes no migration,
+and produces no required-migration readiness evidence. No CLI, Admin, browser,
+HTTP, WebSocket, hosted-service, timer, AetherRemote, service-control, health-probe,
+rollback, current-pointer, activation, radio, watchdog, command, lease, or TX caller
+is added.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -3208,6 +3237,25 @@ publication requirements while runner selection, source reads, file or directory
 mutation, migration execution, readiness evidence, current-pointer mutation,
 operational callers, activation authority, and transmit remained absent. No live
 radio or RF operation was performed or required.
+
+Automated checkpoint on 2026-08-04 for locally pinned migration-runner trust and
+exact selection: the guarded production-TX deployment gate completed successfully;
+Release solution build completed with zero warnings and zero errors; the focused
+configuration-backup, migration-plan, runner-trust, and exact-selection suite passed
+47/47; web tests passed 1,374/1,374; independent-watchdog tests passed 57/57;
+TX-HIL isolation tests passed 48/48; AetherRemote tests passed 70/70; and automated
+browser tests passed 135/135. The complete checkpoint covered 1,549 .NET tests and
+1,684 tests overall. Deployed public and internal health confirmed strict trust
+configuration, bounded artifact/mapping validation, canonical path and link checks,
+permission and size checks, digest pinning, exact identity/schema/protocol/digest
+selection binding, disabled selection with zero trusted artifacts, and a registered
+selector while runner invocation, migration execution and evidence, current-pointer
+mutation, activation authority, operational callers, and migration-runner TX surface
+remained absent. The independent watchdog started empty and Disarmed; production TX
+remained unavailable because command transport and safety-supervisor prerequisites
+were absent. The separate interactive Browser Bridge acceptance could not run because
+the extension was disconnected and therefore remains pending. No live radio or RF
+operation was performed or required.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

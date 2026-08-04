@@ -805,6 +805,42 @@ browser, HTTP, WebSocket, hosted-service, timer, AetherRemote, migration executo
 service-control, health-probe, rollback, radio, watchdog, command, lease, TX,
 current-pointer, or activation caller.
 
+The seventeenth M8B increment adds disabled-by-default local migration-runner trust
+and exact selection without adding a runner invocation boundary. The complete
+feature-owned configuration remains empty by default:
+
+```json
+{
+  "ReleaseMigrationRunnerTrust": {
+    "SelectionEnabled": false,
+    "Runners": []
+  }
+}
+```
+
+`ReleaseMigrationRunnerTrustRegistry` accepts at most eight reviewed artifacts,
+sixteen signed migration mappings per artifact, and sixty-four mappings overall.
+Each artifact requires a unique bounded runner identity, protocol version `1`, an
+absolute canonical path, one canonical lowercase SHA-256 pin, and one or more
+unique signed migration identities with increasing positive schema transitions.
+Startup rejects unknown configuration, duplicate identities, paths, digests, or
+migration mappings; missing, empty, oversized, linked, mutable, or digest-mismatched
+artifacts; and linked or shared-writable containing directories. Linux runner files
+must be owner-readable, owner-executable, and have no write bit. Public diagnostics
+expose only readiness and counts, never runner paths, identities, digests, or signed
+migration identities.
+
+`VerifiedReleaseActivationMigrationRunnerSelector` accepts only the exact successful
+migration-plan report and its retained internal plan. Signed no-migration plans
+resolve without trust. Required plans select exactly one startup-validated runner
+whose signed migration identity and from/to schema pair match the exact plan. The
+result retains one internal selection token bound to that plan and trusted artifact
+metadata, but required-migration readiness remains false. Selection reopens no
+artifact, reads no backup content, invokes no process, writes nothing, executes no
+migration, and creates no evidence. There is no CLI, Admin, browser, HTTP,
+WebSocket, hosted-service, timer, AetherRemote, service-control, health-probe,
+rollback, current-pointer, activation, radio, watchdog, command, lease, or TX caller.
+
 Packaged bundle production, network download, archive extraction, operational
 backup orchestration, migration execution, service control, health probing,
 rollback preparation/execution, operator-approval authority, activation execution,
