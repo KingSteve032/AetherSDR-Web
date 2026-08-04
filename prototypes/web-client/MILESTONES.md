@@ -2702,11 +2702,12 @@ Status: active. The local-only signed-manifest verifier, normal-runtime public-k
 trust composition, immutable local offline-directory bundle reader, read-only
 offline bundle CLI `check`, read-only local release `status`, read-only offline
 install preflight, verified installation-plan composition, private verified staging,
-atomic inactive-release publication, activation-transaction plan composition, and
-activation-readiness evidence evaluation are implemented; publishing artifacts,
-network download, extraction, authoritative evidence collection, activation
-execution, rollback execution, migration execution, service control, health probes,
-and Admin/browser callers remain unimplemented.
+atomic inactive-release publication, activation-transaction plan composition,
+activation-readiness evidence evaluation, and authoritative runtime evidence
+collection are implemented; publishing artifacts, network download, extraction,
+TX-lease admission closure, backup, activation execution, rollback preparation and
+execution, migration execution, service control, health probes, operator-approval
+authority, and Admin/browser callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -2888,6 +2889,31 @@ mutation, radio/watchdog command, pointer switch, activation, backup, migration,
 service, health-probe, rollback, CLI/Admin/browser, hosted-service, timer,
 AetherRemote, command, lease, or TX caller.
 
+The twelfth increment adds `VerifiedReleaseActivationEvidenceCollector`, a
+callerless internal collector over the existing release-status reader, TX lease
+manager, radio-session registry, and independent-watchdog registry. It accepts only
+the exact successful activation plan, reads release status before and after the
+runtime snapshots, rejects any drift, and requires the whole collection to remain
+inside the evaluator's five-second freshness window. Session diagnostics are
+projected into the same bounded internal safety evidence used by the evaluator.
+
+A new internal TX-lease observation snapshot reads the manager under its existing
+lock without expiring leases or publishing change events. Expired stored leases
+therefore remain visible and fail closed. The collector defensively copies release
+inventory, lease, and session collections before retaining one internal token. Its
+public report exposes only counts and booleans and omits paths, inventory,
+radio/session/lease identities, occupants, watchdog process data, package names,
+and digests.
+
+The collector marks lease-admission closure, configuration backup, required
+migration execution, required service/host control, health verification, rollback,
+and operator approval unavailable because no authoritative sources exist yet. A
+signed no-migration or no-restart plan may satisfy only that corresponding no-op
+prerequisite. It exposes no public collection method and adds no filesystem write,
+pointer mutation, activation, lease mutation, radio/watchdog command, backup,
+migration, service control, health probe, rollback, CLI/Admin/browser, hosted-
+service, timer, AetherRemote, command, lease, or TX caller.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -2998,6 +3024,20 @@ mutation, activation, lease/radio/watchdog mutation, backup/migration/service/
 health/rollback execution, CLI/Admin/browser, hosted-service, timer, AetherRemote,
 command, lease, and TX callers remained absent. No live radio or RF operation was
 performed or required.
+
+Automated checkpoint on 2026-08-03 for authoritative activation-evidence
+collection: the deployment script passed shell syntax validation; Release solution
+build completed with zero warnings and zero errors; the focused evidence-collection
+suite passed 38/38; web tests passed 1,319/1,319; independent-watchdog tests passed
+57/57; TX-HIL isolation tests passed 48/48; AetherRemote tests passed 70/70; and
+browser tests passed 135/135. The complete checkpoint covered 1,494 .NET tests and
+1,629 tests overall. A live development health probe confirmed double-read release
+status, observation-only lease snapshots, session/radio occupancy projection,
+watchdog aggregation, bounded collection, and fail-closed missing prerequisites
+while file write, `current` mutation, activation, lease/radio/watchdog mutation,
+backup/migration/service/health/rollback execution, CLI/Admin/browser, hosted-
+service, timer, AetherRemote, command, lease, and TX callers remained absent. No
+live radio or RF operation was performed or required.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

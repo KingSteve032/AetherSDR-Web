@@ -692,10 +692,36 @@ method, filesystem I/O, lease mutation, radio command, watchdog mutation, pointe
 switch, activation, backup, migration, service, health-probe, rollback, CLI/Admin/
 browser, hosted-service, timer, AetherRemote, command, lease, or TX caller.
 
-Packaged bundle production, network download, archive extraction, authoritative
-evidence collection, activation execution, rollback execution, migration
-execution, service control, health probing, Admin/browser workflows, and all
-operational update callers remain later M8B work.
+The twelfth M8B increment adds `VerifiedReleaseActivationEvidenceCollector`, a
+callerless internal observation boundary over the existing authoritative release
+status reader, TX lease manager, radio-session registry, and independent-watchdog
+registry. It double-reads release status around the runtime snapshots, rejects any
+status drift, and requires the entire collection to fit within the readiness
+evaluator's five-second freshness window. Session diagnostics are converted into
+the same bounded internal safety evidence used by the evaluator.
+
+Lease observation uses a new internal lock-consistent snapshot that does not expire
+leases or publish change events. Stored expired leases therefore remain visible and
+continue to fail closed instead of being removed by observation. The collector
+also defensively copies release inventory, lease, and session lists before retaining
+one internal evidence token. Its public report exposes only counts and booleans—no
+paths, release inventory, radio/session/lease identities, occupants, process data,
+package names, or digests.
+
+Only evidence with an existing authoritative source is collected. TX-lease
+admission closure, configuration backup, required migration execution, required
+service/host control, post-switch health verification, rollback readiness, and
+operator approval remain false. A signed no-migration or no-restart plan may mark
+only that corresponding no-op prerequisite satisfied. The collector exposes no
+public collection method and has no filesystem write, pointer mutation, activation,
+lease mutation, radio/watchdog command, backup, migration, service, health-probe,
+rollback, CLI/Admin/browser, hosted-service, timer, AetherRemote, command, lease,
+or TX caller.
+
+Packaged bundle production, network download, archive extraction, TX-lease
+admission closure, backup, migration execution, service control, health probing,
+rollback preparation/execution, operator-approval authority, activation execution,
+Admin/browser workflows, and all operational update callers remain later M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled
@@ -963,6 +989,42 @@ overrides are enforced directly by the guarded script:
 `releaseActivationReadinessCommandCallerRegistered=false`,
 `releaseActivationReadinessLeaseCallerRegistered=false`,
 `releaseActivationReadinessTxCallerRegistered=false`,
+`releaseActivationEvidenceCollectorRegistered=true`,
+`releaseActivationEvidencePlanInputRegistered=true`,
+`releaseActivationEvidenceStatusDoubleReadRegistered=true`,
+`releaseActivationEvidenceObservationOnlyLeaseSnapshotRegistered=true`,
+`releaseActivationEvidenceSessionDiagnosticsSnapshotRegistered=true`,
+`releaseActivationEvidenceRadioOccupancySnapshotRegistered=true`,
+`releaseActivationEvidenceWatchdogAggregateSnapshotRegistered=true`,
+`releaseActivationEvidenceBoundedWindowRegistered=true`,
+`releaseActivationEvidenceMissingPrerequisitesFailClosedRegistered=true`,
+`releaseActivationEvidenceTxLeaseAdmissionClosureEvidenceRegistered=false`,
+`releaseActivationEvidenceBackupEvidenceRegistered=false`,
+`releaseActivationEvidenceMigrationEvidenceRegistered=false`,
+`releaseActivationEvidenceServiceEvidenceRegistered=false`,
+`releaseActivationEvidenceHealthEvidenceRegistered=false`,
+`releaseActivationEvidenceRollbackEvidenceRegistered=false`,
+`releaseActivationEvidenceOperatorApprovalEvidenceRegistered=false`,
+`releaseActivationEvidenceFileWriteRegistered=false`,
+`releaseActivationEvidenceCurrentPointerMutationRegistered=false`,
+`releaseActivationEvidenceActivationExecutionRegistered=false`,
+`releaseActivationEvidenceTxLeaseMutationRegistered=false`,
+`releaseActivationEvidenceRadioCommandRegistered=false`,
+`releaseActivationEvidenceWatchdogMutationRegistered=false`,
+`releaseActivationEvidenceBackupExecutionRegistered=false`,
+`releaseActivationEvidenceMigrationExecutionRegistered=false`,
+`releaseActivationEvidenceServiceControlRegistered=false`,
+`releaseActivationEvidenceHealthProbeCallerRegistered=false`,
+`releaseActivationEvidenceRollbackExecutionRegistered=false`,
+`releaseActivationEvidenceCliCallerRegistered=false`,
+`releaseActivationEvidenceAdminCallerRegistered=false`,
+`releaseActivationEvidenceBrowserCallerRegistered=false`,
+`releaseActivationEvidenceHostedServiceCallerRegistered=false`,
+`releaseActivationEvidenceTimerCallerRegistered=false`,
+`releaseActivationEvidenceAetherRemoteCallerRegistered=false`,
+`releaseActivationEvidenceCommandCallerRegistered=false`,
+`releaseActivationEvidenceLeaseCallerRegistered=false`,
+`releaseActivationEvidenceTxCallerRegistered=false`,
 `txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,
 `txBrowserIntentProtocolVersion=2`,
 `txBrowserIntentValidationRegistered=true`,
