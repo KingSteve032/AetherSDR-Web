@@ -37,7 +37,8 @@ public enum VerifiedReleaseActivationServiceControlExecutionFailureCode
     UnitControlFailed = 13,
     ObservationDrift = 14,
     PhaseAlreadyCompleted = 15,
-    ReconciliationRequired = 16
+    ReconciliationRequired = 16,
+    CurrentPointerSwitchUnavailable = 17
 }
 
 public sealed record VerifiedReleaseActivationServiceControlExecutionReport(
@@ -191,6 +192,7 @@ public sealed record VerifiedReleaseActivationServiceControlExecutionDiagnostics
     bool ExactServiceControlPlanInputRegistered,
     bool ExactServiceControlPlanBindingRegistered,
     bool ExactActivationPlanBindingRegistered,
+    bool ExactCurrentPointerSwitchEvidenceInputRegistered,
     bool ReleaseStatusDoubleReadRegistered,
     bool SetupStateDoubleReadRegistered,
     bool TopologyBindingRegistered,
@@ -653,6 +655,7 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
             ExactServiceControlPlanInputRegistered: true,
             ExactServiceControlPlanBindingRegistered: true,
             ExactActivationPlanBindingRegistered: true,
+            ExactCurrentPointerSwitchEvidenceInputRegistered: true,
             ReleaseStatusDoubleReadRegistered: true,
             SetupStateDoubleReadRegistered: true,
             TopologyBindingRegistered: true,
@@ -774,16 +777,20 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
         ExecutePhaseAsync(
             VerifiedReleaseActivationServiceControlExecutionPhase.PreSwitchStop,
             planReport,
+            pointerSwitchReport: null,
             cancellationToken);
 
     [SupportedOSPlatform("linux")]
     internal Task<VerifiedReleaseActivationServiceControlExecutionReport>
         ExecutePostSwitchStartAsync(
             VerifiedReleaseActivationServiceControlPlanReport planReport,
+            VerifiedReleaseActivationCurrentPointerSwitchReport
+                pointerSwitchReport,
             CancellationToken cancellationToken = default) =>
         ExecutePhaseAsync(
             VerifiedReleaseActivationServiceControlExecutionPhase.PostSwitchStart,
             planReport,
+            pointerSwitchReport,
             cancellationToken);
 
     internal VerifiedReleaseActivationServiceControlObservation Observe(
@@ -803,6 +810,21 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
         return ObserveCore(
             plan.ActivationPlan,
             serviceControlPlan => ReferenceEquals(serviceControlPlan, plan));
+    }
+
+    internal VerifiedReleaseActivationServiceControlPreSwitchEvidence?
+        GetPreSwitchEvidence(
+            VerifiedReleaseActivationServiceControlPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        lock (m_stateGate)
+        {
+            return m_preSwitch is not null &&
+                ReferenceEquals(m_preSwitch.Plan, plan) &&
+                m_reconciliationPlan is null
+                ? m_preSwitch
+                : null;
+        }
     }
 
     private VerifiedReleaseActivationServiceControlObservation ObserveCore(
@@ -865,6 +887,8 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
         ExecutePhaseAsync(
             VerifiedReleaseActivationServiceControlExecutionPhase phase,
             VerifiedReleaseActivationServiceControlPlanReport planReport,
+            VerifiedReleaseActivationCurrentPointerSwitchReport?
+                pointerSwitchReport,
             CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(planReport);
@@ -962,6 +986,24 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
             if (phaseFailure is not null)
             {
                 return phaseFailure;
+            }
+            if (phase ==
+                    VerifiedReleaseActivationServiceControlExecutionPhase
+                        .PostSwitchStart &&
+                (pointerSwitchReport is null ||
+                 !VerifiedReleaseActivationCurrentPointerSwitchService
+                    .ValidateEvidenceReport(pointerSwitchReport, plan)))
+            {
+                return VerifiedReleaseActivationServiceControlExecutionReport.Failure(
+                    VerifiedReleaseActivationServiceControlExecutionFailureCode
+                        .CurrentPointerSwitchUnavailable,
+                    "The exact current-pointer switch evidence is required before the post-switch service-start phase.",
+                    m_settings,
+                    phase,
+                    planReport,
+                    tally,
+                    exactPlanBound: true,
+                    preSwitchComplete: true);
             }
 
             ReleaseStatusReadResult beforeStatus;

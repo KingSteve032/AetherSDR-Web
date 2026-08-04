@@ -2710,12 +2710,13 @@ migration planning, disabled-by-default locally pinned migration-runner trust an
 exact selection, callerless probe-only runner invocation, exact staged-copy migration
 execution, exact-plan migration evidence, exact service-control transaction
 planning, disabled-by-default exact local two-phase service-control execution and
-evidence, exact post-switch health-verification planning, disabled-by-default exact
-health execution, and exact-plan health evidence are implemented; publishing
-artifacts, network download, extraction, operational backup orchestration, pointer-
-switch activation execution, rollback preparation and execution, host-restart and
-remote-node service-control transports, operator-approval authority, and Admin/browser
-callers remain unimplemented.
+evidence, disabled-by-default exact atomic current-pointer switching and evidence,
+exact post-switch health-verification planning, disabled-by-default exact health
+execution, and exact-plan health evidence are implemented; publishing artifacts,
+network download, extraction, operational backup orchestration, transaction
+orchestration, rollback preparation and execution, host-restart and remote-node
+service-control transports, operator-approval authority, and Admin/browser callers
+remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -3216,6 +3217,34 @@ disabled diagnostics and zeroed state only and adds no CLI, Admin, browser, HTTP
 WebSocket, hosted-service, timer, AetherRemote command, health-probe orchestration,
 rollback, pointer, activation, radio, watchdog, command, lease, keying, or TX caller.
 
+The twenty-fourth increment adds
+`VerifiedReleaseActivationCurrentPointerSwitchService`, one strict disabled-by-
+default and callerless pointer boundary. It accepts only the exact service-control
+plan and its retained pre-switch token, requires the installed release active, and
+double-reads completed setup, release inventory, and the exact installed `current`
+link before mutation. Host-restart plans remain ineligible.
+
+The complete target tree is traversed with bounded counts and must contain exactly the
+signed manifest plus four planned packages. All entries must be link-free,
+non-writable regular files or real directories; unexpected, missing, mutable, empty,
+unsafe, linked, or manifest/package length or SHA-256-drifted content fails closed. One unpredictable
+same-directory temporary symlink carries only the exact planned relative target, and
+native Linux `rename(2)` atomically replaces `current`.
+
+The consumed temporary entry, exact target link, immutable tree, target-active status,
+and unchanged setup are revalidated after the rename. Unknown outcomes, cancellation
+after the atomic attempt, post-switch drift, or failed temporary cleanup retain
+reconciliation-required state and block retry. Success retains exact in-memory switch
+evidence bound by reference to the activation, service-control, and stop-phase tokens.
+
+Post-switch service starts now require the exact successful switch report, and health
+execution requires the exact retained switch observation before any process, HTTP
+request, or broker snapshot. Production registers disabled diagnostics and zeroed
+state only. No operational/CLI/Admin/browser/HTTP/WebSocket/hosted-service/timer/
+AetherRemote caller, service start, host restart, remote service control, health
+probe, rollback, activation authority, radio/watchdog/command/lease/keying/TX action,
+or live RF operation is added.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -3639,6 +3668,50 @@ were disabled; PC MIC remained off; FILL toggled and was restored; and console e
 and warnings were both zero. The ODU-6400 tab was closed afterward to release the
 remote receive session. No TX lease, keying action, transmit-control command, or RF
 operation was performed.
+
+Automated checkpoint on 2026-08-04 for exact atomic current-pointer switching and
+evidence: independent post-merge `main` CI run 30937773249 passed; the deployment
+script passed shell syntax validation; changed C# files passed format verification;
+Release solution build completed with zero warnings and zero errors; the focused
+activation-plan, service-control-plan, service-control-execution, pointer-switch,
+health-plan, health-execution, readiness, and evidence suite passed 222/222; web tests
+passed 1,489/1,489; independent-watchdog tests passed 57/57; TX-HIL isolation tests
+passed 48/48; AetherRemote tests passed 70/70; and browser tests passed 135/135. The
+complete checkpoint covered 1,664 .NET tests and 1,799 tests overall.
+
+Focused pointer tests proved strict unknown-configuration rejection, disabled empty
+defaults, exact pre-switch reference binding, equivalent-plan rejection, complete
+five-file immutable-tree validation, unexpected-entry and symbolic-link rejection,
+mutable-target rejection, same-length manifest and package digest-drift rejection,
+exact installed-link binding, setup drift cleanup, failed cleanup reconciliation,
+ambiguous rename reconciliation with no retry, post-switch status drift,
+cancellation-after-atomic-attempt reconciliation, one-shot evidence, public
+redaction, and a real Linux native `rename(2)` replacement of an existing directory
+symlink. Post-switch service starts require the exact successful switch
+report, and health execution requires the exact retained switch observation before
+any process, HTTP request, or broker read.
+
+The guarded production-TX deployment gate completed successfully with active release
+`20260804-185857-flexweb-validation`; release
+`20260804-184310-flexweb-validation` was retained for rollback. Deployed health
+confirmed the pointer boundary registered with execution disabled and unavailable,
+all exact-plan/status/setup/tree/link/atomic/evidence capabilities registered, zero
+switch/evidence/reconciliation state, and no operational/CLI/Admin/browser/HTTP/
+WebSocket/hosted-service/timer/AetherRemote-command/service-start/host-restart/
+remote-control/health-probe/rollback/activation/radio/watchdog/command/lease/TX
+caller. The service-control and health boundaries advertised the exact pointer-token
+dependency. The independent watchdog started empty and Disarmed; no live RF operation
+occurred.
+
+Authenticated Browser Bridge acceptance then passed against the exact final release
+using `ODU-6400 · FLEX-6400 · Remote`. The selected identity was exact; the footer
+reported `FLEX-6400`, `RX-ONLY`, and `RADIO: LIVE`; and the TX panel remained locked
+and validation-only with explicit no-command/no-microphone-transport copy. MOX, TUNE,
+and CWX were hidden and disabled; intent, validation, SPLIT, DVK, FDX, and both tuner
+TUNE controls were disabled; PC MIC remained off; FILL toggled and was restored; and
+console errors and warnings were both zero. The tab was closed afterward to release
+the remote receive session. No TX lease, keying action, transmit-control command, or
+RF operation was performed.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

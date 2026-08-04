@@ -996,11 +996,41 @@ Admin, browser, HTTP, WebSocket, hosted-service, timer, AetherRemote command, or
 operational caller. No `current` mutation, host restart, rollback, activation
 authority, radio, watchdog, command, lease, keying, or TX action is added.
 
+The twenty-fourth M8B increment adds
+`VerifiedReleaseActivationCurrentPointerSwitchService`, a separate strict
+configuration that remains disabled by default. Its internal one-shot operation
+accepts only the exact service-control plan and the retained reference-bound
+pre-switch stop token. It requires the signed installed release to remain active,
+double-reads completed setup and release status, and revalidates the complete
+published target tree before changing any entry.
+
+The target must contain exactly the signed manifest and four planned package files
+under a bounded, link-free tree. Every directory and file must remain non-writable;
+empty nested directories, reparse points, symbolic links, unexpected files, missing
+files, path drift, and manifest/package length or SHA-256 drift fail closed. The existing `current`
+entry must be the exact canonical installed-release symlink. One unpredictable
+same-directory temporary symlink is created with the exact target link value, then
+Linux `rename(2)` replaces `current` atomically. The consumed temporary entry, exact
+target link, target-active release status, immutable tree, and unchanged setup are
+revalidated afterward.
+
+Any unknown rename outcome, cancellation after the atomic attempt, post-switch drift,
+or failed temporary-link cleanup retains reconciliation-required state and prevents
+automatic retry. Success retains one in-memory evidence token bound by reference to
+the exact service-control and activation plans. Post-switch service starts now require
+the exact successful switch report, and health execution requires the exact retained
+switch observation before any process, HTTP request, or broker read. Equivalent plan
+objects cannot reuse either token.
+
+Production registers diagnostics and zeroed state only; no pointer execution caller
+is registered. The pointer boundary never starts a service, restarts a host, controls
+a remote node, probes health, rolls back, authorizes activation, operates a radio,
+changes a lease or watchdog, sends a command, keys, or transmits.
+
 Packaged bundle production, network download, archive extraction, operational
-backup orchestration, pointer-switch activation execution, rollback preparation and
-execution, host-restart/remote service-control transports, operator-approval
-authority, Admin/browser workflows, and all operational update callers remain later
-M8B work.
+backup orchestration, transaction orchestration, rollback preparation and execution,
+host-restart/remote service-control transports, operator-approval authority,
+Admin/browser workflows, and all operational update callers remain later M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled

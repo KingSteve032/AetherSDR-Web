@@ -138,28 +138,39 @@ public sealed record VerifiedReleaseActivationPlanDiagnostics(
 
 internal sealed class VerifiedReleaseActivationPackagePlan
 {
+    private readonly byte[] m_sha256;
+
     internal VerifiedReleaseActivationPackagePlan(
         ReleasePackageRole role,
         string packageIdentity,
         string publishedPath,
-        long length)
+        long length,
+        ReadOnlySpan<byte> sha256)
     {
+        if (sha256.Length != 32)
+        {
+            throw new InvalidOperationException(
+                "Activation package SHA-256 metadata is invalid.");
+        }
         Role = role;
         PackageIdentity = packageIdentity;
         PublishedPath = publishedPath;
         Length = length;
+        m_sha256 = sha256.ToArray();
     }
 
     internal ReleasePackageRole Role { get; }
     internal string PackageIdentity { get; }
     internal string PublishedPath { get; }
     internal long Length { get; }
+    internal ReadOnlySpan<byte> Sha256 => m_sha256;
 }
 
 internal sealed class VerifiedReleaseActivationPlan
 {
     private readonly ReadOnlyCollection<VerifiedReleaseActivationPackagePlan>
         m_packages;
+    private readonly byte[] m_manifestSha256;
 
     internal VerifiedReleaseActivationPlan(
         VerifiedReleaseInstallationPlan source,
@@ -181,6 +192,8 @@ internal sealed class VerifiedReleaseActivationPlan
         UpdateChannel = source.UpdateChannel;
         PinnedReleaseIdentity = source.PinnedReleaseIdentity;
         InstallTransmitSupport = source.InstallTransmitSupport;
+        ManifestLength = source.ManifestLength;
+        m_manifestSha256 = source.ManifestSha256.ToArray();
         ReleaseRootPath = source.ReleaseRootPath;
         DeploymentRootPath = source.DeploymentRootPath;
         InstalledReleasePath = installedReleasePath;
@@ -215,6 +228,8 @@ internal sealed class VerifiedReleaseActivationPlan
     internal InstallationUpdateChannel UpdateChannel { get; }
     internal string PinnedReleaseIdentity { get; }
     internal bool InstallTransmitSupport { get; }
+    internal long ManifestLength { get; }
+    internal ReadOnlySpan<byte> ManifestSha256 => m_manifestSha256;
     internal string ReleaseRootPath { get; }
     internal string DeploymentRootPath { get; }
     internal string InstalledReleasePath { get; }
@@ -605,7 +620,8 @@ public sealed class VerifiedReleaseActivationPlanComposer
                     package.Role,
                     package.PackageIdentity,
                     expectedPath,
-                    package.Length));
+                    package.Length,
+                    package.Sha256));
         }
 
         if (!roles.SetEquals(RequiredRoles))
