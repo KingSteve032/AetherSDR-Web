@@ -823,6 +823,41 @@ or activation orchestrator caller. Current-pointer mutation, staged-copy creatio
 migration execution, evidence, service control, rollback, radio, watchdog, command,
 lease, and TX authority remain absent.
 
+The nineteenth M8B increment introduces the separately bounded staged-copy mutation
+and evidence service. `VerifiedReleaseActivationMigrationExecutionService` accepts
+only the exact successful probe report and its retained internal selection token.
+Required migration execution is Linux-only, single-use per service lifetime, and
+starts with release-status agreement plus a complete digest-backed revalidation of
+the immutable configuration backup. Every manifest directory and file is bounded,
+canonical, non-link, permission-checked, length-checked, and hash-checked before it
+is copied into a new mode-0700 staging identity.
+
+The immutable backup is read-only input. The selected runner is revalidated again
+immediately before launch and receives only the private staging root and its copied
+configuration, state, and secret children. No live configuration path, immutable
+backup path, deployment root, release pointer, or credential value crosses the
+process boundary. The direct no-shell protocol requires the runner to affirm staged-
+copy mutation while denying backup-source receipt, `current` mutation, activation,
+service control, radio commands, and TX commands. Stderr, stdout, and runtime are
+bounded, and failure kills the process tree and removes private staging when the
+publication outcome is still known.
+
+After a strict success response the host independently traverses the staged tree,
+rejects links and host-manifest collisions, hashes every bounded file, writes and
+durably flushes one host-owned manifest, freezes the entire tree, and validates it
+before and after an atomic directory rename. Any ambiguous rename or post-publish
+validation drift freezes the remaining tree and marks reconciliation required.
+Existing staged or published identities are never overwritten.
+
+A successful no-op or required execution retains one internal evidence object bound
+by reference to the exact activation plan. The activation evidence collector can
+mark migration readiness only from that exact observation; equivalent public fields
+cannot manufacture readiness. Health remains path-, identity-, digest-, and content-
+redacted. Production registers diagnostics and zeroed state only, with no execution
+caller, route, CLI, Admin/browser entry, hosted service, timer, AetherRemote,
+`current` mutation, activation authority, service control, health probe, rollback,
+radio, watchdog, command, lease, or TX surface.
+
 ## Trust boundaries
 
 ### Browser

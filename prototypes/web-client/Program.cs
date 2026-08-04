@@ -520,6 +520,8 @@ builder.Services.AddSingleton<ReleaseMigrationRunnerTrustRegistry>();
 builder.Services.AddSingleton<VerifiedReleaseActivationMigrationRunnerSelector>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationMigrationRunnerInvocationService>();
+builder.Services.AddSingleton<
+    VerifiedReleaseActivationMigrationExecutionService>();
 builder.Services.AddSingleton<VerifiedReleaseActivationReadinessEvaluator>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationLeaseQuiescenceBoundary>();
@@ -653,6 +655,10 @@ VerifiedReleaseActivationMigrationRunnerInvocationService
     releaseActivationMigrationRunnerInvocationService =
         app.Services.GetRequiredService<
             VerifiedReleaseActivationMigrationRunnerInvocationService>();
+VerifiedReleaseActivationMigrationExecutionService
+    releaseActivationMigrationExecutionService =
+        app.Services.GetRequiredService<
+            VerifiedReleaseActivationMigrationExecutionService>();
 VerifiedReleaseActivationReadinessEvaluator releaseActivationReadinessEvaluator =
     app.Services.GetRequiredService<
         VerifiedReleaseActivationReadinessEvaluator>();
@@ -753,6 +759,12 @@ app.MapGet(
             VerifiedReleaseActivationMigrationRunnerInvocationDiagnostics
                 releaseActivationMigrationRunnerInvocation =
                     releaseActivationMigrationRunnerInvocationService.Snapshot;
+            VerifiedReleaseActivationMigrationExecutionDiagnostics
+                releaseActivationMigrationExecution =
+                    releaseActivationMigrationExecutionService.Snapshot;
+            VerifiedReleaseActivationMigrationExecutionStateDiagnostics
+                releaseActivationMigrationExecutionState =
+                    releaseActivationMigrationExecutionService.State;
             VerifiedReleaseActivationReadinessDiagnostics
                 releaseActivationReadiness =
                     releaseActivationReadinessEvaluator.Snapshot;
@@ -1688,6 +1700,140 @@ app.MapGet(
                     releaseActivationMigrationRunnerInvocation.LeaseCallerRegistered,
                 releaseActivationMigrationRunnerInvocationTxCallerRegistered =
                     releaseActivationMigrationRunnerInvocation.TxCallerRegistered,
+                releaseActivationMigrationExecutorRegistered =
+                    releaseActivationMigrationExecution.Registered,
+                releaseActivationMigrationExecutionInvocationInputRegistered =
+                    releaseActivationMigrationExecution
+                        .RunnerInvocationInputRegistered,
+                releaseActivationMigrationExecutionExactInvocationBindingRegistered =
+                    releaseActivationMigrationExecution
+                        .ExactRunnerInvocationBindingRegistered,
+                releaseActivationMigrationExecutionNoOpRegistered =
+                    releaseActivationMigrationExecution.NoOpResolutionRegistered,
+                releaseActivationMigrationExecutionStatusDoubleReadRegistered =
+                    releaseActivationMigrationExecution
+                        .ReleaseStatusDoubleReadRegistered,
+                releaseActivationMigrationExecutionBackupManifestValidationRegistered =
+                    releaseActivationMigrationExecution
+                        .ImmutableBackupManifestValidationRegistered,
+                releaseActivationMigrationExecutionBoundedTraversalRegistered =
+                    releaseActivationMigrationExecution
+                        .BoundedSourceTraversalRegistered,
+                releaseActivationMigrationExecutionLinkRejectionRegistered =
+                    releaseActivationMigrationExecution
+                        .SymbolicLinkRejectionRegistered,
+                releaseActivationMigrationExecutionPrivateStagingRegistered =
+                    releaseActivationMigrationExecution.PrivateStagingRegistered,
+                releaseActivationMigrationExecutionStagedCopyRegistered =
+                    releaseActivationMigrationExecution.StagedCopyRegistered,
+                releaseActivationMigrationExecutionRunnerRevalidationRegistered =
+                    releaseActivationMigrationExecution
+                        .ImmediateRunnerArtifactRevalidationRegistered,
+                releaseActivationMigrationExecutionDirectRunnerRegistered =
+                    releaseActivationMigrationExecution
+                        .DirectRunnerExecutionRegistered,
+                releaseActivationMigrationExecutionShellRegistered =
+                    releaseActivationMigrationExecution.ShellInvocationRegistered,
+                releaseActivationMigrationExecutionClearedEnvironmentRegistered =
+                    releaseActivationMigrationExecution
+                        .ClearedEnvironmentRegistered,
+                releaseActivationMigrationExecutionBoundedJsonRegistered =
+                    releaseActivationMigrationExecution
+                        .BoundedJsonProtocolRegistered,
+                releaseActivationMigrationExecutionTimeoutRegistered =
+                    releaseActivationMigrationExecution.HardTimeoutRegistered,
+                releaseActivationMigrationExecutionProcessTreeTerminationRegistered =
+                    releaseActivationMigrationExecution
+                        .ProcessTreeTerminationRegistered,
+                releaseActivationMigrationExecutionManifestWriteRegistered =
+                    releaseActivationMigrationExecution
+                        .MigrationManifestWriteRegistered,
+                releaseActivationMigrationExecutionDurableFlushRegistered =
+                    releaseActivationMigrationExecution.DurableFlushRegistered,
+                releaseActivationMigrationExecutionImmutableFreezeRegistered =
+                    releaseActivationMigrationExecution.ImmutableFreezeRegistered,
+                releaseActivationMigrationExecutionAtomicPublishRegistered =
+                    releaseActivationMigrationExecution
+                        .AtomicDirectoryPublishRegistered,
+                releaseActivationMigrationExecutionTreeValidationRegistered =
+                    releaseActivationMigrationExecution
+                        .PublishedTreeValidationRegistered,
+                releaseActivationMigrationExecutionCleanupRegistered =
+                    releaseActivationMigrationExecution.CleanupRegistered,
+                releaseActivationMigrationExecutionEvidenceRegistered =
+                    releaseActivationMigrationExecution
+                        .ExactMigrationEvidenceRegistered,
+                releaseActivationMigrationExecutionOverwriteRegistered =
+                    releaseActivationMigrationExecution
+                        .ExistingMigrationOverwriteRegistered,
+                releaseActivationMigrationExecutionCurrentPointerMutationRegistered =
+                    releaseActivationMigrationExecution
+                        .CurrentPointerMutationRegistered,
+                releaseActivationMigrationExecutionActivationAuthorityRegistered =
+                    releaseActivationMigrationExecution
+                        .ActivationAuthorityRegistered,
+                releaseActivationMigrationExecutionOperationalCallerRegistered =
+                    releaseActivationMigrationExecution
+                        .OperationalCallerRegistered,
+                releaseActivationMigrationExecutionCliCallerRegistered =
+                    releaseActivationMigrationExecution.CliCallerRegistered,
+                releaseActivationMigrationExecutionAdminCallerRegistered =
+                    releaseActivationMigrationExecution.AdminCallerRegistered,
+                releaseActivationMigrationExecutionBrowserCallerRegistered =
+                    releaseActivationMigrationExecution.BrowserCallerRegistered,
+                releaseActivationMigrationExecutionHttpCallerRegistered =
+                    releaseActivationMigrationExecution.HttpCallerRegistered,
+                releaseActivationMigrationExecutionWebSocketCallerRegistered =
+                    releaseActivationMigrationExecution.WebSocketCallerRegistered,
+                releaseActivationMigrationExecutionHostedServiceCallerRegistered =
+                    releaseActivationMigrationExecution.HostedServiceCallerRegistered,
+                releaseActivationMigrationExecutionTimerCallerRegistered =
+                    releaseActivationMigrationExecution.TimerCallerRegistered,
+                releaseActivationMigrationExecutionAetherRemoteCallerRegistered =
+                    releaseActivationMigrationExecution.AetherRemoteCallerRegistered,
+                releaseActivationMigrationExecutionServiceControlCallerRegistered =
+                    releaseActivationMigrationExecution
+                        .ServiceControlCallerRegistered,
+                releaseActivationMigrationExecutionHealthProbeCallerRegistered =
+                    releaseActivationMigrationExecution
+                        .HealthProbeCallerRegistered,
+                releaseActivationMigrationExecutionRollbackCallerRegistered =
+                    releaseActivationMigrationExecution.RollbackCallerRegistered,
+                releaseActivationMigrationExecutionRadioCallerRegistered =
+                    releaseActivationMigrationExecution.RadioCallerRegistered,
+                releaseActivationMigrationExecutionWatchdogCallerRegistered =
+                    releaseActivationMigrationExecution.WatchdogCallerRegistered,
+                releaseActivationMigrationExecutionCommandCallerRegistered =
+                    releaseActivationMigrationExecution.CommandCallerRegistered,
+                releaseActivationMigrationExecutionLeaseCallerRegistered =
+                    releaseActivationMigrationExecution.LeaseCallerRegistered,
+                releaseActivationMigrationExecutionTxCallerRegistered =
+                    releaseActivationMigrationExecution.TxCallerRegistered,
+                releaseActivationMigrationReady =
+                    releaseActivationMigrationExecutionState.MigrationReady,
+                releaseActivationMigrationExactPlanActive =
+                    releaseActivationMigrationExecutionState
+                        .ExactActivationPlanBound,
+                releaseActivationMigrationRequired =
+                    releaseActivationMigrationExecutionState.MigrationRequired,
+                releaseActivationMigrationDirectoryCount =
+                    releaseActivationMigrationExecutionState.DirectoryCount,
+                releaseActivationMigrationFileCount =
+                    releaseActivationMigrationExecutionState.FileCount,
+                releaseActivationMigrationBytes =
+                    releaseActivationMigrationExecutionState.MigrationBytes,
+                releaseActivationMigrationManifestPresent =
+                    releaseActivationMigrationExecutionState.ManifestPresent,
+                releaseActivationMigrationTreeImmutable =
+                    releaseActivationMigrationExecutionState
+                        .PublishedTreeImmutable,
+                releaseActivationMigrationReconciliationRequired =
+                    releaseActivationMigrationExecutionState
+                        .ReconciliationRequired,
+                releaseActivationMigrationCurrentPointerChanged =
+                    releaseActivationMigrationExecutionState.CurrentPointerChanged,
+                releaseActivationMigrationActivationAuthorized =
+                    releaseActivationMigrationExecutionState.ActivationAuthorized,
                 releaseActivationLeaseQuiescenceRegistered =
                     releaseActivationLeaseQuiescenceDiagnostics.Registered,
                 releaseActivationLeaseQuiescencePlanInputRegistered =
