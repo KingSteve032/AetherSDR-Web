@@ -785,6 +785,26 @@ The executor never mutates `current`, activates, migrates, controls services, pr
 health, rolls back, or touches AetherRemote, radio, watchdog, command, lease, or TX
 state.
 
+The sixteenth M8B increment adds
+`VerifiedReleaseActivationMigrationPlanComposer`, a pure callerless boundary that
+binds the exact successful activation plan to its exact immutable configuration
+backup. It revalidates both public summaries and retained internal objects before
+resolving the signed migration declaration. A signed `None` declaration becomes an
+exact no-op. A signed `Required` declaration must retain the exact increasing
+configuration-schema transition, bounded migration identity, and mandatory gateway
+restart.
+
+Required migration planning maps only the three immutable backup children into a
+separate private staged-copy tree and distinct final migration identity beneath the
+same activation-backup revision. The source backup, staging tree, migration result,
+and deployment root cannot overlap. A future manifest and non-overwriting atomic
+publication are required, but no migration runner is selected and no source read,
+copy, write, permission change, execution, or readiness evidence occurs. Public
+reports remain path-, identity-, and digest-redacted. There is no CLI, Admin,
+browser, HTTP, WebSocket, hosted-service, timer, AetherRemote, migration executor,
+service-control, health-probe, rollback, radio, watchdog, command, lease, TX,
+current-pointer, or activation caller.
+
 Packaged bundle production, network download, archive extraction, operational
 backup orchestration, migration execution, service control, health probing,
 rollback preparation/execution, operator-approval authority, activation execution,

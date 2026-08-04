@@ -2704,11 +2704,12 @@ offline bundle CLI `check`, read-only local release `status`, read-only offline
 install preflight, verified installation-plan composition, private verified staging,
 atomic inactive-release publication, activation-transaction plan composition,
 activation-readiness evidence evaluation, authoritative runtime evidence
-collection, and exact-plan TX-lease admission closure/drain composition are
-implemented; publishing artifacts, network download, extraction, backup,
-activation execution, rollback preparation and execution, migration execution,
-service control, health probes, operator-approval authority, and Admin/browser
-callers remain unimplemented.
+collection, exact-plan TX-lease admission closure/drain composition, exact-plan
+configuration-backup planning and atomic execution, and exact-plan staged-copy
+migration planning are implemented; publishing artifacts, network download,
+extraction, operational backup orchestration, activation execution, rollback
+preparation and execution, migration execution, service control, health probes,
+operator-approval authority, and Admin/browser callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -2993,6 +2994,32 @@ HTTP, WebSocket, hosted-service, timer, AetherRemote, migration, service, health
 rollback, current-pointer, activation, radio, watchdog, command, lease, or TX caller
 is added.
 
+The sixteenth increment adds
+`VerifiedReleaseActivationMigrationPlanComposer`, a callerless pure boundary that
+requires the exact activation-plan object and exact immutable configuration-backup
+artifact. It revalidates both public summaries, the exact retained object binding,
+backup counts and manifest digest, non-overwriting publication evidence, and the
+canonical setup-revision backup layout. Equivalent-but-distinct plans cannot reuse
+one another's backup.
+
+A signed no-migration declaration resolves as an exact no-op without paths or a
+runner. A required declaration must preserve its increasing configuration-schema
+transition, target schema, bounded migration identity, and signed gateway restart.
+Only the three immutable backup children are mapped into distinct staging and final
+migration trees beneath one separate migration root; source backup, migration
+paths, and deployment state cannot overlap. A migration manifest, runner, and
+non-overwriting atomic publication remain future requirements.
+
+Composition reads and writes no filesystem state, selects no runner, creates no
+staged copy, executes no migration, and provides no required-migration evidence.
+Public reports redact paths, migration identity, and backup digest. Health
+separately reports exact plan/backup binding, no-op and required planning, schema,
+identity, staged-copy, manifest, and atomic planning while runner selection, reads,
+writes, mutation, execution, evidence, operational callers, current-pointer
+mutation, and activation authority remain absent. There is no CLI, Admin, browser,
+HTTP, WebSocket, hosted-service, timer, AetherRemote, service-control, health-probe,
+rollback, radio, watchdog, command, lease, or TX caller.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -3165,6 +3192,22 @@ probe and rollback callers, CLI/Admin/browser/HTTP/WebSocket, hosted-service,
 timer, AetherRemote, radio, watchdog, command, lease, TX, activation authority,
 and transmit remained absent. No live radio or RF operation was performed or
 required.
+
+Automated checkpoint on 2026-08-04 for exact-plan staged-copy migration planning:
+the deployment script passed shell syntax validation; Release solution build
+completed with zero warnings and zero errors; the focused activation-plan,
+configuration-backup, and migration-planning suite passed 79/79; web tests passed
+1,359/1,359; independent-watchdog tests passed 57/57; TX-HIL isolation tests passed
+48/48; AetherRemote tests passed 70/70; and browser tests passed 135/135. The
+complete checkpoint covered 1,534 .NET tests and 1,669 tests overall. A live
+development health probe with simulation-only radio settings and all writable paths
+redirected to a temporary directory confirmed exact activation-plan and immutable-
+backup binding, no-op and required migration planning, schema and identity
+validation, staged-copy path planning, manifest planning, and future atomic
+publication requirements while runner selection, source reads, file or directory
+mutation, migration execution, readiness evidence, current-pointer mutation,
+operational callers, activation authority, and transmit remained absent. No live
+radio or RF operation was performed or required.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.
