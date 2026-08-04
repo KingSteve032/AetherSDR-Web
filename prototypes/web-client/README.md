@@ -708,19 +708,45 @@ one internal evidence token. Its public report exposes only counts and booleansâ
 paths, release inventory, radio/session/lease identities, occupants, process data,
 package names, or digests.
 
-Only evidence with an existing authoritative source is collected. TX-lease
-admission closure, configuration backup, required migration execution, required
-service/host control, post-switch health verification, rollback readiness, and
-operator approval remain false. A signed no-migration or no-restart plan may mark
-only that corresponding no-op prerequisite satisfied. The collector exposes no
-public collection method and has no filesystem write, pointer mutation, activation,
-lease mutation, radio/watchdog command, backup, migration, service, health-probe,
-rollback, CLI/Admin/browser, hosted-service, timer, AetherRemote, command, lease,
-or TX caller.
+Only evidence with an existing authoritative source is collected. Configuration
+backup, required migration execution, required service/host control, post-switch
+health verification, rollback readiness, and operator approval remain false. A
+signed no-migration or no-restart plan may mark only that corresponding no-op
+prerequisite satisfied. The collector exposes no public collection method and has
+no filesystem write, pointer mutation, activation, lease mutation,
+radio/watchdog command, backup, migration, service, health-probe, rollback,
+CLI/Admin/browser, hosted-service, timer, AetherRemote, command, lease, or TX
+caller.
 
-Packaged bundle production, network download, archive extraction, TX-lease
-admission closure, backup, migration execution, service control, health probing,
-rollback preparation/execution, operator-approval authority, activation execution,
+The thirteenth M8B increment adds
+`VerifiedReleaseActivationLeaseQuiescenceBoundary`, a callerless internal
+composition and admission-state boundary bound to the exact internal verified
+activation plan. Composition alone creates no authority and changes no state. An
+internal exact transaction token can close TX-lease admission under the same lock
+used by acquisition and renewal, so no new acquisition or renewal can cross an
+active closure. A different equivalent plan or independently composed token
+cannot observe, reuse, or take over that authority.
+
+Existing leases are never force-released. Exact-owner validation and release
+remain available, and ordinary expiry continues through the existing lease
+watchdog and change-event safety lifecycle. Drain evaluation uses a lock-consistent
+observation-only snapshot, so it does not expire leases or emit events; even an
+expired stored lease remains visible until the normal expiry boundary resolves it.
+A drained lease set proves only admission closure plus zero stored leases. It never
+proves radio-authoritative idle, disarmed watchdogs, or activation readiness.
+
+The activation-evidence collector now obtains admission closure and the stored
+lease snapshot together from that exact-plan boundary. Its public report remains
+identity-redacted. Health diagnostics separately expose composition, active
+closure state, acquisition and renewal suppression, drain evaluation, absence of
+force-release and lease-mutation authority, absence of radio-idle inference, and
+absence of operational or activation callers. There is still no CLI, Admin,
+browser, HTTP, WebSocket, hosted-service, timer, AetherRemote, command, radio,
+watchdog, TX, or activation caller for the closure operation.
+
+Packaged bundle production, network download, archive extraction, backup,
+migration execution, service control, health probing, rollback
+preparation/execution, operator-approval authority, activation execution,
 Admin/browser workflows, and all operational update callers remain later M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the

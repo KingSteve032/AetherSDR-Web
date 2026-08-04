@@ -38,7 +38,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollectionTests
         Assert.True(snapshot.WatchdogAggregateSnapshotRegistered);
         Assert.True(snapshot.BoundedCollectionWindowRegistered);
         Assert.True(snapshot.MissingPrerequisitesFailClosedRegistered);
-        Assert.False(snapshot.TxLeaseAdmissionClosureEvidenceRegistered);
+        Assert.True(snapshot.TxLeaseAdmissionClosureEvidenceRegistered);
         Assert.False(snapshot.ConfigurationBackupEvidenceRegistered);
         Assert.False(snapshot.MigrationExecutionEvidenceRegistered);
         Assert.False(snapshot.ServiceControlEvidenceRegistered);
