@@ -522,6 +522,8 @@ builder.Services.AddSingleton<
     VerifiedReleaseActivationMigrationRunnerInvocationService>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationMigrationExecutionService>();
+builder.Services.AddSingleton<
+    VerifiedReleaseActivationServiceControlPlanComposer>();
 builder.Services.AddSingleton<VerifiedReleaseActivationReadinessEvaluator>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationLeaseQuiescenceBoundary>();
@@ -659,6 +661,10 @@ VerifiedReleaseActivationMigrationExecutionService
     releaseActivationMigrationExecutionService =
         app.Services.GetRequiredService<
             VerifiedReleaseActivationMigrationExecutionService>();
+VerifiedReleaseActivationServiceControlPlanComposer
+    releaseActivationServiceControlPlanComposer =
+        app.Services.GetRequiredService<
+            VerifiedReleaseActivationServiceControlPlanComposer>();
 VerifiedReleaseActivationReadinessEvaluator releaseActivationReadinessEvaluator =
     app.Services.GetRequiredService<
         VerifiedReleaseActivationReadinessEvaluator>();
@@ -765,6 +771,9 @@ app.MapGet(
             VerifiedReleaseActivationMigrationExecutionStateDiagnostics
                 releaseActivationMigrationExecutionState =
                     releaseActivationMigrationExecutionService.State;
+            VerifiedReleaseActivationServiceControlPlanDiagnostics
+                releaseActivationServiceControlPlan =
+                    releaseActivationServiceControlPlanComposer.Snapshot;
             VerifiedReleaseActivationReadinessDiagnostics
                 releaseActivationReadiness =
                     releaseActivationReadinessEvaluator.Snapshot;
@@ -1834,6 +1843,93 @@ app.MapGet(
                     releaseActivationMigrationExecutionState.CurrentPointerChanged,
                 releaseActivationMigrationActivationAuthorized =
                     releaseActivationMigrationExecutionState.ActivationAuthorized,
+                releaseActivationServiceControlPlanRegistered =
+                    releaseActivationServiceControlPlan.Registered,
+                releaseActivationServiceControlPlanInputRegistered =
+                    releaseActivationServiceControlPlan
+                        .ActivationPlanInputRegistered,
+                releaseActivationServiceControlPlanExactBindingRegistered =
+                    releaseActivationServiceControlPlan
+                        .ExactActivationPlanBindingRegistered,
+                releaseActivationServiceControlPlanNoOpRegistered =
+                    releaseActivationServiceControlPlan.NoOpResolutionRegistered,
+                releaseActivationServiceControlPlanServiceRestartRegistered =
+                    releaseActivationServiceControlPlan
+                        .ServiceRestartPlanningRegistered,
+                releaseActivationServiceControlPlanHostRestartRegistered =
+                    releaseActivationServiceControlPlan
+                        .HostRestartPlanningRegistered,
+                releaseActivationServiceControlPlanFixedMappingRegistered =
+                    releaseActivationServiceControlPlan
+                        .FixedServiceMappingRegistered,
+                releaseActivationServiceControlPlanStopOrderingRegistered =
+                    releaseActivationServiceControlPlan
+                        .DeterministicStopOrderingRegistered,
+                releaseActivationServiceControlPlanStartOrderingRegistered =
+                    releaseActivationServiceControlPlan
+                        .DeterministicStartOrderingRegistered,
+                releaseActivationServiceControlPlanHostSupersessionRegistered =
+                    releaseActivationServiceControlPlan
+                        .HostRestartSupersessionRegistered,
+                releaseActivationServiceControlPlanPreSwitchRegistered =
+                    releaseActivationServiceControlPlan
+                        .PreSwitchPhasePlanningRegistered,
+                releaseActivationServiceControlPlanPostSwitchRegistered =
+                    releaseActivationServiceControlPlan
+                        .PostSwitchPhasePlanningRegistered,
+                releaseActivationServiceControlPlanProcessInvocationRegistered =
+                    releaseActivationServiceControlPlan
+                        .ProcessInvocationRegistered,
+                releaseActivationServiceControlPlanSystemdCommandRegistered =
+                    releaseActivationServiceControlPlan.SystemdCommandRegistered,
+                releaseActivationServiceControlPlanHostRestartExecutionRegistered =
+                    releaseActivationServiceControlPlan
+                        .HostRestartExecutionRegistered,
+                releaseActivationServiceControlPlanEvidenceRegistered =
+                    releaseActivationServiceControlPlan
+                        .ServiceControlEvidenceRegistered,
+                releaseActivationServiceControlPlanCurrentPointerMutationRegistered =
+                    releaseActivationServiceControlPlan
+                        .CurrentPointerMutationRegistered,
+                releaseActivationServiceControlPlanActivationAuthorityRegistered =
+                    releaseActivationServiceControlPlan
+                        .ActivationAuthorityRegistered,
+                releaseActivationServiceControlPlanOperationalCallerRegistered =
+                    releaseActivationServiceControlPlan
+                        .OperationalCallerRegistered,
+                releaseActivationServiceControlPlanCliCallerRegistered =
+                    releaseActivationServiceControlPlan.CliCallerRegistered,
+                releaseActivationServiceControlPlanAdminCallerRegistered =
+                    releaseActivationServiceControlPlan.AdminCallerRegistered,
+                releaseActivationServiceControlPlanBrowserCallerRegistered =
+                    releaseActivationServiceControlPlan.BrowserCallerRegistered,
+                releaseActivationServiceControlPlanHttpCallerRegistered =
+                    releaseActivationServiceControlPlan.HttpCallerRegistered,
+                releaseActivationServiceControlPlanWebSocketCallerRegistered =
+                    releaseActivationServiceControlPlan.WebSocketCallerRegistered,
+                releaseActivationServiceControlPlanHostedServiceCallerRegistered =
+                    releaseActivationServiceControlPlan
+                        .HostedServiceCallerRegistered,
+                releaseActivationServiceControlPlanTimerCallerRegistered =
+                    releaseActivationServiceControlPlan.TimerCallerRegistered,
+                releaseActivationServiceControlPlanAetherRemoteCallerRegistered =
+                    releaseActivationServiceControlPlan
+                        .AetherRemoteCallerRegistered,
+                releaseActivationServiceControlPlanHealthProbeCallerRegistered =
+                    releaseActivationServiceControlPlan
+                        .HealthProbeCallerRegistered,
+                releaseActivationServiceControlPlanRollbackCallerRegistered =
+                    releaseActivationServiceControlPlan.RollbackCallerRegistered,
+                releaseActivationServiceControlPlanRadioCallerRegistered =
+                    releaseActivationServiceControlPlan.RadioCallerRegistered,
+                releaseActivationServiceControlPlanWatchdogCallerRegistered =
+                    releaseActivationServiceControlPlan.WatchdogCallerRegistered,
+                releaseActivationServiceControlPlanCommandCallerRegistered =
+                    releaseActivationServiceControlPlan.CommandCallerRegistered,
+                releaseActivationServiceControlPlanLeaseCallerRegistered =
+                    releaseActivationServiceControlPlan.LeaseCallerRegistered,
+                releaseActivationServiceControlPlanTxCallerRegistered =
+                    releaseActivationServiceControlPlan.TxCallerRegistered,
                 releaseActivationLeaseQuiescenceRegistered =
                     releaseActivationLeaseQuiescenceDiagnostics.Registered,
                 releaseActivationLeaseQuiescencePlanInputRegistered =

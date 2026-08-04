@@ -892,8 +892,28 @@ has no production execution caller, route, CLI, Admin/browser entry, hosted serv
 timer, AetherRemote path, pointer mutation, activation authority, service control,
 health probe, rollback, radio, watchdog, command, lease, or TX surface.
 
+The twentieth M8B increment adds
+`VerifiedReleaseActivationServiceControlPlanComposer`, a pure callerless boundary
+for the exact signed service and host restart declaration. It accepts only the
+successful activation-plan report and retained internal plan, revalidates their
+agreement, and maps only the four repository-owned unit identities for the gateway,
+broker, AetherRemote agent, and station engine.
+
+A non-host declaration becomes a deterministic pre-switch stop order and reverse
+post-switch start order. A signed host restart is valid only when all four services
+are also declared and supersedes individual stop/start actions with one post-switch
+host-restart marker. A required migration must retain the signed gateway restart.
+No-op declarations become ready without actions. Public reports expose counts and
+booleans but no unit identities or host-action marker.
+
+This increment performs no process launch, `systemctl` command, host restart,
+service-control evidence, `current` mutation, health probe, rollback, activation,
+radio, watchdog, command, lease, or TX action. Production resolves diagnostics only
+and has no CLI, Admin, browser, HTTP, WebSocket, hosted-service, timer,
+AetherRemote, or operational caller.
+
 Packaged bundle production, network download, archive extraction, operational
-backup orchestration, service control, health probing,
+backup orchestration, service-control execution and evidence, health probing,
 rollback preparation/execution, operator-approval authority, activation execution,
 Admin/browser workflows, and all operational update callers remain later M8B work.
 
