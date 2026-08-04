@@ -364,6 +364,12 @@ ReleaseManifestTrustSettings releaseManifestTrustSettings =
         .Get<ReleaseManifestTrustSettings>(options =>
             options.ErrorOnUnknownConfiguration = true) ??
     new ReleaseManifestTrustSettings();
+ReleaseMigrationRunnerTrustSettings releaseMigrationRunnerTrustSettings =
+    builder.Configuration
+        .GetSection(ReleaseMigrationRunnerTrustSettings.SectionName)
+        .Get<ReleaseMigrationRunnerTrustSettings>(options =>
+            options.ErrorOnUnknownConfiguration = true) ??
+    new ReleaseMigrationRunnerTrustSettings();
 StationTxCommandTrustSettings stationTxCommandTrustSettings =
     builder.Configuration
         .GetSection(StationTxCommandTrustSettings.SectionName)
@@ -468,6 +474,7 @@ builder.Services.AddSingleton(Options.Create(radioSettings));
 builder.Services.AddSingleton(Options.Create(remoteStationSettings));
 builder.Services.AddSingleton(Options.Create(independentTxWatchdogSettings));
 builder.Services.AddSingleton(Options.Create(releaseManifestTrustSettings));
+builder.Services.AddSingleton(Options.Create(releaseMigrationRunnerTrustSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandTrustSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandSigningSettings));
 builder.Services.AddSingleton(
@@ -509,6 +516,8 @@ builder.Services.AddSingleton<
 builder.Services.AddSingleton<
     VerifiedReleaseActivationConfigurationBackupService>();
 builder.Services.AddSingleton<VerifiedReleaseActivationMigrationPlanComposer>();
+builder.Services.AddSingleton<ReleaseMigrationRunnerTrustRegistry>();
+builder.Services.AddSingleton<VerifiedReleaseActivationMigrationRunnerSelector>();
 builder.Services.AddSingleton<VerifiedReleaseActivationReadinessEvaluator>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationLeaseQuiescenceBoundary>();
@@ -632,6 +641,12 @@ VerifiedReleaseActivationMigrationPlanComposer
     releaseActivationMigrationPlanComposer =
         app.Services.GetRequiredService<
             VerifiedReleaseActivationMigrationPlanComposer>();
+ReleaseMigrationRunnerTrustRegistry releaseMigrationRunnerTrustRegistry =
+    app.Services.GetRequiredService<ReleaseMigrationRunnerTrustRegistry>();
+VerifiedReleaseActivationMigrationRunnerSelector
+    releaseActivationMigrationRunnerSelector =
+        app.Services.GetRequiredService<
+            VerifiedReleaseActivationMigrationRunnerSelector>();
 VerifiedReleaseActivationReadinessEvaluator releaseActivationReadinessEvaluator =
     app.Services.GetRequiredService<
         VerifiedReleaseActivationReadinessEvaluator>();
@@ -723,6 +738,12 @@ app.MapGet(
             VerifiedReleaseActivationMigrationPlanDiagnostics
                 releaseActivationMigrationPlan =
                     releaseActivationMigrationPlanComposer.Snapshot;
+            ReleaseMigrationRunnerTrustDiagnostics
+                releaseMigrationRunnerTrust =
+                    releaseMigrationRunnerTrustRegistry.Snapshot;
+            VerifiedReleaseActivationMigrationRunnerSelectionDiagnostics
+                releaseActivationMigrationRunnerSelection =
+                    releaseActivationMigrationRunnerSelector.Snapshot;
             VerifiedReleaseActivationReadinessDiagnostics
                 releaseActivationReadiness =
                     releaseActivationReadinessEvaluator.Snapshot;
@@ -1381,6 +1402,177 @@ app.MapGet(
                     releaseActivationMigrationPlan.LeaseCallerRegistered,
                 releaseActivationMigrationTxCallerRegistered =
                     releaseActivationMigrationPlan.TxCallerRegistered,
+                releaseMigrationRunnerTrustRegistered =
+                    releaseMigrationRunnerTrust.Registered,
+                releaseMigrationRunnerTrustSelectionEnabled =
+                    releaseMigrationRunnerTrust.SelectionEnabled,
+                releaseMigrationRunnerTrustSelectionAvailable =
+                    releaseMigrationRunnerTrust.SelectionAvailable,
+                releaseMigrationRunnerTrustedRunnerCount =
+                    releaseMigrationRunnerTrust.TrustedRunnerCount,
+                releaseMigrationRunnerTrustedMigrationCount =
+                    releaseMigrationRunnerTrust.TrustedMigrationCount,
+                releaseMigrationRunnerTrustConfigurationRegistered =
+                    releaseMigrationRunnerTrust
+                        .FeatureOwnedConfigurationRegistered,
+                releaseMigrationRunnerTrustBoundedRunnerListRegistered =
+                    releaseMigrationRunnerTrust.BoundedRunnerListRegistered,
+                releaseMigrationRunnerTrustBoundedMigrationListRegistered =
+                    releaseMigrationRunnerTrust.BoundedMigrationListRegistered,
+                releaseMigrationRunnerTrustCanonicalPathValidationRegistered =
+                    releaseMigrationRunnerTrust
+                        .CanonicalRunnerPathValidationRegistered,
+                releaseMigrationRunnerTrustLinkRejectionRegistered =
+                    releaseMigrationRunnerTrust.SymbolicLinkRejectionRegistered,
+                releaseMigrationRunnerTrustSizeValidationRegistered =
+                    releaseMigrationRunnerTrust.RunnerSizeValidationRegistered,
+                releaseMigrationRunnerTrustPermissionValidationRegistered =
+                    releaseMigrationRunnerTrust
+                        .RunnerPermissionValidationRegistered,
+                releaseMigrationRunnerTrustDigestPinningRegistered =
+                    releaseMigrationRunnerTrust.RunnerDigestPinningRegistered,
+                releaseMigrationRunnerTrustExactMappingRegistered =
+                    releaseMigrationRunnerTrust.ExactMigrationMappingRegistered,
+                releaseMigrationRunnerTrustArtifactReadRegistered =
+                    releaseMigrationRunnerTrust.RunnerArtifactReadRegistered,
+                releaseMigrationRunnerTrustInvocationRegistered =
+                    releaseMigrationRunnerTrust.RunnerInvocationRegistered,
+                releaseMigrationRunnerTrustExecutionRegistered =
+                    releaseMigrationRunnerTrust.MigrationExecutionRegistered,
+                releaseMigrationRunnerTrustEvidenceRegistered =
+                    releaseMigrationRunnerTrust.MigrationEvidenceRegistered,
+                releaseMigrationRunnerTrustCurrentPointerMutationRegistered =
+                    releaseMigrationRunnerTrust.CurrentPointerMutationRegistered,
+                releaseMigrationRunnerTrustActivationAuthorityRegistered =
+                    releaseMigrationRunnerTrust.ActivationAuthorityRegistered,
+                releaseMigrationRunnerTrustOperationalCallerRegistered =
+                    releaseMigrationRunnerTrust.OperationalCallerRegistered,
+                releaseMigrationRunnerTrustCliCallerRegistered =
+                    releaseMigrationRunnerTrust.CliCallerRegistered,
+                releaseMigrationRunnerTrustAdminCallerRegistered =
+                    releaseMigrationRunnerTrust.AdminCallerRegistered,
+                releaseMigrationRunnerTrustBrowserCallerRegistered =
+                    releaseMigrationRunnerTrust.BrowserCallerRegistered,
+                releaseMigrationRunnerTrustHttpCallerRegistered =
+                    releaseMigrationRunnerTrust.HttpCallerRegistered,
+                releaseMigrationRunnerTrustWebSocketCallerRegistered =
+                    releaseMigrationRunnerTrust.WebSocketCallerRegistered,
+                releaseMigrationRunnerTrustHostedServiceCallerRegistered =
+                    releaseMigrationRunnerTrust.HostedServiceCallerRegistered,
+                releaseMigrationRunnerTrustTimerCallerRegistered =
+                    releaseMigrationRunnerTrust.TimerCallerRegistered,
+                releaseMigrationRunnerTrustAetherRemoteCallerRegistered =
+                    releaseMigrationRunnerTrust.AetherRemoteCallerRegistered,
+                releaseMigrationRunnerTrustServiceControlCallerRegistered =
+                    releaseMigrationRunnerTrust.ServiceControlCallerRegistered,
+                releaseMigrationRunnerTrustHealthProbeCallerRegistered =
+                    releaseMigrationRunnerTrust.HealthProbeCallerRegistered,
+                releaseMigrationRunnerTrustRollbackCallerRegistered =
+                    releaseMigrationRunnerTrust.RollbackCallerRegistered,
+                releaseMigrationRunnerTrustRadioCallerRegistered =
+                    releaseMigrationRunnerTrust.RadioCallerRegistered,
+                releaseMigrationRunnerTrustWatchdogCallerRegistered =
+                    releaseMigrationRunnerTrust.WatchdogCallerRegistered,
+                releaseMigrationRunnerTrustCommandCallerRegistered =
+                    releaseMigrationRunnerTrust.CommandCallerRegistered,
+                releaseMigrationRunnerTrustLeaseCallerRegistered =
+                    releaseMigrationRunnerTrust.LeaseCallerRegistered,
+                releaseMigrationRunnerTrustTxCallerRegistered =
+                    releaseMigrationRunnerTrust.TxCallerRegistered,
+                releaseActivationMigrationRunnerSelectorRegistered =
+                    releaseActivationMigrationRunnerSelection.Registered,
+                releaseActivationMigrationRunnerSelectorPlanInputRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .MigrationPlanInputRegistered,
+                releaseActivationMigrationRunnerSelectorTrustInputRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .RunnerTrustInputRegistered,
+                releaseActivationMigrationRunnerSelectorExactPlanBindingRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .ExactMigrationPlanBindingRegistered,
+                releaseActivationMigrationRunnerSelectorNoOpRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .NoOpMigrationResolutionRegistered,
+                releaseActivationMigrationRunnerSelectorRequiredRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .RequiredRunnerSelectionRegistered,
+                releaseActivationMigrationRunnerSelectorIdentityBindingRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .ExactMigrationIdentityBindingRegistered,
+                releaseActivationMigrationRunnerSelectorSchemaBindingRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .SchemaTransitionBindingRegistered,
+                releaseActivationMigrationRunnerSelectorProtocolBindingRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .RunnerProtocolBindingRegistered,
+                releaseActivationMigrationRunnerSelectorDigestBindingRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .RunnerArtifactDigestBindingRegistered,
+                releaseActivationMigrationRunnerSelectorInvocationRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .RunnerInvocationRegistered,
+                releaseActivationMigrationRunnerSelectorSourceReadRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .MigrationSourceReadRegistered,
+                releaseActivationMigrationRunnerSelectorFileWriteRegistered =
+                    releaseActivationMigrationRunnerSelection.FileWriteRegistered,
+                releaseActivationMigrationRunnerSelectorDirectoryMutationRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .DirectoryMutationRegistered,
+                releaseActivationMigrationRunnerSelectorExecutionRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .MigrationExecutionRegistered,
+                releaseActivationMigrationRunnerSelectorEvidenceRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .MigrationEvidenceRegistered,
+                releaseActivationMigrationRunnerSelectorCurrentPointerMutationRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .CurrentPointerMutationRegistered,
+                releaseActivationMigrationRunnerSelectorActivationAuthorityRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .ActivationAuthorityRegistered,
+                releaseActivationMigrationRunnerSelectorOperationalCallerRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .OperationalCallerRegistered,
+                releaseActivationMigrationRunnerSelectorCliCallerRegistered =
+                    releaseActivationMigrationRunnerSelection.CliCallerRegistered,
+                releaseActivationMigrationRunnerSelectorAdminCallerRegistered =
+                    releaseActivationMigrationRunnerSelection.AdminCallerRegistered,
+                releaseActivationMigrationRunnerSelectorBrowserCallerRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .BrowserCallerRegistered,
+                releaseActivationMigrationRunnerSelectorHttpCallerRegistered =
+                    releaseActivationMigrationRunnerSelection.HttpCallerRegistered,
+                releaseActivationMigrationRunnerSelectorWebSocketCallerRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .WebSocketCallerRegistered,
+                releaseActivationMigrationRunnerSelectorHostedServiceCallerRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .HostedServiceCallerRegistered,
+                releaseActivationMigrationRunnerSelectorTimerCallerRegistered =
+                    releaseActivationMigrationRunnerSelection.TimerCallerRegistered,
+                releaseActivationMigrationRunnerSelectorAetherRemoteCallerRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .AetherRemoteCallerRegistered,
+                releaseActivationMigrationRunnerSelectorServiceControlCallerRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .ServiceControlCallerRegistered,
+                releaseActivationMigrationRunnerSelectorHealthProbeCallerRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .HealthProbeCallerRegistered,
+                releaseActivationMigrationRunnerSelectorRollbackCallerRegistered =
+                    releaseActivationMigrationRunnerSelection.RollbackCallerRegistered,
+                releaseActivationMigrationRunnerSelectorRadioCallerRegistered =
+                    releaseActivationMigrationRunnerSelection.RadioCallerRegistered,
+                releaseActivationMigrationRunnerSelectorWatchdogCallerRegistered =
+                    releaseActivationMigrationRunnerSelection
+                        .WatchdogCallerRegistered,
+                releaseActivationMigrationRunnerSelectorCommandCallerRegistered =
+                    releaseActivationMigrationRunnerSelection.CommandCallerRegistered,
+                releaseActivationMigrationRunnerSelectorLeaseCallerRegistered =
+                    releaseActivationMigrationRunnerSelection.LeaseCallerRegistered,
+                releaseActivationMigrationRunnerSelectorTxCallerRegistered =
+                    releaseActivationMigrationRunnerSelection.TxCallerRegistered,
                 releaseActivationLeaseQuiescenceRegistered =
                     releaseActivationLeaseQuiescenceDiagnostics.Registered,
                 releaseActivationLeaseQuiescencePlanInputRegistered =
