@@ -1015,6 +1015,34 @@ pointer caller. The boundary does not start services, restart the host, control 
 remote node, probe health, roll back, authorize activation, operate a radio, mutate a
 lease or watchdog, send a command, key, or transmit.
 
+The twenty-fifth M8B increment adds a pure exact rollback-plan boundary.
+`VerifiedReleaseActivationRollbackPlanComposer` accepts the exact activation plan,
+immutable original configuration backup, migration plan, service-control plan, and
+health-verification plan. The retained backup, migration, service, and health objects
+must all reference the same activation transaction; public summaries are insufficient
+and equivalent independently composed objects cannot be combined.
+
+The rollback strategy is restore-based, never reverse-migration-based. The original
+immutable backup remains authoritative for configuration, state, and secrets even when
+the signed target required migration. Each source is mapped to its exact original live
+root plus one same-parent restore-staging identity and one distinct displaced-live
+identity. These names permit a future executor to perform local atomic directory
+replacement without staging beneath immutable backup or release storage.
+
+The plan reuses the fixed deterministic service stop/start orders and complete bounded
+health contracts. A future rollback sequence must stop target services, restore all
+three live roots from the original backup, atomically return `current` from the target
+link to the installed link, start installed services, and verify installed-release
+health. Host-restart transactions fail closed because no reviewed reboot/rollback
+transport exists. No arbitrary path, unit, health endpoint, or migration runner is
+accepted.
+
+This boundary performs no read, write, directory mutation, process, systemd command,
+network request, health probe, pointer mutation, rollback execution, or activation.
+It emits no readiness evidence, exposes only path- and unit-redacted diagnostics, and
+has no CLI, Admin, browser, HTTP, WebSocket, hosted-service, timer, AetherRemote,
+radio, watchdog, command, lease, or TX caller.
+
 ## Trust boundaries
 
 ### Browser

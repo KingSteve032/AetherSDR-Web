@@ -566,6 +566,8 @@ builder.Services.AddSingleton<
 builder.Services.AddSingleton<
     VerifiedReleaseActivationHealthVerificationPlanComposer>();
 builder.Services.AddSingleton<
+    VerifiedReleaseActivationRollbackPlanComposer>();
+builder.Services.AddSingleton<
     VerifiedReleaseActivationHealthVerificationService>();
 builder.Services.AddSingleton<VerifiedReleaseActivationReadinessEvaluator>();
 builder.Services.AddSingleton<
@@ -720,6 +722,10 @@ VerifiedReleaseActivationHealthVerificationPlanComposer
     releaseActivationHealthVerificationPlanComposer =
         app.Services.GetRequiredService<
             VerifiedReleaseActivationHealthVerificationPlanComposer>();
+VerifiedReleaseActivationRollbackPlanComposer
+    releaseActivationRollbackPlanComposer =
+        app.Services.GetRequiredService<
+            VerifiedReleaseActivationRollbackPlanComposer>();
 VerifiedReleaseActivationHealthVerificationService
     releaseActivationHealthVerificationService =
         app.Services.GetRequiredService<
@@ -848,6 +854,9 @@ app.MapGet(
             VerifiedReleaseActivationHealthVerificationPlanDiagnostics
                 releaseActivationHealthVerificationPlan =
                     releaseActivationHealthVerificationPlanComposer.Snapshot;
+            VerifiedReleaseActivationRollbackPlanDiagnostics
+                releaseActivationRollbackPlan =
+                    releaseActivationRollbackPlanComposer.Snapshot;
             VerifiedReleaseActivationHealthVerificationDiagnostics
                 releaseActivationHealthVerification =
                     releaseActivationHealthVerificationService.Snapshot;
@@ -2439,6 +2448,119 @@ app.MapGet(
                     releaseActivationHealthVerificationPlan.LeaseCallerRegistered,
                 releaseActivationHealthVerificationPlanTxCallerRegistered =
                     releaseActivationHealthVerificationPlan.TxCallerRegistered,
+                releaseActivationRollbackPlanRegistered =
+                    releaseActivationRollbackPlan.Registered,
+                releaseActivationRollbackPlanActivationInputRegistered =
+                    releaseActivationRollbackPlan.ActivationPlanInputRegistered,
+                releaseActivationRollbackPlanBackupInputRegistered =
+                    releaseActivationRollbackPlan
+                        .ConfigurationBackupInputRegistered,
+                releaseActivationRollbackPlanMigrationInputRegistered =
+                    releaseActivationRollbackPlan.MigrationPlanInputRegistered,
+                releaseActivationRollbackPlanServiceControlInputRegistered =
+                    releaseActivationRollbackPlan
+                        .ServiceControlPlanInputRegistered,
+                releaseActivationRollbackPlanHealthInputRegistered =
+                    releaseActivationRollbackPlan.HealthPlanInputRegistered,
+                releaseActivationRollbackPlanExactActivationBindingRegistered =
+                    releaseActivationRollbackPlan
+                        .ExactActivationPlanBindingRegistered,
+                releaseActivationRollbackPlanExactBackupBindingRegistered =
+                    releaseActivationRollbackPlan
+                        .ExactConfigurationBackupBindingRegistered,
+                releaseActivationRollbackPlanExactMigrationBindingRegistered =
+                    releaseActivationRollbackPlan
+                        .ExactMigrationPlanBindingRegistered,
+                releaseActivationRollbackPlanExactServiceControlBindingRegistered =
+                    releaseActivationRollbackPlan
+                        .ExactServiceControlPlanBindingRegistered,
+                releaseActivationRollbackPlanExactHealthBindingRegistered =
+                    releaseActivationRollbackPlan.ExactHealthPlanBindingRegistered,
+                releaseActivationRollbackPlanImmutableBackupBindingRegistered =
+                    releaseActivationRollbackPlan
+                        .ImmutableOriginalBackupBindingRegistered,
+                releaseActivationRollbackPlanOriginalBackupRestoreRegistered =
+                    releaseActivationRollbackPlan
+                        .OriginalBackupRestorePlanningRegistered,
+                releaseActivationRollbackPlanReverseMigrationRunnerRegistered =
+                    releaseActivationRollbackPlan
+                        .ReverseMigrationRunnerPlanningRegistered,
+                releaseActivationRollbackPlanThreeSourceRestoreRegistered =
+                    releaseActivationRollbackPlan
+                        .ThreeSourceRestorePlanningRegistered,
+                releaseActivationRollbackPlanSameParentStagingRegistered =
+                    releaseActivationRollbackPlan
+                        .SameParentRestoreStagingRegistered,
+                releaseActivationRollbackPlanDisplacedTreeRegistered =
+                    releaseActivationRollbackPlan
+                        .DisplacedLiveTreePlanningRegistered,
+                releaseActivationRollbackPlanTargetStopRegistered =
+                    releaseActivationRollbackPlan
+                        .TargetServiceStopPlanningRegistered,
+                releaseActivationRollbackPlanAtomicPointerRegistered =
+                    releaseActivationRollbackPlan
+                        .AtomicCurrentPointerRollbackPlanningRegistered,
+                releaseActivationRollbackPlanInstalledStartRegistered =
+                    releaseActivationRollbackPlan
+                        .InstalledServiceStartPlanningRegistered,
+                releaseActivationRollbackPlanInstalledHealthRegistered =
+                    releaseActivationRollbackPlan
+                        .InstalledHealthVerificationPlanningRegistered,
+                releaseActivationRollbackPlanHostRestartRegistered =
+                    releaseActivationRollbackPlan
+                        .HostRestartRollbackPlanningRegistered,
+                releaseActivationRollbackPlanSourceReadRegistered =
+                    releaseActivationRollbackPlan.SourceReadRegistered,
+                releaseActivationRollbackPlanFileWriteRegistered =
+                    releaseActivationRollbackPlan.FileWriteRegistered,
+                releaseActivationRollbackPlanDirectoryMutationRegistered =
+                    releaseActivationRollbackPlan.DirectoryMutationRegistered,
+                releaseActivationRollbackPlanProcessInvocationRegistered =
+                    releaseActivationRollbackPlan.ProcessInvocationRegistered,
+                releaseActivationRollbackPlanSystemdCommandRegistered =
+                    releaseActivationRollbackPlan.SystemdCommandRegistered,
+                releaseActivationRollbackPlanNetworkRequestRegistered =
+                    releaseActivationRollbackPlan.NetworkRequestRegistered,
+                releaseActivationRollbackPlanHealthProbeRegistered =
+                    releaseActivationRollbackPlan.HealthProbeRegistered,
+                releaseActivationRollbackPlanEvidenceRegistered =
+                    releaseActivationRollbackPlan.RollbackEvidenceRegistered,
+                releaseActivationRollbackPlanExecutionRegistered =
+                    releaseActivationRollbackPlan.RollbackExecutionRegistered,
+                releaseActivationRollbackPlanCurrentPointerMutationRegistered =
+                    releaseActivationRollbackPlan
+                        .CurrentPointerMutationRegistered,
+                releaseActivationRollbackPlanActivationAuthorityRegistered =
+                    releaseActivationRollbackPlan
+                        .ActivationAuthorityRegistered,
+                releaseActivationRollbackPlanOperationalCallerRegistered =
+                    releaseActivationRollbackPlan.OperationalCallerRegistered,
+                releaseActivationRollbackPlanCliCallerRegistered =
+                    releaseActivationRollbackPlan.CliCallerRegistered,
+                releaseActivationRollbackPlanAdminCallerRegistered =
+                    releaseActivationRollbackPlan.AdminCallerRegistered,
+                releaseActivationRollbackPlanBrowserCallerRegistered =
+                    releaseActivationRollbackPlan.BrowserCallerRegistered,
+                releaseActivationRollbackPlanHttpCallerRegistered =
+                    releaseActivationRollbackPlan.HttpCallerRegistered,
+                releaseActivationRollbackPlanWebSocketCallerRegistered =
+                    releaseActivationRollbackPlan.WebSocketCallerRegistered,
+                releaseActivationRollbackPlanHostedServiceCallerRegistered =
+                    releaseActivationRollbackPlan.HostedServiceCallerRegistered,
+                releaseActivationRollbackPlanTimerCallerRegistered =
+                    releaseActivationRollbackPlan.TimerCallerRegistered,
+                releaseActivationRollbackPlanAetherRemoteCallerRegistered =
+                    releaseActivationRollbackPlan.AetherRemoteCallerRegistered,
+                releaseActivationRollbackPlanRadioCallerRegistered =
+                    releaseActivationRollbackPlan.RadioCallerRegistered,
+                releaseActivationRollbackPlanWatchdogCallerRegistered =
+                    releaseActivationRollbackPlan.WatchdogCallerRegistered,
+                releaseActivationRollbackPlanCommandCallerRegistered =
+                    releaseActivationRollbackPlan.CommandCallerRegistered,
+                releaseActivationRollbackPlanLeaseCallerRegistered =
+                    releaseActivationRollbackPlan.LeaseCallerRegistered,
+                releaseActivationRollbackPlanTxCallerRegistered =
+                    releaseActivationRollbackPlan.TxCallerRegistered,
                 releaseActivationHealthVerificationExecutorRegistered =
                     releaseActivationHealthVerification.Registered,
                 releaseActivationHealthVerificationExecutorConfigurationRegistered =
