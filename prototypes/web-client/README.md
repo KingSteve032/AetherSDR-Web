@@ -664,10 +664,38 @@ health verification, and automatic rollback authority. These are obligations,
 not assertions that the work has happened. The composer performs no filesystem
 I/O and registers no pointer mutation, activation, backup, migration, service,
 health-probe, CLI/Admin/browser, radio, watchdog, command, lease, or TX caller.
-Packaged bundle production, network download, archive extraction, activation
-execution, rollback execution, migration execution, service control, health
-probing, Admin/browser workflows, and all operational update callers remain later
-M8B work.
+
+The eleventh M8B increment adds `VerifiedReleaseActivationReadinessEvaluator`, an
+internal-only pure evidence boundary behind that activation plan. It accepts one
+bounded snapshot and requires the exact inactive release status to retain the same
+completed setup revision, channel/Pinned policy, TX-support selection, previous
+active identity, and published target inventory. Evidence must be no more than
+five seconds old, have TX-lease admission explicitly closed, contain zero active
+leases, and contain no duplicate or malformed session identities.
+
+Every active session must be connected and report fresh radio-authoritative idle,
+no TX occupants, an idle command gate with no intent, a disarmed safety supervisor,
+no active or reconciliation-required command transaction, and a disarmed
+reconciliation-free independent watchdog. The global watchdog aggregate must agree
+with those per-session facts and may not be degraded, armed, or awaiting
+reconciliation. When TX support is installed, exact running/connected/registered
+watchdog counts must match the session evidence.
+
+Readiness also requires a prepared configuration backup, the signed migration
+requirement resolved, required service/host restart control ready, post-switch
+health verification ready, automatic rollback ready, and explicit operator
+approval. A successful internal token defensively retains the activation plan and
+redacted session evidence; the public report exposes only counts and booleans—no
+paths, radio/session/lease identities, occupants, process details, package names,
+or digests. The evaluator does not collect evidence and has no public evaluation
+method, filesystem I/O, lease mutation, radio command, watchdog mutation, pointer
+switch, activation, backup, migration, service, health-probe, rollback, CLI/Admin/
+browser, hosted-service, timer, AetherRemote, command, lease, or TX caller.
+
+Packaged bundle production, network download, archive extraction, authoritative
+evidence collection, activation execution, rollback execution, migration
+execution, service control, health probing, Admin/browser workflows, and all
+operational update callers remain later M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled
@@ -902,6 +930,39 @@ overrides are enforced directly by the guarded script:
 `releaseActivationPlanCommandCallerRegistered=false`,
 `releaseActivationPlanLeaseCallerRegistered=false`,
 `releaseActivationPlanTxCallerRegistered=false`,
+`releaseActivationReadinessEvaluatorRegistered=true`,
+`releaseActivationReadinessPlanInputRegistered=true`,
+`releaseActivationReadinessStatusEvaluationRegistered=true`,
+`releaseActivationReadinessTxLeaseAdmissionEvaluationRegistered=true`,
+`releaseActivationReadinessSessionSafetyEvaluationRegistered=true`,
+`releaseActivationReadinessRadioIdleEvaluationRegistered=true`,
+`releaseActivationReadinessWatchdogEvaluationRegistered=true`,
+`releaseActivationReadinessBackupEvaluationRegistered=true`,
+`releaseActivationReadinessMigrationEvaluationRegistered=true`,
+`releaseActivationReadinessServiceEvaluationRegistered=true`,
+`releaseActivationReadinessHealthEvaluationRegistered=true`,
+`releaseActivationReadinessRollbackEvaluationRegistered=true`,
+`releaseActivationReadinessOperatorApprovalEvaluationRegistered=true`,
+`releaseActivationReadinessFileWriteRegistered=false`,
+`releaseActivationReadinessCurrentPointerMutationRegistered=false`,
+`releaseActivationReadinessActivationExecutionRegistered=false`,
+`releaseActivationReadinessTxLeaseMutationRegistered=false`,
+`releaseActivationReadinessRadioCommandRegistered=false`,
+`releaseActivationReadinessWatchdogMutationRegistered=false`,
+`releaseActivationReadinessBackupExecutionRegistered=false`,
+`releaseActivationReadinessMigrationExecutionRegistered=false`,
+`releaseActivationReadinessServiceControlRegistered=false`,
+`releaseActivationReadinessHealthProbeCallerRegistered=false`,
+`releaseActivationReadinessRollbackExecutionRegistered=false`,
+`releaseActivationReadinessCliCallerRegistered=false`,
+`releaseActivationReadinessAdminCallerRegistered=false`,
+`releaseActivationReadinessBrowserCallerRegistered=false`,
+`releaseActivationReadinessHostedServiceCallerRegistered=false`,
+`releaseActivationReadinessTimerCallerRegistered=false`,
+`releaseActivationReadinessAetherRemoteCallerRegistered=false`,
+`releaseActivationReadinessCommandCallerRegistered=false`,
+`releaseActivationReadinessLeaseCallerRegistered=false`,
+`releaseActivationReadinessTxCallerRegistered=false`,
 `txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,
 `txBrowserIntentProtocolVersion=2`,
 `txBrowserIntentValidationRegistered=true`,

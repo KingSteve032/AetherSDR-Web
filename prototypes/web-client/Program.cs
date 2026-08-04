@@ -502,6 +502,7 @@ builder.Services.AddSingleton<VerifiedReleaseInstallationPlanComposer>();
 builder.Services.AddSingleton<VerifiedReleaseStagingService>();
 builder.Services.AddSingleton<VerifiedReleasePublicationService>();
 builder.Services.AddSingleton<VerifiedReleaseActivationPlanComposer>();
+builder.Services.AddSingleton<VerifiedReleaseActivationReadinessEvaluator>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
 builder.Services.AddSingleton<StationTxCommandEnvelopeCoordinator>();
@@ -609,6 +610,9 @@ VerifiedReleasePublicationService verifiedReleasePublicationService =
     app.Services.GetRequiredService<VerifiedReleasePublicationService>();
 VerifiedReleaseActivationPlanComposer releaseActivationPlanComposer =
     app.Services.GetRequiredService<VerifiedReleaseActivationPlanComposer>();
+VerifiedReleaseActivationReadinessEvaluator releaseActivationReadinessEvaluator =
+    app.Services.GetRequiredService<
+        VerifiedReleaseActivationReadinessEvaluator>();
 StationTxIndependentWatchdogRegistry independentTxWatchdogRegistry =
     app.Services.GetRequiredService<StationTxIndependentWatchdogRegistry>();
 StationTxCommandTrustRegistry stationTxCommandTrustRegistry =
@@ -678,6 +682,9 @@ app.MapGet(
                 verifiedReleasePublicationService.Snapshot;
             VerifiedReleaseActivationPlanDiagnostics releaseActivationPlan =
                 releaseActivationPlanComposer.Snapshot;
+            VerifiedReleaseActivationReadinessDiagnostics
+                releaseActivationReadiness =
+                    releaseActivationReadinessEvaluator.Snapshot;
             StationTxIndependentWatchdogAggregate watchdog =
                 independentTxWatchdogRegistry.Snapshot;
             StationTxCommandTrustDiagnostics commandTrust =
@@ -1016,6 +1023,79 @@ app.MapGet(
                     releaseActivationPlan.LeaseCallerRegistered,
                 releaseActivationPlanTxCallerRegistered =
                     releaseActivationPlan.TxCallerRegistered,
+                releaseActivationReadinessEvaluatorRegistered =
+                    releaseActivationReadiness.Registered,
+                releaseActivationReadinessPlanInputRegistered =
+                    releaseActivationReadiness.ActivationPlanInputRegistered,
+                releaseActivationReadinessStatusEvaluationRegistered =
+                    releaseActivationReadiness.ReleaseStatusEvaluationRegistered,
+                releaseActivationReadinessTxLeaseAdmissionEvaluationRegistered =
+                    releaseActivationReadiness
+                        .TxLeaseAdmissionEvaluationRegistered,
+                releaseActivationReadinessSessionSafetyEvaluationRegistered =
+                    releaseActivationReadiness.SessionSafetyEvaluationRegistered,
+                releaseActivationReadinessRadioIdleEvaluationRegistered =
+                    releaseActivationReadiness.RadioIdleEvaluationRegistered,
+                releaseActivationReadinessWatchdogEvaluationRegistered =
+                    releaseActivationReadiness.WatchdogEvaluationRegistered,
+                releaseActivationReadinessBackupEvaluationRegistered =
+                    releaseActivationReadiness
+                        .BackupReadinessEvaluationRegistered,
+                releaseActivationReadinessMigrationEvaluationRegistered =
+                    releaseActivationReadiness
+                        .MigrationReadinessEvaluationRegistered,
+                releaseActivationReadinessServiceEvaluationRegistered =
+                    releaseActivationReadiness
+                        .ServiceControlReadinessEvaluationRegistered,
+                releaseActivationReadinessHealthEvaluationRegistered =
+                    releaseActivationReadiness
+                        .HealthVerificationReadinessEvaluationRegistered,
+                releaseActivationReadinessRollbackEvaluationRegistered =
+                    releaseActivationReadiness
+                        .RollbackReadinessEvaluationRegistered,
+                releaseActivationReadinessOperatorApprovalEvaluationRegistered =
+                    releaseActivationReadiness
+                        .OperatorApprovalEvaluationRegistered,
+                releaseActivationReadinessFileWriteRegistered =
+                    releaseActivationReadiness.FileWriteRegistered,
+                releaseActivationReadinessCurrentPointerMutationRegistered =
+                    releaseActivationReadiness.CurrentPointerMutationRegistered,
+                releaseActivationReadinessActivationExecutionRegistered =
+                    releaseActivationReadiness.ActivationExecutionRegistered,
+                releaseActivationReadinessTxLeaseMutationRegistered =
+                    releaseActivationReadiness.TxLeaseMutationRegistered,
+                releaseActivationReadinessRadioCommandRegistered =
+                    releaseActivationReadiness.RadioCommandRegistered,
+                releaseActivationReadinessWatchdogMutationRegistered =
+                    releaseActivationReadiness.WatchdogMutationRegistered,
+                releaseActivationReadinessBackupExecutionRegistered =
+                    releaseActivationReadiness.BackupExecutionRegistered,
+                releaseActivationReadinessMigrationExecutionRegistered =
+                    releaseActivationReadiness.MigrationExecutionRegistered,
+                releaseActivationReadinessServiceControlRegistered =
+                    releaseActivationReadiness.ServiceControlRegistered,
+                releaseActivationReadinessHealthProbeCallerRegistered =
+                    releaseActivationReadiness.HealthProbeCallerRegistered,
+                releaseActivationReadinessRollbackExecutionRegistered =
+                    releaseActivationReadiness.RollbackExecutionRegistered,
+                releaseActivationReadinessCliCallerRegistered =
+                    releaseActivationReadiness.CliCallerRegistered,
+                releaseActivationReadinessAdminCallerRegistered =
+                    releaseActivationReadiness.AdminCallerRegistered,
+                releaseActivationReadinessBrowserCallerRegistered =
+                    releaseActivationReadiness.BrowserCallerRegistered,
+                releaseActivationReadinessHostedServiceCallerRegistered =
+                    releaseActivationReadiness.HostedServiceCallerRegistered,
+                releaseActivationReadinessTimerCallerRegistered =
+                    releaseActivationReadiness.TimerCallerRegistered,
+                releaseActivationReadinessAetherRemoteCallerRegistered =
+                    releaseActivationReadiness.AetherRemoteCallerRegistered,
+                releaseActivationReadinessCommandCallerRegistered =
+                    releaseActivationReadiness.CommandCallerRegistered,
+                releaseActivationReadinessLeaseCallerRegistered =
+                    releaseActivationReadiness.LeaseCallerRegistered,
+                releaseActivationReadinessTxCallerRegistered =
+                    releaseActivationReadiness.TxCallerRegistered,
                 radioMode = radioSettings.Mode,
                 transmitEnabled =
                     stationTxProductionActivationBinding.BindingApplied,
