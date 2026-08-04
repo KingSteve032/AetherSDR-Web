@@ -508,6 +508,7 @@ builder.Services.AddSingleton<
             resolveInstallationPaths()));
 builder.Services.AddSingleton<
     VerifiedReleaseActivationConfigurationBackupService>();
+builder.Services.AddSingleton<VerifiedReleaseActivationMigrationPlanComposer>();
 builder.Services.AddSingleton<VerifiedReleaseActivationReadinessEvaluator>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationLeaseQuiescenceBoundary>();
@@ -627,6 +628,10 @@ VerifiedReleaseActivationConfigurationBackupService
     releaseActivationConfigurationBackupService =
         app.Services.GetRequiredService<
             VerifiedReleaseActivationConfigurationBackupService>();
+VerifiedReleaseActivationMigrationPlanComposer
+    releaseActivationMigrationPlanComposer =
+        app.Services.GetRequiredService<
+            VerifiedReleaseActivationMigrationPlanComposer>();
 VerifiedReleaseActivationReadinessEvaluator releaseActivationReadinessEvaluator =
     app.Services.GetRequiredService<
         VerifiedReleaseActivationReadinessEvaluator>();
@@ -715,6 +720,9 @@ app.MapGet(
             VerifiedReleaseActivationConfigurationBackupStateDiagnostics
                 releaseActivationConfigurationBackupState =
                     releaseActivationConfigurationBackupService.State;
+            VerifiedReleaseActivationMigrationPlanDiagnostics
+                releaseActivationMigrationPlan =
+                    releaseActivationMigrationPlanComposer.Snapshot;
             VerifiedReleaseActivationReadinessDiagnostics
                 releaseActivationReadiness =
                     releaseActivationReadinessEvaluator.Snapshot;
@@ -1284,6 +1292,95 @@ app.MapGet(
                     releaseActivationConfigurationBackupState.CurrentPointerChanged,
                 releaseActivationConfigurationBackupExecutorActivationAuthorized =
                     releaseActivationConfigurationBackupState.ActivationAuthorized,
+                releaseActivationMigrationPlanComposerRegistered =
+                    releaseActivationMigrationPlan.Registered,
+                releaseActivationMigrationPlanInputRegistered =
+                    releaseActivationMigrationPlan.ActivationPlanInputRegistered,
+                releaseActivationMigrationBackupInputRegistered =
+                    releaseActivationMigrationPlan
+                        .ConfigurationBackupInputRegistered,
+                releaseActivationMigrationExactPlanBindingRegistered =
+                    releaseActivationMigrationPlan
+                        .ExactActivationPlanBindingRegistered,
+                releaseActivationMigrationExactBackupBindingRegistered =
+                    releaseActivationMigrationPlan
+                        .ExactConfigurationBackupBindingRegistered,
+                releaseActivationMigrationImmutableBackupValidationRegistered =
+                    releaseActivationMigrationPlan
+                        .ImmutableBackupValidationRegistered,
+                releaseActivationMigrationNoOpPlanningRegistered =
+                    releaseActivationMigrationPlan.NoOpMigrationPlanningRegistered,
+                releaseActivationMigrationRequiredPlanningRegistered =
+                    releaseActivationMigrationPlan
+                        .RequiredMigrationPlanningRegistered,
+                releaseActivationMigrationSchemaValidationRegistered =
+                    releaseActivationMigrationPlan
+                        .SchemaTransitionValidationRegistered,
+                releaseActivationMigrationIdentityValidationRegistered =
+                    releaseActivationMigrationPlan
+                        .MigrationIdentityValidationRegistered,
+                releaseActivationMigrationStagedCopyPlanningRegistered =
+                    releaseActivationMigrationPlan
+                        .StagedCopyPathPlanningRegistered,
+                releaseActivationMigrationManifestPlanningRegistered =
+                    releaseActivationMigrationPlan
+                        .MigrationManifestPlanningRegistered,
+                releaseActivationMigrationAtomicPublicationPlanningRegistered =
+                    releaseActivationMigrationPlan
+                        .AtomicPublicationPlanningRegistered,
+                releaseActivationMigrationRunnerSelectionRegistered =
+                    releaseActivationMigrationPlan
+                        .MigrationRunnerSelectionRegistered,
+                releaseActivationMigrationSourceReadRegistered =
+                    releaseActivationMigrationPlan.SourceReadRegistered,
+                releaseActivationMigrationFileWriteRegistered =
+                    releaseActivationMigrationPlan.FileWriteRegistered,
+                releaseActivationMigrationDirectoryMutationRegistered =
+                    releaseActivationMigrationPlan.DirectoryMutationRegistered,
+                releaseActivationMigrationExecutionRegistered =
+                    releaseActivationMigrationPlan.MigrationExecutionRegistered,
+                releaseActivationMigrationEvidenceRegistered =
+                    releaseActivationMigrationPlan.MigrationEvidenceRegistered,
+                releaseActivationMigrationCurrentPointerMutationRegistered =
+                    releaseActivationMigrationPlan
+                        .CurrentPointerMutationRegistered,
+                releaseActivationMigrationActivationAuthorityRegistered =
+                    releaseActivationMigrationPlan.ActivationAuthorityRegistered,
+                releaseActivationMigrationOperationalCallerRegistered =
+                    releaseActivationMigrationPlan.OperationalCallerRegistered,
+                releaseActivationMigrationCliCallerRegistered =
+                    releaseActivationMigrationPlan.CliCallerRegistered,
+                releaseActivationMigrationAdminCallerRegistered =
+                    releaseActivationMigrationPlan.AdminCallerRegistered,
+                releaseActivationMigrationBrowserCallerRegistered =
+                    releaseActivationMigrationPlan.BrowserCallerRegistered,
+                releaseActivationMigrationHttpCallerRegistered =
+                    releaseActivationMigrationPlan.HttpCallerRegistered,
+                releaseActivationMigrationWebSocketCallerRegistered =
+                    releaseActivationMigrationPlan.WebSocketCallerRegistered,
+                releaseActivationMigrationHostedServiceCallerRegistered =
+                    releaseActivationMigrationPlan.HostedServiceCallerRegistered,
+                releaseActivationMigrationTimerCallerRegistered =
+                    releaseActivationMigrationPlan.TimerCallerRegistered,
+                releaseActivationMigrationAetherRemoteCallerRegistered =
+                    releaseActivationMigrationPlan.AetherRemoteCallerRegistered,
+                releaseActivationMigrationServiceControlCallerRegistered =
+                    releaseActivationMigrationPlan
+                        .ServiceControlCallerRegistered,
+                releaseActivationMigrationHealthProbeCallerRegistered =
+                    releaseActivationMigrationPlan.HealthProbeCallerRegistered,
+                releaseActivationMigrationRollbackCallerRegistered =
+                    releaseActivationMigrationPlan.RollbackCallerRegistered,
+                releaseActivationMigrationRadioCallerRegistered =
+                    releaseActivationMigrationPlan.RadioCallerRegistered,
+                releaseActivationMigrationWatchdogCallerRegistered =
+                    releaseActivationMigrationPlan.WatchdogCallerRegistered,
+                releaseActivationMigrationCommandCallerRegistered =
+                    releaseActivationMigrationPlan.CommandCallerRegistered,
+                releaseActivationMigrationLeaseCallerRegistered =
+                    releaseActivationMigrationPlan.LeaseCallerRegistered,
+                releaseActivationMigrationTxCallerRegistered =
+                    releaseActivationMigrationPlan.TxCallerRegistered,
                 releaseActivationLeaseQuiescenceRegistered =
                     releaseActivationLeaseQuiescenceDiagnostics.Registered,
                 releaseActivationLeaseQuiescencePlanInputRegistered =

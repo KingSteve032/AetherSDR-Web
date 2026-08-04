@@ -726,6 +726,36 @@ Admin, browser, HTTP, WebSocket, hosted-service, timer, AetherRemote, migration,
 service-control, health-probe, rollback, current-pointer, activation, radio,
 watchdog, command, lease, or TX caller is added.
 
+The sixteenth M8B increment adds a pure exact-plan migration composition boundary
+without selecting a migration program or adding an executor.
+`VerifiedReleaseActivationMigrationPlanComposer` accepts only the successful
+activation-plan result and successful configuration-backup report while requiring
+both retained internal objects. It revalidates every public summary field, exact
+activation-plan reference, immutable backup counts and manifest digest, successful
+non-overwriting atomic publication, and the canonical backup transaction layout.
+Equivalent independently composed plans or backups are not interchangeable.
+
+A signed `None` declaration composes one exact no-op plan with no migration paths or
+runner requirement. A signed `Required` declaration must retain an increasing
+from/to configuration-schema transition ending at the target schema, a bounded
+ASCII migration identity, and the signed gateway restart. The composer maps only
+the immutable `configuration`, `state`, and `secrets` backup children into a
+separate migration staging tree, final result tree, and manifest path beneath the
+same setup-revision backup root. Those paths are canonical, distinct, and outside
+the immutable source backup and activation deployment tree.
+
+The boundary records that a future required migration needs a staged copy, runner,
+manifest, and non-overwriting atomic publication. It does not decide which target
+release component may run the migration, inspect source existence, read or copy a
+byte, create a directory, change permissions, execute migration logic, or provide
+required-migration readiness evidence. Public reports expose schema numbers and
+booleans but no migration identity, backup digest, or path. Health diagnostics keep
+planning separate from absent runner selection, reads, writes, mutation, execution,
+evidence, current-pointer authority, activation authority, and operational callers.
+No CLI, Admin, browser, HTTP, WebSocket, hosted-service, timer, AetherRemote,
+service-control, health-probe, rollback, radio, watchdog, command, lease, or TX
+caller is added.
+
 ## Trust boundaries
 
 ### Browser
