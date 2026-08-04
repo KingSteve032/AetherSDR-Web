@@ -59,6 +59,17 @@ public sealed class TxLeaseManager(TimeProvider? timeProvider = null)
         return snapshot;
     }
 
+    internal IReadOnlyList<TxLease> GetObservationSnapshot()
+    {
+        lock (m_gate)
+        {
+            return m_leases.Values
+                .OrderBy(lease => lease.RadioId, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(lease => lease.LeaseId, StringComparer.Ordinal)
+                .ToArray();
+        }
+    }
+
     public bool TryAcquire(
         string radioId,
         string sessionId,

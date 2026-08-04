@@ -601,6 +601,33 @@ service, timer, filesystem write, lease mutation, radio/watchdog command, pointe
 mutation, activation, backup, migration, service control, health probe, rollback,
 AetherRemote, command, lease, or TX execution path is added.
 
+The twelfth M8B increment adds the first authoritative runtime evidence collector
+without adding an activation caller. `VerifiedReleaseActivationEvidenceCollector`
+accepts only the exact successful activation plan and is registered for diagnostics,
+but its collection method remains internal. It reads release status before and
+after one bounded runtime observation window and rejects any setup, inventory, or
+`current` drift. The full collection must complete within the evaluator's
+five-second freshness limit.
+
+TX leases are read through a new internal lock-consistent observation snapshot.
+Unlike the existing operational snapshot, it does not expire stored leases or emit
+lease-change events, so observation cannot improve readiness by mutating state.
+Radio-session diagnostics are projected into the existing bounded session-safety
+evidence, and the independent-watchdog aggregate is captured from its authoritative
+registry. Release inventory, lease, and session collections are defensively copied
+before the internal token is retained.
+
+The collector deliberately supplies false for every prerequisite without an
+implemented authoritative source: lease-admission closure, configuration backup,
+required migration execution, required service/host control, post-switch health
+verification, rollback readiness, and operator approval. Only a signed no-migration
+or no-restart plan may satisfy the corresponding no-op prerequisite. The public
+report exposes counts and booleans but no paths, inventory, radio/session/lease
+identifiers, occupants, watchdog process data, package names, or digests. There is
+still no filesystem write, pointer mutation, activation, lease mutation,
+radio/watchdog command, backup, migration, service control, health probe, rollback,
+CLI/Admin/browser, hosted-service, timer, AetherRemote, command, lease, or TX caller.
+
 ## Trust boundaries
 
 ### Browser

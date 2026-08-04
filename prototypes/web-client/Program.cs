@@ -503,6 +503,7 @@ builder.Services.AddSingleton<VerifiedReleaseStagingService>();
 builder.Services.AddSingleton<VerifiedReleasePublicationService>();
 builder.Services.AddSingleton<VerifiedReleaseActivationPlanComposer>();
 builder.Services.AddSingleton<VerifiedReleaseActivationReadinessEvaluator>();
+builder.Services.AddSingleton<VerifiedReleaseActivationEvidenceCollector>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
 builder.Services.AddSingleton<StationTxCommandEnvelopeCoordinator>();
@@ -613,6 +614,9 @@ VerifiedReleaseActivationPlanComposer releaseActivationPlanComposer =
 VerifiedReleaseActivationReadinessEvaluator releaseActivationReadinessEvaluator =
     app.Services.GetRequiredService<
         VerifiedReleaseActivationReadinessEvaluator>();
+VerifiedReleaseActivationEvidenceCollector releaseActivationEvidenceCollector =
+    app.Services.GetRequiredService<
+        VerifiedReleaseActivationEvidenceCollector>();
 StationTxIndependentWatchdogRegistry independentTxWatchdogRegistry =
     app.Services.GetRequiredService<StationTxIndependentWatchdogRegistry>();
 StationTxCommandTrustRegistry stationTxCommandTrustRegistry =
@@ -685,6 +689,9 @@ app.MapGet(
             VerifiedReleaseActivationReadinessDiagnostics
                 releaseActivationReadiness =
                     releaseActivationReadinessEvaluator.Snapshot;
+            VerifiedReleaseActivationEvidenceCollectionDiagnostics
+                releaseActivationEvidence =
+                    releaseActivationEvidenceCollector.Snapshot;
             StationTxIndependentWatchdogAggregate watchdog =
                 independentTxWatchdogRegistry.Snapshot;
             StationTxCommandTrustDiagnostics commandTrust =
@@ -1096,6 +1103,85 @@ app.MapGet(
                     releaseActivationReadiness.LeaseCallerRegistered,
                 releaseActivationReadinessTxCallerRegistered =
                     releaseActivationReadiness.TxCallerRegistered,
+                releaseActivationEvidenceCollectorRegistered =
+                    releaseActivationEvidence.Registered,
+                releaseActivationEvidencePlanInputRegistered =
+                    releaseActivationEvidence.ActivationPlanInputRegistered,
+                releaseActivationEvidenceStatusDoubleReadRegistered =
+                    releaseActivationEvidence.ReleaseStatusDoubleReadRegistered,
+                releaseActivationEvidenceObservationOnlyLeaseSnapshotRegistered =
+                    releaseActivationEvidence
+                        .ObservationOnlyTxLeaseSnapshotRegistered,
+                releaseActivationEvidenceSessionDiagnosticsSnapshotRegistered =
+                    releaseActivationEvidence
+                        .SessionDiagnosticsSnapshotRegistered,
+                releaseActivationEvidenceRadioOccupancySnapshotRegistered =
+                    releaseActivationEvidence.RadioOccupancySnapshotRegistered,
+                releaseActivationEvidenceWatchdogAggregateSnapshotRegistered =
+                    releaseActivationEvidence.WatchdogAggregateSnapshotRegistered,
+                releaseActivationEvidenceBoundedWindowRegistered =
+                    releaseActivationEvidence.BoundedCollectionWindowRegistered,
+                releaseActivationEvidenceMissingPrerequisitesFailClosedRegistered =
+                    releaseActivationEvidence
+                        .MissingPrerequisitesFailClosedRegistered,
+                releaseActivationEvidenceTxLeaseAdmissionClosureEvidenceRegistered =
+                    releaseActivationEvidence
+                        .TxLeaseAdmissionClosureEvidenceRegistered,
+                releaseActivationEvidenceBackupEvidenceRegistered =
+                    releaseActivationEvidence
+                        .ConfigurationBackupEvidenceRegistered,
+                releaseActivationEvidenceMigrationEvidenceRegistered =
+                    releaseActivationEvidence
+                        .MigrationExecutionEvidenceRegistered,
+                releaseActivationEvidenceServiceEvidenceRegistered =
+                    releaseActivationEvidence.ServiceControlEvidenceRegistered,
+                releaseActivationEvidenceHealthEvidenceRegistered =
+                    releaseActivationEvidence
+                        .HealthVerificationEvidenceRegistered,
+                releaseActivationEvidenceRollbackEvidenceRegistered =
+                    releaseActivationEvidence.RollbackEvidenceRegistered,
+                releaseActivationEvidenceOperatorApprovalEvidenceRegistered =
+                    releaseActivationEvidence.OperatorApprovalEvidenceRegistered,
+                releaseActivationEvidenceFileWriteRegistered =
+                    releaseActivationEvidence.FileWriteRegistered,
+                releaseActivationEvidenceCurrentPointerMutationRegistered =
+                    releaseActivationEvidence.CurrentPointerMutationRegistered,
+                releaseActivationEvidenceActivationExecutionRegistered =
+                    releaseActivationEvidence.ActivationExecutionRegistered,
+                releaseActivationEvidenceTxLeaseMutationRegistered =
+                    releaseActivationEvidence.TxLeaseMutationRegistered,
+                releaseActivationEvidenceRadioCommandRegistered =
+                    releaseActivationEvidence.RadioCommandRegistered,
+                releaseActivationEvidenceWatchdogMutationRegistered =
+                    releaseActivationEvidence.WatchdogMutationRegistered,
+                releaseActivationEvidenceBackupExecutionRegistered =
+                    releaseActivationEvidence.BackupExecutionRegistered,
+                releaseActivationEvidenceMigrationExecutionRegistered =
+                    releaseActivationEvidence.MigrationExecutionRegistered,
+                releaseActivationEvidenceServiceControlRegistered =
+                    releaseActivationEvidence.ServiceControlRegistered,
+                releaseActivationEvidenceHealthProbeCallerRegistered =
+                    releaseActivationEvidence.HealthProbeCallerRegistered,
+                releaseActivationEvidenceRollbackExecutionRegistered =
+                    releaseActivationEvidence.RollbackExecutionRegistered,
+                releaseActivationEvidenceCliCallerRegistered =
+                    releaseActivationEvidence.CliCallerRegistered,
+                releaseActivationEvidenceAdminCallerRegistered =
+                    releaseActivationEvidence.AdminCallerRegistered,
+                releaseActivationEvidenceBrowserCallerRegistered =
+                    releaseActivationEvidence.BrowserCallerRegistered,
+                releaseActivationEvidenceHostedServiceCallerRegistered =
+                    releaseActivationEvidence.HostedServiceCallerRegistered,
+                releaseActivationEvidenceTimerCallerRegistered =
+                    releaseActivationEvidence.TimerCallerRegistered,
+                releaseActivationEvidenceAetherRemoteCallerRegistered =
+                    releaseActivationEvidence.AetherRemoteCallerRegistered,
+                releaseActivationEvidenceCommandCallerRegistered =
+                    releaseActivationEvidence.CommandCallerRegistered,
+                releaseActivationEvidenceLeaseCallerRegistered =
+                    releaseActivationEvidence.LeaseCallerRegistered,
+                releaseActivationEvidenceTxCallerRegistered =
+                    releaseActivationEvidence.TxCallerRegistered,
                 radioMode = radioSettings.Mode,
                 transmitEnabled =
                     stationTxProductionActivationBinding.BindingApplied,
