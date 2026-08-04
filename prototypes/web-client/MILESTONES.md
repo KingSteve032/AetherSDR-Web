@@ -2708,9 +2708,10 @@ collection, exact-plan TX-lease admission closure/drain composition, exact-plan
 configuration-backup planning and atomic execution, exact-plan staged-copy
 migration planning, disabled-by-default locally pinned migration-runner trust and
 exact selection, callerless probe-only runner invocation, exact staged-copy migration
-execution, and exact-plan migration evidence are implemented; publishing artifacts,
-network download, extraction, operational backup orchestration, activation execution,
-rollback preparation and execution, service control, health probes, operator-approval
+execution, exact-plan migration evidence, and exact service-control transaction
+planning are implemented; publishing artifacts, network download, extraction,
+operational backup orchestration, activation execution, rollback preparation and
+execution, service-control execution and evidence, health probes, operator-approval
 authority, and Admin/browser callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
@@ -3103,6 +3104,26 @@ CLI, Admin/browser, hosted service, timer, AetherRemote, `current` mutation,
 activation authority, service control, health probe, rollback, radio, watchdog,
 command, lease, or TX caller is added.
 
+The twentieth increment adds
+`VerifiedReleaseActivationServiceControlPlanComposer`, a callerless pure boundary
+that accepts only the successful activation-plan report and its retained exact plan.
+It revalidates the report, exact object binding, service count, host-restart shape,
+and required-migration gateway restart before mapping the signed declaration.
+
+The only service identities in the internal plan are the repository-owned gateway,
+broker, AetherRemote agent, and station-engine units. Non-host restarts produce a
+deterministic pre-switch stop sequence and reverse post-switch start sequence. A
+signed host restart requires all four service declarations and supersedes those
+sequences with one post-switch host-restart marker. A release that signs no restart
+resolves as an exact no-op. Public reports expose counts and booleans only and redact
+unit identities and the host marker.
+
+The planner performs no process launch, shell, `systemctl`, D-Bus, systemd command,
+host restart, service-control evidence, `current` mutation, health probe, rollback,
+activation, radio, watchdog, command, lease, or TX action. Production resolves only
+diagnostics and adds no CLI, Admin, browser, HTTP, WebSocket, hosted-service, timer,
+AetherRemote, or operational caller.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -3369,6 +3390,41 @@ validation-only intent action were disabled; the TX panel stated that it had no
 radio command or microphone-audio transport; PC MIC remained off; the local FILL
 display control toggled and was restored; and console errors and warnings were both
 zero. No lease was acquired and no live radio command or RF operation was performed.
+
+Automated checkpoint on 2026-08-04 for exact service-control transaction planning:
+the deployment script passed shell syntax validation; Release solution build
+completed with zero warnings and zero errors; the focused activation-plan,
+service-control-plan, readiness, and evidence suite passed 145/145; web tests passed
+1,412/1,412; independent-watchdog tests passed 57/57; TX-HIL isolation tests passed
+48/48; AetherRemote tests passed 70/70; and browser tests passed 135/135. The
+complete checkpoint covered 1,587 .NET tests and 1,722 tests overall.
+
+Focused tests proved exact activation-plan binding, fixed repository-owned service
+mapping, deterministic gateway/broker/agent/engine stop ordering and reverse start
+ordering, signed host-restart supersession, no-op readiness, required-migration
+gateway restart, contradictory-declaration rejection, distinct exact tokens, and
+public unit/action-identity redaction. Production has no composition caller and
+resolves only the planner diagnostics.
+
+The first guarded production-TX deployment attempt rolled back safely because the
+previous Browser Bridge acceptance radio tab was still open and therefore retained
+a supervised watchdog process, which correctly violated the empty-session profile.
+After that test tab was closed and its session released, the unchanged gate passed.
+Deployed health confirmed service-control planning registered while process launch,
+`systemctl`, host-restart execution, service-control evidence, operational/CLI/Admin/
+browser/HTTP/WebSocket/hosted-service/timer/AetherRemote callers, health probes,
+rollback, radio/watchdog/command/lease/TX callers, `current` mutation, and activation
+authority remained false. Runner trust remained disabled with zero artifacts; the
+independent watchdog started empty and Disarmed; production TX remained unavailable.
+
+Interactive Browser Bridge acceptance then passed against the deployed release. The
+authenticated fixed-2D radio desk connected PSOC2/HF/XVTR and reported the explicit
+RX-only/live footer. The validation-only panel stated that it had no radio command
+or microphone-audio transport; MOX, TUNE, and CWX were hidden and disabled; intent
+selection and validation, SPLIT, DVK, and FDX were disabled; PC MIC remained off;
+the harmless FILL display state toggled and was restored; and console errors and
+warnings were both zero. The tab was closed afterward to release the session. No TX
+lease, keying action, transmit-control command, or RF operation was performed.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

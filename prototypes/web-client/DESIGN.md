@@ -858,6 +858,28 @@ caller, route, CLI, Admin/browser entry, hosted service, timer, AetherRemote,
 `current` mutation, activation authority, service control, health probe, rollback,
 radio, watchdog, command, lease, or TX surface.
 
+The twentieth M8B increment adds a separate exact service-control transaction-plan
+boundary without adding service control. `VerifiedReleaseActivationServiceControlPlanComposer`
+accepts only the successful activation-plan report and retained exact plan. It
+revalidates the complete public/internal agreement, bounded restart-service count,
+host-restart declaration, mandatory gateway restart for required migration, and all
+future activation obligations before retaining a plan token.
+
+The supported unit map is fixed in code to the repository-owned gateway, broker,
+AetherRemote agent, and station-engine units. For ordinary service restarts, the
+plan stops in dependency-facing order—gateway, broker, agent, engine—and starts in
+the reverse order after a future pointer switch. A host restart is accepted only
+when every service restart is signed and supersedes the individual actions with one
+post-switch host-restart marker. A declaration with no service or host restart
+resolves as an exact no-op.
+
+Public reports expose restart and action counts plus phase booleans, never unit
+identities or the internal host-action marker. Production resolves the planner's
+diagnostics only. There is no process start, shell, `systemctl`, D-Bus, systemd,
+host-restart execution, service-control evidence, current-pointer mutation, health
+probe, rollback, activation authority, CLI, Admin, browser, HTTP, WebSocket, hosted
+service, timer, AetherRemote, radio, watchdog, command, lease, or TX caller.
+
 ## Trust boundaries
 
 ### Browser
