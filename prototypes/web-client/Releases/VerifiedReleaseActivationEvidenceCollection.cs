@@ -212,6 +212,10 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         VerifiedReleaseActivationMigrationObservation> m_migrationReader;
     private readonly Func<
         VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationServiceControlObservation>
+        m_serviceControlReader;
+    private readonly Func<
+        VerifiedReleaseActivationPlan,
         VerifiedReleaseActivationHealthVerificationObservation>
         m_healthVerificationReader;
     private readonly Func<IReadOnlyList<RadioSessionDiagnostics>>
@@ -228,6 +232,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         VerifiedReleaseActivationLeaseQuiescenceBoundary leaseQuiescence,
         VerifiedReleaseActivationConfigurationBackupService configurationBackup,
         VerifiedReleaseActivationMigrationExecutionService migrationExecution,
+        VerifiedReleaseActivationServiceControlExecutionService serviceControl,
         VerifiedReleaseActivationHealthVerificationService healthVerification,
         RadioSessionRegistry radioSessions,
         StationTxIndependentWatchdogRegistry independentWatchdogs)
@@ -241,7 +246,8 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
                 CreateConfigurationBackupReader(configurationBackup),
             migrationReader: CreateMigrationReader(migrationExecution),
             healthVerificationReader:
-                CreateHealthVerificationReader(healthVerification))
+                CreateHealthVerificationReader(healthVerification),
+            serviceControlReader: CreateServiceControlReader(serviceControl))
     {
     }
 
@@ -256,7 +262,11 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         Func<
             VerifiedReleaseActivationPlan,
             VerifiedReleaseActivationHealthVerificationObservation>?
-            healthVerificationReader = null)
+            healthVerificationReader = null,
+        Func<
+            VerifiedReleaseActivationPlan,
+            VerifiedReleaseActivationServiceControlObservation>?
+            serviceControlReader = null)
         : this(
             statusReader,
             CreateLeaseQuiescenceReader(leaseSnapshotReader),
@@ -264,7 +274,8 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             watchdogSnapshotReader,
             timeProvider,
             sessionEvidenceCapture,
-            healthVerificationReader: healthVerificationReader)
+            healthVerificationReader: healthVerificationReader,
+            serviceControlReader: serviceControlReader)
     {
     }
 
@@ -289,7 +300,11 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         Func<
             VerifiedReleaseActivationPlan,
             VerifiedReleaseActivationHealthVerificationObservation>?
-            healthVerificationReader = null)
+            healthVerificationReader = null,
+        Func<
+            VerifiedReleaseActivationPlan,
+            VerifiedReleaseActivationServiceControlObservation>?
+            serviceControlReader = null)
     {
         m_statusReader = statusReader ??
             throw new ArgumentNullException(nameof(statusReader));
@@ -298,6 +313,8 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         m_configurationBackupReader = configurationBackupReader ??
             CreateUnavailableConfigurationBackupReader();
         m_migrationReader = migrationReader ?? CreateUnavailableMigrationReader();
+        m_serviceControlReader = serviceControlReader ??
+            CreateUnavailableServiceControlReader();
         m_healthVerificationReader = healthVerificationReader ??
             CreateUnavailableHealthVerificationReader();
         m_sessionSnapshotReader = sessionSnapshotReader ??
@@ -322,7 +339,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             TxLeaseAdmissionClosureEvidenceRegistered: true,
             ConfigurationBackupEvidenceRegistered: true,
             MigrationExecutionEvidenceRegistered: true,
-            ServiceControlEvidenceRegistered: false,
+            ServiceControlEvidenceRegistered: true,
             HealthVerificationEvidenceRegistered: true,
             RollbackEvidenceRegistered: false,
             OperatorApprovalEvidenceRegistered: false,
@@ -395,6 +412,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         VerifiedReleaseActivationConfigurationBackupObservation?
             configurationBackup;
         VerifiedReleaseActivationMigrationObservation? migration;
+        VerifiedReleaseActivationServiceControlObservation? serviceControl;
         VerifiedReleaseActivationHealthVerificationObservation?
             healthVerification;
         try
@@ -405,6 +423,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             leases = leaseQuiescence.ActiveTxLeases;
             configurationBackup = m_configurationBackupReader(plan);
             migration = m_migrationReader(plan);
+            serviceControl = m_serviceControlReader(plan);
             healthVerification = m_healthVerificationReader(plan);
             sessions = m_sessionSnapshotReader();
             watchdogs = m_watchdogSnapshotReader();
@@ -443,6 +462,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             leases is null ||
             configurationBackup is null ||
             migration is null ||
+            serviceControl is null ||
             healthVerification is null ||
             sessions is null ||
             watchdogs is null)
@@ -464,7 +484,10 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         if (!ValidateCollectedShape(leases, sessions, watchdogs) ||
             !ValidateConfigurationBackupObservation(configurationBackup) ||
             !ValidateMigrationObservation(migration, plan) ||
-            !ValidateHealthVerificationObservation(healthVerification))
+            !ValidateServiceControlObservation(serviceControl, plan) ||
+            !ValidateHealthVerificationObservation(healthVerification) ||
+            healthVerification.HealthVerificationReady &&
+                !serviceControl.ServiceControlReady)
         {
             return VerifiedReleaseActivationEvidenceCollectionReport.Failure(
                 VerifiedReleaseActivationEvidenceCollectionFailureCode
@@ -497,8 +520,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
                 afterStatus.AvailableReleaseIdentities.ToArray()
         };
         bool migrationReady = migration.MigrationReady;
-        bool serviceControlReady =
-            plan.RestartServiceCount == 0 && !plan.RestartHost;
+        bool serviceControlReady = serviceControl.ServiceControlReady;
         VerifiedReleaseActivationReadinessEvidence evidence = new(
             startedAt,
             frozenStatus,
@@ -592,6 +614,37 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             FileCount: 0,
             MigrationBytes: 0,
             CompletedAt: plan.MigrationRequired ? null : DateTimeOffset.UnixEpoch,
+            ReconciliationRequired: false);
+
+    private static Func<
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationServiceControlObservation>
+        CreateServiceControlReader(
+            VerifiedReleaseActivationServiceControlExecutionService serviceControl)
+    {
+        ArgumentNullException.ThrowIfNull(serviceControl);
+        return serviceControl.Observe;
+    }
+
+    private static Func<
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationServiceControlObservation>
+        CreateUnavailableServiceControlReader() =>
+        plan => new VerifiedReleaseActivationServiceControlObservation(
+            ServiceControlReady:
+                plan.RestartServiceCount == 0 && !plan.RestartHost,
+            ServiceControlRequired:
+                plan.RestartServiceCount > 0 || plan.RestartHost,
+            PlannedStopActionCount: 0,
+            ExecutedStopActionCount: 0,
+            TopologyNoOpStopActionCount: 0,
+            PlannedStartActionCount: 0,
+            ExecutedStartActionCount: 0,
+            TopologyNoOpStartActionCount: 0,
+            CompletedAt:
+                plan.RestartServiceCount == 0 && !plan.RestartHost
+                    ? DateTimeOffset.UnixEpoch
+                    : null,
             ReconciliationRequired: false);
 
     private static Func<
@@ -778,6 +831,64 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         return observation.DirectoryCount == 0 &&
             observation.FileCount == 0 &&
             observation.MigrationBytes == 0 &&
+            observation.CompletedAt is null;
+    }
+
+    private static bool ValidateServiceControlObservation(
+        VerifiedReleaseActivationServiceControlObservation observation,
+        VerifiedReleaseActivationPlan plan)
+    {
+        bool required = plan.RestartServiceCount > 0 || plan.RestartHost;
+        if (observation.ServiceControlRequired != required)
+        {
+            return false;
+        }
+        if (!required)
+        {
+            return observation.ServiceControlReady &&
+                observation.PlannedStopActionCount == 0 &&
+                observation.ExecutedStopActionCount == 0 &&
+                observation.TopologyNoOpStopActionCount == 0 &&
+                observation.PlannedStartActionCount == 0 &&
+                observation.ExecutedStartActionCount == 0 &&
+                observation.TopologyNoOpStartActionCount == 0 &&
+                observation.CompletedAt is not null &&
+                !observation.ReconciliationRequired;
+        }
+        if (plan.RestartHost)
+        {
+            return !observation.ServiceControlReady &&
+                observation.PlannedStopActionCount == 0 &&
+                observation.ExecutedStopActionCount == 0 &&
+                observation.TopologyNoOpStopActionCount == 0 &&
+                observation.PlannedStartActionCount == 0 &&
+                observation.ExecutedStartActionCount == 0 &&
+                observation.TopologyNoOpStartActionCount == 0 &&
+                observation.CompletedAt is null;
+        }
+        if (observation.ServiceControlReady)
+        {
+            return observation.PlannedStopActionCount ==
+                    plan.RestartServiceCount &&
+                observation.ExecutedStopActionCount >= 0 &&
+                observation.TopologyNoOpStopActionCount >= 0 &&
+                observation.ExecutedStopActionCount +
+                    observation.TopologyNoOpStopActionCount ==
+                    observation.PlannedStopActionCount &&
+                observation.PlannedStartActionCount ==
+                    plan.RestartServiceCount &&
+                observation.ExecutedStartActionCount >= 0 &&
+                observation.TopologyNoOpStartActionCount >= 0 &&
+                observation.ExecutedStartActionCount +
+                    observation.TopologyNoOpStartActionCount ==
+                    observation.PlannedStartActionCount &&
+                observation.CompletedAt is not null &&
+                !observation.ReconciliationRequired;
+        }
+        return observation.ExecutedStopActionCount >= 0 &&
+            observation.TopologyNoOpStopActionCount >= 0 &&
+            observation.ExecutedStartActionCount >= 0 &&
+            observation.TopologyNoOpStartActionCount >= 0 &&
             observation.CompletedAt is null;
     }
 

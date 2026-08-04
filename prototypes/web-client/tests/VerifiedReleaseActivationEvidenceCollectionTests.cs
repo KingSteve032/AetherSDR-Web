@@ -41,7 +41,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollectionTests
         Assert.True(snapshot.TxLeaseAdmissionClosureEvidenceRegistered);
         Assert.True(snapshot.ConfigurationBackupEvidenceRegistered);
         Assert.True(snapshot.MigrationExecutionEvidenceRegistered);
-        Assert.False(snapshot.ServiceControlEvidenceRegistered);
+        Assert.True(snapshot.ServiceControlEvidenceRegistered);
         Assert.True(snapshot.HealthVerificationEvidenceRegistered);
         Assert.False(snapshot.RollbackEvidenceRegistered);
         Assert.False(snapshot.OperatorApprovalEvidenceRegistered);
@@ -153,9 +153,35 @@ public sealed class VerifiedReleaseActivationEvidenceCollectionTests
     }
 
     [Fact]
-    public async Task ExactHealthObservationCanCompleteHealthEvidenceOnly()
+    public async Task ExactServiceControlAndHealthObservationsCompleteBothFields()
     {
-        Fixture fixture = new();
+        Fixture fixture = new(restartHost: false);
+        fixture.Status = fixture.Status with
+        {
+            ActiveReleaseIdentity = "aethersdr-8.2.0"
+        };
+        fixture.ServiceControlReader = _ =>
+            fixture.ReadyServiceControlObservation();
+        fixture.HealthVerificationReader = _ =>
+            fixture.ReadyHealthVerificationObservation();
+        fixture.RebuildCollector();
+
+        VerifiedReleaseActivationEvidenceCollectionReport report =
+            await fixture.CollectAsync();
+
+        Assert.True(report.Succeeded);
+        Assert.True(report.HealthVerificationReady);
+        Assert.True(report.ServiceControlReady);
+        Assert.False(report.RollbackReady);
+        Assert.False(report.OperatorApproved);
+        Assert.True(report.Collection!.Evidence.ServiceControlReady);
+        Assert.True(report.Collection.Evidence.HealthVerificationReady);
+    }
+
+    [Fact]
+    public async Task HealthReadyWithoutServiceControlEvidenceFailsClosed()
+    {
+        Fixture fixture = new(restartHost: false);
         fixture.Status = fixture.Status with
         {
             ActiveReleaseIdentity = "aethersdr-8.2.0"
@@ -167,12 +193,12 @@ public sealed class VerifiedReleaseActivationEvidenceCollectionTests
         VerifiedReleaseActivationEvidenceCollectionReport report =
             await fixture.CollectAsync();
 
-        Assert.True(report.Succeeded);
-        Assert.True(report.HealthVerificationReady);
-        Assert.False(report.ServiceControlReady);
-        Assert.False(report.RollbackReady);
-        Assert.False(report.OperatorApproved);
-        Assert.True(report.Collection!.Evidence.HealthVerificationReady);
+        Assert.False(report.Succeeded);
+        Assert.Equal(
+            VerifiedReleaseActivationEvidenceCollectionFailureCode
+                .EvidenceMalformed,
+            report.FailureCode);
+        Assert.Null(report.Collection);
     }
 
     [Fact]
@@ -844,6 +870,27 @@ public sealed class VerifiedReleaseActivationEvidenceCollectionTests
         { get; set; }
         internal Func<
             VerifiedReleaseActivationPlan,
+            VerifiedReleaseActivationServiceControlObservation>
+        ServiceControlReader
+        { get; set; } = plan =>
+            new VerifiedReleaseActivationServiceControlObservation(
+                ServiceControlReady:
+                    plan.RestartServiceCount == 0 && !plan.RestartHost,
+                ServiceControlRequired:
+                    plan.RestartServiceCount > 0 || plan.RestartHost,
+                PlannedStopActionCount: 0,
+                ExecutedStopActionCount: 0,
+                TopologyNoOpStopActionCount: 0,
+                PlannedStartActionCount: 0,
+                ExecutedStartActionCount: 0,
+                TopologyNoOpStartActionCount: 0,
+                CompletedAt:
+                    plan.RestartServiceCount == 0 && !plan.RestartHost
+                        ? DateTimeOffset.UnixEpoch
+                        : null,
+                ReconciliationRequired: false);
+        internal Func<
+            VerifiedReleaseActivationPlan,
             VerifiedReleaseActivationHealthVerificationObservation>
         HealthVerificationReader
         { get; set; } = _ =>
@@ -889,11 +936,29 @@ public sealed class VerifiedReleaseActivationEvidenceCollectionTests
                 },
                 Time,
                 SessionCapture,
-                HealthVerificationReader);
+                HealthVerificationReader,
+                ServiceControlReader);
         }
 
         internal Task<VerifiedReleaseActivationEvidenceCollectionReport>
             CollectAsync() => Collector.CollectAsync(PlanResult);
+
+        internal VerifiedReleaseActivationServiceControlObservation
+            ReadyServiceControlObservation()
+        {
+            VerifiedReleaseActivationPlan plan = PlanResult.Plan!;
+            return new VerifiedReleaseActivationServiceControlObservation(
+                ServiceControlReady: true,
+                ServiceControlRequired: true,
+                PlannedStopActionCount: plan.RestartServiceCount,
+                ExecutedStopActionCount: plan.RestartServiceCount,
+                TopologyNoOpStopActionCount: 0,
+                PlannedStartActionCount: plan.RestartServiceCount,
+                ExecutedStartActionCount: plan.RestartServiceCount,
+                TopologyNoOpStartActionCount: 0,
+                CompletedAt: Now,
+                ReconciliationRequired: false);
+        }
 
         internal VerifiedReleaseActivationHealthVerificationObservation
             ReadyHealthVerificationObservation() =>

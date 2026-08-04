@@ -942,6 +942,40 @@ executor caller and keeps execution disabled, unavailable, and zero-state by def
 No service control, pointer mutation, rollback, activation authority, radio,
 watchdog, command, lease, or TX action is added.
 
+The twenty-third M8B increment adds a separate disabled-by-default two-phase service-
+control execution boundary. `VerifiedReleaseActivationServiceControlExecutionService`
+accepts only the exact successful service-control plan. Its pre-switch phase requires
+the installed identity to remain active before and after deterministic stops. Its
+post-switch phase requires the same retained pre-switch plan token and requires the
+target identity active before and after deterministic starts. Completed setup,
+topology, release inventory, channel, TX-support choice, and release-root binding are
+double-read and must remain stable around each phase. Pointer mutation is deliberately
+external to this boundary.
+
+Topology determines whether an action is local, an explicit no-op, or unsupported.
+Personal and local-station gateways control the local gateway user unit plus broker
+and station-engine system units; their absent agent is a topology no-op. Hybrid or
+remote-gateway plans that require a remote agent or engine action fail before any
+process because no remote service-control protocol is registered. Host-restart plans
+also fail closed and never invoke reboot or shutdown.
+
+The Linux runtime uses only absolute `/usr/bin/systemctl` with exact fixed unit
+identities and exact `stop`/`start` verbs. The gateway action includes `--user`; all
+other supported local actions use system scope. `UseShellExecute` is false, stdout and
+stderr are redirected and bounded, the environment is cleared, and a hard timeout
+terminates the process tree. No action is automatically repeated. Once any process
+starts, every ambiguous, failed, cancelled, or drifted phase enters reconciliation-
+required state and blocks further execution.
+
+A completed post-switch phase retains one in-memory observation bound by reference to
+the exact service-control and activation plans. The evidence collector observes this
+state but never invokes either phase. The health executor accepts only the same exact
+completed service-control plan before probing the active target. Public diagnostics
+redact units, topology, paths, and action internals. Production registers diagnostics
+and zeroed state only with execution disabled and no operational caller. No `current`
+mutation, host restart, remote command, rollback, activation authority, radio,
+watchdog, lease, command, keying, or TX action is introduced.
+
 ## Trust boundaries
 
 ### Browser

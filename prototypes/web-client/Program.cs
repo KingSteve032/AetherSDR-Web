@@ -370,6 +370,13 @@ ReleaseMigrationRunnerTrustSettings releaseMigrationRunnerTrustSettings =
         .Get<ReleaseMigrationRunnerTrustSettings>(options =>
             options.ErrorOnUnknownConfiguration = true) ??
     new ReleaseMigrationRunnerTrustSettings();
+ReleaseActivationServiceControlSettings
+    releaseActivationServiceControlSettings =
+        builder.Configuration
+            .GetSection(ReleaseActivationServiceControlSettings.SectionName)
+            .Get<ReleaseActivationServiceControlSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new ReleaseActivationServiceControlSettings();
 ReleaseActivationHealthVerificationSettings
     releaseActivationHealthVerificationSettings =
         builder.Configuration
@@ -484,6 +491,8 @@ builder.Services.AddSingleton(Options.Create(independentTxWatchdogSettings));
 builder.Services.AddSingleton(Options.Create(releaseManifestTrustSettings));
 builder.Services.AddSingleton(Options.Create(releaseMigrationRunnerTrustSettings));
 builder.Services.AddSingleton(
+    Options.Create(releaseActivationServiceControlSettings));
+builder.Services.AddSingleton(
     Options.Create(releaseActivationHealthVerificationSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandTrustSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandSigningSettings));
@@ -540,6 +549,8 @@ builder.Services.AddSingleton<
     VerifiedReleaseActivationMigrationExecutionService>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationServiceControlPlanComposer>();
+builder.Services.AddSingleton<
+    VerifiedReleaseActivationServiceControlExecutionService>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationHealthVerificationPlanComposer>();
 builder.Services.AddSingleton<
@@ -685,6 +696,10 @@ VerifiedReleaseActivationServiceControlPlanComposer
     releaseActivationServiceControlPlanComposer =
         app.Services.GetRequiredService<
             VerifiedReleaseActivationServiceControlPlanComposer>();
+VerifiedReleaseActivationServiceControlExecutionService
+    releaseActivationServiceControlExecutionService =
+        app.Services.GetRequiredService<
+            VerifiedReleaseActivationServiceControlExecutionService>();
 VerifiedReleaseActivationHealthVerificationPlanComposer
     releaseActivationHealthVerificationPlanComposer =
         app.Services.GetRequiredService<
@@ -802,6 +817,12 @@ app.MapGet(
             VerifiedReleaseActivationServiceControlPlanDiagnostics
                 releaseActivationServiceControlPlan =
                     releaseActivationServiceControlPlanComposer.Snapshot;
+            VerifiedReleaseActivationServiceControlExecutionDiagnostics
+                releaseActivationServiceControlExecution =
+                    releaseActivationServiceControlExecutionService.Snapshot;
+            VerifiedReleaseActivationServiceControlExecutionStateDiagnostics
+                releaseActivationServiceControlExecutionState =
+                    releaseActivationServiceControlExecutionService.State;
             VerifiedReleaseActivationHealthVerificationPlanDiagnostics
                 releaseActivationHealthVerificationPlan =
                     releaseActivationHealthVerificationPlanComposer.Snapshot;
@@ -1967,6 +1988,189 @@ app.MapGet(
                     releaseActivationServiceControlPlan.LeaseCallerRegistered,
                 releaseActivationServiceControlPlanTxCallerRegistered =
                     releaseActivationServiceControlPlan.TxCallerRegistered,
+                releaseActivationServiceControlExecutionRegistered =
+                    releaseActivationServiceControlExecution.Registered,
+                releaseActivationServiceControlExecutionConfigurationRegistered =
+                    releaseActivationServiceControlExecution
+                        .ConfigurationRegistered,
+                releaseActivationServiceControlExecutionEnabled =
+                    releaseActivationServiceControlExecution.ExecutionEnabled,
+                releaseActivationServiceControlExecutionAvailable =
+                    releaseActivationServiceControlExecution.ExecutionAvailable,
+                releaseActivationServiceControlExecutionPlanInputRegistered =
+                    releaseActivationServiceControlExecution
+                        .ExactServiceControlPlanInputRegistered,
+                releaseActivationServiceControlExecutionExactPlanBindingRegistered =
+                    releaseActivationServiceControlExecution
+                        .ExactServiceControlPlanBindingRegistered,
+                releaseActivationServiceControlExecutionExactActivationBindingRegistered =
+                    releaseActivationServiceControlExecution
+                        .ExactActivationPlanBindingRegistered,
+                releaseActivationServiceControlExecutionStatusDoubleReadRegistered =
+                    releaseActivationServiceControlExecution
+                        .ReleaseStatusDoubleReadRegistered,
+                releaseActivationServiceControlExecutionSetupDoubleReadRegistered =
+                    releaseActivationServiceControlExecution
+                        .SetupStateDoubleReadRegistered,
+                releaseActivationServiceControlExecutionTopologyBindingRegistered =
+                    releaseActivationServiceControlExecution
+                        .TopologyBindingRegistered,
+                releaseActivationServiceControlExecutionPreSwitchRegistered =
+                    releaseActivationServiceControlExecution
+                        .PreSwitchStopPhaseRegistered,
+                releaseActivationServiceControlExecutionPostSwitchRegistered =
+                    releaseActivationServiceControlExecution
+                        .PostSwitchStartPhaseRegistered,
+                releaseActivationServiceControlExecutionNoOpRegistered =
+                    releaseActivationServiceControlExecution
+                        .NoOpResolutionRegistered,
+                releaseActivationServiceControlExecutionOrderingRegistered =
+                    releaseActivationServiceControlExecution
+                        .DeterministicOrderingRegistered,
+                releaseActivationServiceControlExecutionFixedMappingRegistered =
+                    releaseActivationServiceControlExecution
+                        .FixedUnitMappingRegistered,
+                releaseActivationServiceControlExecutionDirectProcessRegistered =
+                    releaseActivationServiceControlExecution
+                        .DirectProcessRegistered,
+                releaseActivationServiceControlExecutionShellRegistered =
+                    releaseActivationServiceControlExecution.ShellRegistered,
+                releaseActivationServiceControlExecutionClearedEnvironmentRegistered =
+                    releaseActivationServiceControlExecution
+                        .ClearedEnvironmentRegistered,
+                releaseActivationServiceControlExecutionUserScopeRegistered =
+                    releaseActivationServiceControlExecution
+                        .UserUnitScopeRegistered,
+                releaseActivationServiceControlExecutionSystemScopeRegistered =
+                    releaseActivationServiceControlExecution
+                        .SystemUnitScopeRegistered,
+                releaseActivationServiceControlExecutionBoundedOutputRegistered =
+                    releaseActivationServiceControlExecution
+                        .BoundedOutputRegistered,
+                releaseActivationServiceControlExecutionTimeoutRegistered =
+                    releaseActivationServiceControlExecution
+                        .HardTimeoutRegistered,
+                releaseActivationServiceControlExecutionProcessTreeTerminationRegistered =
+                    releaseActivationServiceControlExecution
+                        .ProcessTreeTerminationRegistered,
+                releaseActivationServiceControlExecutionEvidenceRegistered =
+                    releaseActivationServiceControlExecution
+                        .ExactPlanEvidenceRegistered,
+                releaseActivationServiceControlExecutionReconciliationRegistered =
+                    releaseActivationServiceControlExecution
+                        .PartialFailureReconciliationRegistered,
+                releaseActivationServiceControlExecutionAutomaticRetryRegistered =
+                    releaseActivationServiceControlExecution
+                        .AutomaticRetryRegistered,
+                releaseActivationServiceControlExecutionHostRestartRegistered =
+                    releaseActivationServiceControlExecution
+                        .HostRestartExecutionRegistered,
+                releaseActivationServiceControlExecutionRemoteControlRegistered =
+                    releaseActivationServiceControlExecution
+                        .RemoteServiceControlRegistered,
+                releaseActivationServiceControlExecutionCurrentPointerMutationRegistered =
+                    releaseActivationServiceControlExecution
+                        .CurrentPointerMutationRegistered,
+                releaseActivationServiceControlExecutionRollbackRegistered =
+                    releaseActivationServiceControlExecution.RollbackRegistered,
+                releaseActivationServiceControlExecutionActivationAuthorityRegistered =
+                    releaseActivationServiceControlExecution
+                        .ActivationAuthorityRegistered,
+                releaseActivationServiceControlExecutionOperationalCallerRegistered =
+                    releaseActivationServiceControlExecution
+                        .OperationalCallerRegistered,
+                releaseActivationServiceControlExecutionCliCallerRegistered =
+                    releaseActivationServiceControlExecution.CliCallerRegistered,
+                releaseActivationServiceControlExecutionAdminCallerRegistered =
+                    releaseActivationServiceControlExecution.AdminCallerRegistered,
+                releaseActivationServiceControlExecutionBrowserCallerRegistered =
+                    releaseActivationServiceControlExecution
+                        .BrowserCallerRegistered,
+                releaseActivationServiceControlExecutionHttpCallerRegistered =
+                    releaseActivationServiceControlExecution.HttpCallerRegistered,
+                releaseActivationServiceControlExecutionWebSocketCallerRegistered =
+                    releaseActivationServiceControlExecution
+                        .WebSocketCallerRegistered,
+                releaseActivationServiceControlExecutionHostedServiceCallerRegistered =
+                    releaseActivationServiceControlExecution
+                        .HostedServiceCallerRegistered,
+                releaseActivationServiceControlExecutionTimerCallerRegistered =
+                    releaseActivationServiceControlExecution.TimerCallerRegistered,
+                releaseActivationServiceControlExecutionAetherRemoteCommandCallerRegistered =
+                    releaseActivationServiceControlExecution
+                        .AetherRemoteCommandCallerRegistered,
+                releaseActivationServiceControlExecutionHealthProbeCallerRegistered =
+                    releaseActivationServiceControlExecution
+                        .HealthProbeCallerRegistered,
+                releaseActivationServiceControlExecutionRadioCallerRegistered =
+                    releaseActivationServiceControlExecution.RadioCallerRegistered,
+                releaseActivationServiceControlExecutionWatchdogCallerRegistered =
+                    releaseActivationServiceControlExecution
+                        .WatchdogCallerRegistered,
+                releaseActivationServiceControlExecutionCommandCallerRegistered =
+                    releaseActivationServiceControlExecution.CommandCallerRegistered,
+                releaseActivationServiceControlExecutionLeaseCallerRegistered =
+                    releaseActivationServiceControlExecution.LeaseCallerRegistered,
+                releaseActivationServiceControlExecutionTxCallerRegistered =
+                    releaseActivationServiceControlExecution.TxCallerRegistered,
+                releaseActivationServiceControlReady =
+                    releaseActivationServiceControlExecutionState
+                        .ServiceControlReady,
+                releaseActivationServiceControlExactPlanActive =
+                    releaseActivationServiceControlExecutionState
+                        .ExactServiceControlPlanBound,
+                releaseActivationServiceControlExactActivationActive =
+                    releaseActivationServiceControlExecutionState
+                        .ExactActivationPlanBound,
+                releaseActivationServiceControlPreSwitchComplete =
+                    releaseActivationServiceControlExecutionState
+                        .PreSwitchStopComplete,
+                releaseActivationServiceControlPostSwitchComplete =
+                    releaseActivationServiceControlExecutionState
+                        .PostSwitchStartComplete,
+                releaseActivationServiceControlPlannedStopCount =
+                    releaseActivationServiceControlExecutionState
+                        .PlannedStopActionCount,
+                releaseActivationServiceControlExecutedStopCount =
+                    releaseActivationServiceControlExecutionState
+                        .ExecutedStopActionCount,
+                releaseActivationServiceControlNoOpStopCount =
+                    releaseActivationServiceControlExecutionState
+                        .TopologyNoOpStopActionCount,
+                releaseActivationServiceControlPlannedStartCount =
+                    releaseActivationServiceControlExecutionState
+                        .PlannedStartActionCount,
+                releaseActivationServiceControlExecutedStartCount =
+                    releaseActivationServiceControlExecutionState
+                        .ExecutedStartActionCount,
+                releaseActivationServiceControlNoOpStartCount =
+                    releaseActivationServiceControlExecutionState
+                        .TopologyNoOpStartActionCount,
+                releaseActivationServiceControlSetupStable =
+                    releaseActivationServiceControlExecutionState.SetupStable,
+                releaseActivationServiceControlTopologyStable =
+                    releaseActivationServiceControlExecutionState.TopologyStable,
+                releaseActivationServiceControlInstalledActiveDuringStop =
+                    releaseActivationServiceControlExecutionState
+                        .InstalledReleaseActiveDuringStop,
+                releaseActivationServiceControlTargetActiveDuringStart =
+                    releaseActivationServiceControlExecutionState
+                        .TargetReleaseActiveDuringStart,
+                releaseActivationServiceControlReconciliationRequired =
+                    releaseActivationServiceControlExecutionState
+                        .ReconciliationRequired,
+                releaseActivationServiceControlHostRestartPerformed =
+                    releaseActivationServiceControlExecutionState
+                        .HostRestartPerformed,
+                releaseActivationServiceControlCurrentPointerChanged =
+                    releaseActivationServiceControlExecutionState
+                        .CurrentPointerChanged,
+                releaseActivationServiceControlRollbackPerformed =
+                    releaseActivationServiceControlExecutionState
+                        .RollbackPerformed,
+                releaseActivationServiceControlActivationAuthorized =
+                    releaseActivationServiceControlExecutionState
+                        .ActivationAuthorized,
                 releaseActivationHealthVerificationPlanRegistered =
                     releaseActivationHealthVerificationPlan.Registered,
                 releaseActivationHealthVerificationPlanServiceControlInputRegistered =
@@ -2089,6 +2293,9 @@ app.MapGet(
                 releaseActivationHealthVerificationExecutorExactActivationBindingRegistered =
                     releaseActivationHealthVerification
                         .ExactActivationPlanBindingRegistered,
+                releaseActivationHealthVerificationExecutorServiceControlInputRegistered =
+                    releaseActivationHealthVerification
+                        .ServiceControlEvidenceInputRegistered,
                 releaseActivationHealthVerificationExecutorStatusDoubleReadRegistered =
                     releaseActivationHealthVerification
                         .ReleaseStatusDoubleReadRegistered,

@@ -35,7 +35,8 @@ public enum VerifiedReleaseActivationHealthVerificationFailureCode
     ObservationDrift = 13,
     HealthAlreadyVerified = 14,
     UnsupportedTopology = 15,
-    StationIdentityMismatch = 16
+    StationIdentityMismatch = 16,
+    ServiceControlUnavailable = 17
 }
 
 public sealed record VerifiedReleaseActivationHealthVerificationReport(
@@ -161,7 +162,7 @@ public sealed record VerifiedReleaseActivationHealthVerificationReport(
                 tally.BrokerLinkObservationCount > 0,
             HealthEvidenceProduced: true,
             ServiceHealthReady: true,
-            ServiceControlReady: false,
+            ServiceControlReady: true,
             CurrentPointerChanged: false,
             ActivationAuthorized: false)
         {
@@ -178,6 +179,7 @@ public sealed record VerifiedReleaseActivationHealthVerificationDiagnostics(
     bool ExactHealthPlanInputRegistered,
     bool ExactHealthPlanBindingRegistered,
     bool ExactActivationPlanBindingRegistered,
+    bool ServiceControlEvidenceInputRegistered,
     bool ReleaseStatusDoubleReadRegistered,
     bool SetupStateDoubleReadRegistered,
     bool TopologyBindingRegistered,
@@ -747,6 +749,10 @@ public sealed class VerifiedReleaseActivationHealthVerificationService
         m_setupReader;
     private readonly Func<RemoteStationAdministrationSnapshot>
         m_remoteStationSnapshotReader;
+    private readonly Func<
+        VerifiedReleaseActivationServiceControlPlan,
+        VerifiedReleaseActivationServiceControlObservation>
+        m_serviceControlReader;
     private readonly IVerifiedReleaseActivationHealthProbeRuntime m_runtime;
     private readonly ReleaseActivationHealthVerificationSettings m_settings;
     private readonly TimeProvider m_timeProvider;
@@ -759,6 +765,7 @@ public sealed class VerifiedReleaseActivationHealthVerificationService
         ReleaseInstallationStatusReader statusReader,
         InstallationSetupStore setupStore,
         RemoteStationCatalogService remoteStations,
+        VerifiedReleaseActivationServiceControlExecutionService serviceControl,
         IOptions<ReleaseActivationHealthVerificationSettings> settings)
         : this(
             statusReader is null
@@ -770,6 +777,9 @@ public sealed class VerifiedReleaseActivationHealthVerificationService
             remoteStations is null
                 ? throw new ArgumentNullException(nameof(remoteStations))
                 : remoteStations.GetAdministrationSnapshot,
+            serviceControl is null
+                ? throw new ArgumentNullException(nameof(serviceControl))
+                : serviceControl.ObservePlan,
             new LinuxVerifiedReleaseActivationHealthProbeRuntime(),
             settings?.Value ??
                 throw new ArgumentNullException(nameof(settings)),
@@ -781,6 +791,10 @@ public sealed class VerifiedReleaseActivationHealthVerificationService
         Func<CancellationToken, Task<ReleaseStatusReadResult>> statusReader,
         Func<CancellationToken, Task<InstallationSetupState>> setupReader,
         Func<RemoteStationAdministrationSnapshot> remoteStationSnapshotReader,
+        Func<
+            VerifiedReleaseActivationServiceControlPlan,
+            VerifiedReleaseActivationServiceControlObservation>
+            serviceControlReader,
         IVerifiedReleaseActivationHealthProbeRuntime runtime,
         ReleaseActivationHealthVerificationSettings settings,
         TimeProvider timeProvider,
@@ -792,6 +806,8 @@ public sealed class VerifiedReleaseActivationHealthVerificationService
             throw new ArgumentNullException(nameof(setupReader));
         m_remoteStationSnapshotReader = remoteStationSnapshotReader ??
             throw new ArgumentNullException(nameof(remoteStationSnapshotReader));
+        m_serviceControlReader = serviceControlReader ??
+            throw new ArgumentNullException(nameof(serviceControlReader));
         m_runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         m_settings = ValidateSettings(settings);
         m_timeProvider = timeProvider ??
@@ -809,6 +825,7 @@ public sealed class VerifiedReleaseActivationHealthVerificationService
             ExactHealthPlanInputRegistered: true,
             ExactHealthPlanBindingRegistered: true,
             ExactActivationPlanBindingRegistered: true,
+            ServiceControlEvidenceInputRegistered: true,
             ReleaseStatusDoubleReadRegistered: true,
             SetupStateDoubleReadRegistered: true,
             TopologyBindingRegistered: true,
@@ -881,7 +898,7 @@ public sealed class VerifiedReleaseActivationHealthVerificationService
                     AllUnitsActive: completed is not null,
                     AllHealthContractsPassed: completed is not null,
                     ReconciliationRequired: false,
-                    ServiceControlReady: false,
+                    ServiceControlReady: completed is not null,
                     CurrentPointerChanged: false,
                     ActivationAuthorized: false);
             }
@@ -939,6 +956,20 @@ public sealed class VerifiedReleaseActivationHealthVerificationService
                 "The health-verification plan no longer matches its exact activation transaction.",
                 m_settings,
                 planReport);
+        }
+        VerifiedReleaseActivationServiceControlObservation serviceControl =
+            m_serviceControlReader(plan.ServiceControlPlan);
+        if (!ValidateServiceControlObservation(
+                serviceControl,
+                plan.ServiceControlPlan))
+        {
+            return VerifiedReleaseActivationHealthVerificationReport.Failure(
+                VerifiedReleaseActivationHealthVerificationFailureCode
+                    .ServiceControlUnavailable,
+                "Exact service-control completion is required before post-switch health verification.",
+                m_settings,
+                planReport,
+                exactPlanBound: true);
         }
 
         await m_executionGate.WaitAsync(cancellationToken);
@@ -1596,6 +1627,45 @@ public sealed class VerifiedReleaseActivationHealthVerificationService
             }
         }
         return true;
+    }
+
+    private static bool ValidateServiceControlObservation(
+        VerifiedReleaseActivationServiceControlObservation observation,
+        VerifiedReleaseActivationServiceControlPlan plan)
+    {
+        if (plan.HostRestartRequired)
+        {
+            return false;
+        }
+        if (!plan.ServiceControlRequired)
+        {
+            return observation.ServiceControlReady &&
+                !observation.ServiceControlRequired &&
+                observation.PlannedStopActionCount == 0 &&
+                observation.ExecutedStopActionCount == 0 &&
+                observation.TopologyNoOpStopActionCount == 0 &&
+                observation.PlannedStartActionCount == 0 &&
+                observation.ExecutedStartActionCount == 0 &&
+                observation.TopologyNoOpStartActionCount == 0 &&
+                observation.CompletedAt is not null &&
+                !observation.ReconciliationRequired;
+        }
+        return observation.ServiceControlReady &&
+            observation.ServiceControlRequired &&
+            observation.PlannedStopActionCount == plan.StopActions.Count &&
+            observation.ExecutedStopActionCount >= 0 &&
+            observation.TopologyNoOpStopActionCount >= 0 &&
+            observation.ExecutedStopActionCount +
+                observation.TopologyNoOpStopActionCount ==
+                observation.PlannedStopActionCount &&
+            observation.PlannedStartActionCount == plan.StartActions.Count &&
+            observation.ExecutedStartActionCount >= 0 &&
+            observation.TopologyNoOpStartActionCount >= 0 &&
+            observation.ExecutedStartActionCount +
+                observation.TopologyNoOpStartActionCount ==
+                observation.PlannedStartActionCount &&
+            observation.CompletedAt is not null &&
+            !observation.ReconciliationRequired;
     }
 
     private static bool MatchesTargetActiveStatus(
