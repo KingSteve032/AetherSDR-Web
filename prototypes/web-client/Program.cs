@@ -399,6 +399,14 @@ ReleaseActivationRollbackSettings releaseActivationRollbackSettings =
         .Get<ReleaseActivationRollbackSettings>(options =>
             options.ErrorOnUnknownConfiguration = true) ??
     new ReleaseActivationRollbackSettings();
+ReleaseActivationOperatorApprovalSettings
+    releaseActivationOperatorApprovalSettings =
+        builder.Configuration
+            .GetSection(
+                ReleaseActivationOperatorApprovalSettings.SectionName)
+            .Get<ReleaseActivationOperatorApprovalSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new ReleaseActivationOperatorApprovalSettings();
 StationTxCommandTrustSettings stationTxCommandTrustSettings =
     builder.Configuration
         .GetSection(StationTxCommandTrustSettings.SectionName)
@@ -512,6 +520,8 @@ builder.Services.AddSingleton(
     Options.Create(releaseActivationHealthVerificationSettings));
 builder.Services.AddSingleton(
     Options.Create(releaseActivationRollbackSettings));
+builder.Services.AddSingleton(
+    Options.Create(releaseActivationOperatorApprovalSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandTrustSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandSigningSettings));
 builder.Services.AddSingleton(
@@ -579,6 +589,8 @@ builder.Services.AddSingleton<
     VerifiedReleaseActivationRollbackExecutionService>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationHealthVerificationService>();
+builder.Services.AddSingleton<
+    VerifiedReleaseActivationOperatorApprovalAuthority>();
 builder.Services.AddSingleton<VerifiedReleaseActivationReadinessEvaluator>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationLeaseQuiescenceBoundary>();
@@ -744,6 +756,10 @@ VerifiedReleaseActivationHealthVerificationService
     releaseActivationHealthVerificationService =
         app.Services.GetRequiredService<
             VerifiedReleaseActivationHealthVerificationService>();
+VerifiedReleaseActivationOperatorApprovalAuthority
+    releaseActivationOperatorApprovalAuthority =
+        app.Services.GetRequiredService<
+            VerifiedReleaseActivationOperatorApprovalAuthority>();
 VerifiedReleaseActivationReadinessEvaluator releaseActivationReadinessEvaluator =
     app.Services.GetRequiredService<
         VerifiedReleaseActivationReadinessEvaluator>();
@@ -883,6 +899,9 @@ app.MapGet(
             VerifiedReleaseActivationHealthVerificationStateDiagnostics
                 releaseActivationHealthVerificationState =
                     releaseActivationHealthVerificationService.State;
+            VerifiedReleaseActivationOperatorApprovalDiagnostics
+                releaseActivationOperatorApproval =
+                    releaseActivationOperatorApprovalAuthority.Snapshot;
             VerifiedReleaseActivationReadinessDiagnostics
                 releaseActivationReadiness =
                     releaseActivationReadinessEvaluator.Snapshot;
@@ -2799,6 +2818,93 @@ app.MapGet(
                         .ReconciliationRequired,
                 releaseActivationRollbackActivationAuthorized =
                     releaseActivationRollbackExecutionState.ActivationAuthorized,
+                releaseActivationOperatorApprovalRegistered =
+                    releaseActivationOperatorApproval.Registered,
+                releaseActivationOperatorApprovalEnabled =
+                    releaseActivationOperatorApproval.AuthorityEnabled,
+                releaseActivationOperatorApprovalMaximumAgeSeconds =
+                    releaseActivationOperatorApproval.MaximumApprovalAgeSeconds,
+                releaseActivationOperatorApprovalExactPlanBindingRegistered =
+                    releaseActivationOperatorApproval.ExactPlanBindingRegistered,
+                releaseActivationOperatorApprovalAuthenticationEvidenceRequired =
+                    releaseActivationOperatorApproval.AuthenticationEvidenceRequired,
+                releaseActivationOperatorApprovalAdministratorAuthorizationRequired =
+                    releaseActivationOperatorApproval
+                        .AdministratorAuthorizationRequired,
+                releaseActivationOperatorApprovalReauthenticationRequired =
+                    releaseActivationOperatorApproval.ReauthenticationRequired,
+                releaseActivationOperatorApprovalBoundedLifetimeRegistered =
+                    releaseActivationOperatorApproval
+                        .BoundedApprovalLifetimeRegistered,
+                releaseActivationOperatorApprovalSingleActiveRegistered =
+                    releaseActivationOperatorApproval
+                        .SingleActiveApprovalRegistered,
+                releaseActivationOperatorApprovalRevocationRegistered =
+                    releaseActivationOperatorApproval.RevocationRegistered,
+                releaseActivationOperatorApprovalActive =
+                    releaseActivationOperatorApproval.ActiveApproval,
+                releaseActivationOperatorApprovalAvailable =
+                    releaseActivationOperatorApproval.ApprovalAvailable,
+                releaseActivationOperatorApprovalAttemptCount =
+                    releaseActivationOperatorApproval.AttemptCount,
+                releaseActivationOperatorApprovalAcceptedCount =
+                    releaseActivationOperatorApproval.AcceptedCount,
+                releaseActivationOperatorApprovalRejectedCount =
+                    releaseActivationOperatorApproval.RejectedCount,
+                releaseActivationOperatorApprovalRevokedCount =
+                    releaseActivationOperatorApproval.RevokedCount,
+                releaseActivationOperatorApprovalLastOutcome =
+                    releaseActivationOperatorApproval.LastOutcome,
+                releaseActivationOperatorApprovalLastObservedAt =
+                    releaseActivationOperatorApproval.LastObservedAt,
+                releaseActivationOperatorApprovalFileWriteRegistered =
+                    releaseActivationOperatorApproval.FileWriteRegistered,
+                releaseActivationOperatorApprovalCurrentPointerMutationRegistered =
+                    releaseActivationOperatorApproval
+                        .CurrentPointerMutationRegistered,
+                releaseActivationOperatorApprovalActivationExecutionRegistered =
+                    releaseActivationOperatorApproval.ActivationExecutionRegistered,
+                releaseActivationOperatorApprovalActivationAuthorityRegistered =
+                    releaseActivationOperatorApproval
+                        .ActivationAuthorityRegistered,
+                releaseActivationOperatorApprovalTxLeaseMutationRegistered =
+                    releaseActivationOperatorApproval.TxLeaseMutationRegistered,
+                releaseActivationOperatorApprovalRadioCommandRegistered =
+                    releaseActivationOperatorApproval.RadioCommandRegistered,
+                releaseActivationOperatorApprovalWatchdogMutationRegistered =
+                    releaseActivationOperatorApproval.WatchdogMutationRegistered,
+                releaseActivationOperatorApprovalBackupExecutionRegistered =
+                    releaseActivationOperatorApproval.BackupExecutionRegistered,
+                releaseActivationOperatorApprovalMigrationExecutionRegistered =
+                    releaseActivationOperatorApproval.MigrationExecutionRegistered,
+                releaseActivationOperatorApprovalServiceControlRegistered =
+                    releaseActivationOperatorApproval.ServiceControlRegistered,
+                releaseActivationOperatorApprovalHealthProbeCallerRegistered =
+                    releaseActivationOperatorApproval.HealthProbeCallerRegistered,
+                releaseActivationOperatorApprovalRollbackExecutionRegistered =
+                    releaseActivationOperatorApproval.RollbackExecutionRegistered,
+                releaseActivationOperatorApprovalCliCallerRegistered =
+                    releaseActivationOperatorApproval.CliCallerRegistered,
+                releaseActivationOperatorApprovalAdminCallerRegistered =
+                    releaseActivationOperatorApproval.AdminCallerRegistered,
+                releaseActivationOperatorApprovalBrowserCallerRegistered =
+                    releaseActivationOperatorApproval.BrowserCallerRegistered,
+                releaseActivationOperatorApprovalHttpCallerRegistered =
+                    releaseActivationOperatorApproval.HttpCallerRegistered,
+                releaseActivationOperatorApprovalWebSocketCallerRegistered =
+                    releaseActivationOperatorApproval.WebSocketCallerRegistered,
+                releaseActivationOperatorApprovalHostedServiceCallerRegistered =
+                    releaseActivationOperatorApproval.HostedServiceCallerRegistered,
+                releaseActivationOperatorApprovalTimerCallerRegistered =
+                    releaseActivationOperatorApproval.TimerCallerRegistered,
+                releaseActivationOperatorApprovalAetherRemoteCallerRegistered =
+                    releaseActivationOperatorApproval.AetherRemoteCallerRegistered,
+                releaseActivationOperatorApprovalCommandCallerRegistered =
+                    releaseActivationOperatorApproval.CommandCallerRegistered,
+                releaseActivationOperatorApprovalLeaseCallerRegistered =
+                    releaseActivationOperatorApproval.LeaseCallerRegistered,
+                releaseActivationOperatorApprovalTxCallerRegistered =
+                    releaseActivationOperatorApproval.TxCallerRegistered,
                 releaseActivationHealthVerificationExecutorRegistered =
                     releaseActivationHealthVerification.Registered,
                 releaseActivationHealthVerificationExecutorConfigurationRegistered =

@@ -3301,6 +3301,29 @@ HTTP/WebSocket/hosted-service/timer/AetherRemote caller, activation authority, h
 restart, remote service-control transport, radio/watchdog/command/lease/keying/TX
 action, or live RF operation.
 
+The twenty-seventh increment adds
+`VerifiedReleaseActivationOperatorApprovalAuthority`, one disabled-by-default,
+callerless exact-plan approval boundary. Its strict configuration permits a bounded
+30-through-600-second approval lifetime and defaults to 300 seconds. An internal
+approval attempt requires the exact retained activation plan, current authentication,
+administrator authorization, and fresh reauthentication. Equivalent plans, stale or
+malformed authentication evidence, non-administrators, duplicate active approvals,
+and malformed approval identities fail closed.
+
+Only one reference-bound approval may remain active. It carries internal subject and
+random approval identities, expires automatically, and can be revoked once. Public
+reports and health diagnostics disclose only bounded release identities, booleans,
+counts, outcomes, and timestamps. The activation-evidence collector now observes the
+exact fresh approval, while default production remains unapproved because no issuer or
+operational caller exists.
+
+Approval is readiness evidence and never activation authority. The boundary performs
+no file write, pointer mutation, backup, migration, service control, health probe,
+rollback, activation, radio/watchdog command, lease mutation, keying, TX action, or
+live RF operation. Production registers no CLI/Admin/browser/HTTP/WebSocket/hosted-
+service/timer/AetherRemote/command/lease/TX caller. Authenticated Admin issuance and
+transaction orchestration remain later separately reviewed M8B work.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -3850,6 +3873,34 @@ the post-fix tree. The normal ODU-6400 RX-only browser checklist is waived as a
 pre-staging requirement because it is an indirect gateway regression check rather than
 rollback-specific acceptance. It remains an optional post-PR, pre-merge regression
 check and would require an explicit deployment/restart confirmation before use.
+
+Automated checkpoint on 2026-08-05 for exact operator-approval authority and evidence:
+the deployment script passed shell syntax and its complete validation-only production
+gate; changed C# files passed format verification; Release solution build completed
+with zero warnings and zero errors; the focused authority suite passed 18/18; the
+combined authority and evidence suite passed 62/62; and the complete activation,
+backup, migration, service-control, pointer-switch, health, rollback, approval,
+readiness, and evidence boundary passed 351/351. Web tests passed 1,538/1,538;
+independent-watchdog tests passed 57/57; TX-HIL isolation tests passed 48/48;
+AetherRemote tests passed 70/70; and browser tests passed 135/135. The complete
+checkpoint covered 1,713 .NET tests and 1,848 tests overall.
+
+Focused approval tests proved disabled defaults, diagnostics-only public surface,
+strict bounded configuration, exact retained-plan reference binding, current
+authentication plus administrator authorization and fresh reauthentication, redacted
+subject and approval identities, unauthenticated/non-administrator/stale/malformed/
+missing-plan/equivalent-plan rejection, one active approval, automatic expiry and
+replacement, exact revocation, and malformed identity-source rejection. Evidence
+collection accepts only a valid fresh exact observation, rejects future-issued or
+otherwise malformed approval evidence, and drops an approval that expires during its
+bounded collection window.
+
+The validation-only published gateway retained authority disabled, zero active approval
+and attempt state, and no activation authority or CLI/Admin/browser/HTTP/WebSocket/
+hosted-service/timer/AetherRemote/radio/watchdog/command/lease/TX caller. The local
+independent watchdog started empty and Disarmed. No deployment, server update, radio
+connection, TX lease, keying action, transmit-control command, or live RF operation was
+performed.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

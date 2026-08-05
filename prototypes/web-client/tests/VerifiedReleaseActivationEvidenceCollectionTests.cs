@@ -44,7 +44,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollectionTests
         Assert.True(snapshot.ServiceControlEvidenceRegistered);
         Assert.True(snapshot.HealthVerificationEvidenceRegistered);
         Assert.False(snapshot.RollbackEvidenceRegistered);
-        Assert.False(snapshot.OperatorApprovalEvidenceRegistered);
+        Assert.True(snapshot.OperatorApprovalEvidenceRegistered);
         Assert.False(snapshot.FileWriteRegistered);
         Assert.False(snapshot.CurrentPointerMutationRegistered);
         Assert.False(snapshot.ActivationExecutionRegistered);
@@ -226,6 +226,76 @@ public sealed class VerifiedReleaseActivationEvidenceCollectionTests
                 .EvidenceMalformed,
             report.FailureCode);
         Assert.Null(report.Collection);
+    }
+
+    [Fact]
+    public async Task ExactOperatorApprovalObservationCompletesApprovalEvidence()
+    {
+        Fixture fixture = new();
+        fixture.OperatorApprovalReader = _ =>
+            new VerifiedReleaseActivationOperatorApprovalObservation(
+                OperatorApproved: true,
+                ApprovedAt: fixture.Now,
+                ExpiresAt: fixture.Now.AddMinutes(5),
+                Revoked: false);
+        fixture.RebuildCollector();
+
+        VerifiedReleaseActivationEvidenceCollectionReport report =
+            await fixture.CollectAsync();
+
+        Assert.True(report.Succeeded);
+        Assert.True(report.OperatorApproved);
+        Assert.True(report.Collection!.Evidence.OperatorApproved);
+        Assert.False(report.CurrentPointerChanged);
+        Assert.False(report.ActivationPerformed);
+    }
+
+    [Fact]
+    public async Task ApprovalExpiringDuringCollectionFailsReadinessClosed()
+    {
+        Fixture fixture = new();
+        fixture.OperatorApprovalReader = _ =>
+            new VerifiedReleaseActivationOperatorApprovalObservation(
+                OperatorApproved: true,
+                ApprovedAt: fixture.Now,
+                ExpiresAt: fixture.Now.AddSeconds(1),
+                Revoked: false);
+        fixture.AfterStatusRead = count =>
+        {
+            if (count == 2)
+            {
+                fixture.Time.Advance(TimeSpan.FromSeconds(2));
+            }
+        };
+        fixture.RebuildCollector();
+
+        VerifiedReleaseActivationEvidenceCollectionReport report =
+            await fixture.CollectAsync();
+
+        Assert.True(report.Succeeded);
+        Assert.False(report.OperatorApproved);
+        Assert.False(report.Collection!.Evidence.OperatorApproved);
+    }
+
+    [Fact]
+    public async Task MalformedOperatorApprovalObservationFailsClosed()
+    {
+        Fixture fixture = new();
+        fixture.OperatorApprovalReader = _ =>
+            new VerifiedReleaseActivationOperatorApprovalObservation(
+                OperatorApproved: true,
+                ApprovedAt: fixture.Now.AddMinutes(5),
+                ExpiresAt: fixture.Now.AddMinutes(10),
+                Revoked: false);
+        fixture.RebuildCollector();
+
+        VerifiedReleaseActivationEvidenceCollectionReport report =
+            await fixture.CollectAsync();
+
+        AssertFailure(
+            report,
+            VerifiedReleaseActivationEvidenceCollectionFailureCode
+                .EvidenceMalformed);
     }
 
     [Fact]
@@ -903,6 +973,16 @@ public sealed class VerifiedReleaseActivationEvidenceCollectionTests
                 FreshBrokerLinkCheckCount: 0,
                 CompletedAt: null,
                 ReconciliationRequired: false);
+        internal Func<
+            VerifiedReleaseActivationPlan,
+            VerifiedReleaseActivationOperatorApprovalObservation>
+        OperatorApprovalReader
+        { get; set; } = _ =>
+            new VerifiedReleaseActivationOperatorApprovalObservation(
+                OperatorApproved: false,
+                ApprovedAt: null,
+                ExpiresAt: null,
+                Revoked: false);
         internal VerifiedReleaseActivationEvidenceCollector Collector { get; private set; }
             = null!;
 
@@ -937,7 +1017,8 @@ public sealed class VerifiedReleaseActivationEvidenceCollectionTests
                 Time,
                 SessionCapture,
                 HealthVerificationReader,
-                ServiceControlReader);
+                ServiceControlReader,
+                OperatorApprovalReader);
         }
 
         internal Task<VerifiedReleaseActivationEvidenceCollectionReport>
