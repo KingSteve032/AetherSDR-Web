@@ -1081,10 +1081,33 @@ state only. There is no operational caller, activation authority, host restart,
 remote service-control transport, radio/watchdog/command/lease/TX action, keying, or
 live RF operation.
 
-Packaged bundle production, network download, archive extraction, operational
-backup orchestration, transaction orchestration, host-restart/remote service-control
-transports, operator-approval authority, Admin/browser workflows, and all operational
+The twenty-seventh M8B increment adds the callerless
+`VerifiedReleaseActivationOperatorApprovalAuthority`. Its strict
+`ReleaseActivationOperatorApproval` configuration remains disabled by default and
+bounds approval lifetime from 30 through 600 seconds, with a five-minute default. An
+internal approval attempt must retain the exact activation-plan object, current
+authentication, administrator authorization, and fresh reauthentication. Equivalent
+plans, stale or malformed authentication evidence, non-administrators, duplicate
+active approvals, and invalid approval identities fail closed.
+
+At most one exact approval is retained. It expires automatically, may be revoked once,
+and cannot be observed through an equivalent independently composed plan. Public
+reports and health diagnostics expose only bounded booleans, counts, timestamps, and
+release identities; the administrator subject binding and random approval identity
+remain internal. The activation-evidence collector now reads this exact observation,
+but normal production remains unapproved because no issuer or operational caller is
+registered.
+
+Operator approval is evidence, not activation authority. The boundary performs no
+file write, pointer mutation, backup, migration, service control, health probe,
+rollback, activation, lease/watchdog/radio command, keying, or transmit action. It has
+no CLI, Admin, browser, HTTP, WebSocket, hosted-service, timer, AetherRemote, command,
+lease, or TX caller. The authenticated Admin approval workflow, transaction
+orchestration, host-restart/remote service-control transports, and all operational
 update callers remain later M8B work.
+
+Packaged bundle production, network download, archive extraction, and operational
+backup orchestration also remain later M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled

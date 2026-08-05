@@ -1069,6 +1069,28 @@ installed-release health. Successful rollback evidence remains separate from for
 activation `RollbackReady`; production resolves only disabled diagnostics and zeroed
 state and registers no operational caller or activation/TX authority.
 
+The twenty-seventh M8B increment adds a separate exact operator-approval authority.
+`VerifiedReleaseActivationOperatorApprovalAuthority` is disabled by default, exposes
+only diagnostics publicly, and retains at most one internal approval for the exact
+activation-plan object. Approval requires current authentication, administrator
+authorization, and reauthentication within a configured 30-to-600-second window. The
+default is 300 seconds. Equivalent plan objects, stale or malformed authentication
+evidence, duplicate active approvals, and malformed approval identities are rejected.
+
+The retained approval has a random internal identity, exact administrator subject
+binding, issue time, expiry time, and revocation state. Public reports and health
+output disclose none of the approval or subject identities. Expired approvals are
+unavailable and replaceable; revocation is reference-bound and idempotently rejects a
+second attempt. The evidence collector observes only an exact fresh approval and
+otherwise supplies `OperatorApproved=false`.
+
+Approval evidence does not authorize or execute activation. Production registers no
+issuer, CLI, Admin, browser, HTTP, WebSocket, hosted-service, timer, AetherRemote,
+command, lease, radio, watchdog, or TX caller. The boundary owns no file, pointer,
+backup, migration, service-control, health-probe, rollback, keying, or RF mutation.
+An authenticated Admin issuer and the activation transaction orchestrator remain
+separate later M8B boundaries.
+
 ## Trust boundaries
 
 ### Browser

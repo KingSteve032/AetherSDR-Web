@@ -185,10 +185,10 @@ internal sealed class VerifiedReleaseActivationEvidenceCollection
 /// Collects one bounded observation-only activation evidence snapshot from the
 /// existing release-status reader, exact-plan TX-lease quiescence boundary,
 /// radio-session registry, and independent-watchdog registry. It deliberately
-/// reads exact-plan configuration-backup, migration, and post-switch health
-/// observations from separately reviewed boundaries while leaving required service
-/// control, rollback, and operator approval unavailable. It never invokes the health
-/// executor. It performs no write, pointer mutation, activation, lease mutation,
+/// reads exact-plan configuration-backup, migration, service-control, post-switch
+/// health, and operator-approval observations from separately reviewed boundaries
+/// while leaving rollback readiness unavailable. It never invokes the health or
+/// approval executors. It performs no write, pointer mutation, activation, lease mutation,
 /// radio/watchdog command, service control, health probe, rollback, browser/Admin
 /// operation, hosted service, timer, AetherRemote command, or transmit action.
 /// </summary>
@@ -218,6 +218,10 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         VerifiedReleaseActivationPlan,
         VerifiedReleaseActivationHealthVerificationObservation>
         m_healthVerificationReader;
+    private readonly Func<
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationOperatorApprovalObservation>
+        m_operatorApprovalReader;
     private readonly Func<IReadOnlyList<RadioSessionDiagnostics>>
         m_sessionSnapshotReader;
     private readonly Func<StationTxIndependentWatchdogAggregate>
@@ -234,6 +238,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         VerifiedReleaseActivationMigrationExecutionService migrationExecution,
         VerifiedReleaseActivationServiceControlExecutionService serviceControl,
         VerifiedReleaseActivationHealthVerificationService healthVerification,
+        VerifiedReleaseActivationOperatorApprovalAuthority operatorApproval,
         RadioSessionRegistry radioSessions,
         StationTxIndependentWatchdogRegistry independentWatchdogs)
         : this(
@@ -247,7 +252,9 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             migrationReader: CreateMigrationReader(migrationExecution),
             healthVerificationReader:
                 CreateHealthVerificationReader(healthVerification),
-            serviceControlReader: CreateServiceControlReader(serviceControl))
+            serviceControlReader: CreateServiceControlReader(serviceControl),
+            operatorApprovalReader:
+                CreateOperatorApprovalReader(operatorApproval))
     {
     }
 
@@ -266,7 +273,11 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         Func<
             VerifiedReleaseActivationPlan,
             VerifiedReleaseActivationServiceControlObservation>?
-            serviceControlReader = null)
+            serviceControlReader = null,
+        Func<
+            VerifiedReleaseActivationPlan,
+            VerifiedReleaseActivationOperatorApprovalObservation>?
+            operatorApprovalReader = null)
         : this(
             statusReader,
             CreateLeaseQuiescenceReader(leaseSnapshotReader),
@@ -275,7 +286,8 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             timeProvider,
             sessionEvidenceCapture,
             healthVerificationReader: healthVerificationReader,
-            serviceControlReader: serviceControlReader)
+            serviceControlReader: serviceControlReader,
+            operatorApprovalReader: operatorApprovalReader)
     {
     }
 
@@ -304,7 +316,11 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         Func<
             VerifiedReleaseActivationPlan,
             VerifiedReleaseActivationServiceControlObservation>?
-            serviceControlReader = null)
+            serviceControlReader = null,
+        Func<
+            VerifiedReleaseActivationPlan,
+            VerifiedReleaseActivationOperatorApprovalObservation>?
+            operatorApprovalReader = null)
     {
         m_statusReader = statusReader ??
             throw new ArgumentNullException(nameof(statusReader));
@@ -317,6 +333,8 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             CreateUnavailableServiceControlReader();
         m_healthVerificationReader = healthVerificationReader ??
             CreateUnavailableHealthVerificationReader();
+        m_operatorApprovalReader = operatorApprovalReader ??
+            CreateUnavailableOperatorApprovalReader();
         m_sessionSnapshotReader = sessionSnapshotReader ??
             throw new ArgumentNullException(nameof(sessionSnapshotReader));
         m_watchdogSnapshotReader = watchdogSnapshotReader ??
@@ -342,7 +360,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             ServiceControlEvidenceRegistered: true,
             HealthVerificationEvidenceRegistered: true,
             RollbackEvidenceRegistered: false,
-            OperatorApprovalEvidenceRegistered: false,
+            OperatorApprovalEvidenceRegistered: true,
             FileWriteRegistered: false,
             CurrentPointerMutationRegistered: false,
             ActivationExecutionRegistered: false,
@@ -415,6 +433,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
         VerifiedReleaseActivationServiceControlObservation? serviceControl;
         VerifiedReleaseActivationHealthVerificationObservation?
             healthVerification;
+        VerifiedReleaseActivationOperatorApprovalObservation? operatorApproval;
         try
         {
             beforeStatus = await m_statusReader(cancellationToken);
@@ -425,6 +444,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             migration = m_migrationReader(plan);
             serviceControl = m_serviceControlReader(plan);
             healthVerification = m_healthVerificationReader(plan);
+            operatorApproval = m_operatorApprovalReader(plan);
             sessions = m_sessionSnapshotReader();
             watchdogs = m_watchdogSnapshotReader();
             cancellationToken.ThrowIfCancellationRequested();
@@ -464,6 +484,7 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             migration is null ||
             serviceControl is null ||
             healthVerification is null ||
+            operatorApproval is null ||
             sessions is null ||
             watchdogs is null)
         {
@@ -486,6 +507,9 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             !ValidateMigrationObservation(migration, plan) ||
             !ValidateServiceControlObservation(serviceControl, plan) ||
             !ValidateHealthVerificationObservation(healthVerification) ||
+            !ValidateOperatorApprovalObservation(
+                operatorApproval,
+                completedAt) ||
             healthVerification.HealthVerificationReady &&
                 !serviceControl.ServiceControlReady)
         {
@@ -533,7 +557,9 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             serviceControlReady,
             healthVerification.HealthVerificationReady,
             RollbackReady: false,
-            OperatorApproved: false);
+            OperatorApproved:
+                operatorApproval.OperatorApproved &&
+                operatorApproval.ExpiresAt > completedAt);
         VerifiedReleaseActivationEvidenceCollection collection = new(
             plan,
             evidence);
@@ -670,6 +696,26 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             FreshBrokerLinkCheckCount: 0,
             CompletedAt: null,
             ReconciliationRequired: false);
+
+    private static Func<
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationOperatorApprovalObservation>
+        CreateOperatorApprovalReader(
+            VerifiedReleaseActivationOperatorApprovalAuthority operatorApproval)
+    {
+        ArgumentNullException.ThrowIfNull(operatorApproval);
+        return operatorApproval.Observe;
+    }
+
+    private static Func<
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationOperatorApprovalObservation>
+        CreateUnavailableOperatorApprovalReader() =>
+        _ => new VerifiedReleaseActivationOperatorApprovalObservation(
+            OperatorApproved: false,
+            ApprovedAt: null,
+            ExpiresAt: null,
+            Revoked: false);
 
     private static Func<IReadOnlyList<RadioSessionDiagnostics>>
         CreateSessionSnapshotReader(RadioSessionRegistry radioSessions)
@@ -832,6 +878,22 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
             observation.FileCount == 0 &&
             observation.MigrationBytes == 0 &&
             observation.CompletedAt is null;
+    }
+
+    private static bool ValidateOperatorApprovalObservation(
+        VerifiedReleaseActivationOperatorApprovalObservation observation,
+        DateTimeOffset completedAt)
+    {
+        if (observation.OperatorApproved)
+        {
+            return observation.ApprovedAt is not null &&
+                observation.ExpiresAt is not null &&
+                observation.ApprovedAt <= completedAt &&
+                observation.ApprovedAt < observation.ExpiresAt &&
+                !observation.Revoked;
+        }
+        return observation.ApprovedAt is null &&
+            observation.ExpiresAt is null;
     }
 
     private static bool ValidateServiceControlObservation(
