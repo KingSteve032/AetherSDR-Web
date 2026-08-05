@@ -1121,6 +1121,42 @@ persists no download and adds no archive extraction, staging, installation, poin
 mutation, service control, activation, rollback, Admin/browser, AetherRemote runtime,
 radio, watchdog, command, lease, keying, or TX caller.
 
+The twenty-ninth M8B increment adds a separate release-production trust boundary. The
+running web application remains verification-only. `AetherSDR.ReleaseBuilder` is a
+standalone build-time executable granted internal access only to the canonical release
+contract serializer and verifier. It accepts one canonical architecture asset
+directory, exact release/channel/compatibility metadata, one owner-only PKCS#8 ECDSA
+P-256 key file, and one new exact manifest output path. It reads no application
+configuration, service state, radio state, credentials, or deployment target.
+
+The signer requires exactly four regular architecture archives and rejects links,
+missing or extra files, empty or oversized packages, metadata drift during hashing,
+non-canonical semantic transitions, contradictory channel/version selection, unsafe key
+permissions, non-PKCS#8 material, non-P-256 keys, existing output, and non-atomic writes.
+It creates the same canonical signing bytes used by production verification, signs with
+P1363 ECDSA/SHA-256, exports only the public verification material in memory, and submits
+the complete generated manifest back through `SignedReleaseManifestVerifier`. Output is
+created only after that self-verification succeeds. Private bytes and decoded key
+characters are cleared; reports omit key paths, package paths, digests, and signatures.
+
+`build-github-release-assets.sh` composes the build boundary for `linux-x64` and
+`linux-arm64`. It uses deterministic .NET build settings, normalizes generated file
+modes, packages sorted trees with fixed numeric ownership and one commit-derived mtime,
+and disables gzip timestamps. The current gateway and station engine both use the same
+reviewed web/watchdog tree, so their role archives are byte-identical by construction.
+Both architecture trees are inspected for the approved production web/watchdog command
+string counts, forbidden HIL/TX markers, and disabled configuration before signing. Ten
+read-only assets are promoted into one new output directory only after both manifests
+self-verify.
+
+The manual `draft-release.yml` workflow may run only from `main`, requests the protected
+`release-signing` environment, reruns the production validation-only gate, injects the
+private key from one environment secret into a mode-0600 temporary file, builds the ten
+assets, removes the key, and creates a GitHub draft at the exact workflow commit. It
+never publishes an immutable release automatically. The workflow adds no runtime signer,
+updater polling loop, persistent download, installation, activation, service control,
+radio, watchdog, command, lease, keying, or RF authority.
+
 ## Trust boundaries
 
 ### Browser
