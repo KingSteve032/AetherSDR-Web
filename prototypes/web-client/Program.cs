@@ -208,6 +208,42 @@ if (releaseUpdateCommandLine.Command ==
     return;
 }
 if (releaseUpdateCommandLine.Command ==
+    ReleaseUpdateConsoleCommandKind.CheckGitHubRelease)
+{
+    ReleaseManifestTrustSettings releaseCheckTrustSettings =
+        builder.Configuration
+            .GetSection(ReleaseManifestTrustSettings.SectionName)
+            .Get<ReleaseManifestTrustSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new ReleaseManifestTrustSettings();
+    GitHubReleaseSourceSettings releaseGitHubCheckSourceSettings =
+        builder.Configuration
+            .GetSection(GitHubReleaseSourceSettings.SectionName)
+            .Get<GitHubReleaseSourceSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new GitHubReleaseSourceSettings();
+    ReleaseManifestTrustRegistry releaseCheckTrustRegistry = new(
+        Options.Create(releaseCheckTrustSettings),
+        NullLogger<ReleaseManifestTrustRegistry>.Instance);
+    SignedReleaseManifestVerificationService releaseCheckManifestService = new(
+        releaseCheckTrustRegistry,
+        new SignedReleaseManifestVerifier());
+    LocalOfflineReleaseBundleVerificationService releaseCheckBundleService =
+        new(releaseCheckManifestService);
+    GitHubReleaseBundleSource releaseGitHubSource = new(
+        releaseGitHubCheckSourceSettings,
+        GitHubReleaseHttpClient.CreateStandaloneClient,
+        releaseCheckBundleService,
+        Path.GetTempPath(),
+        NullLogger<GitHubReleaseBundleSource>.Instance);
+    GitHubReleaseBundleCheckConsole releaseGitHubCheckConsole =
+        new(releaseGitHubSource);
+    Environment.ExitCode = await releaseGitHubCheckConsole.ExecuteAsync(
+        releaseUpdateCommandLine,
+        Console.Out);
+    return;
+}
+if (releaseUpdateCommandLine.Command ==
     ReleaseUpdateConsoleCommandKind.Status)
 {
     InstallationPathSettings releaseStatusPathSettings =
@@ -364,6 +400,12 @@ ReleaseManifestTrustSettings releaseManifestTrustSettings =
         .Get<ReleaseManifestTrustSettings>(options =>
             options.ErrorOnUnknownConfiguration = true) ??
     new ReleaseManifestTrustSettings();
+GitHubReleaseSourceSettings releaseGitHubSourceSettings =
+    builder.Configuration
+        .GetSection(GitHubReleaseSourceSettings.SectionName)
+        .Get<GitHubReleaseSourceSettings>(options =>
+            options.ErrorOnUnknownConfiguration = true) ??
+    new GitHubReleaseSourceSettings();
 ReleaseMigrationRunnerTrustSettings releaseMigrationRunnerTrustSettings =
     builder.Configuration
         .GetSection(ReleaseMigrationRunnerTrustSettings.SectionName)
@@ -511,6 +553,7 @@ builder.Services.AddSingleton(Options.Create(radioSettings));
 builder.Services.AddSingleton(Options.Create(remoteStationSettings));
 builder.Services.AddSingleton(Options.Create(independentTxWatchdogSettings));
 builder.Services.AddSingleton(Options.Create(releaseManifestTrustSettings));
+builder.Services.AddSingleton(Options.Create(releaseGitHubSourceSettings));
 builder.Services.AddSingleton(Options.Create(releaseMigrationRunnerTrustSettings));
 builder.Services.AddSingleton(
     Options.Create(releaseActivationServiceControlSettings));
@@ -541,6 +584,14 @@ builder.Services.AddSingleton<SignedReleaseManifestVerificationService>();
 builder.Services.AddSingleton<
     LocalOfflineReleaseBundleVerificationService>();
 builder.Services.AddSingleton<OfflineReleaseBundleCheckConsole>();
+builder.Services
+    .AddHttpClient(
+        GitHubReleaseHttpClient.ClientName,
+        GitHubReleaseHttpClient.Configure)
+    .ConfigurePrimaryHttpMessageHandler(
+        GitHubReleaseHttpClient.CreateHandler);
+builder.Services.AddSingleton<GitHubReleaseBundleSource>();
+builder.Services.AddSingleton<GitHubReleaseBundleCheckConsole>();
 builder.Services.AddSingleton(
     _ =>
     {
@@ -690,6 +741,10 @@ LocalOfflineReleaseBundleVerificationService offlineReleaseBundleService =
         LocalOfflineReleaseBundleVerificationService>();
 OfflineReleaseBundleCheckConsole offlineReleaseBundleCheckConsole =
     app.Services.GetRequiredService<OfflineReleaseBundleCheckConsole>();
+GitHubReleaseBundleSource releaseGitHubBundleSource =
+    app.Services.GetRequiredService<GitHubReleaseBundleSource>();
+GitHubReleaseBundleCheckConsole releaseGitHubBundleCheckConsole =
+    app.Services.GetRequiredService<GitHubReleaseBundleCheckConsole>();
 ReleaseStatusConsole releaseStatusConsole =
     app.Services.GetRequiredService<ReleaseStatusConsole>();
 OfflineReleaseInstallPreflightConsole releaseInstallPreflightConsole =
@@ -827,6 +882,10 @@ app.MapGet(
                 offlineReleaseBundleService.Snapshot;
             OfflineReleaseBundleCheckConsoleDiagnostics offlineBundleCheck =
                 offlineReleaseBundleCheckConsole.Snapshot;
+            GitHubReleaseBundleSourceDiagnostics releaseGitHubSource =
+                releaseGitHubBundleSource.Snapshot;
+            GitHubReleaseBundleCheckConsoleDiagnostics releaseGitHubCheck =
+                releaseGitHubBundleCheckConsole.Snapshot;
             ReleaseStatusConsoleDiagnostics releaseStatus =
                 releaseStatusConsole.Snapshot;
             OfflineReleaseInstallPreflightConsoleDiagnostics
@@ -996,6 +1055,59 @@ app.MapGet(
                     offlineBundle.AdminCallerRegistered,
                 releaseOfflineBundleBrowserCallerRegistered =
                     offlineBundle.BrowserCallerRegistered,
+                releaseGitHubSourceRegistered = releaseGitHubSource.Registered,
+                releaseGitHubSourceEnabled = releaseGitHubSource.Enabled,
+                releaseGitHubSourceRepositoryConfigured =
+                    releaseGitHubSource.RepositoryConfigured,
+                releaseGitHubMetadataReadRegistered =
+                    releaseGitHubSource.GitHubMetadataReadRegistered,
+                releaseGitHubAssetDownloadRegistered =
+                    releaseGitHubSource.GitHubAssetDownloadRegistered,
+                releaseGitHubTemporaryBundleWriteRegistered =
+                    releaseGitHubSource.TemporaryBundleWriteRegistered,
+                releaseGitHubTemporaryBundleCleanupRegistered =
+                    releaseGitHubSource.TemporaryBundleCleanupRegistered,
+                releaseGitHubLocalSignedVerificationRegistered =
+                    releaseGitHubSource.LocalSignedVerificationRegistered,
+                releaseGitHubMaximumReleaseCount =
+                    releaseGitHubSource.MaximumReleaseCount,
+                releaseGitHubRequestTimeoutSeconds =
+                    releaseGitHubSource.RequestTimeoutSeconds,
+                releaseGitHubPersistentDownloadRegistered =
+                    releaseGitHubSource.PersistentDownloadRegistered,
+                releaseGitHubArchiveExtractionRegistered =
+                    releaseGitHubSource.ArchiveExtractionRegistered,
+                releaseGitHubStagingRegistered =
+                    releaseGitHubSource.StagingRegistered,
+                releaseGitHubInstallationRegistered =
+                    releaseGitHubSource.InstallationRegistered,
+                releaseGitHubActivationRegistered =
+                    releaseGitHubSource.ActivationRegistered,
+                releaseGitHubRollbackRegistered =
+                    releaseGitHubSource.RollbackRegistered,
+                releaseGitHubMigrationRegistered =
+                    releaseGitHubSource.MigrationRegistered,
+                releaseGitHubServiceControlRegistered =
+                    releaseGitHubSource.ServiceControlRegistered,
+                releaseGitHubAdminCallerRegistered =
+                    releaseGitHubSource.AdminCallerRegistered,
+                releaseGitHubBrowserCallerRegistered =
+                    releaseGitHubSource.BrowserCallerRegistered,
+                releaseGitHubRadioCallerRegistered =
+                    releaseGitHubSource.RadioCallerRegistered,
+                releaseGitHubWatchdogCallerRegistered =
+                    releaseGitHubSource.WatchdogCallerRegistered,
+                releaseGitHubCommandCallerRegistered =
+                    releaseGitHubSource.CommandCallerRegistered,
+                releaseGitHubLeaseCallerRegistered =
+                    releaseGitHubSource.LeaseCallerRegistered,
+                releaseGitHubTxCallerRegistered =
+                    releaseGitHubSource.TxCallerRegistered,
+                releaseGitHubCheckCliRegistered = releaseGitHubCheck.Registered,
+                releaseGitHubCheckNetworkReadRegistered =
+                    releaseGitHubCheck.NetworkReadRegistered,
+                releaseGitHubCheckPersistentDownloadRegistered =
+                    releaseGitHubCheck.PersistentDownloadRegistered,
                 releaseStatusCliRegistered = releaseStatus.Registered,
                 releaseStatusSetupStateReadRegistered =
                     releaseStatus.SetupStateReadRegistered,

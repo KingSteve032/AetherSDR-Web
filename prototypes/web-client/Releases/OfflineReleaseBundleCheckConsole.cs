@@ -9,7 +9,8 @@ public enum ReleaseUpdateConsoleCommandKind
 {
     None = 0,
     CheckOfflineBundle = 1,
-    Status = 2
+    CheckGitHubRelease = 2,
+    Status = 3
 }
 
 public sealed record ReleaseUpdateConsoleCommandLine(
@@ -39,6 +40,8 @@ public static class ReleaseUpdateConsoleCommandParser
 {
     public const string CheckOfflineBundleSwitch =
         "--check-offline-release-bundle";
+    public const string CheckGitHubReleaseSwitch =
+        "--check-github-release";
     public const string StatusSwitch = "--release-status";
     public const string InstalledVersionSwitch =
         "--release-check-installed-version";
@@ -84,6 +87,11 @@ public static class ReleaseUpdateConsoleCommandParser
                         ReleaseUpdateConsoleCommandKind.CheckOfflineBundle);
                     bundleDirectory = ValidateBundleDirectory(
                         RequireValue(arguments, ref index, argument));
+                    break;
+                case CheckGitHubReleaseSwitch:
+                    SetCommand(
+                        ref command,
+                        ReleaseUpdateConsoleCommandKind.CheckGitHubRelease);
                     break;
                 case StatusSwitch:
                     SetCommand(
@@ -154,7 +162,7 @@ public static class ReleaseUpdateConsoleCommandParser
             if (hasReleaseOption)
             {
                 throw new InvalidOperationException(
-                    "Release check options require --check-offline-release-bundle.");
+                    "Release check options require --check-offline-release-bundle or --check-github-release.");
             }
             return ReleaseUpdateConsoleCommandLine.None(
                 [.. applicationArguments]);
@@ -337,7 +345,7 @@ public static class ReleaseUpdateConsoleCommandParser
     }
 
     private static InvalidOperationException Missing(string option) =>
-        new($"The offline release bundle check requires {option}.");
+        new($"The release bundle check requires {option}.");
 }
 
 public sealed record OfflineReleaseBundleCheckConsoleDiagnostics(

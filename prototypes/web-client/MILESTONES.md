@@ -2712,11 +2712,13 @@ execution, exact-plan migration evidence, exact service-control transaction
 planning, disabled-by-default exact local two-phase service-control execution and
 evidence, disabled-by-default exact atomic current-pointer switching and evidence,
 exact post-switch health-verification planning, disabled-by-default exact health
-execution, exact-plan health evidence, exact rollback transaction planning, and
-disabled-by-default exact rollback execution and evidence are implemented; publishing
-artifacts, network download, extraction, operational backup orchestration, transaction
-orchestration, host-restart and remote-node service-control transports,
-operator-approval authority, and Admin/browser callers remain unimplemented.
+execution, exact-plan health evidence, exact rollback transaction planning,
+disabled-by-default exact rollback execution and evidence, exact operator-approval
+authority, and disabled-by-default read-only GitHub release checking through the same
+signed-bundle verifier are implemented; publishing artifacts, persistent download,
+extraction, operational backup orchestration, transaction orchestration, host-restart
+and remote-node service-control transports, authenticated approval issuance, and
+Admin/browser callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -3901,6 +3903,68 @@ hosted-service/timer/AetherRemote/radio/watchdog/command/lease/TX caller. The lo
 independent watchdog started empty and Disarmed. No deployment, server update, radio
 connection, TX lease, keying action, transmit-control command, or live RF operation was
 performed.
+
+The twenty-eighth increment adds the first GitHub-hosted release source and read-only
+CLI caller. `ReleaseGitHubSource` defaults disabled and strictly binds one canonical
+public GitHub owner/repository, a 1-through-100 release-list bound, and a 5-through-120
+second request timeout. Enabling it does not bypass separately configured local
+manifest-verification trust.
+
+The source reads one bounded GitHub release page, rejects malformed metadata and unsafe
+asset API URLs, ignores drafts, and selects the highest canonical
+`aethersdr-<semantic-version>` release whose GitHub prerelease state agrees with the
+exact Stable or Beta channel; Pinned accepts only its exact release identity. Equal
+semantic precedence across distinct tags fails as ambiguous.
+
+For the process-derived `linux-x64` or `linux-arm64` architecture, the selected release
+must contain exactly one architecture manifest plus gateway, broker, AetherRemote agent,
+and station-engine assets using the milestone's fixed names. Each asset must be fully
+uploaded, non-empty, within its existing package or manifest byte bound, and remain
+bound to the configured repository. Optional GitHub SHA-256 metadata is checked in
+addition to the signed manifest. Automatic redirects are disabled; at most four HTTPS
+redirects may be followed, and every destination must remain on the reviewed GitHub API
+or release-asset host set.
+
+The five assets are streamed once into one random owner-private temporary directory
+using create-new files, bounded buffers, declared-length checks, incremental SHA-256,
+and durable flushes. The tree is frozen and passed to the existing immutable offline
+signed-bundle verifier. The signed identity must equal the selected GitHub tag. The
+temporary tree is removed after success and failure; ambiguous cleanup fails closed.
+
+`--check-github-release` reuses the exact installed version, channel/Pinned identity,
+configuration-schema, protocol, and process-architecture inputs already used by offline
+checking. It emits one redacted report and exits before any web/setup host, authentication,
+hosted service, radio, watchdog, or routing composition. There is no persistent download,
+archive extraction, staging, installation, pointer mutation, service control, activation,
+rollback, Admin/browser, AetherRemote runtime, radio/watchdog command, lease mutation,
+keying, TX action, or live RF operation.
+
+Automated checkpoint on 2026-08-05 for GitHub release checking: changed C# files passed
+scoped format verification; the deployment script passed shell syntax and its complete
+validation-only production gate; `git diff --check` passed; and the Release solution
+build completed with zero warnings and zero errors. The focused GitHub source/CLI suite
+passed 23/23 and the existing offline check suite passed 38/38. Web tests passed
+1,561/1,561; independent-watchdog tests passed 57/57; TX-HIL isolation tests passed
+48/48; AetherRemote tests passed 70/70; and browser tests passed 135/135. The complete
+checkpoint covered 1,736 .NET tests and 1,871 tests overall.
+
+Focused tests proved disabled source and disabled trust rejection before network access,
+strict owner/repository/count/timeout configuration, diagnostics-only source surface,
+Stable/Beta/exact-Pinned selection, draft exclusion, highest semantic-version selection,
+exact five-asset architecture contracts, missing/duplicate/foreign-repository rejection,
+metadata length and optional digest drift rejection, bounded reviewed-host redirects,
+signed-tag identity agreement, redacted JSON output, cancellation, and temporary-tree
+cleanup after both success and failure.
+
+The final validation-only release was
+`20260805-080102-flexweb-validation`. Published health retained the GitHub source disabled
+with the reviewed repository contract, metadata/asset/temp verification boundaries
+registered, and persistent download, extraction, staging, installation, service control,
+activation, rollback, Admin/browser, radio, watchdog, command, lease, and TX callers
+false. Production web/watchdog artifact inspection retained the reviewed TX string shape,
+and the independent watchdog started empty and Disarmed. No deployment, server update,
+radio connection, TX lease, keying action, transmit-control command, or live RF operation
+was performed.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

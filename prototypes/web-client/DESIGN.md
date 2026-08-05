@@ -1091,6 +1091,36 @@ backup, migration, service-control, health-probe, rollback, keying, or RF mutati
 An authenticated Admin issuer and the activation transaction orchestrator remain
 separate later M8B boundaries.
 
+The twenty-eighth M8B increment adds the first network-backed release source without
+adding a persistent downloader or activation caller. `GitHubReleaseBundleSource` is
+disabled by default and owns one strict public GitHub repository identity. It lists a
+bounded release page, rejects malformed metadata, ignores drafts, and selects only a
+canonical `aethersdr-<semantic-version>` tag whose GitHub prerelease state agrees with
+the exact Stable/Beta selection, or whose identity exactly matches Pinned policy.
+
+For the process-derived Linux architecture, the release must contain one exact
+architecture-named manifest asset and one exact asset for each of gateway, broker,
+AetherRemote agent, and station-engine roles. Asset API URLs remain bound to the
+configured repository. Metadata, asset count, names, state, lengths, optional GitHub
+SHA-256 digests, timeout, and redirect count are bounded. Automatic redirects are
+disabled; each HTTPS redirect is validated against the small reviewed GitHub download
+host set before it is followed.
+
+The source writes the five responses once into one random owner-private temporary
+bundle, flushes each file, freezes the complete tree, and delegates every signature,
+identity, channel, architecture, compatibility, role, length, and package digest
+decision to the existing local immutable signed-bundle verifier. The signed release
+identity must equal the selected GitHub tag. The temporary tree is removed on success
+and failure; cleanup ambiguity converts the result to failure.
+
+`GitHubReleaseBundleCheckConsole` is the only caller and runs before any host, service,
+radio, or watchdog composition. Public reports and health expose only bounded counts,
+booleans, outcomes, and trusted release summaries—never repository URLs, redirect
+URLs, temporary paths, package names, digests, signatures, or key material. Production
+persists no download and adds no archive extraction, staging, installation, pointer
+mutation, service control, activation, rollback, Admin/browser, AetherRemote runtime,
+radio, watchdog, command, lease, keying, or TX caller.
+
 ## Trust boundaries
 
 ### Browser
