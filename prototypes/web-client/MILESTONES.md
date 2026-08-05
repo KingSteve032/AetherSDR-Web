@@ -2717,8 +2717,9 @@ disabled-by-default exact rollback execution and evidence, exact operator-approv
 authority, and disabled-by-default read-only GitHub release checking through the same
 signed-bundle verifier, deterministic dual-architecture package production, standalone
 signed-manifest generation, protected draft GitHub Release creation, CLI-only
-persistent verified GitHub bundle download, and callerless verified archive extraction
-into a private immutable role tree are implemented; operational publication/install
+persistent verified GitHub bundle download, callerless verified archive extraction into
+a private immutable role tree, and callerless exact extracted-tree publication-plan
+composition are implemented; atomic extracted-tree publication, operational install
 orchestration, backup orchestration, transaction orchestration, host-restart and
 remote-node service-control transports, authenticated approval issuance, draft
 publication, and Admin/browser callers remain unimplemented.
@@ -4157,6 +4158,61 @@ retained the reviewed TX command string shape and the independent watchdog start
 and Disarmed. No deployment, restart, archive extraction against a real release, release
 publication, GitHub mutation, radio connection, lease mutation, command, keying,
 transmit action, or live RF operation occurred.
+
+The thirty-second increment adds
+`VerifiedReleaseExtractedPublicationPlanComposer` as a callerless pure bridge between the
+successful immutable extraction token and a future inactive-release publication
+executor. It accepts no raw source or target path and performs no filesystem I/O. The
+public extraction summary must agree exactly with its retained `VerifiedExtractedRelease`
+for setup revision, active/target identities, package/file/directory counts, expanded
+bytes, manifest presence, source verification, immutable-tree state, no publication,
+no pointer mutation, and no cleanup ambiguity.
+
+The composer revalidates the internal installation plan, exact four-role signed archive
+metadata, channel/Pinned and TX-support policy, canonical deployment/release/target paths,
+and one direct `.release-extraction-staging/<target>.<32-lowercase-hex>` source. The
+copied signed manifest must be the single non-executable root manifest and retain its
+signed length and SHA-256. Every other file must have a safe unique path under the exact
+root for its own gateway-web, broker, AetherRemote-agent, or station-engine role. All four
+roles must contain files; parent-directory inventory, expanded bytes, lengths, digests,
+and owner-executable intent must match the extraction token exactly.
+
+Success retains an internal sorted mapping from each immutable extracted source file to
+one exact descendant of the future direct release target. The public result exposes only
+bounded counts, bytes, identities, and no-mutation obligations; it omits every path, file
+name, digest, package identity, and executable name. Diagnostics register only extraction
+input/summary validation and file/source/target/executable composition. Network, archive
+execution, file write, atomic rename/publication execution, current mutation, activation,
+rollback, migration, service control, CLI/Admin/browser, radio, watchdog, command, lease,
+and TX callers remain false. The existing archive-copy publication service is not called.
+
+Automated checkpoint on 2026-08-05 for extracted-tree publication-plan composition:
+changed C# files passed scoped format verification; the deployment script passed shell
+syntax; `git diff --check` passed; the release-automation boundary validator passed; and
+the 13-project Release solution built with zero warnings and zero errors. The focused
+composition suite passed 22/22. Web tests passed 1,613/1,613; independent-watchdog tests
+passed 57/57; TX-HIL isolation tests passed 48/48; the release-builder suite passed 17/17;
+AetherRemote tests passed 70/70; and browser tests passed 135/135. The complete checkpoint
+covered 1,805 .NET tests and 1,940 tests overall.
+
+Focused tests proved the narrow public surface, diagnostics-only normal-runtime
+registration, exact no-I/O source/target mapping, report redaction, failed/missing/mismatched
+extraction rejection, canonical source and target requirements, Stable/Pinned policy
+validation, signed-manifest binding, non-executable manifest enforcement, duplicate and
+unsafe path rejection, exact role-root ownership, all-role presence, parent-directory
+accounting, and expanded-byte agreement.
+
+The final validation-only release was `20260805-164749-flexweb-validation`. It reran the
+complete 1,940-test matrix, production health, release-automation validation, and normal
+web/watchdog artifact inspection. Health registered extraction-summary validation,
+immutable file-inventory composition, executable-intent retention, and canonical source
+and target path composition while archive execution, file write, atomic publication
+execution, current mutation, activation, rollback, migration, service control,
+CLI/Admin/browser, radio, watchdog, command, lease, and TX callers remained false. The
+production artifacts retained the reviewed TX command string shape and the independent
+watchdog started empty and Disarmed. No deployment, extracted-tree publication, release
+installation, restart, GitHub mutation, radio connection, lease mutation, command,
+keying, transmit action, or live RF operation occurred.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

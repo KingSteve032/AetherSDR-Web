@@ -1226,6 +1226,35 @@ or installed; `current`, services, backups, migrations, approvals, Admin/browser
 AetherRemote runtime, radio, watchdog, command, lease, keying, TX, and RF state remain
 untouched.
 
+The thirty-second M8B increment adds a pure extracted-publication plan boundary without
+adding an executor. `VerifiedReleaseExtractedPublicationPlanComposer` accepts only the
+successful extraction report plus its retained `VerifiedExtractedRelease`. Summary setup,
+identity, package/file/directory counts, bytes, manifest, immutable-tree, no-publication,
+and no-cleanup fields must agree exactly with that token.
+
+The source installation plan is revalidated for canonical release identities, semantic
+version, architecture, channel/Pinned selection, TX-support agreement, exact four-role
+archive metadata, and direct deployment/release/target paths. The extraction source must
+be one canonical direct child of `.release-extraction-staging` named for the exact target
+identity plus a lowercase 128-bit transaction suffix. The target remains the exact absent
+direct release child from the verified installation plan.
+
+Every extracted file is converted into an internal source/target mapping only after
+requiring a safe unique relative path, bounded length, SHA-256 metadata, and exact parent
+directory accounting. The copied manifest must be non-executable and match the retained
+signed manifest length and digest. Every other file must stay below the fixed root for its
+own gateway-web, broker, AetherRemote-agent, or station-engine role, and each required
+role must contain at least one file. Total bytes and directory inventory must exactly
+match the extraction token. Owner-executable intent is retained for a future publication
+executor; archive ownership and shared permissions never reappear.
+
+The public result contains no path, file name, digest, package identity, or executable
+name. Composition performs no filesystem I/O and registers no archive execution, write,
+rename/publication execution, current mutation, activation, rollback, migration, service,
+CLI/Admin/browser, radio, watchdog, command, lease, or TX caller. The existing
+archive-copy publication service is not invoked. Atomic publication of the extracted role
+tree remains a separate reviewed M8B increment.
+
 ## Trust boundaries
 
 ### Browser
