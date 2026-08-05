@@ -1252,8 +1252,43 @@ The public result contains no path, file name, digest, package identity, or exec
 name. Composition performs no filesystem I/O and registers no archive execution, write,
 rename/publication execution, current mutation, activation, rollback, migration, service,
 CLI/Admin/browser, radio, watchdog, command, lease, or TX caller. The existing
-archive-copy publication service is not invoked. Atomic publication of the extracted role
-tree remains a separate reviewed M8B increment.
+archive-copy publication service is not invoked.
+
+The thirty-third M8B increment adds the matching callerless atomic executor.
+`VerifiedReleaseExtractedPublicationService` accepts only the exact internal composition
+result and revalidates its summary, installation plan, canonical source/target paths,
+archive-package target binding, manifest binding, role ownership, parent-directory
+inventory, byte totals, digests, and executable intent before reading local status or
+mutating a path. Normal runtime registers diagnostics only; no public execution method,
+CLI, route, hosted service, timer, startup hook, Admin/browser adapter, or AetherRemote
+caller exists.
+
+The execution boundary requires Linux, completed setup, exact update-channel and
+TX-support policy, the installed release still active through unchanged `current`, an
+absent target, shared deployment/release roots with no group/other write authority, and
+one exact owner-private writable `.release-extraction-staging` parent. The extracted
+transaction itself must remain an exact owner-only immutable tree: every directory is
+mode 0500, every data file is 0400, every retained executable is 0500, links and
+non-regular entries are rejected, and all paths, counts, lengths, timestamps, and
+SHA-256 values are checked before rename.
+
+Publication performs no copy and reopens no archive. It temporarily makes only the
+transaction root 0700, uses one `Directory.Move` into the direct inactive release path,
+then sets the published root back to 0500 and validates the complete target tree with the
+same exact mappings. Status must change only by adding the target identity to the release
+inventory; setup and active `current` remain unchanged.
+
+Rename outcomes are explicit. Source-present/target-absent after an exception is a clean
+failure only if the source root can be re-frozen. Source-absent/target-present is accepted
+as completed only after immutable-tree and status revalidation. Both-present,
+both-missing, unreadable paths, tampered target bytes or modes, or post-rename status
+drift require reconciliation and never trigger retry or deletion. Public reports expose
+only identities, bounded counts/bytes, publication booleans, and reconciliation state.
+
+The successful internal token retains the exact published extracted-tree plan for a later
+activation-plan adaptation. This increment does not switch `current`, activate, back up,
+migrate, control services, issue approval, or touch Admin/browser, radio, watchdog,
+command, lease, keying, TX, or RF state.
 
 ## Trust boundaries
 

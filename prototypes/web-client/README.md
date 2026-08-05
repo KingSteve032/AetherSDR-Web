@@ -1283,10 +1283,32 @@ The internal result maps every immutable extracted source file to one exact desc
 the absent target release path while retaining length, SHA-256, role, and owner-executable
 intent. Public results expose only bounded counts, bytes, identities, and no-mutation
 flags. Composition performs no filesystem read or write and does not call the existing
-archive-copy publication boundary. Atomic publication of the extracted tree, operational
-installation orchestration, host-restart/remote service-control transports,
-authenticated approval issuance, and Admin/browser update workflows remain later M8B
-work.
+archive-copy publication boundary.
+
+The thirty-third M8B increment adds the callerless
+`VerifiedReleaseExtractedPublicationService`. It accepts only that retained exact plan;
+there is no raw path, CLI, route, hosted service, timer, retry loop, or startup execution
+method. Before mutation it revalidates completed setup, Stable/Beta/Pinned policy, the
+active release, absent target, canonical deployment and release roots, the owner-private
+extraction staging root, every exact file and directory, SHA-256, byte count, and owner
+execute mode.
+
+Publication changes only the extraction transaction root from owner-read/execute to
+owner-read/write/execute, performs one atomic directory rename into the direct inactive
+release target, immediately freezes the target root again, and revalidates the complete
+published tree plus the release inventory and unchanged `current` identity. No file is
+copied and no archive is reopened. A clean failed rename re-freezes and retains the
+source. A completed-but-threw rename succeeds only after exact target and status
+revalidation. Both-present, both-missing, unreadable, tampered, or status-drift outcomes
+return `reconciliationRequired=true` and never guess or retry.
+
+The public report omits paths, file names, digests, package identities, and executable
+names. The published role tree remains inactive: this increment does not compose or run
+activation, switch `current`, control services, migrate, back up state, issue approval,
+or touch Admin/browser, AetherRemote runtime, radio, watchdog, command, lease, keying,
+TX, or live RF state. Activation-plan adaptation, operational installation orchestration,
+host-restart/remote service-control transports, authenticated approval issuance, and
+Admin/browser update workflows remain later M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled

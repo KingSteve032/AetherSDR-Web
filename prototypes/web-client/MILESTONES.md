@@ -2718,11 +2718,12 @@ authority, and disabled-by-default read-only GitHub release checking through the
 signed-bundle verifier, deterministic dual-architecture package production, standalone
 signed-manifest generation, protected draft GitHub Release creation, CLI-only
 persistent verified GitHub bundle download, callerless verified archive extraction into
-a private immutable role tree, and callerless exact extracted-tree publication-plan
-composition are implemented; atomic extracted-tree publication, operational install
-orchestration, backup orchestration, transaction orchestration, host-restart and
-remote-node service-control transports, authenticated approval issuance, draft
-publication, and Admin/browser callers remain unimplemented.
+a private immutable role tree, callerless exact extracted-tree publication-plan
+composition, and callerless atomic inactive publication of that extracted role tree are
+implemented; activation-plan adaptation, operational install orchestration, backup
+orchestration, transaction orchestration, host-restart and remote-node service-control
+transports, authenticated approval issuance, draft publication, and Admin/browser callers
+remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -4213,6 +4214,65 @@ production artifacts retained the reviewed TX command string shape and the indep
 watchdog started empty and Disarmed. No deployment, extracted-tree publication, release
 installation, restart, GitHub mutation, radio connection, lease mutation, command,
 keying, transmit action, or live RF operation occurred.
+
+The thirty-third increment adds `VerifiedReleaseExtractedPublicationService`, the
+callerless atomic executor for the exact extracted-publication plan. It accepts no raw
+path and has no public execution method. The plan summary, retained installation and
+extraction tokens, archive-package target paths, manifest, role roots, file and directory
+inventory, lengths, SHA-256 values, expanded-byte total, and executable intent are all
+revalidated before status or filesystem mutation.
+
+Execution requires Linux, completed setup, unchanged channel/Pinned and TX-support
+policy, the installed release still active through `current`, an absent target, safe
+shared deployment/release roots, and an owner-private writable extraction-staging parent.
+The source transaction must remain a link-free exact immutable tree with mode 0500 on
+directories and retained executables and 0400 on non-executable files. Every file is
+rehash-checked before rename.
+
+The service makes only the source root temporarily owner-writable, performs one atomic
+directory rename into the direct inactive release target, freezes the target root again,
+rehashes the full published tree, and requires release status to change only by adding
+the target identity. A clean failed rename re-freezes and retains the source. A
+completed-but-threw rename is accepted only after exact target and status revalidation.
+Both-present, both-missing, unreadable, tampered, or status-drift outcomes require local
+reconciliation and never retry, overwrite, or delete evidence.
+
+Public diagnostics register only exact-plan input, immutable source and executable-mode
+validation, root permission transition, atomic directory publication, target validation,
+and status revalidation. Public reports omit paths, file names, package identities,
+digests, and executable names. The published tree remains inactive: `current`, activation,
+backup, migration, service control, approval, Admin/browser, radio, watchdog, command,
+lease, keying, TX, and live RF state remain untouched.
+
+Automated checkpoint on 2026-08-05 for atomic extracted-tree publication: changed C#
+files passed scoped format verification; the deployment script passed shell syntax;
+`git diff --check` passed; the release-automation boundary validator passed; and the
+13-project Release solution built with zero warnings and zero errors. The focused real
+filesystem publication suite passed 24/24. Web tests passed 1,637/1,637;
+independent-watchdog tests passed 57/57; TX-HIL isolation tests passed 48/48; the
+release-builder suite passed 17/17; AetherRemote tests passed 70/70; and browser tests
+passed 135/135. The complete checkpoint covered 1,829 .NET tests and 1,964 tests overall.
+
+Focused tests proved the diagnostics-only public surface, exact immutable role-tree
+publication, byte/digest/mode preservation, unchanged `current`, redacted reports,
+invalid-plan and status rejection before mutation, existing-target protection, writable
+file and executable-mode rejection, link and unexpected-directory rejection, unsafe-root
+rejection, pre-cancellation, clean rename failure with source re-freeze,
+completed-but-threw recovery after exact target verification, both-present and
+both-missing reconciliation, post-rename status drift, and target-tampering detection.
+
+The final validation-only release was `20260805-201414-flexweb-validation`. It reran all
+1,964 tests, release-automation validation, the complete solution build, production
+health, and normal web/watchdog artifact inspection. Health registered exact plan input,
+immutable source and executable-intent validation, bounded root permission transition,
+atomic inactive directory publication, complete target validation, and status
+revalidation while network download, archive execution, file copy, current mutation,
+activation, rollback, migration, service control, CLI/Admin/browser, radio, watchdog,
+command, lease, and TX callers remained false. The production artifacts retained the
+reviewed TX command string shape and the independent watchdog started empty and
+Disarmed. No deployment, real extracted-tree publication, `current` switch, activation,
+restart, GitHub mutation, radio connection, lease mutation, command, keying, transmit
+action, or live RF operation occurred.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

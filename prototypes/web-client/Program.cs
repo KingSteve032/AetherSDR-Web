@@ -696,6 +696,8 @@ builder.Services.AddSingleton<VerifiedReleaseStagingService>();
 builder.Services.AddSingleton<VerifiedReleaseArchiveExtractionService>();
 builder.Services.AddSingleton<
     VerifiedReleaseExtractedPublicationPlanComposer>();
+builder.Services.AddSingleton<
+    VerifiedReleaseExtractedPublicationService>();
 builder.Services.AddSingleton<VerifiedReleasePublicationService>();
 builder.Services.AddSingleton<VerifiedReleaseActivationPlanComposer>();
 builder.Services.AddSingleton<
@@ -850,6 +852,10 @@ VerifiedReleaseExtractedPublicationPlanComposer
     releaseExtractedPublicationPlanComposer =
         app.Services.GetRequiredService<
             VerifiedReleaseExtractedPublicationPlanComposer>();
+VerifiedReleaseExtractedPublicationService
+    releaseExtractedPublicationService =
+        app.Services.GetRequiredService<
+            VerifiedReleaseExtractedPublicationService>();
 VerifiedReleasePublicationService verifiedReleasePublicationService =
     app.Services.GetRequiredService<VerifiedReleasePublicationService>();
 VerifiedReleaseActivationPlanComposer releaseActivationPlanComposer =
@@ -1001,6 +1007,9 @@ app.MapGet(
             VerifiedReleaseExtractedPublicationPlanDiagnostics
                 releaseExtractedPublicationPlan =
                     releaseExtractedPublicationPlanComposer.Snapshot;
+            VerifiedReleaseExtractedPublicationDiagnostics
+                releaseExtractedPublication =
+                    releaseExtractedPublicationService.Snapshot;
             VerifiedReleasePublicationDiagnostics releasePublication =
                 verifiedReleasePublicationService.Snapshot;
             VerifiedReleaseActivationPlanDiagnostics releaseActivationPlan =
@@ -1534,6 +1543,54 @@ app.MapGet(
                     releaseExtractedPublicationPlan.LeaseCallerRegistered,
                 releaseExtractedPublicationPlanTxCallerRegistered =
                     releaseExtractedPublicationPlan.TxCallerRegistered,
+                releaseExtractedPublicationServiceRegistered =
+                    releaseExtractedPublication.Registered,
+                releaseExtractedPublicationStatusRevalidationRegistered =
+                    releaseExtractedPublication.StatusRevalidationRegistered,
+                releaseExtractedPublicationVerifiedPlanInputRegistered =
+                    releaseExtractedPublication.VerifiedPlanInputRegistered,
+                releaseExtractedPublicationImmutableSourceValidationRegistered =
+                    releaseExtractedPublication.ImmutableSourceValidationRegistered,
+                releaseExtractedPublicationExecutableIntentValidationRegistered =
+                    releaseExtractedPublication.ExecutableIntentValidationRegistered,
+                releaseExtractedPublicationRootPermissionTransitionRegistered =
+                    releaseExtractedPublication.RootPermissionTransitionRegistered,
+                releaseExtractedPublicationAtomicDirectoryPublishRegistered =
+                    releaseExtractedPublication.AtomicDirectoryPublishRegistered,
+                releaseExtractedPublicationPublishedTreeValidationRegistered =
+                    releaseExtractedPublication.PublishedTreeValidationRegistered,
+                releaseExtractedPublicationNetworkDownloadRegistered =
+                    releaseExtractedPublication.NetworkDownloadRegistered,
+                releaseExtractedPublicationArchiveExtractionExecutionRegistered =
+                    releaseExtractedPublication.ArchiveExtractionExecutionRegistered,
+                releaseExtractedPublicationFileCopyRegistered =
+                    releaseExtractedPublication.FileCopyRegistered,
+                releaseExtractedPublicationCurrentPointerMutationRegistered =
+                    releaseExtractedPublication.CurrentPointerMutationRegistered,
+                releaseExtractedPublicationActivationRegistered =
+                    releaseExtractedPublication.ActivationRegistered,
+                releaseExtractedPublicationRollbackRegistered =
+                    releaseExtractedPublication.RollbackRegistered,
+                releaseExtractedPublicationMigrationExecutionRegistered =
+                    releaseExtractedPublication.MigrationExecutionRegistered,
+                releaseExtractedPublicationServiceControlRegistered =
+                    releaseExtractedPublication.ServiceControlRegistered,
+                releaseExtractedPublicationCliCallerRegistered =
+                    releaseExtractedPublication.CliCallerRegistered,
+                releaseExtractedPublicationAdminCallerRegistered =
+                    releaseExtractedPublication.AdminCallerRegistered,
+                releaseExtractedPublicationBrowserCallerRegistered =
+                    releaseExtractedPublication.BrowserCallerRegistered,
+                releaseExtractedPublicationRadioCallerRegistered =
+                    releaseExtractedPublication.RadioCallerRegistered,
+                releaseExtractedPublicationWatchdogCallerRegistered =
+                    releaseExtractedPublication.WatchdogCallerRegistered,
+                releaseExtractedPublicationCommandCallerRegistered =
+                    releaseExtractedPublication.CommandCallerRegistered,
+                releaseExtractedPublicationLeaseCallerRegistered =
+                    releaseExtractedPublication.LeaseCallerRegistered,
+                releaseExtractedPublicationTxCallerRegistered =
+                    releaseExtractedPublication.TxCallerRegistered,
                 releasePublicationServiceRegistered =
                     releasePublication.Registered,
                 releasePublicationStatusRevalidationRegistered =
