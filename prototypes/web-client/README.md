@@ -1268,9 +1268,25 @@ archive metadata.
 This boundary does not publish the extracted tree, create an installed release, switch
 `current`, control services, activate, roll back, migrate, issue approval, or touch
 Admin/browser, AetherRemote runtime, radio, watchdog, command, lease, keying, TX, or live
-RF state. Operational installation orchestration, host-restart/remote service-control
-transports, authenticated approval issuance, and Admin/browser update workflows remain
-later M8B work.
+RF state.
+
+The thirty-second M8B increment adds
+`VerifiedReleaseExtractedPublicationPlanComposer`, a pure bridge from that successful
+immutable extraction token to a future inactive-publication transaction. It requires the
+public extraction summary to agree exactly with the retained internal token, revalidates
+the installation plan and canonical `.release-extraction-staging` source plus direct
+release target, and requires one copied signed manifest plus files under all four exact
+role roots. Duplicate, unsafe, cross-role, missing-role, mismatched manifest, byte-count,
+directory-count, digest, and executable-intent metadata fail closed.
+
+The internal result maps every immutable extracted source file to one exact descendant of
+the absent target release path while retaining length, SHA-256, role, and owner-executable
+intent. Public results expose only bounded counts, bytes, identities, and no-mutation
+flags. Composition performs no filesystem read or write and does not call the existing
+archive-copy publication boundary. Atomic publication of the extracted tree, operational
+installation orchestration, host-restart/remote service-control transports,
+authenticated approval issuance, and Admin/browser update workflows remain later M8B
+work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled
