@@ -10,7 +10,8 @@ public enum ReleaseUpdateConsoleCommandKind
     None = 0,
     CheckOfflineBundle = 1,
     CheckGitHubRelease = 2,
-    Status = 3
+    DownloadGitHubRelease = 3,
+    Status = 4
 }
 
 public sealed record ReleaseUpdateConsoleCommandLine(
@@ -42,6 +43,8 @@ public static class ReleaseUpdateConsoleCommandParser
         "--check-offline-release-bundle";
     public const string CheckGitHubReleaseSwitch =
         "--check-github-release";
+    public const string DownloadGitHubReleaseSwitch =
+        "--download-github-release";
     public const string StatusSwitch = "--release-status";
     public const string InstalledVersionSwitch =
         "--release-check-installed-version";
@@ -92,6 +95,11 @@ public static class ReleaseUpdateConsoleCommandParser
                     SetCommand(
                         ref command,
                         ReleaseUpdateConsoleCommandKind.CheckGitHubRelease);
+                    break;
+                case DownloadGitHubReleaseSwitch:
+                    SetCommand(
+                        ref command,
+                        ReleaseUpdateConsoleCommandKind.DownloadGitHubRelease);
                     break;
                 case StatusSwitch:
                     SetCommand(
@@ -162,7 +170,7 @@ public static class ReleaseUpdateConsoleCommandParser
             if (hasReleaseOption)
             {
                 throw new InvalidOperationException(
-                    "Release check options require --check-offline-release-bundle or --check-github-release.");
+                    "Release check options require --check-offline-release-bundle, --check-github-release, or --download-github-release.");
             }
             return ReleaseUpdateConsoleCommandLine.None(
                 [.. applicationArguments]);

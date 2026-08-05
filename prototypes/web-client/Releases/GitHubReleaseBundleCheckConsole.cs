@@ -142,6 +142,14 @@ internal sealed record GitHubReleaseBundleCheckResult(
             verification);
 }
 
+internal sealed record GitHubReleaseBundleAcquisition(
+    GitHubReleaseBundleCheckResult Result,
+    string BundleDirectory)
+{
+    internal bool Succeeded =>
+        Result.Succeeded && BundleDirectory.Length > 0;
+}
+
 internal static class GitHubReleaseHttpClient
 {
     internal const string ClientName = "aethersdr-release-github";
@@ -294,20 +302,50 @@ public sealed class GitHubReleaseBundleSource
         ReleaseManifestVerificationContext context,
         CancellationToken cancellationToken = default)
     {
+        GitHubReleaseBundleAcquisition acquisition =
+            await AcquireVerifiedBundleAsync(
+                context,
+                cancellationToken).ConfigureAwait(false);
+        if (!acquisition.Succeeded)
+        {
+            return acquisition.Result;
+        }
+        if (!TryDeleteTemporaryBundle(acquisition.BundleDirectory))
+        {
+            return GitHubReleaseBundleCheckResult.Failure(
+                GitHubReleaseBundleFailureCode.CleanupFailed,
+                "The temporary GitHub release bundle could not be removed safely.",
+                acquisition.Result.ExaminedReleaseCount,
+                acquisition.Result.DownloadedAssetCount,
+                acquisition.Result.DownloadedBytes,
+                acquisition.Result.Verification);
+        }
+        return acquisition.Result;
+    }
+
+    internal async Task<GitHubReleaseBundleAcquisition>
+        AcquireVerifiedBundleAsync(
+            ReleaseManifestVerificationContext context,
+            CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(context);
         cancellationToken.ThrowIfCancellationRequested();
 
         if (!m_settings.Enabled)
         {
-            return GitHubReleaseBundleCheckResult.Failure(
-                GitHubReleaseBundleFailureCode.SourceDisabled,
-                "GitHub release bundle checking is disabled.");
+            return new GitHubReleaseBundleAcquisition(
+                GitHubReleaseBundleCheckResult.Failure(
+                    GitHubReleaseBundleFailureCode.SourceDisabled,
+                    "GitHub release bundle checking is disabled."),
+                string.Empty);
         }
         if (!m_bundleVerificationService.LocalVerificationAvailable)
         {
-            return GitHubReleaseBundleCheckResult.Failure(
-                GitHubReleaseBundleFailureCode.VerificationTrustUnavailable,
-                "GitHub release assets cannot be read because signed release verification trust is unavailable.");
+            return new GitHubReleaseBundleAcquisition(
+                GitHubReleaseBundleCheckResult.Failure(
+                    GitHubReleaseBundleFailureCode.VerificationTrustUnavailable,
+                    "GitHub release assets cannot be read because signed release verification trust is unavailable."),
+                string.Empty);
         }
 
         using CancellationTokenSource timeout =
@@ -316,7 +354,6 @@ public sealed class GitHubReleaseBundleSource
 
         string? temporaryDirectory = null;
         GitHubReleaseBundleCheckResult result;
-        bool cleanupSucceeded = true;
         try
         {
             using HttpClient client = m_clientFactory();
@@ -399,6 +436,14 @@ public sealed class GitHubReleaseBundleSource
                 GitHubReleaseBundleFailureCode.SourceUnavailable,
                 "The GitHub release check exceeded its bounded request timeout.");
         }
+        catch (OperationCanceledException)
+        {
+            if (temporaryDirectory is not null)
+            {
+                _ = TryDeleteTemporaryBundle(temporaryDirectory);
+            }
+            throw;
+        }
         catch (GitHubReleaseException exception)
         {
             result = GitHubReleaseBundleCheckResult.Failure(
@@ -418,17 +463,17 @@ public sealed class GitHubReleaseBundleSource
                 GitHubReleaseBundleFailureCode.SourceUnavailable,
                 "The GitHub release bundle could not be checked safely.");
         }
-        finally
-        {
-            if (temporaryDirectory is not null)
-            {
-                cleanupSucceeded = TryDeleteTemporaryBundle(temporaryDirectory);
-            }
-        }
 
-        if (!cleanupSucceeded)
+        if (result.Succeeded && temporaryDirectory is not null)
         {
-            return GitHubReleaseBundleCheckResult.Failure(
+            return new GitHubReleaseBundleAcquisition(
+                result,
+                temporaryDirectory);
+        }
+        if (temporaryDirectory is not null &&
+            !TryDeleteTemporaryBundle(temporaryDirectory))
+        {
+            result = GitHubReleaseBundleCheckResult.Failure(
                 GitHubReleaseBundleFailureCode.CleanupFailed,
                 "The temporary GitHub release bundle could not be removed safely.",
                 result.ExaminedReleaseCount,
@@ -436,8 +481,11 @@ public sealed class GitHubReleaseBundleSource
                 result.DownloadedBytes,
                 result.Verification);
         }
-        return result;
+        return new GitHubReleaseBundleAcquisition(result, string.Empty);
     }
+
+    internal static bool TryDeleteAcquiredBundle(string path) =>
+        TryDeleteTemporaryBundle(path);
 
     private async Task<GitHubRelease[]> ReadReleasesAsync(
         HttpClient client,

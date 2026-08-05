@@ -1157,6 +1157,36 @@ never publishes an immutable release automatically. The workflow adds no runtime
 updater polling loop, persistent download, installation, activation, service control,
 radio, watchdog, command, lease, keying, or RF authority.
 
+The thirtieth M8B increment adds `GitHubReleaseBundleDownloadService` and its one
+CLI-only adapter. The persistence boundary derives exactly one inventory root as the
+direct `release-downloads` child of `InstallationPaths.StateDirectory`; it adds no new
+operator-selected path. Linux requires the existing state root and the derived download
+root to be regular canonical non-symlink directories with no group/other write bits. A
+missing download root may be created owner-private, but a missing or unsafe state root
+fails before any network request.
+
+`GitHubReleaseBundleSource` now has an internal acquisition operation shared by both
+callers. The read-only check caller always deletes the verified temporary acquisition.
+The persistent caller configures the source temporary root to the download inventory,
+so all five exact GitHub assets are downloaded, flushed, frozen, signed-verifier checked,
+and identity-matched in a random same-parent directory. Disabled source or unavailable
+public-key trust is rejected before creating the inventory root.
+
+After verification, the persistent target name is the trusted release identity plus the
+process architecture. An absent target is created only by same-parent atomic directory
+rename. An existing target is accepted only after the same immutable offline verifier
+proves exact identity, version, architecture, and channel agreement; otherwise it is
+retained and the new temporary acquisition is removed. Clean rename failure removes the
+source tree. A completed rename followed by an error is accepted only after exact target
+reverification. Missing/both/unsafe post-rename states that cannot be proven return a
+redacted reconciliation-required result rather than retrying or deleting evidence.
+
+The persisted directory remains an offline signed bundle. The service does not open or
+extract any package archive, copy package contents into release staging, create an
+installation plan, mutate `current`, control services, activate, roll back, migrate,
+issue approval, or expose an Admin/browser, hosted-service, timer, AetherRemote runtime,
+radio, watchdog, command, lease, keying, TX, or live RF caller.
+
 ## Trust boundaries
 
 ### Browser
