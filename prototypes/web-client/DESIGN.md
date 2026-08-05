@@ -1043,6 +1043,32 @@ It emits no readiness evidence, exposes only path- and unit-redacted diagnostics
 has no CLI, Admin, browser, HTTP, WebSocket, hosted-service, timer, AetherRemote,
 radio, watchdog, command, lease, or TX caller.
 
+The twenty-sixth M8B increment adds the disabled-by-default exact rollback executor.
+It requires the exact rollback-plan object, successful forward pointer-switch evidence,
+and an eligible failed post-switch service-start or health-verification report. These
+reference-bound prerequisites prevent an arbitrary rollback command and keep
+pre-switch, successful, equivalent, or independently composed transactions ineligible.
+
+The immutable backup manifest advances to schema 2 and retains each original Unix
+mode. Revalidation checks the exact manifest digest, activation identities, source
+counts and bytes, unique safe entries, immutable copied-tree modes, content hashes,
+and safe original configuration/state/secret modes. All three restore trees are copied
+and rehashed before any service or live-root mutation.
+
+The executor supports only gateway-owned personal, local-station, and hybrid topology
+contracts already reviewed by service control and health verification. It directly
+stops local target units, atomically displaces and replaces each live root from its
+same-parent staging tree, atomically returns `current` to the installed release, starts
+local installed units, and verifies installed unit/loopback/canonical-host plus optional
+exact remote-agent broker-link health. Reverse migration is never used.
+
+A process outcome, directory rename, pointer rename, health result, setup/status drift,
+cancellation, or cleanup ambiguity after mutation retains exact reconciliation state
+and blocks automatic retry. Displaced failed trees are deleted only after complete
+installed-release health. Successful rollback evidence remains separate from forward
+activation `RollbackReady`; production resolves only disabled diagnostics and zeroed
+state and registers no operational caller or activation/TX authority.
+
 ## Trust boundaries
 
 ### Browser

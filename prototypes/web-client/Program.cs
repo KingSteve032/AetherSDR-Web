@@ -393,6 +393,12 @@ ReleaseActivationHealthVerificationSettings
             .Get<ReleaseActivationHealthVerificationSettings>(options =>
                 options.ErrorOnUnknownConfiguration = true) ??
         new ReleaseActivationHealthVerificationSettings();
+ReleaseActivationRollbackSettings releaseActivationRollbackSettings =
+    builder.Configuration
+        .GetSection(ReleaseActivationRollbackSettings.SectionName)
+        .Get<ReleaseActivationRollbackSettings>(options =>
+            options.ErrorOnUnknownConfiguration = true) ??
+    new ReleaseActivationRollbackSettings();
 StationTxCommandTrustSettings stationTxCommandTrustSettings =
     builder.Configuration
         .GetSection(StationTxCommandTrustSettings.SectionName)
@@ -504,6 +510,8 @@ builder.Services.AddSingleton(
     Options.Create(releaseActivationCurrentPointerSwitchSettings));
 builder.Services.AddSingleton(
     Options.Create(releaseActivationHealthVerificationSettings));
+builder.Services.AddSingleton(
+    Options.Create(releaseActivationRollbackSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandTrustSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandSigningSettings));
 builder.Services.AddSingleton(
@@ -567,6 +575,8 @@ builder.Services.AddSingleton<
     VerifiedReleaseActivationHealthVerificationPlanComposer>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationRollbackPlanComposer>();
+builder.Services.AddSingleton<
+    VerifiedReleaseActivationRollbackExecutionService>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationHealthVerificationService>();
 builder.Services.AddSingleton<VerifiedReleaseActivationReadinessEvaluator>();
@@ -726,6 +736,10 @@ VerifiedReleaseActivationRollbackPlanComposer
     releaseActivationRollbackPlanComposer =
         app.Services.GetRequiredService<
             VerifiedReleaseActivationRollbackPlanComposer>();
+VerifiedReleaseActivationRollbackExecutionService
+    releaseActivationRollbackExecutionService =
+        app.Services.GetRequiredService<
+            VerifiedReleaseActivationRollbackExecutionService>();
 VerifiedReleaseActivationHealthVerificationService
     releaseActivationHealthVerificationService =
         app.Services.GetRequiredService<
@@ -857,6 +871,12 @@ app.MapGet(
             VerifiedReleaseActivationRollbackPlanDiagnostics
                 releaseActivationRollbackPlan =
                     releaseActivationRollbackPlanComposer.Snapshot;
+            VerifiedReleaseActivationRollbackExecutionDiagnostics
+                releaseActivationRollbackExecution =
+                    releaseActivationRollbackExecutionService.Snapshot;
+            VerifiedReleaseActivationRollbackExecutionStateDiagnostics
+                releaseActivationRollbackExecutionState =
+                    releaseActivationRollbackExecutionService.State;
             VerifiedReleaseActivationHealthVerificationDiagnostics
                 releaseActivationHealthVerification =
                     releaseActivationHealthVerificationService.Snapshot;
@@ -2561,6 +2581,224 @@ app.MapGet(
                     releaseActivationRollbackPlan.LeaseCallerRegistered,
                 releaseActivationRollbackPlanTxCallerRegistered =
                     releaseActivationRollbackPlan.TxCallerRegistered,
+                releaseActivationRollbackExecutorRegistered =
+                    releaseActivationRollbackExecution.Registered,
+                releaseActivationRollbackExecutorConfigurationRegistered =
+                    releaseActivationRollbackExecution.ConfigurationRegistered,
+                releaseActivationRollbackExecutorEnabled =
+                    releaseActivationRollbackExecution.ExecutionEnabled,
+                releaseActivationRollbackExecutorAvailable =
+                    releaseActivationRollbackExecution.ExecutionAvailable,
+                releaseActivationRollbackExecutorStationIdentityConfigured =
+                    releaseActivationRollbackExecution
+                        .ExpectedStationIdentityConfigured,
+                releaseActivationRollbackExecutorPlanInputRegistered =
+                    releaseActivationRollbackExecution
+                        .ExactRollbackPlanInputRegistered,
+                releaseActivationRollbackExecutorExactPlanBindingRegistered =
+                    releaseActivationRollbackExecution
+                        .ExactRollbackPlanBindingRegistered,
+                releaseActivationRollbackExecutorExactActivationBindingRegistered =
+                    releaseActivationRollbackExecution
+                        .ExactActivationPlanBindingRegistered,
+                releaseActivationRollbackExecutorPointerEvidenceInputRegistered =
+                    releaseActivationRollbackExecution
+                        .ExactCurrentPointerSwitchEvidenceInputRegistered,
+                releaseActivationRollbackExecutorServiceFailureTriggerRegistered =
+                    releaseActivationRollbackExecution
+                        .PostSwitchServiceFailureTriggerRegistered,
+                releaseActivationRollbackExecutorHealthFailureTriggerRegistered =
+                    releaseActivationRollbackExecution
+                        .PostSwitchHealthFailureTriggerRegistered,
+                releaseActivationRollbackExecutorStatusDoubleReadRegistered =
+                    releaseActivationRollbackExecution
+                        .ReleaseStatusDoubleReadRegistered,
+                releaseActivationRollbackExecutorSetupDoubleReadRegistered =
+                    releaseActivationRollbackExecution.SetupStateDoubleReadRegistered,
+                releaseActivationRollbackExecutorTopologyBindingRegistered =
+                    releaseActivationRollbackExecution.TopologyBindingRegistered,
+                releaseActivationRollbackExecutorBackupRevalidationRegistered =
+                    releaseActivationRollbackExecution
+                        .ImmutableOriginalBackupRevalidationRegistered,
+                releaseActivationRollbackExecutorUnixModeRestoreRegistered =
+                    releaseActivationRollbackExecution
+                        .OriginalUnixModeRestoreRegistered,
+                releaseActivationRollbackExecutorReverseMigrationRegistered =
+                    releaseActivationRollbackExecution
+                        .ReverseMigrationRunnerRegistered,
+                releaseActivationRollbackExecutorThreeSourceRestoreRegistered =
+                    releaseActivationRollbackExecution
+                        .ThreeSourceRestoreRegistered,
+                releaseActivationRollbackExecutorSameParentStagingRegistered =
+                    releaseActivationRollbackExecution
+                        .SameParentRestoreStagingRegistered,
+                releaseActivationRollbackExecutorDisplacedTreeRegistered =
+                    releaseActivationRollbackExecution
+                        .DisplacedLiveTreeRegistered,
+                releaseActivationRollbackExecutorTargetStopRegistered =
+                    releaseActivationRollbackExecution.TargetServiceStopRegistered,
+                releaseActivationRollbackExecutorDirectProcessRegistered =
+                    releaseActivationRollbackExecution.DirectProcessRegistered,
+                releaseActivationRollbackExecutorShellRegistered =
+                    releaseActivationRollbackExecution.ShellRegistered,
+                releaseActivationRollbackExecutorClearedEnvironmentRegistered =
+                    releaseActivationRollbackExecution
+                        .ClearedEnvironmentRegistered,
+                releaseActivationRollbackExecutorUserUnitRegistered =
+                    releaseActivationRollbackExecution.UserUnitScopeRegistered,
+                releaseActivationRollbackExecutorSystemUnitRegistered =
+                    releaseActivationRollbackExecution.SystemUnitScopeRegistered,
+                releaseActivationRollbackExecutorBoundedOutputRegistered =
+                    releaseActivationRollbackExecution.BoundedOutputRegistered,
+                releaseActivationRollbackExecutorHardTimeoutRegistered =
+                    releaseActivationRollbackExecution.HardTimeoutRegistered,
+                releaseActivationRollbackExecutorProcessTerminationRegistered =
+                    releaseActivationRollbackExecution
+                        .ProcessTreeTerminationRegistered,
+                releaseActivationRollbackExecutorAtomicDirectoryRegistered =
+                    releaseActivationRollbackExecution
+                        .AtomicDirectoryReplacementRegistered,
+                releaseActivationRollbackExecutorAtomicPointerRegistered =
+                    releaseActivationRollbackExecution
+                        .AtomicCurrentPointerRollbackRegistered,
+                releaseActivationRollbackExecutorInstalledStartRegistered =
+                    releaseActivationRollbackExecution
+                        .InstalledServiceStartRegistered,
+                releaseActivationRollbackExecutorInstalledHealthRegistered =
+                    releaseActivationRollbackExecution
+                        .InstalledHealthVerificationRegistered,
+                releaseActivationRollbackExecutorLoopbackHttpRegistered =
+                    releaseActivationRollbackExecution.LoopbackOnlyHttpRegistered,
+                releaseActivationRollbackExecutorProxyBypassRegistered =
+                    releaseActivationRollbackExecution.ProxyBypassRegistered,
+                releaseActivationRollbackExecutorRedirectRejectionRegistered =
+                    releaseActivationRollbackExecution.RedirectRejectionRegistered,
+                releaseActivationRollbackExecutorBoundedHttpBodyRegistered =
+                    releaseActivationRollbackExecution.BoundedHttpBodyRegistered,
+                releaseActivationRollbackExecutorFreshBrokerRegistered =
+                    releaseActivationRollbackExecution
+                        .FreshBrokerSnapshotRegistered,
+                releaseActivationRollbackExecutorExactStationRegistered =
+                    releaseActivationRollbackExecution
+                        .ExactStationIdentityRegistered,
+                releaseActivationRollbackExecutorBoundedDeadlineRegistered =
+                    releaseActivationRollbackExecution.BoundedDeadlineRegistered,
+                releaseActivationRollbackExecutorCleanupRegistered =
+                    releaseActivationRollbackExecution
+                        .DisplacedTreeCleanupRegistered,
+                releaseActivationRollbackExecutorEvidenceRegistered =
+                    releaseActivationRollbackExecution.ExactPlanEvidenceRegistered,
+                releaseActivationRollbackExecutorReconciliationRegistered =
+                    releaseActivationRollbackExecution
+                        .PartialFailureReconciliationRegistered,
+                releaseActivationRollbackExecutorAutomaticRetryRegistered =
+                    releaseActivationRollbackExecution.AutomaticRetryRegistered,
+                releaseActivationRollbackExecutorHostRestartRegistered =
+                    releaseActivationRollbackExecution.HostRestartRegistered,
+                releaseActivationRollbackExecutorRemoteControlRegistered =
+                    releaseActivationRollbackExecution
+                        .RemoteServiceControlRegistered,
+                releaseActivationRollbackExecutorActivationAuthorityRegistered =
+                    releaseActivationRollbackExecution
+                        .ActivationAuthorityRegistered,
+                releaseActivationRollbackExecutorOperationalCallerRegistered =
+                    releaseActivationRollbackExecution
+                        .OperationalCallerRegistered,
+                releaseActivationRollbackExecutorCliCallerRegistered =
+                    releaseActivationRollbackExecution.CliCallerRegistered,
+                releaseActivationRollbackExecutorAdminCallerRegistered =
+                    releaseActivationRollbackExecution.AdminCallerRegistered,
+                releaseActivationRollbackExecutorBrowserCallerRegistered =
+                    releaseActivationRollbackExecution.BrowserCallerRegistered,
+                releaseActivationRollbackExecutorHttpCallerRegistered =
+                    releaseActivationRollbackExecution.HttpCallerRegistered,
+                releaseActivationRollbackExecutorWebSocketCallerRegistered =
+                    releaseActivationRollbackExecution.WebSocketCallerRegistered,
+                releaseActivationRollbackExecutorHostedServiceCallerRegistered =
+                    releaseActivationRollbackExecution
+                        .HostedServiceCallerRegistered,
+                releaseActivationRollbackExecutorTimerCallerRegistered =
+                    releaseActivationRollbackExecution.TimerCallerRegistered,
+                releaseActivationRollbackExecutorAetherRemoteCallerRegistered =
+                    releaseActivationRollbackExecution
+                        .AetherRemoteCommandCallerRegistered,
+                releaseActivationRollbackExecutorRadioCallerRegistered =
+                    releaseActivationRollbackExecution.RadioCallerRegistered,
+                releaseActivationRollbackExecutorWatchdogCallerRegistered =
+                    releaseActivationRollbackExecution.WatchdogCallerRegistered,
+                releaseActivationRollbackExecutorCommandCallerRegistered =
+                    releaseActivationRollbackExecution.CommandCallerRegistered,
+                releaseActivationRollbackExecutorLeaseCallerRegistered =
+                    releaseActivationRollbackExecution.LeaseCallerRegistered,
+                releaseActivationRollbackExecutorTxCallerRegistered =
+                    releaseActivationRollbackExecution.TxCallerRegistered,
+                releaseActivationRollbackReady =
+                    releaseActivationRollbackExecutionState.RollbackReady,
+                releaseActivationRollbackExactPlanActive =
+                    releaseActivationRollbackExecutionState.ExactRollbackPlanBound,
+                releaseActivationRollbackExactActivationActive =
+                    releaseActivationRollbackExecutionState.ExactActivationPlanBound,
+                releaseActivationRollbackPointerEvidenceActive =
+                    releaseActivationRollbackExecutionState
+                        .ExactPointerSwitchEvidenceBound,
+                releaseActivationRollbackFailureTriggerActive =
+                    releaseActivationRollbackExecutionState.ExactFailureTriggerBound,
+                releaseActivationRollbackBackupValidated =
+                    releaseActivationRollbackExecutionState
+                        .ImmutableOriginalBackupValidated,
+                releaseActivationRollbackRestoreSourceCount =
+                    releaseActivationRollbackExecutionState.RestoreSourceCount,
+                releaseActivationRollbackRestoreDirectoryCount =
+                    releaseActivationRollbackExecutionState.RestoreDirectoryCount,
+                releaseActivationRollbackRestoreFileCount =
+                    releaseActivationRollbackExecutionState.RestoreFileCount,
+                releaseActivationRollbackRestoreBytes =
+                    releaseActivationRollbackExecutionState.RestoreBytes,
+                releaseActivationRollbackExecutedStopCount =
+                    releaseActivationRollbackExecutionState
+                        .ExecutedStopActionCount,
+                releaseActivationRollbackNoOpStopCount =
+                    releaseActivationRollbackExecutionState
+                        .TopologyNoOpStopActionCount,
+                releaseActivationRollbackRestoredRootCount =
+                    releaseActivationRollbackExecutionState.RestoredLiveRootCount,
+                releaseActivationRollbackCurrentPointerChanged =
+                    releaseActivationRollbackExecutionState
+                        .CurrentPointerRolledBack,
+                releaseActivationRollbackExecutedStartCount =
+                    releaseActivationRollbackExecutionState
+                        .ExecutedStartActionCount,
+                releaseActivationRollbackNoOpStartCount =
+                    releaseActivationRollbackExecutionState
+                        .TopologyNoOpStartActionCount,
+                releaseActivationRollbackVerifiedHealthCount =
+                    releaseActivationRollbackExecutionState
+                        .VerifiedHealthTargetCount,
+                releaseActivationRollbackCleanupCount =
+                    releaseActivationRollbackExecutionState
+                        .DisplacedTreeCleanupCount,
+                releaseActivationRollbackInstalledActive =
+                    releaseActivationRollbackExecutionState
+                        .InstalledReleaseActive,
+                releaseActivationRollbackSetupStable =
+                    releaseActivationRollbackExecutionState.SetupStable,
+                releaseActivationRollbackTopologyStable =
+                    releaseActivationRollbackExecutionState.TopologyStable,
+                releaseActivationRollbackConfigurationRestored =
+                    releaseActivationRollbackExecutionState
+                        .ConfigurationRestored,
+                releaseActivationRollbackServicesRestored =
+                    releaseActivationRollbackExecutionState.ServicesRestored,
+                releaseActivationRollbackHealthVerified =
+                    releaseActivationRollbackExecutionState
+                        .InstalledHealthVerified,
+                releaseActivationRollbackPerformed =
+                    releaseActivationRollbackExecutionState.RollbackPerformed,
+                releaseActivationRollbackReconciliationRequired =
+                    releaseActivationRollbackExecutionState
+                        .ReconciliationRequired,
+                releaseActivationRollbackActivationAuthorized =
+                    releaseActivationRollbackExecutionState.ActivationAuthorized,
                 releaseActivationHealthVerificationExecutorRegistered =
                     releaseActivationHealthVerification.Registered,
                 releaseActivationHealthVerificationExecutorConfigurationRegistered =

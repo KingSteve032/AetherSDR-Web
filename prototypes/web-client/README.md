@@ -1050,10 +1050,41 @@ Production resolves diagnostics only and registers no CLI, Admin, browser, HTTP,
 WebSocket, hosted-service, timer, AetherRemote, radio, watchdog, command, lease, or TX
 caller.
 
+The twenty-sixth M8B increment adds the separate strict
+`VerifiedReleaseActivationRollbackExecutionService`. Execution remains disabled by
+default and internal-only. It accepts only the exact rollback plan, the retained
+successful forward pointer-switch token, and an eligible exact failed post-switch
+service-start or health-verification report. A free-standing rollback request,
+equivalent plan, successful health report, or pre-switch failure cannot enter the
+transaction.
+
+Backup manifest schema 2 retains the original Unix mode for every configuration,
+state, and secret directory and file. Before mutation the executor revalidates the
+immutable manifest digest, exact activation identities, counts, bytes, every source
+entry, content digest, immutable backup mode, and safe original mode. It stages all
+three restore trees and rehashes them before stopping any service. Reverse migration
+is never invoked.
+
+Only topology-owned local target units are stopped. Each live root is displaced to a
+same-parent retained identity and replaced by its fully staged original tree; then an
+exact temporary symlink and native atomic rename return `current` to the installed
+release. Topology-owned installed units are started and the existing bounded unit,
+loopback HTTP, canonical-host, and optional exact-station broker-link contracts verify
+the installed release. Only after success are displaced failed trees removed.
+
+Any service, directory, pointer, health, status, setup, cleanup, cancellation, or
+unknown mutation outcome retains exact-plan reconciliation state and blocks retry.
+Success retains redacted reference-bound rollback evidence separately from the
+pre-activation `RollbackReady` prerequisite; completed rollback is never mistaken for
+forward activation preparedness. Production exposes disabled diagnostics and zeroed
+state only. There is no operational caller, activation authority, host restart,
+remote service-control transport, radio/watchdog/command/lease/TX action, keying, or
+live RF operation.
+
 Packaged bundle production, network download, archive extraction, operational
-backup orchestration, transaction orchestration, rollback execution,
-host-restart/remote service-control transports, operator-approval authority,
-Admin/browser workflows, and all operational update callers remain later M8B work.
+backup orchestration, transaction orchestration, host-restart/remote service-control
+transports, operator-approval authority, Admin/browser workflows, and all operational
+update callers remain later M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled
