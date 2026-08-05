@@ -1146,10 +1146,54 @@ watchdog, or service composition. It does not persist a downloaded bundle, extra
 archive, stage, install, switch `current`, control a service, activate, roll back, or
 create an Admin/browser, radio, command, lease, keying, or TX caller.
 
-Deterministic package production, signed-manifest publication, persistent `download`,
-archive extraction, operational backup orchestration, transaction orchestration,
-host-restart/remote service-control transports, and Admin/browser update workflows
-remain later M8B work.
+The twenty-ninth M8B increment adds deterministic architecture-package production,
+a standalone build-time manifest signer, and a protected manual draft-release workflow.
+`tools/release/build-github-release-assets.sh` publishes gateway/web plus its independent
+watchdog, broker, AetherRemote agent, and station engine for both `linux-x64` and
+`linux-arm64`. The gateway and station-engine roles intentionally package the same
+reviewed `AetherSDR.Web` tree used by the current deployment topology. Publish trees are
+normalized, archived with sorted names, fixed ownership, one commit-derived timestamp,
+and `gzip -n`, then inspected for the existing exact production TX/HIL string shape and
+disabled runtime defaults.
+
+`AetherSDR.ReleaseBuilder` is a separate build-time executable and is not referenced by
+the running web host. It requires one owner-only PKCS#8 ECDSA P-256 private-key file,
+reads exactly four architecture archives, streams their SHA-256 digests, constructs the
+canonical version-1 payload, signs it, and self-verifies the resulting manifest through
+`SignedReleaseManifestVerifier` before atomically creating
+`release-manifest-<architecture>.json`. Its JSON report contains no key path, private
+material, signature, checksum, or package path.
+
+A local build uses an externally supplied private key and a new output directory:
+
+```text
+bash tools/release/build-github-release-assets.sh \
+  --version 8.2.0 \
+  --channel stable \
+  --minimum-previous-version 8.1.0 \
+  --target-configuration-schema-version 1 \
+  --minimum-configuration-schema-version 1 \
+  --maximum-configuration-schema-version 1 \
+  --minimum-protocol-version 2 \
+  --maximum-protocol-version 3 \
+  --release-title "AetherSDR 8.2.0" \
+  --release-summary "Reviewed release summary." \
+  --key-id <reviewed-public-key-id> \
+  --private-key /absolute/private/release-key.pem \
+  --source-date-epoch "$(git show -s --format=%ct HEAD)" \
+  --output /absolute/new/release-assets
+```
+
+`.github/workflows/draft-release.yml` exposes the same inputs only through manual
+`workflow_dispatch` on `main`. The `release-signing` environment should require reviewer
+approval and provide `AETHERSDR_RELEASE_SIGNING_KEY_PKCS8_BASE64` as an environment
+secret. The workflow reruns the complete production validation-only gate, builds ten
+exact assets, removes the temporary private key, and creates only a GitHub **draft**
+release at the exact main commit. It never publishes the draft automatically.
+
+Persistent `download`, archive extraction, operational backup orchestration,
+transaction orchestration, host-restart/remote service-control transports, authenticated
+approval issuance, and Admin/browser update workflows remain later M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled

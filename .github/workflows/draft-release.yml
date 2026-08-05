@@ -1,0 +1,229 @@
+name: Draft signed release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Canonical semantic version without the aethersdr- prefix
+        required: true
+        type: string
+      channel:
+        description: Signed update channel
+        required: true
+        type: choice
+        options:
+          - stable
+          - beta
+          - pinned
+      minimum_previous_version:
+        description: Oldest supported installed semantic version
+        required: true
+        type: string
+      target_configuration_schema_version:
+        description: Target configuration schema version
+        required: true
+        default: "1"
+        type: string
+      minimum_configuration_schema_version:
+        description: Minimum compatible configuration schema version
+        required: true
+        default: "1"
+        type: string
+      maximum_configuration_schema_version:
+        description: Maximum compatible configuration schema version
+        required: true
+        default: "1"
+        type: string
+      minimum_protocol_version:
+        description: Minimum compatible protocol version
+        required: true
+        default: "2"
+        type: string
+      maximum_protocol_version:
+        description: Maximum compatible protocol version
+        required: true
+        default: "3"
+        type: string
+      release_title:
+        description: Bounded release title stored in each signed manifest
+        required: true
+        type: string
+      release_summary:
+        description: Bounded release summary stored in each signed manifest
+        required: true
+        type: string
+      key_id:
+        description: Public identifier of the configured release verification key
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: draft-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "true"
+  NUGET_XMLDOC_MODE: skip
+
+jobs:
+  draft:
+    name: Build signed draft release
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: release-signing
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out exact main commit
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Confirm exact main execution
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "${GITHUB_REF}" == "refs/heads/main" ]]
+          [[ "$(git rev-parse HEAD)" == "${GITHUB_SHA}" ]]
+
+      - name: Run production validation-only gate
+        shell: bash
+        run: bash prototypes/web-client/deploy/validate-deploy-flexweb.sh --validate-only
+
+      - name: Run release builder tests
+        shell: bash
+        run: >-
+          dotnet test
+          tools/release/AetherSDR.ReleaseBuilder.Tests/AetherSDR.ReleaseBuilder.Tests.csproj
+          --configuration Release
+
+      - name: Prepare protected signing key
+        id: signing-key
+        shell: bash
+        env:
+          SIGNING_KEY_BASE64: ${{ secrets.AETHERSDR_RELEASE_SIGNING_KEY_PKCS8_BASE64 }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          [[ -n "${SIGNING_KEY_BASE64}" ]] || {
+            echo "The protected release signing key secret is unavailable." >&2
+            exit 2
+          }
+          key_directory="$(mktemp -d "${RUNNER_TEMP}/aethersdr-release-key.XXXXXX")"
+          key_path="${key_directory}/release-private-key.pem"
+          printf '%s' "${SIGNING_KEY_BASE64}" | base64 --decode >"${key_path}"
+          chmod 0700 "${key_directory}"
+          chmod 0600 "${key_path}"
+          printf 'key_directory=%s\n' "${key_directory}" >>"${GITHUB_OUTPUT}"
+          printf 'key_path=%s\n' "${key_path}" >>"${GITHUB_OUTPUT}"
+
+      - name: Build and sign exact architecture assets
+        id: assets
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+          MINIMUM_PREVIOUS_VERSION: ${{ inputs.minimum_previous_version }}
+          TARGET_CONFIGURATION_SCHEMA_VERSION: ${{ inputs.target_configuration_schema_version }}
+          MINIMUM_CONFIGURATION_SCHEMA_VERSION: ${{ inputs.minimum_configuration_schema_version }}
+          MAXIMUM_CONFIGURATION_SCHEMA_VERSION: ${{ inputs.maximum_configuration_schema_version }}
+          MINIMUM_PROTOCOL_VERSION: ${{ inputs.minimum_protocol_version }}
+          MAXIMUM_PROTOCOL_VERSION: ${{ inputs.maximum_protocol_version }}
+          RELEASE_TITLE: ${{ inputs.release_title }}
+          RELEASE_SUMMARY: ${{ inputs.release_summary }}
+          RELEASE_KEY_ID: ${{ inputs.key_id }}
+          RELEASE_PRIVATE_KEY: ${{ steps.signing-key.outputs.key_path }}
+        run: |
+          set -Eeuo pipefail
+          source_date_epoch="$(git show -s --format=%ct "${GITHUB_SHA}")"
+          output="${RUNNER_TEMP}/aethersdr-release-assets"
+          bash tools/release/build-github-release-assets.sh \
+            --version "${RELEASE_VERSION}" \
+            --channel "${RELEASE_CHANNEL}" \
+            --minimum-previous-version "${MINIMUM_PREVIOUS_VERSION}" \
+            --target-configuration-schema-version "${TARGET_CONFIGURATION_SCHEMA_VERSION}" \
+            --minimum-configuration-schema-version "${MINIMUM_CONFIGURATION_SCHEMA_VERSION}" \
+            --maximum-configuration-schema-version "${MAXIMUM_CONFIGURATION_SCHEMA_VERSION}" \
+            --minimum-protocol-version "${MINIMUM_PROTOCOL_VERSION}" \
+            --maximum-protocol-version "${MAXIMUM_PROTOCOL_VERSION}" \
+            --release-title "${RELEASE_TITLE}" \
+            --release-summary "${RELEASE_SUMMARY}" \
+            --key-id "${RELEASE_KEY_ID}" \
+            --private-key "${RELEASE_PRIVATE_KEY}" \
+            --source-date-epoch "${source_date_epoch}" \
+            --output "${output}"
+          printf 'directory=%s\n' "${output}" >>"${GITHUB_OUTPUT}"
+
+      - name: Remove private signing key
+        if: always()
+        shell: bash
+        env:
+          KEY_DIRECTORY: ${{ steps.signing-key.outputs.key_directory }}
+        run: |
+          set -Eeuo pipefail
+          if [[ -n "${KEY_DIRECTORY}" && -d "${KEY_DIRECTORY}" ]]; then
+            rm -rf -- "${KEY_DIRECTORY}"
+          fi
+
+      - name: Create GitHub draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET_DIRECTORY: ${{ steps.assets.outputs.directory }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+          RELEASE_TITLE: ${{ inputs.release_title }}
+          RELEASE_SUMMARY: ${{ inputs.release_summary }}
+        run: |
+          set -Eeuo pipefail
+          tag="aethersdr-${RELEASE_VERSION}"
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "A GitHub release already exists for ${tag}." >&2
+            exit 2
+          fi
+
+          mapfile -d '' assets < <(
+            find "${ASSET_DIRECTORY}" -maxdepth 1 -type f -print0 | sort -z
+          )
+          [[ "${#assets[@]}" == 10 ]] || {
+            echo "The draft release requires exactly ten generated assets." >&2
+            exit 2
+          }
+
+          notes_file="${RUNNER_TEMP}/aethersdr-release-notes.md"
+          {
+            printf '# %s\n\n' "${RELEASE_TITLE}"
+            printf '%s\n\n' "${RELEASE_SUMMARY}"
+            printf 'Signed M8B draft generated from commit `%s`.\n\n' "${GITHUB_SHA}"
+            printf 'This draft does not deploy, install, activate, restart services, connect to a radio, or perform RF operations.\n'
+          } >"${notes_file}"
+
+          prerelease=()
+          if [[ "${RELEASE_CHANNEL}" == beta || "${RELEASE_VERSION}" == *-* ]]; then
+            prerelease=(--prerelease)
+          fi
+          gh release create \
+            "${tag}" \
+            "${assets[@]}" \
+            --draft \
+            --target "${GITHUB_SHA}" \
+            --title "${RELEASE_TITLE}" \
+            --notes-file "${notes_file}" \
+            "${prerelease[@]}"

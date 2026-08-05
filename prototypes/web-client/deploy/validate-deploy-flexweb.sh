@@ -95,6 +95,8 @@ WATCHDOG_PROJECT="${REPO_ROOT}/prototypes/tx-watchdog/AetherSDR.TxWatchdog/Aethe
 WATCHDOG_TEST_PROJECT="${REPO_ROOT}/prototypes/tx-watchdog/AetherSDR.TxWatchdog.Tests/AetherSDR.TxWatchdog.Tests.csproj"
 HIL_TEST_PROJECT="${REPO_ROOT}/prototypes/web-client/tx-hil-tests/AetherSDR.TxHil.Tests.csproj"
 REMOTE_TEST_PROJECT="${REPO_ROOT}/AetherRemote/tests/AetherRemote.Tests/AetherRemote.Tests.csproj"
+RELEASE_BUILDER_TEST_PROJECT="${REPO_ROOT}/tools/release/AetherSDR.ReleaseBuilder.Tests/AetherSDR.ReleaseBuilder.Tests.csproj"
+RELEASE_AUTOMATION_VALIDATOR="${REPO_ROOT}/tools/release/validate-release-automation.sh"
 UI_TEST_DIR="${REPO_ROOT}/prototypes/web-client/tests-ui"
 ACTIVATOR="${REPO_ROOT}/prototypes/web-client/deploy/activate-release.sh"
 
@@ -105,6 +107,8 @@ for required_path in \
   "${WATCHDOG_TEST_PROJECT}" \
   "${HIL_TEST_PROJECT}" \
   "${REMOTE_TEST_PROJECT}" \
+  "${RELEASE_BUILDER_TEST_PROJECT}" \
+  "${RELEASE_AUTOMATION_VALIDATOR}" \
   "${UI_TEST_DIR}" \
   "${ACTIVATOR}"; do
   [[ -e "${required_path}" ]] || {
@@ -1482,6 +1486,9 @@ if [[ "${deploy}" == true ]]; then
   printf 'Rollback release: %s\n' "${previous_release}"
 fi
 
+echo "Validating release automation boundaries..."
+bash "${RELEASE_AUTOMATION_VALIDATOR}"
+
 echo "Running complete solution build..."
 dotnet build "${REPO_ROOT}/AetherSDR-Web.slnx" --configuration Release
 
@@ -1496,6 +1503,9 @@ dotnet test "${HIL_TEST_PROJECT}" --configuration Release --no-build
 
 echo "Running AetherRemote tests..."
 dotnet test "${REMOTE_TEST_PROJECT}" --configuration Release --no-build
+
+echo "Running release builder tests..."
+dotnet test "${RELEASE_BUILDER_TEST_PROJECT}" --configuration Release --no-build
 
 echo "Running browser tests..."
 node --check "${REPO_ROOT}/prototypes/web-client/wwwroot/admin-page.js"
@@ -1638,6 +1648,7 @@ for forbidden in \
   'HilGatewayAuthorityChild' \
   'internal-engine-process-child' \
   'AETHERSDR_TX_HIL' \
+  'ReleaseManifestBuilder' \
   'dax tx'; do
   assert_forbidden_string_absent \
     "${forbidden}" "${ascii_strings}" "${utf16_strings}"
