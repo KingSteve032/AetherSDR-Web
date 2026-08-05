@@ -1027,8 +1027,31 @@ is registered. The pointer boundary never starts a service, restarts a host, con
 a remote node, probes health, rolls back, authorizes activation, operates a radio,
 changes a lease or watchdog, sends a command, keys, or transmits.
 
+The twenty-fifth M8B increment adds the pure callerless
+`VerifiedReleaseActivationRollbackPlanComposer`. It accepts only the exact activation
+plan, immutable original configuration backup, migration plan, service-control plan,
+and health-verification plan. Every retained token must bind by reference through one
+activation transaction; equivalent public metadata or independently composed tokens
+cannot be mixed into a rollback plan.
+
+Rollback always restores the immutable original backup. A required migration is never
+reversed by executing migration code backward. The plan maps the exact configuration,
+state, and secret backup roots back to their original live roots, assigning each a
+same-parent private staging identity and a distinct displaced-live-tree identity. It
+then plans deterministic target-service stops, an atomic `current` return to the
+installed release, deterministic installed-service starts, and the existing bounded
+health contracts against the installed release. Signed host-restart transactions fail
+closed because no reviewed host-restart rollback transport exists.
+
+The composer performs no source read, write, directory mutation, process, `systemctl`
+command, network request, health probe, pointer mutation, rollback execution, or
+activation action. It produces no rollback evidence and does not make rollback ready.
+Production resolves diagnostics only and registers no CLI, Admin, browser, HTTP,
+WebSocket, hosted-service, timer, AetherRemote, radio, watchdog, command, lease, or TX
+caller.
+
 Packaged bundle production, network download, archive extraction, operational
-backup orchestration, transaction orchestration, rollback preparation and execution,
+backup orchestration, transaction orchestration, rollback execution,
 host-restart/remote service-control transports, operator-approval authority,
 Admin/browser workflows, and all operational update callers remain later M8B work.
 

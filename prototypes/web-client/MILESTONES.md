@@ -2712,11 +2712,11 @@ execution, exact-plan migration evidence, exact service-control transaction
 planning, disabled-by-default exact local two-phase service-control execution and
 evidence, disabled-by-default exact atomic current-pointer switching and evidence,
 exact post-switch health-verification planning, disabled-by-default exact health
-execution, and exact-plan health evidence are implemented; publishing artifacts,
-network download, extraction, operational backup orchestration, transaction
-orchestration, rollback preparation and execution, host-restart and remote-node
-service-control transports, operator-approval authority, and Admin/browser callers
-remain unimplemented.
+execution, exact-plan health evidence, and exact rollback transaction planning are
+implemented; publishing artifacts, network download, extraction, operational backup
+orchestration, transaction orchestration, rollback execution, host-restart and
+remote-node service-control transports, operator-approval authority, and Admin/browser
+callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -3245,6 +3245,29 @@ AetherRemote caller, service start, host restart, remote service control, health
 probe, rollback, activation authority, radio/watchdog/command/lease/keying/TX action,
 or live RF operation is added.
 
+The twenty-fifth increment adds
+`VerifiedReleaseActivationRollbackPlanComposer`, one pure callerless rollback-plan
+boundary. It accepts only the exact activation, immutable original-backup, migration,
+service-control, and health-plan tokens. All five objects must remain connected by
+reference through one activation transaction; equivalent summaries or independently
+composed objects fail closed.
+
+Rollback is planned as restoration from the original immutable backup. Required
+migration never introduces a reverse-runner path. The three exact configuration,
+state, and secret backup roots map back to their original live roots, each with a
+same-parent restore-staging identity and a separate displaced-live-tree identity. The
+future sequence is deterministic target-service stops, all three restores, atomic
+`current` return to the installed release, deterministic installed-service starts,
+and complete installed-release health verification.
+
+Host-restart transactions are rejected because no reviewed host-restart rollback
+transport exists. The planner performs no source read, write, directory mutation,
+process, `systemctl` command, network request, health probe, pointer mutation,
+rollback execution, evidence production, activation, radio/watchdog/command/lease/
+keying/TX action, or live RF operation. Production resolves diagnostics only and has
+no operational/CLI/Admin/browser/HTTP/WebSocket/hosted-service/timer/AetherRemote
+caller.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -3712,6 +3735,46 @@ TUNE controls were disabled; PC MIC remained off; FILL toggled and was restored;
 console errors and warnings were both zero. The tab was closed afterward to release
 the remote receive session. No TX lease, keying action, transmit-control command, or
 RF operation was performed.
+
+Automated checkpoint on 2026-08-04 for exact rollback transaction planning:
+independent post-merge `main` CI run 30944485006 passed; the deployment script passed
+shell syntax validation; changed C# files passed format verification; Release solution
+build completed with zero warnings and zero errors; the focused rollback-plan suite
+passed 13/13; and the combined activation, backup, migration, service-control,
+pointer-switch, health, rollback, readiness, and evidence boundary passed 277/277.
+Web tests passed 1,502/1,502; independent-watchdog tests passed 57/57; TX-HIL isolation
+tests passed 48/48; AetherRemote tests passed 70/70; and browser tests passed 135/135.
+The complete checkpoint covered 1,677 .NET tests and 1,812 tests overall.
+
+Focused rollback tests proved diagnostics-only public surface, exact reference binding
+across activation, immutable original backup, migration, service-control, and health
+plans, equivalent-token rejection, no-migration and required-migration composition,
+original-backup restoration without a reverse migration runner, exact three-source
+live-root mapping, same-parent restore staging, distinct displaced-live identities,
+host-restart rejection, backup metadata and unsafe-layout rejection, and path-, unit-,
+and health-contract-redacted public reports. The planner produced no read, write,
+process, systemd, network, probe, pointer, rollback, evidence, activation, radio,
+watchdog, command, lease, keying, or TX action.
+
+The guarded production-TX deployment gate completed successfully with active release
+`20260804-200028-flexweb-validation`; release
+`20260804-185857-flexweb-validation` was retained for rollback. Deployed health
+confirmed the rollback planner registered with all exact-input, immutable-backup,
+three-source restore, deterministic service, atomic-pointer, and installed-health
+planning capabilities while reverse migration, host restart, source reads, writes,
+directory mutation, process/systemd/network/probe activity, rollback evidence,
+rollback execution, pointer mutation, activation authority, and every operational
+caller remained absent. The independent watchdog started empty and Disarmed; no live
+RF operation occurred.
+
+Authenticated Browser Bridge acceptance passed against that exact deployed release
+using `ODU-6400 · FLEX-6400 · Remote`. The footer reported `FLEX-6400`, `RX-ONLY`, and
+`RADIO: LIVE`; the TX panel remained locked and validation-only with explicit
+no-command/no-microphone-transport copy; MOX, TUNE, and CWX were hidden and disabled;
+intent, validation, SPLIT, DVK, FDX, and both tuner TUNE controls were disabled; PC MIC
+remained off; FILL toggled and was restored; and console errors and warnings were both
+zero. The tab was closed afterward to release the remote receive session. No TX lease,
+keying action, transmit-control command, or RF operation was performed.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.
