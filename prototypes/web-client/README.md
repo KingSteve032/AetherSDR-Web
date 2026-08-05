@@ -1106,8 +1106,50 @@ lease, or TX caller. The authenticated Admin approval workflow, transaction
 orchestration, host-restart/remote service-control transports, and all operational
 update callers remain later M8B work.
 
-Packaged bundle production, network download, archive extraction, and operational
-backup orchestration also remain later M8B work.
+The twenty-eighth M8B increment adds the first GitHub-hosted release source and one
+read-only CLI caller. `ReleaseGitHubSource` is disabled by default and is fixed to one
+strictly validated public GitHub owner/repository pair. It lists a bounded release set,
+ignores drafts, and selects the highest canonical `aethersdr-<semver>` release matching
+the exact Stable or Beta channel, or the one exact Pinned identity.
+
+For the running `linux-x64` or `linux-arm64` architecture, the selected release must
+contain exactly one required manifest asset plus the four role packages:
+
+```text
+release-manifest-<architecture>.json
+aethersdr-gateway-<architecture>.tar.gz
+aethersdr-broker-<architecture>.tar.gz
+aetherremote-agent-<architecture>.tar.gz
+aethersdr-station-engine-<architecture>.tar.gz
+```
+
+Asset metadata and API URLs must remain bound to the configured repository. Downloads
+use only reviewed GitHub HTTPS hosts, a bounded timeout, bounded manual redirects,
+declared lengths, and an optional canonical GitHub SHA-256 digest. The five assets are
+written once into one random owner-private temporary directory, flushed, frozen, and
+submitted to the existing immutable offline signed-bundle verifier. The signed release
+identity must equal the selected GitHub tag. The temporary directory is removed after
+both success and failure; cleanup ambiguity fails closed.
+
+```text
+ReleaseGitHubSource__Enabled=true AetherSDR.Web \
+  --check-github-release \
+  --release-check-installed-version 8.1.0 \
+  --release-check-update-channel stable \
+  --release-check-configuration-schema-version 1 \
+  --release-check-protocol-version 2
+```
+
+The command still requires separately configured local public-key trust. It emits only
+a redacted verification report and returns before the web host, setup host, radio,
+watchdog, or service composition. It does not persist a downloaded bundle, extract an
+archive, stage, install, switch `current`, control a service, activate, roll back, or
+create an Admin/browser, radio, command, lease, keying, or TX caller.
+
+Deterministic package production, signed-manifest publication, persistent `download`,
+archive extraction, operational backup orchestration, transaction orchestration,
+host-restart/remote service-control transports, and Admin/browser update workflows
+remain later M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled

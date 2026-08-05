@@ -148,6 +148,9 @@ public sealed class LocalOfflineReleaseBundleVerificationService
 
     public LocalOfflineReleaseBundleVerificationDiagnostics Snapshot { get; }
 
+    internal bool LocalVerificationAvailable =>
+        m_manifestVerificationService.Snapshot.LocalVerificationAvailable;
+
     public LocalOfflineReleaseBundleVerificationReport VerifyDirectory(
         string bundleDirectory,
         ReleaseManifestVerificationContext context) =>
