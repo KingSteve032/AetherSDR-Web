@@ -1191,9 +1191,50 @@ secret. The workflow reruns the complete production validation-only gate, builds
 exact assets, removes the temporary private key, and creates only a GitHub **draft**
 release at the exact main commit. It never publishes the draft automatically.
 
-Persistent `download`, archive extraction, operational backup orchestration,
-transaction orchestration, host-restart/remote service-control transports, authenticated
-approval issuance, and Admin/browser update workflows remain later M8B work.
+The thirtieth M8B increment adds the persistent CLI download path without adding
+extraction or installation. It derives one private inventory root from the existing
+installation state path:
+
+```text
+<InstallationPaths.StateDirectory>/release-downloads/
+```
+
+The command uses the same installed-version, Stable/Beta/exact-Pinned,
+configuration-schema, protocol, process-architecture, GitHub repository, and local
+public-key trust inputs as `--check-github-release`:
+
+```text
+ReleaseGitHubSource__Enabled=true AetherSDR.Web \
+  --download-github-release \
+  --release-check-installed-version 8.1.0 \
+  --release-check-update-channel stable \
+  --release-check-configuration-schema-version 1 \
+  --release-check-protocol-version 2
+```
+
+The configured installation state directory must already exist as a regular canonical
+non-symlink directory and must not be group- or other-writable. The command creates only
+the direct owner-private `release-downloads` child. The existing GitHub source writes its
+five exact assets into one random same-parent private directory, freezes and verifies
+the complete signed bundle, and returns that internal acquisition to the persistence
+boundary. Only then is the directory atomically renamed to
+`<release-identity>-<architecture>`.
+
+An exact existing immutable target is reverified and treated as idempotent success. An
+existing invalid target is never replaced. A clean rename failure removes the temporary
+bundle; a rename whose outcome cannot be proven from the source and target paths returns
+`reconciliationRequired=true` and does not guess. The JSON report omits the state root,
+bundle path, package names, checksums, signature, key identity, and repository URLs.
+
+A persisted directory remains in the exact offline-bundle format and may be supplied
+explicitly to the existing offline install preflight. Download does not extract any
+archive, stage package contents, install, switch `current`, restart a service, activate,
+roll back, migrate, issue approval, or touch Admin/browser, AetherRemote runtime,
+radio, watchdog, command, lease, keying, TX, or live RF state.
+
+Archive extraction, operational backup orchestration, transaction orchestration,
+host-restart/remote service-control transports, authenticated approval issuance, and
+Admin/browser update workflows remain later M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled

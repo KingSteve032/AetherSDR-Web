@@ -89,6 +89,9 @@ public sealed class InstallationSetupFoundationTests
         Assert.Equal(
             Path.Combine(paths.SecretDirectory, "data-protection"),
             paths.DataProtectionKeyDirectory);
+        Assert.Equal(
+            Path.Combine(paths.StateDirectory, "release-downloads"),
+            paths.ReleaseDownloadDirectory);
     }
 
     [Fact]
@@ -106,6 +109,9 @@ public sealed class InstallationSetupFoundationTests
         Assert.Equal("/opt/aethersdr/releases", paths.ReleaseDirectory);
         Assert.Equal("/var/backups/aethersdr", paths.BackupDirectory);
         Assert.Equal("/var/log/aethersdr", paths.LogDirectory);
+        Assert.Equal(
+            "/var/lib/aethersdr/release-downloads",
+            paths.ReleaseDownloadDirectory);
     }
 
     [Fact]

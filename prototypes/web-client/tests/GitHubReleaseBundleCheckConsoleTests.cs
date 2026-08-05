@@ -615,6 +615,441 @@ public sealed class GitHubReleaseBundleCheckConsoleTests
         AssertTemporaryRootEmpty(fixture);
     }
 
+    [Fact]
+    public void CompleteGitHubDownloadCommandParsesWithSharedCompatibilityInputs()
+    {
+        ReleaseUpdateConsoleCommandLine parsed =
+            ReleaseUpdateConsoleCommandParser.Parse(
+            [
+                ReleaseUpdateConsoleCommandParser.DownloadGitHubReleaseSwitch,
+                ReleaseUpdateConsoleCommandParser.InstalledVersionSwitch,
+                "8.1.0",
+                ReleaseUpdateConsoleCommandParser.UpdateChannelSwitch,
+                "stable",
+                ReleaseUpdateConsoleCommandParser.ConfigurationSchemaVersionSwitch,
+                "1",
+                ReleaseUpdateConsoleCommandParser.ProtocolVersionSwitch,
+                "2"
+            ]);
+
+        Assert.Equal(
+            ReleaseUpdateConsoleCommandKind.DownloadGitHubRelease,
+            parsed.Command);
+        Assert.Equal("8.1.0", parsed.InstalledVersion);
+        Assert.Equal(InstallationUpdateChannel.Stable, parsed.UpdateChannel);
+        Assert.Equal(1, parsed.ConfigurationSchemaVersion);
+        Assert.Equal(2, parsed.ProtocolVersion);
+        Assert.Empty(parsed.ApplicationArguments);
+    }
+
+    [Fact]
+    public void DownloadPublicSurfaceAndDiagnosticsRemainNarrow()
+    {
+        using Fixture fixture = new(sourceEnabled: false, trustEnabled: false);
+        GitHubReleaseBundleDownloadService service =
+            fixture.CreateDownloadService();
+        GitHubReleaseBundleDownloadConsole console =
+            fixture.CreateDownloadConsole();
+
+        Assert.Equal(
+            ["get_Snapshot"],
+            typeof(GitHubReleaseBundleDownloadService)
+                .GetMethods(
+                    System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.DeclaredOnly)
+                .Select(method => method.Name)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray());
+        Assert.Equal(
+            ["ExecuteAsync", "get_Snapshot"],
+            typeof(GitHubReleaseBundleDownloadConsole)
+                .GetMethods(
+                    System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.DeclaredOnly)
+                .Select(method => method.Name)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray());
+
+        GitHubReleaseBundleDownloadDiagnostics diagnostics = service.Snapshot;
+        Assert.True(diagnostics.Registered);
+        Assert.True(diagnostics.GitHubSourceRegistered);
+        Assert.True(diagnostics.NetworkReadRegistered);
+        Assert.True(diagnostics.LocalSignedVerificationRegistered);
+        Assert.True(diagnostics.InstallationPathBindingRegistered);
+        Assert.True(diagnostics.PrivateDownloadRootRegistered);
+        Assert.True(diagnostics.SameParentTemporaryBundleRegistered);
+        Assert.True(diagnostics.AtomicDirectoryPublishRegistered);
+        Assert.True(diagnostics.ExistingBundleVerificationRegistered);
+        Assert.True(diagnostics.PersistentDownloadRegistered);
+        Assert.False(diagnostics.ArchiveExtractionRegistered);
+        Assert.False(diagnostics.StagingRegistered);
+        Assert.False(diagnostics.InstallationRegistered);
+        Assert.False(diagnostics.ActivationRegistered);
+        Assert.False(diagnostics.RollbackRegistered);
+        Assert.False(diagnostics.MigrationRegistered);
+        Assert.False(diagnostics.ServiceControlRegistered);
+        Assert.False(diagnostics.AdminCallerRegistered);
+        Assert.False(diagnostics.BrowserCallerRegistered);
+        Assert.False(diagnostics.RadioCallerRegistered);
+        Assert.False(diagnostics.WatchdogCallerRegistered);
+        Assert.False(diagnostics.CommandCallerRegistered);
+        Assert.False(diagnostics.LeaseCallerRegistered);
+        Assert.False(diagnostics.TxCallerRegistered);
+
+        GitHubReleaseBundleDownloadConsoleDiagnostics consoleDiagnostics =
+            console.Snapshot;
+        Assert.True(consoleDiagnostics.Registered);
+        Assert.True(consoleDiagnostics.DownloadServiceRegistered);
+        Assert.True(consoleDiagnostics.CliCallerRegistered);
+        Assert.True(consoleDiagnostics.PersistentDownloadRegistered);
+        Assert.False(consoleDiagnostics.ArchiveExtractionRegistered);
+        Assert.False(consoleDiagnostics.InstallationRegistered);
+        Assert.False(consoleDiagnostics.ActivationRegistered);
+        Assert.False(consoleDiagnostics.TxCallerRegistered);
+    }
+
+    [Theory]
+    [InlineData(false, true, "sourceDisabled")]
+    [InlineData(true, false, "verificationTrustUnavailable")]
+    public async Task DisabledSourceOrTrustRejectsBeforeNetworkOrFilesystemMutation(
+        bool sourceEnabled,
+        bool trustEnabled,
+        string expectedSourceFailure)
+    {
+        using Fixture fixture = new(sourceEnabled, trustEnabled);
+        GitHubReleaseBundleDownloadConsole console =
+            fixture.CreateDownloadConsole();
+        using StringWriter output = new();
+
+        int exitCode = await console.ExecuteAsync(
+            DownloadCommand(InstallationUpdateChannel.Stable),
+            output);
+        using JsonDocument document = JsonDocument.Parse(output.ToString());
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(
+            "sourceRejected",
+            document.RootElement.GetProperty("failureCode").GetString());
+        Assert.Equal(
+            expectedSourceFailure,
+            document.RootElement.GetProperty("sourceFailureCode").GetString());
+        Assert.Empty(fixture.Handler.Requests);
+        Assert.False(Directory.Exists(fixture.Paths.ReleaseDownloadDirectory));
+        Assert.DoesNotContain(
+            fixture.Paths.StateDirectory,
+            output.ToString(),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ValidDownloadPersistsExactImmutableBundleAndRedactsPath()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        using Fixture fixture = new(sourceEnabled: true, trustEnabled: true);
+        TestRelease release = TestRelease.Create(
+            "aethersdr-8.2.0",
+            ReleaseManifestChannel.Stable,
+            prerelease: false,
+            firstAssetId: 900);
+        fixture.RegisterReleases(release);
+        GitHubReleaseBundleDownloadConsole console =
+            fixture.CreateDownloadConsole();
+        using StringWriter output = new();
+
+        int exitCode = await console.ExecuteAsync(
+            DownloadCommand(InstallationUpdateChannel.Stable),
+            output);
+        using JsonDocument document = JsonDocument.Parse(output.ToString());
+        string target = DownloadTarget(fixture, "aethersdr-8.2.0");
+
+        Assert.Equal(0, exitCode);
+        Assert.True(document.RootElement.GetProperty("succeeded").GetBoolean());
+        Assert.True(
+            document.RootElement.GetProperty("bundlePersisted").GetBoolean());
+        Assert.False(
+            document.RootElement.GetProperty("alreadyPresent").GetBoolean());
+        Assert.False(
+            document.RootElement.GetProperty("reconciliationRequired")
+                .GetBoolean());
+        Assert.True(Directory.Exists(target));
+        Assert.Single(
+            Directory.EnumerateFileSystemEntries(
+                fixture.Paths.ReleaseDownloadDirectory));
+        Assert.DoesNotContain(
+            fixture.Paths.ReleaseDownloadDirectory,
+            output.ToString(),
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "release-manifest-linux-x64.json",
+            output.ToString(),
+            StringComparison.Ordinal);
+        Assert.Equal(6, fixture.Handler.Requests.Count);
+
+        LocalOfflineReleaseBundleVerificationReport verification =
+            fixture.BundleService.VerifyDirectory(
+                target,
+                VerificationContext(InstallationUpdateChannel.Stable));
+        Assert.True(verification.Succeeded);
+        Assert.Equal(
+            "aethersdr-8.2.0",
+            verification.Verification?.ReleaseIdentity);
+        AssertImmutableTree(target);
+    }
+
+    [Fact]
+    public async Task RepeatedDownloadIsIdempotentAndLeavesOneVerifiedTarget()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        using Fixture fixture = new(sourceEnabled: true, trustEnabled: true);
+        fixture.RegisterReleases(TestRelease.Create(
+            "aethersdr-8.2.0",
+            ReleaseManifestChannel.Stable,
+            prerelease: false,
+            firstAssetId: 920));
+        GitHubReleaseBundleDownloadConsole console =
+            fixture.CreateDownloadConsole();
+        using StringWriter firstOutput = new();
+        using StringWriter secondOutput = new();
+
+        Assert.Equal(
+            0,
+            await console.ExecuteAsync(
+                DownloadCommand(InstallationUpdateChannel.Stable),
+                firstOutput));
+        Assert.Equal(
+            0,
+            await console.ExecuteAsync(
+                DownloadCommand(InstallationUpdateChannel.Stable),
+                secondOutput));
+        using JsonDocument second = JsonDocument.Parse(secondOutput.ToString());
+
+        Assert.True(second.RootElement.GetProperty("alreadyPresent").GetBoolean());
+        Assert.False(second.RootElement.GetProperty("bundlePersisted").GetBoolean());
+        Assert.Single(
+            Directory.EnumerateFileSystemEntries(
+                fixture.Paths.ReleaseDownloadDirectory));
+        Assert.Equal(12, fixture.Handler.Requests.Count);
+        AssertImmutableTree(DownloadTarget(fixture, "aethersdr-8.2.0"));
+    }
+
+    [Fact]
+    public async Task UnsafeStateDirectoryRejectsBeforeNetwork()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        using Fixture fixture = new(sourceEnabled: true, trustEnabled: true);
+        File.SetUnixFileMode(
+            fixture.Paths.StateDirectory,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.UserExecute |
+            UnixFileMode.GroupWrite);
+        GitHubReleaseBundleDownloadConsole console =
+            fixture.CreateDownloadConsole();
+        using StringWriter output = new();
+
+        int exitCode = await console.ExecuteAsync(
+            DownloadCommand(InstallationUpdateChannel.Stable),
+            output);
+        using JsonDocument document = JsonDocument.Parse(output.ToString());
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(
+            "unsafeStateDirectory",
+            document.RootElement.GetProperty("failureCode").GetString());
+        Assert.Empty(fixture.Handler.Requests);
+        Assert.False(Directory.Exists(fixture.Paths.ReleaseDownloadDirectory));
+    }
+
+    [Fact]
+    public async Task InvalidExistingTargetIsNeverReplaced()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        using Fixture fixture = new(sourceEnabled: true, trustEnabled: true);
+        fixture.RegisterReleases(TestRelease.Create(
+            "aethersdr-8.2.0",
+            ReleaseManifestChannel.Stable,
+            prerelease: false,
+            firstAssetId: 940));
+        GitHubReleaseBundleDownloadConsole console =
+            fixture.CreateDownloadConsole();
+        using StringWriter first = new();
+        Assert.Equal(
+            0,
+            await console.ExecuteAsync(
+                DownloadCommand(InstallationUpdateChannel.Stable),
+                first));
+
+        string target = DownloadTarget(fixture, "aethersdr-8.2.0");
+        MakeTreeWritable(target);
+        string package = Directory.EnumerateFiles(
+                target,
+                "*.tar.gz",
+                SearchOption.AllDirectories)
+            .First();
+        File.AppendAllText(package, "tampered", Encoding.UTF8);
+        FreezeTree(target);
+        using StringWriter second = new();
+
+        Assert.Equal(
+            2,
+            await console.ExecuteAsync(
+                DownloadCommand(InstallationUpdateChannel.Stable),
+                second));
+        using JsonDocument document = JsonDocument.Parse(second.ToString());
+        Assert.Equal(
+            "existingBundleUnsafe",
+            document.RootElement.GetProperty("failureCode").GetString());
+        Assert.True(Directory.Exists(target));
+        Assert.Single(
+            Directory.EnumerateFileSystemEntries(
+                fixture.Paths.ReleaseDownloadDirectory));
+        Assert.Contains("tampered", File.ReadAllText(package), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CleanMoveFailureRemovesTemporaryBundle()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        using Fixture fixture = new(sourceEnabled: true, trustEnabled: true);
+        fixture.RegisterReleases(TestRelease.Create(
+            "aethersdr-8.2.0",
+            ReleaseManifestChannel.Stable,
+            prerelease: false,
+            firstAssetId: 960));
+        GitHubReleaseBundleDownloadConsole console =
+            fixture.CreateDownloadConsole((_, _) => throw new IOException());
+        using StringWriter output = new();
+
+        Assert.Equal(
+            2,
+            await console.ExecuteAsync(
+                DownloadCommand(InstallationUpdateChannel.Stable),
+                output));
+        using JsonDocument document = JsonDocument.Parse(output.ToString());
+
+        Assert.Equal(
+            "atomicPublishFailed",
+            document.RootElement.GetProperty("failureCode").GetString());
+        Assert.Empty(
+            Directory.EnumerateFileSystemEntries(
+                fixture.Paths.ReleaseDownloadDirectory));
+    }
+
+    [Fact]
+    public async Task MoveThatCompletedBeforeThrowIsAcceptedAfterExactReverification()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        using Fixture fixture = new(sourceEnabled: true, trustEnabled: true);
+        fixture.RegisterReleases(TestRelease.Create(
+            "aethersdr-8.2.0",
+            ReleaseManifestChannel.Stable,
+            prerelease: false,
+            firstAssetId: 980));
+        GitHubReleaseBundleDownloadConsole console =
+            fixture.CreateDownloadConsole((source, target) =>
+            {
+                Directory.Move(source, target);
+                throw new IOException("unknown rename outcome");
+            });
+        using StringWriter output = new();
+
+        Assert.Equal(
+            0,
+            await console.ExecuteAsync(
+                DownloadCommand(InstallationUpdateChannel.Stable),
+                output));
+        using JsonDocument document = JsonDocument.Parse(output.ToString());
+
+        Assert.True(document.RootElement.GetProperty("bundlePersisted").GetBoolean());
+        Assert.False(
+            document.RootElement.GetProperty("reconciliationRequired")
+                .GetBoolean());
+        Assert.True(Directory.Exists(
+            DownloadTarget(fixture, "aethersdr-8.2.0")));
+    }
+
+    [Fact]
+    public async Task LostSourceWithoutTargetRequiresReconciliation()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        using Fixture fixture = new(sourceEnabled: true, trustEnabled: true);
+        fixture.RegisterReleases(TestRelease.Create(
+            "aethersdr-8.2.0",
+            ReleaseManifestChannel.Stable,
+            prerelease: false,
+            firstAssetId: 1000));
+        GitHubReleaseBundleDownloadConsole console =
+            fixture.CreateDownloadConsole((source, _) =>
+            {
+                Assert.True(
+                    GitHubReleaseBundleSource.TryDeleteAcquiredBundle(source));
+                throw new IOException("source disappeared");
+            });
+        using StringWriter output = new();
+
+        Assert.Equal(
+            2,
+            await console.ExecuteAsync(
+                DownloadCommand(InstallationUpdateChannel.Stable),
+                output));
+        using JsonDocument document = JsonDocument.Parse(output.ToString());
+
+        Assert.Equal(
+            "persistenceRequiresReconciliation",
+            document.RootElement.GetProperty("failureCode").GetString());
+        Assert.True(
+            document.RootElement.GetProperty("reconciliationRequired")
+                .GetBoolean());
+        Assert.Empty(
+            Directory.EnumerateFileSystemEntries(
+                fixture.Paths.ReleaseDownloadDirectory));
+    }
+
+    [Fact]
+    public async Task DownloadCancellationAndWrongCommandFailBeforeMutation()
+    {
+        using Fixture fixture = new(sourceEnabled: true, trustEnabled: true);
+        GitHubReleaseBundleDownloadConsole console =
+            fixture.CreateDownloadConsole();
+        using StringWriter output = new();
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            console.ExecuteAsync(
+                DownloadCommand(InstallationUpdateChannel.Stable),
+                output,
+                cancellation.Token));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            console.ExecuteAsync(Command(InstallationUpdateChannel.Stable), output));
+        Assert.Empty(fixture.Handler.Requests);
+        Assert.False(Directory.Exists(fixture.Paths.ReleaseDownloadDirectory));
+        Assert.Equal(string.Empty, output.ToString());
+    }
+
     private static ReleaseUpdateConsoleCommandLine Command(
         InstallationUpdateChannel channel,
         string pinnedIdentity = "") =>
@@ -628,6 +1063,134 @@ public sealed class GitHubReleaseBundleCheckConsoleTests
             2,
             []);
 
+    private static ReleaseUpdateConsoleCommandLine DownloadCommand(
+        InstallationUpdateChannel channel,
+        string pinnedIdentity = "") =>
+        new(
+            ReleaseUpdateConsoleCommandKind.DownloadGitHubRelease,
+            string.Empty,
+            "8.1.0",
+            channel,
+            pinnedIdentity,
+            1,
+            2,
+            []);
+
+    private static ReleaseManifestVerificationContext VerificationContext(
+        InstallationUpdateChannel channel,
+        string pinnedIdentity = "") =>
+        new(
+            ReleaseManifestArchitecture.LinuxX64,
+            channel,
+            pinnedIdentity,
+            "8.1.0",
+            1,
+            2);
+
+    private static string DownloadTarget(Fixture fixture, string identity) =>
+        Path.Combine(
+            fixture.Paths.ReleaseDownloadDirectory,
+            $"{identity}-linux-x64");
+
+    private static void AssertImmutableTree(string root)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        Assert.Equal(
+            UnixFileMode.None,
+            File.GetUnixFileMode(root) &
+                (UnixFileMode.UserWrite |
+                 UnixFileMode.GroupWrite |
+                 UnixFileMode.OtherWrite));
+        foreach (string directory in Directory.EnumerateDirectories(
+            root,
+            "*",
+            SearchOption.AllDirectories))
+        {
+            Assert.Equal(
+                UnixFileMode.None,
+                File.GetUnixFileMode(directory) &
+                    (UnixFileMode.UserWrite |
+                     UnixFileMode.GroupWrite |
+                     UnixFileMode.OtherWrite));
+        }
+        foreach (string file in Directory.EnumerateFiles(
+            root,
+            "*",
+            SearchOption.AllDirectories))
+        {
+            Assert.Equal(
+                UnixFileMode.None,
+                File.GetUnixFileMode(file) &
+                    (UnixFileMode.UserWrite |
+                     UnixFileMode.GroupWrite |
+                     UnixFileMode.OtherWrite));
+        }
+    }
+
+    private static void MakeTreeWritable(string root)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            throw new PlatformNotSupportedException();
+        }
+        File.SetUnixFileMode(
+            root,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.UserExecute);
+        foreach (string directory in Directory.EnumerateDirectories(
+            root,
+            "*",
+            SearchOption.AllDirectories))
+        {
+            File.SetUnixFileMode(
+                directory,
+                UnixFileMode.UserRead |
+                UnixFileMode.UserWrite |
+                UnixFileMode.UserExecute);
+        }
+        foreach (string file in Directory.EnumerateFiles(
+            root,
+            "*",
+            SearchOption.AllDirectories))
+        {
+            File.SetUnixFileMode(
+                file,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+    }
+
+    private static void FreezeTree(string root)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            throw new PlatformNotSupportedException();
+        }
+        foreach (string file in Directory.EnumerateFiles(
+            root,
+            "*",
+            SearchOption.AllDirectories))
+        {
+            File.SetUnixFileMode(file, UnixFileMode.UserRead);
+        }
+        foreach (string directory in Directory.EnumerateDirectories(
+            root,
+            "*",
+            SearchOption.AllDirectories)
+            .OrderByDescending(path => path.Length))
+        {
+            File.SetUnixFileMode(
+                directory,
+                UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        }
+        File.SetUnixFileMode(
+            root,
+            UnixFileMode.UserRead | UnixFileMode.UserExecute);
+    }
+
     private static void AssertTemporaryRootEmpty(Fixture fixture) =>
         Assert.Empty(Directory.EnumerateFileSystemEntries(fixture.TemporaryRoot));
 
@@ -637,6 +1200,8 @@ public sealed class GitHubReleaseBundleCheckConsoleTests
     private sealed class Fixture : IDisposable
     {
         private readonly string m_keyDirectory;
+        private readonly string m_installationRoot;
+        private readonly GitHubReleaseSourceSettings m_sourceSettings;
 
         internal Fixture(
             bool sourceEnabled,
@@ -650,8 +1215,20 @@ public sealed class GitHubReleaseBundleCheckConsoleTests
             m_keyDirectory = Path.Combine(
                 Path.GetTempPath(),
                 $"aethersdr-github-trust-{Guid.NewGuid():N}");
+            m_installationRoot = Path.Combine(
+                Path.GetTempPath(),
+                $"aethersdr-github-installation-{Guid.NewGuid():N}");
             Directory.CreateDirectory(TemporaryRoot);
             Directory.CreateDirectory(m_keyDirectory);
+            Directory.CreateDirectory(m_installationRoot);
+            Paths = new InstallationPaths(
+                Path.Combine(m_installationRoot, "config"),
+                Path.Combine(m_installationRoot, "state"),
+                Path.Combine(m_installationRoot, "secrets"),
+                Path.Combine(m_installationRoot, "releases"),
+                Path.Combine(m_installationRoot, "backups"),
+                Path.Combine(m_installationRoot, "logs"));
+            Directory.CreateDirectory(Paths.StateDirectory);
             if (!OperatingSystem.IsWindows())
             {
                 File.SetUnixFileMode(
@@ -661,6 +1238,16 @@ public sealed class GitHubReleaseBundleCheckConsoleTests
                     UnixFileMode.UserExecute);
                 File.SetUnixFileMode(
                     m_keyDirectory,
+                    UnixFileMode.UserRead |
+                    UnixFileMode.UserWrite |
+                    UnixFileMode.UserExecute);
+                File.SetUnixFileMode(
+                    m_installationRoot,
+                    UnixFileMode.UserRead |
+                    UnixFileMode.UserWrite |
+                    UnixFileMode.UserExecute);
+                File.SetUnixFileMode(
+                    Paths.StateDirectory,
                     UnixFileMode.UserRead |
                     UnixFileMode.UserWrite |
                     UnixFileMode.UserExecute);
@@ -707,7 +1294,7 @@ public sealed class GitHubReleaseBundleCheckConsoleTests
             BundleService = new LocalOfflineReleaseBundleVerificationService(
                 manifestService);
             Handler = new RoutingHandler();
-            GitHubReleaseSourceSettings source = new()
+            m_sourceSettings = new GitHubReleaseSourceSettings
             {
                 Enabled = sourceEnabled,
                 Owner = "KingSteve032",
@@ -715,8 +1302,9 @@ public sealed class GitHubReleaseBundleCheckConsoleTests
                 MaximumReleaseCount = 32,
                 RequestTimeoutSeconds = 30
             };
+            Architecture = architecture;
             Source = new GitHubReleaseBundleSource(
-                source,
+                m_sourceSettings,
                 CreateClient,
                 BundleService,
                 TemporaryRoot,
@@ -727,6 +1315,8 @@ public sealed class GitHubReleaseBundleCheckConsoleTests
         }
 
         internal string TemporaryRoot { get; }
+        internal InstallationPaths Paths { get; }
+        internal ReleaseManifestArchitecture Architecture { get; }
         internal RoutingHandler Handler { get; }
         internal LocalOfflineReleaseBundleVerificationService BundleService { get; }
         internal GitHubReleaseBundleSource Source { get; }
@@ -734,6 +1324,33 @@ public sealed class GitHubReleaseBundleCheckConsoleTests
 
         internal HttpClient CreateClient() =>
             new(Handler, disposeHandler: false);
+
+        internal GitHubReleaseBundleDownloadService CreateDownloadService(
+            Action<string, string>? directoryMove = null)
+        {
+            GitHubReleaseBundleSource source = new(
+                m_sourceSettings,
+                CreateClient,
+                BundleService,
+                Paths.ReleaseDownloadDirectory,
+                NullLogger<GitHubReleaseBundleSource>.Instance);
+            return directoryMove is null
+                ? new GitHubReleaseBundleDownloadService(
+                    source,
+                    BundleService,
+                    Paths)
+                : new GitHubReleaseBundleDownloadService(
+                    source,
+                    BundleService,
+                    Paths,
+                    directoryMove);
+        }
+
+        internal GitHubReleaseBundleDownloadConsole CreateDownloadConsole(
+            Action<string, string>? directoryMove = null) =>
+            new(
+                CreateDownloadService(directoryMove),
+                () => Architecture);
 
         internal void RegisterReleases(params TestRelease[] releases)
         {
@@ -757,6 +1374,7 @@ public sealed class GitHubReleaseBundleCheckConsoleTests
             Handler.Dispose();
             DeleteDirectory(TemporaryRoot);
             DeleteDirectory(m_keyDirectory);
+            DeleteDirectory(m_installationRoot);
         }
 
         private static void DeleteDirectory(string path)

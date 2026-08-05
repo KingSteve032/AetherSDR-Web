@@ -48,6 +48,10 @@ public sealed record InstallationPaths(
     public string AdministrativeAuditPath =>
         Path.Combine(StateDirectory, "radio-access", "audit.json");
 
+    [JsonIgnore]
+    public string ReleaseDownloadDirectory =>
+        Path.Combine(StateDirectory, "release-downloads");
+
     public static InstallationPaths Resolve(
         string contentRoot,
         InstallationPathLayout layout,

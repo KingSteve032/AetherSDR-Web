@@ -2716,10 +2716,11 @@ execution, exact-plan health evidence, exact rollback transaction planning,
 disabled-by-default exact rollback execution and evidence, exact operator-approval
 authority, and disabled-by-default read-only GitHub release checking through the same
 signed-bundle verifier, deterministic dual-architecture package production, standalone
-signed-manifest generation, and protected draft GitHub Release creation are implemented;
-persistent download, extraction, operational backup orchestration, transaction
-orchestration, host-restart and remote-node service-control transports, authenticated
-approval issuance, draft publication, and Admin/browser callers remain unimplemented.
+signed-manifest generation, protected draft GitHub Release creation, and CLI-only
+persistent verified GitHub bundle download are implemented; extraction, operational
+backup orchestration, transaction orchestration, host-restart and remote-node
+service-control transports, authenticated approval issuance, draft publication, and
+Admin/browser callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -4028,6 +4029,66 @@ string shape, and started the independent watchdog empty and Disarmed. No GitHub
 workflow was executed. No release was published, no deployment or restart occurred, no
 server or Git remote was changed, and no radio connection, lease mutation, radio
 command, keying action, transmit action, or live RF operation occurred.
+
+The thirtieth increment adds the first persistent GitHub `download` CLI without adding
+archive extraction or installation. `InstallationPaths.ReleaseDownloadDirectory` is the
+fixed direct `release-downloads` child of the existing state directory, so no new
+operator-selected storage path or configuration source is introduced. The existing
+state root must already be canonical, regular, non-symlink, and not group/other-writable;
+the direct download root may then be created owner-private.
+
+`GitHubReleaseBundleSource` now exposes one internal verified acquisition used by both
+callers. The check command deletes that acquisition exactly as before. The download
+command configures the acquisition root inside the persistent inventory, rejects disabled
+source or unavailable public-key trust before filesystem mutation, downloads the same
+five exact architecture assets, freezes the complete tree, and requires the existing
+immutable signed-bundle verifier plus exact GitHub-tag identity agreement before any
+persistent rename.
+
+A successful bundle is atomically renamed to
+`<release-identity>-<linux-x64|linux-arm64>`. An exact existing immutable target is
+reverified and accepted as idempotent success; an invalid existing target is never
+replaced. A clean failed rename removes the temporary source. A rename that returned an
+error after completing is accepted only after exact target reverification. Any source/
+target outcome that cannot be proven returns `reconciliationRequired=true` and preserves
+ambiguous evidence rather than retrying or guessing. Reports omit state/download paths,
+package names, checksums, signature/key material, and repository or redirect URLs.
+
+The persisted target remains the exact offline-bundle shape and may be supplied to the
+existing offline install preflight. This increment performs no package extraction,
+staging, installation, `current` mutation, service control, activation, rollback,
+migration, approval issuance, Admin/browser action, AetherRemote runtime action,
+radio/watchdog command, lease mutation, keying, transmit action, or live RF operation.
+
+Automated checkpoint on 2026-08-05 for persistent verified GitHub bundle download:
+changed C# files passed scoped format verification; the deployment script passed shell
+syntax and its complete validation-only production gate; `git diff --check` passed; and
+the 13-project Release solution built with zero warnings and zero errors. The combined
+GitHub check/download suite passed 35/35. Web tests passed 1,573/1,573;
+independent-watchdog tests passed 57/57; TX-HIL isolation tests passed 48/48; the
+release-builder suite passed 17/17; AetherRemote tests passed 70/70; and browser tests
+passed 135/135. The complete checkpoint covered 1,765 .NET tests and 1,900 tests overall.
+
+Focused download tests proved exact parser reuse, narrow public/diagnostic surfaces,
+disabled source and unavailable trust rejection before network or filesystem mutation,
+canonical installation-state binding, owner-private download-root creation, immutable
+signed-bundle persistence, path-redacted reports, idempotent exact-target reuse, unsafe
+state and invalid-target rejection, clean failed-rename cleanup, completed-but-threw
+rename recovery after exact reverification, reconciliation-required ambiguous outcomes,
+and cancellation/wrong-command rejection before mutation. A real default-disabled CLI
+invocation exited `2` with `sourceDisabled`, made no network request, and created no state
+or download inventory.
+
+The final validation-only release was `20260805-103343-flexweb-validation`. Production
+health registered the CLI-only persistent download, same-parent temporary acquisition,
+local signed verification, exact existing-target verification, and atomic directory
+publication boundaries while archive extraction, staging, installation, current-pointer
+mutation, service control, activation, rollback, migration, Admin/browser, radio,
+watchdog, command, lease, and TX callers remained false. The normal web/watchdog
+artifacts retained the reviewed TX string shape, and the independent watchdog started
+empty and Disarmed. No deployment, restart, persistent real release download, GitHub
+release mutation, radio connection, lease mutation, command, keying action, transmit
+action, or live RF operation occurred.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.
