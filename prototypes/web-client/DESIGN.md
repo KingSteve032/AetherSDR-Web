@@ -1187,6 +1187,45 @@ installation plan, mutate `current`, control services, activate, roll back, migr
 issue approval, or expose an Admin/browser, hosted-service, timer, AetherRemote runtime,
 radio, watchdog, command, lease, keying, TX, or live RF caller.
 
+The thirty-first M8B increment adds a separate callerless archive-extraction trust
+boundary. `VerifiedReleaseArchiveExtractionService` accepts only an internal successful
+`VerifiedReleaseStagingReport` whose immutable source path, plan identity, package count,
+byte count, setup revision, and no-publication flags all agree with its retained
+`VerifiedStagedRelease`. A raw bundle path, downloaded path, archive path, public
+execution method, CLI, route, hosted service, startup hook, timer, or retry loop cannot
+reach extraction.
+
+The source staging tree must remain the exact direct child of `.release-staging`, be
+owner-private and non-writable, and contain only the verified manifest plus four signed
+archives. Each compressed file is rechecked against the retained signed length and
+SHA-256 digest before gzip decompression. Source layout, timestamps, lengths, and all five
+digests are checked again after extraction so mutation during the operation fails closed.
+
+The extractor uses `System.Formats.Tar` but owns the policy above it. It accepts only GNU
+tar directories and regular files with bounded safe relative paths. Links, devices,
+unsupported records, absolute paths, traversal, backslashes, controls, duplicate
+file/directory names, excessive path depth or length, excessive entry/file/directory
+counts, oversized files, excessive expanded bytes, malformed streams, and nonzero
+trailing decompressed content are rejected. Valid bounded zero GNU-tar record padding is
+drained explicitly. Archive-provided ownership and shared permission bits are ignored;
+only the owner execute bit is projected into the private output.
+
+One random extraction transaction tree is created under the direct deployment child
+`.release-extraction-staging`. It contains the copied signed manifest and fixed role roots
+`gateway-web`, `broker`, `aetherremote-agent`, and `station-engine`. Files are streamed
+once, flushed, hashed, set to owner-read or owner-read/execute, then the complete tree is
+frozen owner-only and rehashed against its internal extraction inventory. Setup,
+installation policy, release inventory, active pointer, and target absence are
+revalidated before and after extraction. Cancellation and failure remove only a fully
+validated no-link private tree; unsafe cleanup remains explicit evidence.
+
+The internal success artifact carries the extraction path and expanded-file digests for
+a later reviewed publication/install transaction, while the public report exposes only
+bounded counts, bytes, identities, booleans, and outcomes. No extracted tree is published
+or installed; `current`, services, backups, migrations, approvals, Admin/browser,
+AetherRemote runtime, radio, watchdog, command, lease, keying, TX, and RF state remain
+untouched.
+
 ## Trust boundaries
 
 ### Browser

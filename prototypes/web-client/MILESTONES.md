@@ -2716,11 +2716,12 @@ execution, exact-plan health evidence, exact rollback transaction planning,
 disabled-by-default exact rollback execution and evidence, exact operator-approval
 authority, and disabled-by-default read-only GitHub release checking through the same
 signed-bundle verifier, deterministic dual-architecture package production, standalone
-signed-manifest generation, protected draft GitHub Release creation, and CLI-only
-persistent verified GitHub bundle download are implemented; extraction, operational
-backup orchestration, transaction orchestration, host-restart and remote-node
-service-control transports, authenticated approval issuance, draft publication, and
-Admin/browser callers remain unimplemented.
+signed-manifest generation, protected draft GitHub Release creation, CLI-only
+persistent verified GitHub bundle download, and callerless verified archive extraction
+into a private immutable role tree are implemented; operational publication/install
+orchestration, backup orchestration, transaction orchestration, host-restart and
+remote-node service-control transports, authenticated approval issuance, draft
+publication, and Admin/browser callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -4089,6 +4090,73 @@ artifacts retained the reviewed TX string shape, and the independent watchdog st
 empty and Disarmed. No deployment, restart, persistent real release download, GitHub
 release mutation, radio connection, lease mutation, command, keying action, transmit
 action, or live RF operation occurred.
+
+The thirty-first increment adds `VerifiedReleaseArchiveExtractionService` as a
+callerless internal boundary after successful verified archive-copy staging. The service
+accepts no raw path and exposes no public execution method. Its input report must agree
+exactly with the retained immutable `VerifiedStagedRelease`, including setup revision,
+active/target identities, package count and bytes, manifest presence, immutable source,
+and absence of publication or pointer mutation.
+
+The source must remain one owner-private non-writable direct child of
+`.release-staging`, with exactly the verified manifest and four signed role archives.
+Every archive is checked against the retained signed length and SHA-256 before gzip/tar
+processing, and all five source files plus the complete source layout are rechecked after
+extraction. Changes during the operation fail closed.
+
+Extraction accepts only bounded GNU-tar regular files and directories with safe relative
+paths. Links, devices, unsupported records, absolute/traversing/backslash/control paths,
+duplicate file/directory destinations, excessive path depth or length, excessive entry,
+file, or directory counts, oversized files, excessive total expansion, malformed gzip or
+tar streams, and nonzero trailing decompressed content are rejected. Valid bounded zero
+GNU-tar record padding is accepted. Archive ownership and shared permissions are never
+projected; only owner execute intent is retained.
+
+The output is one random private transaction under `.release-extraction-staging`, with
+the copied signed manifest and fixed `gateway-web`, `broker`, `aetherremote-agent`, and
+`station-engine` roots. Files are streamed, flushed, SHA-256 recorded, set owner-read or
+owner-read/execute, then the complete tree is frozen owner-only and rehashed against its
+internal inventory. Setup policy, release inventory, active `current`, and target absence
+are stable before and after extraction. Failure and cancellation clean only a fully
+validated no-link transaction tree; unsafe cleanup remains explicit.
+
+Public diagnostics register source verification, gzip, tar, extraction, private writes,
+expanded-content hashing, immutable freeze, and cleanup while network, persistent
+download, publication, installation, activation, pointer mutation, rollback, migration,
+service control, CLI/Admin/browser, radio, watchdog, command, lease, and TX callers remain
+false. Public reports omit all paths, entry names, archive metadata, and digests. This
+increment does not publish or install the extracted tree and performs no service, radio,
+keying, transmit, or live RF action.
+
+Automated checkpoint on 2026-08-05 for verified release archive extraction: the focused
+real gzip/GNU-tar extraction suite passed 18/18; changed C# files passed scoped format
+verification; the deployment script passed shell syntax; `git diff --check` passed; the
+release-automation boundary gate passed; and the 13-project Release solution built with
+zero warnings and zero errors. Web tests passed 1,591/1,591; independent-watchdog tests
+passed 57/57; TX-HIL isolation tests passed 48/48; the release-builder suite passed
+17/17; AetherRemote tests passed 70/70; and browser tests passed 135/135. The complete
+checkpoint covered 1,783 .NET tests and 1,918 tests overall.
+
+Focused tests used real gzip-compressed GNU tar streams and proved exact private role-tree
+creation, owner-execute preservation, immutable rehashing, no release publication or
+`current` mutation, path/digest-redacted reports, invalid-input rejection before status
+or filesystem access, malformed gzip cleanup, traversal and link rejection without
+external writes, duplicate-path and empty-archive rejection, source digest drift before
+decompression, unsafe source/root rejection, status-drift cleanup, cancellation before
+mutation, symlink-safe cleanup refusal, and separate immutable transaction trees.
+
+The final validation-only release was `20260805-123557-flexweb-validation`. It reran all
+1,918 tests, the release-automation gate, the complete solution build, production health,
+and normal web/watchdog artifact inspection. Health registered verified-staging input,
+source-archive digest verification, gzip decompression, tar reading, bounded archive
+extraction, private staging writes, expanded-content hashing, immutable freeze, and safe
+cleanup while network, persistent download, publication, installation, activation,
+current-pointer mutation, rollback, migration, service control, CLI/Admin/browser,
+radio, watchdog, command, lease, and TX callers remained false. The production artifacts
+retained the reviewed TX command string shape and the independent watchdog started empty
+and Disarmed. No deployment, restart, archive extraction against a real release, release
+publication, GitHub mutation, radio connection, lease mutation, command, keying,
+transmit action, or live RF operation occurred.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.
