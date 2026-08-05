@@ -1232,9 +1232,45 @@ archive, stage package contents, install, switch `current`, restart a service, a
 roll back, migrate, issue approval, or touch Admin/browser, AetherRemote runtime,
 radio, watchdog, command, lease, keying, TX, or live RF state.
 
-Archive extraction, operational backup orchestration, transaction orchestration,
-host-restart/remote service-control transports, authenticated approval issuance, and
-Admin/browser update workflows remain later M8B work.
+The thirty-first M8B increment adds a callerless verified archive-extraction boundary.
+`VerifiedReleaseArchiveExtractionService` accepts only the internal successful output of
+`VerifiedReleaseStagingService`; it has no raw-path, CLI, route, hosted-service, timer,
+or startup execution method. The copied manifest and all four compressed archives must
+still form the exact owner-private immutable verified-staging tree and must re-match the
+retained signed lengths and SHA-256 digests before decompression.
+
+Each gzip/GNU-tar archive is extracted below one fixed role directory:
+
+```text
+release-manifest.json
+gateway-web/
+broker/
+aetherremote-agent/
+station-engine/
+```
+
+Only regular files and directories with safe relative paths are accepted. Symbolic and
+hard links, devices, unsupported tar records, absolute or traversing paths, backslashes,
+control characters, duplicate file/directory paths, excessive depth, excessive entries,
+oversized files, excessive total expansion, malformed gzip/tar data, and nonzero trailing
+content fail closed. Bounded zero GNU-tar record padding is accepted. Extracted trees are
+created owner-private, retain only owner execute intent, are hashed as they are written,
+then are frozen and rehashed as exact immutable inventories.
+
+Extraction writes only beneath the sibling
+`.release-extraction-staging/<release>.<random>` root. Setup, release inventory, active
+`current` identity, target absence, and TX-support policy are revalidated before and
+after extraction. Failure or cancellation removes the private transaction tree only when
+its complete no-link layout can be proven safe; unsafe cleanup evidence is retained and
+reported as requiring cleanup. Public reports omit all paths, file names, digests, and
+archive metadata.
+
+This boundary does not publish the extracted tree, create an installed release, switch
+`current`, control services, activate, roll back, migrate, issue approval, or touch
+Admin/browser, AetherRemote runtime, radio, watchdog, command, lease, keying, TX, or live
+RF state. Operational installation orchestration, host-restart/remote service-control
+transports, authenticated approval issuance, and Admin/browser update workflows remain
+later M8B work.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled

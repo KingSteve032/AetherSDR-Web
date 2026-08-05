@@ -693,6 +693,7 @@ builder.Services.AddSingleton<OfflineReleaseInstallPreflightPlanner>();
 builder.Services.AddSingleton<OfflineReleaseInstallPreflightConsole>();
 builder.Services.AddSingleton<VerifiedReleaseInstallationPlanComposer>();
 builder.Services.AddSingleton<VerifiedReleaseStagingService>();
+builder.Services.AddSingleton<VerifiedReleaseArchiveExtractionService>();
 builder.Services.AddSingleton<VerifiedReleasePublicationService>();
 builder.Services.AddSingleton<VerifiedReleaseActivationPlanComposer>();
 builder.Services.AddSingleton<
@@ -839,6 +840,10 @@ VerifiedReleaseInstallationPlanComposer releaseInstallationPlanComposer =
     app.Services.GetRequiredService<VerifiedReleaseInstallationPlanComposer>();
 VerifiedReleaseStagingService verifiedReleaseStagingService =
     app.Services.GetRequiredService<VerifiedReleaseStagingService>();
+VerifiedReleaseArchiveExtractionService
+    verifiedReleaseArchiveExtractionService =
+        app.Services.GetRequiredService<
+            VerifiedReleaseArchiveExtractionService>();
 VerifiedReleasePublicationService verifiedReleasePublicationService =
     app.Services.GetRequiredService<VerifiedReleasePublicationService>();
 VerifiedReleaseActivationPlanComposer releaseActivationPlanComposer =
@@ -985,6 +990,8 @@ app.MapGet(
                 releaseInstallationPlanComposer.Snapshot;
             VerifiedReleaseStagingDiagnostics releaseStaging =
                 verifiedReleaseStagingService.Snapshot;
+            VerifiedReleaseArchiveExtractionDiagnostics releaseExtraction =
+                verifiedReleaseArchiveExtractionService.Snapshot;
             VerifiedReleasePublicationDiagnostics releasePublication =
                 verifiedReleasePublicationService.Snapshot;
             VerifiedReleaseActivationPlanDiagnostics releaseActivationPlan =
@@ -1407,6 +1414,62 @@ app.MapGet(
                     releaseStaging.LeaseCallerRegistered,
                 releaseStagingTxCallerRegistered =
                     releaseStaging.TxCallerRegistered,
+                releaseExtractionServiceRegistered =
+                    releaseExtraction.Registered,
+                releaseExtractionStatusRevalidationRegistered =
+                    releaseExtraction.StatusRevalidationRegistered,
+                releaseExtractionVerifiedStagingInputRegistered =
+                    releaseExtraction.VerifiedStagingInputRegistered,
+                releaseExtractionSourceArchiveDigestVerificationRegistered =
+                    releaseExtraction.SourceArchiveDigestVerificationRegistered,
+                releaseExtractionGzipDecompressionRegistered =
+                    releaseExtraction.GzipDecompressionRegistered,
+                releaseExtractionTarArchiveReadRegistered =
+                    releaseExtraction.TarArchiveReadRegistered,
+                releaseExtractionArchiveExtractionRegistered =
+                    releaseExtraction.ArchiveExtractionRegistered,
+                releaseExtractionPrivateStagingWriteRegistered =
+                    releaseExtraction.PrivateStagingWriteRegistered,
+                releaseExtractionExpandedContentHashRegistered =
+                    releaseExtraction.ExpandedContentHashRegistered,
+                releaseExtractionImmutableFreezeRegistered =
+                    releaseExtraction.ImmutableFreezeRegistered,
+                releaseExtractionCleanupRegistered =
+                    releaseExtraction.CleanupRegistered,
+                releaseExtractionNetworkDownloadRegistered =
+                    releaseExtraction.NetworkDownloadRegistered,
+                releaseExtractionPersistentDownloadRegistered =
+                    releaseExtraction.PersistentDownloadRegistered,
+                releaseExtractionPublicationRegistered =
+                    releaseExtraction.PublicationRegistered,
+                releaseExtractionInstallationExecutionRegistered =
+                    releaseExtraction.InstallationExecutionRegistered,
+                releaseExtractionActivationRegistered =
+                    releaseExtraction.ActivationRegistered,
+                releaseExtractionCurrentPointerMutationRegistered =
+                    releaseExtraction.CurrentPointerMutationRegistered,
+                releaseExtractionRollbackRegistered =
+                    releaseExtraction.RollbackRegistered,
+                releaseExtractionMigrationExecutionRegistered =
+                    releaseExtraction.MigrationExecutionRegistered,
+                releaseExtractionServiceControlRegistered =
+                    releaseExtraction.ServiceControlRegistered,
+                releaseExtractionCliCallerRegistered =
+                    releaseExtraction.CliCallerRegistered,
+                releaseExtractionAdminCallerRegistered =
+                    releaseExtraction.AdminCallerRegistered,
+                releaseExtractionBrowserCallerRegistered =
+                    releaseExtraction.BrowserCallerRegistered,
+                releaseExtractionRadioCallerRegistered =
+                    releaseExtraction.RadioCallerRegistered,
+                releaseExtractionWatchdogCallerRegistered =
+                    releaseExtraction.WatchdogCallerRegistered,
+                releaseExtractionCommandCallerRegistered =
+                    releaseExtraction.CommandCallerRegistered,
+                releaseExtractionLeaseCallerRegistered =
+                    releaseExtraction.LeaseCallerRegistered,
+                releaseExtractionTxCallerRegistered =
+                    releaseExtraction.TxCallerRegistered,
                 releasePublicationServiceRegistered =
                     releasePublication.Registered,
                 releasePublicationStatusRevalidationRegistered =
