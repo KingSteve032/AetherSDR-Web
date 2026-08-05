@@ -1256,7 +1256,9 @@ public sealed class VerifiedReleaseActivationMigrationExecutionService
                 bytes,
                 ManifestJsonOptions);
         if (manifest is null ||
-            manifest.SchemaVersion != 1 ||
+            manifest.SchemaVersion !=
+                VerifiedReleaseActivationConfigurationBackupService
+                    .ManifestSchemaVersion ||
             manifest.SetupRevision != plan.ActivationPlan.SetupRevision ||
             !string.Equals(
                 manifest.InstalledReleaseIdentity,
@@ -1316,7 +1318,13 @@ public sealed class VerifiedReleaseActivationMigrationExecutionService
                     .Directory)
             {
                 if (entry.Length is not null ||
-                    !string.IsNullOrEmpty(entry.Sha256))
+                    !string.IsNullOrEmpty(entry.Sha256) ||
+                    !IsSafeOriginalMode(
+                        (UnixFileMode)entry.UnixMode,
+                        directory: true,
+                        secret: entry.Source ==
+                            VerifiedReleaseActivationConfigurationBackupSourceKind
+                                .Secret))
                 {
                     throw Failure(
                         VerifiedReleaseActivationMigrationExecutionFailureCode
@@ -1336,7 +1344,13 @@ public sealed class VerifiedReleaseActivationMigrationExecutionService
                 VerifiedReleaseActivationConfigurationBackupManifestEntryKind.File)
             {
                 if (entry.Length is not >= 0 or > MaximumFileLength ||
-                    !IsCanonicalSha256(entry.Sha256))
+                    !IsCanonicalSha256(entry.Sha256) ||
+                    !IsSafeOriginalMode(
+                        (UnixFileMode)entry.UnixMode,
+                        directory: false,
+                        secret: entry.Source ==
+                            VerifiedReleaseActivationConfigurationBackupSourceKind
+                                .Secret))
                 {
                     throw Failure(
                         VerifiedReleaseActivationMigrationExecutionFailureCode
@@ -2414,6 +2428,37 @@ public sealed class VerifiedReleaseActivationMigrationExecutionService
         value is { Length: 64 } &&
         value.All(character =>
             char.IsAsciiDigit(character) || character is >= 'a' and <= 'f');
+
+    private static bool IsSafeOriginalMode(
+        UnixFileMode mode,
+        bool directory,
+        bool secret)
+    {
+        const UnixFileMode ordinary =
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite |
+            UnixFileMode.GroupExecute |
+            UnixFileMode.OtherRead |
+            UnixFileMode.OtherWrite |
+            UnixFileMode.OtherExecute;
+        const UnixFileMode sharedWritable =
+            UnixFileMode.GroupWrite | UnixFileMode.OtherWrite;
+        const UnixFileMode secretShared =
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite |
+            UnixFileMode.GroupExecute |
+            UnixFileMode.OtherRead |
+            UnixFileMode.OtherWrite |
+            UnixFileMode.OtherExecute;
+        return (mode & ~ordinary) == 0 &&
+            (mode & sharedWritable) == 0 &&
+            (mode & UnixFileMode.UserRead) != 0 &&
+            (!directory || (mode & UnixFileMode.UserExecute) != 0) &&
+            (!secret || (mode & secretShared) == 0);
+    }
 
     private static bool IsSameOrDescendant(string candidate, string root)
     {

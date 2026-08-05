@@ -1190,6 +1190,70 @@ public sealed class VerifiedReleaseActivationRollbackPlanComposer
                 "Unsupported rollback backup source kind.")
         };
 
+    internal static VerifiedReleaseActivationRollbackPlan? ValidateReport(
+        VerifiedReleaseActivationRollbackPlanReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        VerifiedReleaseActivationRollbackPlan? plan = report.Plan;
+        if (!report.Succeeded ||
+            report.FailureCode !=
+                VerifiedReleaseActivationRollbackPlanFailureCode.None ||
+            report.SetupRevision is not > 0 ||
+            string.IsNullOrEmpty(report.InstalledReleaseIdentity) ||
+            string.IsNullOrEmpty(report.TargetReleaseIdentity) ||
+            report.RestoreSourceCount != ExpectedRestoreSourceCount ||
+            report.StopActionCount is < 0 or > 4 ||
+            report.StartActionCount is < 0 or > 4 ||
+            report.HealthTargetCount != 4 ||
+            !report.ExactActivationPlanBound ||
+            !report.ExactConfigurationBackupBound ||
+            !report.ExactMigrationPlanBound ||
+            !report.ExactServiceControlPlanBound ||
+            !report.ExactHealthPlanBound ||
+            !report.ImmutableOriginalBackupBound ||
+            !report.OriginalBackupRestorePlanned ||
+            report.ReverseMigrationRunnerPlanned ||
+            !report.ConfigurationRestorePlanned ||
+            !report.AtomicCurrentPointerRollbackPlanned ||
+            !report.InstalledHealthVerificationPlanned ||
+            report.HostRestartRequired ||
+            report.HostRestartRollbackPlanned ||
+            report.SourceReadPerformed ||
+            report.FileWritePerformed ||
+            report.DirectoryMutationPerformed ||
+            report.ProcessInvocationPerformed ||
+            report.SystemdCommandPerformed ||
+            report.NetworkRequestPerformed ||
+            report.HealthProbePerformed ||
+            report.CurrentPointerChanged ||
+            report.RollbackPerformed ||
+            report.RollbackReady ||
+            report.ActivationAuthorized ||
+            plan is null ||
+            report.SetupRevision != plan.ActivationPlan.SetupRevision ||
+            !string.Equals(
+                report.InstalledReleaseIdentity,
+                plan.ActivationPlan.InstalledReleaseIdentity,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                report.TargetReleaseIdentity,
+                plan.ActivationPlan.TargetReleaseIdentity,
+                StringComparison.Ordinal) ||
+            report.MigrationRequired != plan.MigrationPlan.MigrationRequired ||
+            report.StopActionCount != plan.ServiceControlPlan.StopActions.Count ||
+            report.StartActionCount != plan.ServiceControlPlan.StartActions.Count ||
+            report.HealthTargetCount != plan.HealthPlan.Targets.Count ||
+            report.TargetServiceStopPlanned !=
+                (plan.ServiceControlPlan.StopActions.Count > 0) ||
+            report.InstalledServiceStartPlanned !=
+                (plan.ServiceControlPlan.StartActions.Count > 0) ||
+            !ValidateComposedPlan(plan))
+        {
+            return null;
+        }
+        return plan;
+    }
+
     private static bool IsBoundedAsciiToken(string value, int maximumLength)
     {
         if (string.IsNullOrEmpty(value) || value.Length > maximumLength)

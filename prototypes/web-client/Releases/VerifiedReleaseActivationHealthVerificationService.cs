@@ -79,6 +79,12 @@ public sealed record VerifiedReleaseActivationHealthVerificationReport(
         init;
     }
 
+    internal VerifiedReleaseActivationHealthVerificationPlan? FailedPlan
+    {
+        get;
+        init;
+    }
+
     internal static VerifiedReleaseActivationHealthVerificationReport Failure(
         VerifiedReleaseActivationHealthVerificationFailureCode failureCode,
         string message,
@@ -126,7 +132,10 @@ public sealed record VerifiedReleaseActivationHealthVerificationReport(
             ServiceHealthReady: false,
             ServiceControlReady: false,
             CurrentPointerChanged: false,
-            ActivationAuthorized: false);
+            ActivationAuthorized: false)
+        {
+            FailedPlan = exactPlanBound ? planReport?.Plan : null
+        };
 
     internal static VerifiedReleaseActivationHealthVerificationReport Success(
         ReleaseActivationHealthVerificationSettings settings,

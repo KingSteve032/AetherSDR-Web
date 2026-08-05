@@ -212,6 +212,7 @@ internal sealed record VerifiedReleaseActivationConfigurationBackupManifestEntry
     VerifiedReleaseActivationConfigurationBackupManifestEntryKind Kind,
     string Path,
     long? Length,
+    int UnixMode,
     string Sha256);
 
 internal sealed record VerifiedReleaseActivationConfigurationBackupManifest(
@@ -237,7 +238,7 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
     internal const int MaximumManifestBytes = 4 * 1024 * 1024;
 
     private const int BufferSize = 128 * 1024;
-    private const int ManifestSchemaVersion = 1;
+    internal const int ManifestSchemaVersion = 2;
     private const UnixFileMode ForbiddenSharedWritableUnixModes =
         UnixFileMode.GroupWrite | UnixFileMode.OtherWrite;
     private const UnixFileMode ForbiddenSecretSharedUnixModes =
@@ -768,6 +769,239 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
                 ReconciliationRequired: m_reconciliationRequired);
         }
     }
+
+    [SupportedOSPlatform("linux")]
+    internal static async Task<
+        VerifiedReleaseActivationConfigurationBackupManifest>
+        RevalidatePublishedBackupAsync(
+            VerifiedReleaseActivationConfigurationBackup backup,
+            CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(backup);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!OperatingSystem.IsLinux())
+        {
+            throw new PlatformNotSupportedException(
+                "Immutable activation-backup validation requires Linux.");
+        }
+
+        VerifiedReleaseActivationConfigurationBackupPlan plan = backup.Plan;
+        FileInfo manifestFile = new(plan.ManifestPath);
+        manifestFile.Refresh();
+        if (!manifestFile.Exists ||
+            (manifestFile.Attributes &
+                (FileAttributes.ReparsePoint |
+                 FileAttributes.Directory |
+                 FileAttributes.Device |
+                 FileAttributes.Offline)) != 0 ||
+            manifestFile.LinkTarget is not null ||
+            manifestFile.Length is < 1 or > MaximumManifestBytes ||
+            File.GetUnixFileMode(manifestFile.FullName) !=
+                PrivateImmutableFileMode)
+        {
+            throw new InvalidDataException(
+                "The immutable activation-backup manifest is unavailable or unsafe.");
+        }
+
+        byte[] bytes = await File.ReadAllBytesAsync(
+            manifestFile.FullName,
+            cancellationToken);
+        manifestFile.Refresh();
+        if (manifestFile.Length != bytes.Length ||
+            File.GetUnixFileMode(manifestFile.FullName) !=
+                PrivateImmutableFileMode)
+        {
+            throw new InvalidDataException(
+                "The immutable activation-backup manifest changed while being read.");
+        }
+        byte[] digest = SHA256.HashData(bytes);
+        if (backup.ManifestSha256.Length != 32 ||
+            !CryptographicOperations.FixedTimeEquals(
+                digest,
+                backup.ManifestSha256))
+        {
+            throw new InvalidDataException(
+                "The immutable activation-backup manifest digest changed.");
+        }
+
+        VerifiedReleaseActivationConfigurationBackupManifest manifest;
+        try
+        {
+            manifest = JsonSerializer.Deserialize<
+                    VerifiedReleaseActivationConfigurationBackupManifest>(
+                    bytes,
+                    ManifestJsonOptions) ??
+                throw new InvalidDataException(
+                    "The immutable activation-backup manifest is empty.");
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidDataException(
+                "The immutable activation-backup manifest is malformed.",
+                exception);
+        }
+
+        ValidateRetainedManifest(backup, manifest, bytes.Length);
+        BackupManifestArtifact artifact = new(manifest, bytes, digest);
+        try
+        {
+            await ValidateImmutableBackupTreeAsync(
+                plan.PublishedPath,
+                artifact,
+                cancellationToken);
+        }
+        catch (BackupException exception)
+        {
+            throw new InvalidDataException(
+                "The immutable activation-backup tree does not match its retained manifest.",
+                exception);
+        }
+        return manifest;
+    }
+
+    private static void ValidateRetainedManifest(
+        VerifiedReleaseActivationConfigurationBackup backup,
+        VerifiedReleaseActivationConfigurationBackupManifest manifest,
+        int manifestLength)
+    {
+        VerifiedReleaseActivationConfigurationBackupPlan plan = backup.Plan;
+        VerifiedReleaseActivationPlan activation = plan.ActivationPlan;
+        if (manifest.SchemaVersion != ManifestSchemaVersion ||
+            manifest.CreatedAt != backup.CompletedAt ||
+            manifest.SetupRevision != activation.SetupRevision ||
+            !string.Equals(
+                manifest.InstalledReleaseIdentity,
+                activation.InstalledReleaseIdentity,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                manifest.TargetReleaseIdentity,
+                activation.TargetReleaseIdentity,
+                StringComparison.Ordinal) ||
+            manifest.SourceDirectoryCount != plan.Sources.Count ||
+            manifest.DirectoryCount != backup.DirectoryCount ||
+            manifest.FileCount != backup.FileCount ||
+            manifestLength is < 1 or > MaximumManifestBytes ||
+            checked(manifest.SourceBytes + manifestLength) != backup.BackupBytes ||
+            manifest.Entries is null ||
+            manifest.Entries.Count !=
+                manifest.DirectoryCount + manifest.FileCount)
+        {
+            throw new InvalidDataException(
+                "The immutable activation-backup manifest does not match its retained exact-plan artifact.");
+        }
+
+        HashSet<(VerifiedReleaseActivationConfigurationBackupSourceKind, string)>
+            identities = [];
+        int directoryCount = 0;
+        int fileCount = 0;
+        long sourceBytes = 0;
+        foreach (VerifiedReleaseActivationConfigurationBackupManifestEntry entry in
+                 manifest.Entries)
+        {
+            if (!Enum.IsDefined(entry.Source) ||
+                !Enum.IsDefined(entry.Kind) ||
+                !IsSafeManifestPath(entry.Path) ||
+                !identities.Add((entry.Source, entry.Path)))
+            {
+                throw new InvalidDataException(
+                    "The immutable activation-backup manifest contains an unsafe or duplicated entry.");
+            }
+
+            UnixFileMode mode = (UnixFileMode)entry.UnixMode;
+            bool secret = entry.Source ==
+                VerifiedReleaseActivationConfigurationBackupSourceKind.Secret;
+            if (entry.Kind ==
+                VerifiedReleaseActivationConfigurationBackupManifestEntryKind
+                    .Directory)
+            {
+                directoryCount++;
+                if (entry.Length is not null ||
+                    !string.IsNullOrEmpty(entry.Sha256) ||
+                    !IsSafeOriginalDirectoryMode(mode, secret))
+                {
+                    throw new InvalidDataException(
+                        "The immutable activation-backup manifest contains invalid directory metadata.");
+                }
+                continue;
+            }
+
+            fileCount++;
+            if (entry.Length is null or < 0 or > MaximumFileLength ||
+                !IsLowerHexSha256(entry.Sha256) ||
+                !IsSafeOriginalFileMode(mode, secret))
+            {
+                throw new InvalidDataException(
+                    "The immutable activation-backup manifest contains invalid file metadata.");
+            }
+            sourceBytes = checked(sourceBytes + entry.Length.Value);
+            if (sourceBytes > MaximumSourceBytes)
+            {
+                throw new InvalidDataException(
+                    "The immutable activation-backup manifest exceeds its byte bound.");
+            }
+        }
+
+        if (directoryCount != manifest.DirectoryCount ||
+            fileCount != manifest.FileCount ||
+            sourceBytes != manifest.SourceBytes ||
+            plan.Sources.Any(source =>
+                !identities.Contains((source.Kind, "."))))
+        {
+            throw new InvalidDataException(
+                "The immutable activation-backup manifest is incomplete.");
+        }
+    }
+
+    private static bool IsSafeManifestPath(string value)
+    {
+        if (value == ".")
+        {
+            return true;
+        }
+        return !string.IsNullOrEmpty(value) &&
+            value.Length <= MaximumRelativePathLength &&
+            value.Split('/', StringSplitOptions.None) is { Length: > 0 and <= 32 }
+                segments &&
+            segments.All(ValidSegment);
+    }
+
+    private static bool IsSafeOriginalDirectoryMode(
+        UnixFileMode mode,
+        bool secret) =>
+        HasOnlyOrdinaryPermissionBits(mode) &&
+        (mode & ForbiddenSharedWritableUnixModes) == 0 &&
+        (mode & UnixFileMode.UserRead) != 0 &&
+        (mode & UnixFileMode.UserExecute) != 0 &&
+        (!secret || (mode & ForbiddenSecretSharedUnixModes) == 0);
+
+    private static bool IsSafeOriginalFileMode(
+        UnixFileMode mode,
+        bool secret) =>
+        HasOnlyOrdinaryPermissionBits(mode) &&
+        (mode & ForbiddenSharedWritableUnixModes) == 0 &&
+        (mode & UnixFileMode.UserRead) != 0 &&
+        (!secret || (mode & ForbiddenSecretSharedUnixModes) == 0);
+
+    private static bool HasOnlyOrdinaryPermissionBits(UnixFileMode mode)
+    {
+        const UnixFileMode ordinary =
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite |
+            UnixFileMode.GroupExecute |
+            UnixFileMode.OtherRead |
+            UnixFileMode.OtherWrite |
+            UnixFileMode.OtherExecute;
+        return (mode & ~ordinary) == 0;
+    }
+
+    private static bool IsLowerHexSha256(string value) =>
+        value.Length == 64 &&
+        value.All(character =>
+            character is >= '0' and <= '9' or >= 'a' and <= 'f');
+
     private static VerifiedReleaseActivationConfigurationBackupPlan?
         ValidatePlanReport(
             VerifiedReleaseActivationConfigurationBackupPlanReport report) =>
@@ -1447,6 +1681,7 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
                     .Directory,
                 directory.RelativePath,
                 Length: null,
+                UnixMode: (int)directory.Mode,
                 Sha256: string.Empty)));
         entries.AddRange(snapshot.Files.Select(file =>
             new VerifiedReleaseActivationConfigurationBackupManifestEntry(
@@ -1454,6 +1689,7 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
                 VerifiedReleaseActivationConfigurationBackupManifestEntryKind.File,
                 file.RelativePath,
                 file.Length,
+                (int)file.Mode,
                 Convert.ToHexString(file.Sha256).ToLowerInvariant())));
         VerifiedReleaseActivationConfigurationBackupManifest manifest = new(
             ManifestSchemaVersion,
@@ -1671,6 +1907,7 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
                             .File,
                         "backup-manifest.json",
                         manifest.Bytes.Length,
+                        UnixMode: 0,
                         Convert.ToHexString(manifest.Sha256).ToLowerInvariant())
             };
         foreach (VerifiedReleaseActivationConfigurationBackupManifestEntry entry in

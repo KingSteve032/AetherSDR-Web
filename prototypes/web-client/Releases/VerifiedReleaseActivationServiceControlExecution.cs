@@ -73,6 +73,12 @@ public sealed record VerifiedReleaseActivationServiceControlExecutionReport(
     bool CurrentPointerChanged,
     bool ActivationAuthorized)
 {
+    internal VerifiedReleaseActivationServiceControlPlan? FailedPlan
+    {
+        get;
+        init;
+    }
+
     internal static VerifiedReleaseActivationServiceControlExecutionReport Failure(
         VerifiedReleaseActivationServiceControlExecutionFailureCode failureCode,
         string message,
@@ -122,7 +128,10 @@ public sealed record VerifiedReleaseActivationServiceControlExecutionReport(
             ReconciliationRequired: reconciliationRequired,
             HostRestartPerformed: false,
             CurrentPointerChanged: false,
-            ActivationAuthorized: false);
+            ActivationAuthorized: false)
+        {
+            FailedPlan = exactPlanBound ? planReport?.Plan : null
+        };
 
     internal static VerifiedReleaseActivationServiceControlExecutionReport Success(
         ReleaseActivationServiceControlSettings settings,

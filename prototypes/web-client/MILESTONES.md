@@ -2712,11 +2712,11 @@ execution, exact-plan migration evidence, exact service-control transaction
 planning, disabled-by-default exact local two-phase service-control execution and
 evidence, disabled-by-default exact atomic current-pointer switching and evidence,
 exact post-switch health-verification planning, disabled-by-default exact health
-execution, exact-plan health evidence, and exact rollback transaction planning are
-implemented; publishing artifacts, network download, extraction, operational backup
-orchestration, transaction orchestration, rollback execution, host-restart and
-remote-node service-control transports, operator-approval authority, and Admin/browser
-callers remain unimplemented.
+execution, exact-plan health evidence, exact rollback transaction planning, and
+disabled-by-default exact rollback execution and evidence are implemented; publishing
+artifacts, network download, extraction, operational backup orchestration, transaction
+orchestration, host-restart and remote-node service-control transports,
+operator-approval authority, and Admin/browser callers remain unimplemented.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -3268,6 +3268,39 @@ keying/TX action, or live RF operation. Production resolves diagnostics only and
 no operational/CLI/Admin/browser/HTTP/WebSocket/hosted-service/timer/AetherRemote
 caller.
 
+The twenty-sixth increment adds
+`VerifiedReleaseActivationRollbackExecutionService`, one separate strict rollback
+boundary that remains disabled by default and has no production caller. Its internal
+entry points accept only the exact rollback plan, the retained successful forward
+pointer-switch evidence, and either an eligible exact failed post-switch service-start
+report or failed health-verification report. Successful, pre-switch, free-standing,
+equivalent, or independently composed transactions cannot trigger rollback.
+
+The immutable activation-backup manifest advances to schema 2 and retains original
+Unix modes. Revalidation checks the exact manifest digest, activation identities,
+source counts and bytes, unique safe paths, immutable copied-tree modes, every file
+length and SHA-256 digest, and safe original configuration/state/secret modes. All
+three restore trees are copied, flushed, mode-restored, and rehashed before the first
+service action.
+
+Personal, local-station, and hybrid gateway topologies reuse the reviewed local unit
+ownership rules. Exact target units stop in deterministic order; each live root is
+atomically displaced and replaced by its same-parent staged original tree; an exact
+temporary link and native atomic rename return `current` to the installed release;
+installed units start in deterministic order; and the complete unit, loopback HTTP,
+canonical-host, plus optional exact-station broker-link health contracts verify the
+installed release. Reverse migration is never invoked, and displaced failed trees are
+removed only after full health success.
+
+Any process, directory, pointer, status, setup, topology, health, cleanup,
+cancellation, or unknown mutation outcome retains exact-plan reconciliation state and
+blocks retry. Success retains path-, unit-, content-, and station-redacted rollback
+evidence separately from forward activation `RollbackReady`. Production exposes
+disabled diagnostics and zeroed state only and adds no operational/CLI/Admin/browser/
+HTTP/WebSocket/hosted-service/timer/AetherRemote caller, activation authority, host
+restart, remote service-control transport, radio/watchdog/command/lease/keying/TX
+action, or live RF operation.
+
 Automated checkpoint on 2026-08-03 for the first increment: Release solution build
 completed with zero warnings and zero errors; the focused signed-manifest verifier
 suite passed 42/42; web tests passed 928/928; independent-watchdog tests passed
@@ -3775,6 +3808,48 @@ intent, validation, SPLIT, DVK, FDX, and both tuner TUNE controls were disabled;
 remained off; FILL toggled and was restored; and console errors and warnings were both
 zero. The tab was closed afterward to release the remote receive session. No TX lease,
 keying action, transmit-control command, or RF operation was performed.
+
+Automated checkpoint on 2026-08-05 for exact rollback execution and evidence:
+independent post-merge `main` CI run 30962859507 passed; the deployment script passed
+shell syntax validation; changed C# files passed format verification; Release solution
+build completed with zero warnings and zero errors; and the complete activation,
+backup, migration, service-control, pointer-switch, health, rollback, readiness, and
+evidence boundary passed 330/330. Web tests passed 1,517/1,517; independent-watchdog
+tests passed 57/57; TX-HIL isolation tests passed 48/48; AetherRemote tests passed
+70/70; and browser tests passed 135/135. The complete checkpoint covered 1,692 .NET
+tests and 1,827 tests overall.
+
+Focused rollback execution tests proved disabled and zero-state defaults, strict
+station-identity configuration, exact successful forward-pointer evidence, exact
+failed service/health-plan reference binding, successful- and equivalent-report
+rejection before observation or mutation, immutable backup digest/mode drift rejection,
+real three-root restore with original Unix modes, deterministic topology-owned stop and
+start actions, exact installed pointer restoration, installed health verification,
+redacted public state, duplicate-execution rejection, ambiguous directory and pointer
+reconciliation, retained displaced trees after installed-health failure, preservation
+of pre-existing restore-staging evidence, and reconciliation when post-staging cleanup
+cannot complete. Backup manifest schema 2 and staged-copy migration share one strict
+immutable source contract.
+
+The guarded production-TX deployment gate completed successfully with active release
+`20260805-011152-flexweb-validation`; release
+`20260805-010048-flexweb-validation` was retained for rollback. Deployed health
+confirmed the rollback executor registered with exact plan, forward-pointer evidence,
+failed post-switch trigger, schema-2 immutable-backup revalidation, original-mode
+restore, three-source staging, deterministic service, atomic directory/pointer,
+installed-health, cleanup, evidence, and reconciliation capabilities while execution
+remained disabled and unavailable, every state field remained zero or false, and
+reverse migration, automatic retry, host restart, remote service control, activation
+authority, and every operational/CLI/Admin/browser/HTTP/WebSocket/hosted-service/
+timer/AetherRemote/radio/watchdog/command/lease/TX caller remained absent. The
+independent watchdog started empty and Disarmed; no live RF operation occurred.
+
+The active validation release `20260805-011152-flexweb-validation` predates the final
+restore-staging cleanup correction, so no exact-build browser acceptance is claimed for
+the post-fix tree. The normal ODU-6400 RX-only browser checklist is waived as a
+pre-staging requirement because it is an indirect gateway regression check rather than
+rollback-specific acceptance. It remains an optional post-PR, pre-merge regression
+check and would require an explicit deployment/restart confirmation before use.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.
