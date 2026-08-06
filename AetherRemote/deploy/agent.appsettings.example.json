@@ -7,6 +7,7 @@
     "InventorySeconds": 5,
     "RadioOfflineSeconds": 15,
     "AllowInsecureDevelopmentTransport": false,
+    "ReleaseServiceControlEnabled": false,
     "Capabilities": [
       "receive-projection-v1"
     ],

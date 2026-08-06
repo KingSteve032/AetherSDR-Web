@@ -104,6 +104,71 @@
     <section class="admin-radio-grid" id="admin-radio-list"
              aria-live="polite"></section>
 
+    <section class="admin-enrollment-section"
+             aria-labelledby="admin-release-heading">
+      <div class="admin-audit-heading">
+        <div>
+          <p class="eyebrow">SIGNED TRANSACTIONAL UPDATES</p>
+          <h2 id="admin-release-heading">Release installation</h2>
+        </div>
+        <span>IMMUTABLE · APPROVAL REQUIRED</span>
+      </div>
+      <div class="admin-enrollment-panel">
+        <form class="admin-enrollment-form" id="admin-release-form">
+          <label>
+            <span>DOWNLOADED RELEASE IDENTITY</span>
+            <input id="admin-release-identity" type="text" maxlength="128"
+                   autocomplete="off" spellcheck="false"
+                   placeholder="aethersdr-8.3.0" required>
+          </label>
+          <label>
+            <span>CURRENT RELEASE IDENTITY</span>
+            <input id="admin-release-installed-identity" type="text"
+                   maxlength="128" autocomplete="off" spellcheck="false"
+                   placeholder="aethersdr-8.2.0" required>
+          </label>
+          <label>
+            <span>CURRENT VERSION</span>
+            <input id="admin-release-installed-version" type="text"
+                   maxlength="64" autocomplete="off" spellcheck="false"
+                   placeholder="8.2.0" required>
+          </label>
+          <label>
+            <span>CONFIGURATION SCHEMA</span>
+            <input id="admin-release-schema-version" type="number"
+                   min="1" max="1000000" value="1" required>
+          </label>
+          <label>
+            <span>PROTOCOL VERSION</span>
+            <input id="admin-release-protocol-version" type="number"
+                   min="1" max="1000000" value="1" required>
+          </label>
+          <button class="secondary-action" type="submit"
+                  id="admin-release-prepare">
+            Prepare inactive release
+          </button>
+        </form>
+        <p class="muted admin-enrollment-help">
+          The server derives the bundle path from its verified download inventory.
+          Preparation verifies, extracts, publishes inactive, backs up state, and
+          prepares migration and rollback. Activation and rollback require fresh
+          administrator reauthentication and radio-authoritative idle safety.
+        </p>
+        <output class="admin-enrollment-result" id="admin-release-result"
+                aria-live="polite"></output>
+        <div class="admin-enrollment-copy-row">
+          <button class="secondary-action" type="button"
+                  id="admin-release-activate" disabled>
+            Approve and activate
+          </button>
+          <button class="secondary-action" type="button"
+                  id="admin-release-rollback" disabled>
+            Approve rollback
+          </button>
+        </div>
+      </div>
+    </section>
+
     <section class="admin-audit-section" aria-labelledby="admin-audit-heading">
       <div class="admin-audit-heading">
         <div>
@@ -118,6 +183,6 @@
   </main>
 
   <script type="module"
-          src="/admin-page.js?v=m7-watchdog-arming-1"></script>
+          src="/admin-page.js?v=m8b-release-transactions-1"></script>
 </body>
 </html>

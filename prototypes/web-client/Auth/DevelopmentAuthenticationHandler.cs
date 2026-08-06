@@ -27,7 +27,11 @@ public sealed class DevelopmentAuthenticationHandler(
             new(ClaimTypes.Name, user.Name),
             new("name", user.Name),
             new(ClaimTypes.Email, user.Email),
-            new("preferred_username", user.Email)
+            new("preferred_username", user.Email),
+            new(
+                "auth_time",
+                DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(
+                    System.Globalization.CultureInfo.InvariantCulture))
         ];
 
         foreach (string role in user.Roles.Where(AetherRoles.All.Contains))

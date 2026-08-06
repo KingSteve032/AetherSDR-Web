@@ -19,7 +19,7 @@ public sealed class VerifiedReleaseActivationPlanCompositionTests
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(["Compose", "get_Snapshot"], methods);
+        Assert.Equal(["Compose", "Compose", "get_Snapshot"], methods);
     }
 
     [Fact]
@@ -302,7 +302,10 @@ public sealed class VerifiedReleaseActivationPlanCompositionTests
                 TargetReleaseIdentity = "aethersdr-8.3.0"
             },
             "packages" => new Fixture(packageMismatch: "missing-package")
-                .Publication with { PackageCount = 4 },
+                .Publication with
+            {
+                PackageCount = 4
+            },
             "bytes" => fixture.Publication with
             {
                 PublishedBytes = fixture.PublishedBytes + 1

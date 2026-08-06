@@ -1,0 +1,21 @@
+[Unit]
+Description=AetherRemote fixed release service-control updater
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/lib/aetherremote/updater/AetherRemote.Updater
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+UMask=0077
+
+[Install]
+WantedBy=default.target

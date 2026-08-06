@@ -11,6 +11,7 @@ public sealed class StationWebSocketEndpoint(
     StationLinkTokenService tokens,
     StationRegistry registry,
     RemoteReceiveSessionBroker receiveSessions,
+    RemoteReleaseServiceControlBroker releaseServiceControl,
     IHostApplicationLifetime applicationLifetime,
     ILogger<StationWebSocketEndpoint> logger)
 {
@@ -188,6 +189,17 @@ public sealed class StationWebSocketEndpoint(
                         sendGate,
                         message,
                         cancellationToken));
+        using RemoteReleaseServiceControlBroker.StationControlLease control =
+            releaseServiceControl.AttachStation(
+                stationId,
+                lease.ConnectionId,
+                authorizedCapabilities,
+                (message, cancellationToken) =>
+                    SendJsonAsync(
+                        socket,
+                        sendGate,
+                        message,
+                        cancellationToken));
         using CancellationTokenSource connectionLifetime =
             CancellationTokenSource.CreateLinkedTokenSource(
                 requestAborted,
@@ -260,70 +272,86 @@ public sealed class StationWebSocketEndpoint(
                 switch (type)
                 {
                     case StationMessageTypes.Inventory:
-                    {
-                        StationInventoryMessage? inventory =
-                            document.RootElement
-                                .Deserialize<StationInventoryMessage>(
-                                    StationProtocol.JsonOptions);
-                        string? error =
-                            StationProtocolValidator.ValidateInventory(
-                                inventory);
-                        if (error is not null ||
-                            !lease.UpdateInventory(inventory!))
                         {
-                            await RejectAsync(
-                                socket,
-                                sendGate,
-                                "invalid_inventory",
-                                error ??
-                                    "Inventory sequence must increase.");
-                            return false;
+                            StationInventoryMessage? inventory =
+                                document.RootElement
+                                    .Deserialize<StationInventoryMessage>(
+                                        StationProtocol.JsonOptions);
+                            string? error =
+                                StationProtocolValidator.ValidateInventory(
+                                    inventory);
+                            if (error is not null ||
+                                !lease.UpdateInventory(inventory!))
+                            {
+                                await RejectAsync(
+                                    socket,
+                                    sendGate,
+                                    "invalid_inventory",
+                                    error ??
+                                        "Inventory sequence must increase.");
+                                return false;
+                            }
+                            return true;
                         }
-                        return true;
-                    }
                     case StationMessageTypes.Heartbeat:
-                    {
-                        StationHeartbeatMessage? heartbeat =
-                            document.RootElement
-                                .Deserialize<StationHeartbeatMessage>(
-                                    StationProtocol.JsonOptions);
-                        string? error =
-                            StationProtocolValidator.ValidateHeartbeat(
-                                heartbeat);
-                        if (error is not null ||
-                            !lease.Heartbeat(heartbeat!.Sequence))
                         {
-                            await RejectAsync(
-                                socket,
-                                sendGate,
-                                "invalid_heartbeat",
-                                error ??
-                                    "Heartbeat sequence must increase.");
-                            return false;
+                            StationHeartbeatMessage? heartbeat =
+                                document.RootElement
+                                    .Deserialize<StationHeartbeatMessage>(
+                                        StationProtocol.JsonOptions);
+                            string? error =
+                                StationProtocolValidator.ValidateHeartbeat(
+                                    heartbeat);
+                            if (error is not null ||
+                                !lease.Heartbeat(heartbeat!.Sequence))
+                            {
+                                await RejectAsync(
+                                    socket,
+                                    sendGate,
+                                    "invalid_heartbeat",
+                                    error ??
+                                        "Heartbeat sequence must increase.");
+                                return false;
+                            }
+                            return true;
                         }
-                        return true;
-                    }
                     case StationMessageTypes.ReceiveSessionOpened:
                     case StationMessageTypes.ReceiveSessionClosed:
                     case StationMessageTypes.ReceiveSessionError:
                     case StationMessageTypes.ReceiveText:
                     case StationMessageTypes.ReceiveBinary:
-                    {
-                        if (!receiveSessions.HandleStationMessage(
-                                lease.StationId,
-                                lease.ConnectionId,
-                                type,
-                                document.RootElement))
                         {
-                            await RejectAsync(
-                                socket,
-                                sendGate,
-                                "invalid_receive_session",
-                                "The receive-session message is invalid.");
-                            return false;
+                            if (!receiveSessions.HandleStationMessage(
+                                    lease.StationId,
+                                    lease.ConnectionId,
+                                    type,
+                                    document.RootElement))
+                            {
+                                await RejectAsync(
+                                    socket,
+                                    sendGate,
+                                    "invalid_receive_session",
+                                    "The receive-session message is invalid.");
+                                return false;
+                            }
+                            return true;
                         }
-                        return true;
-                    }
+                    case StationMessageTypes.ReleaseServiceControlResult:
+                        {
+                            if (!releaseServiceControl.HandleStationMessage(
+                                    lease.StationId,
+                                    lease.ConnectionId,
+                                    document.RootElement))
+                            {
+                                await RejectAsync(
+                                    socket,
+                                    sendGate,
+                                    "invalid_release_service_control",
+                                    "The release service-control result is invalid.");
+                                return false;
+                            }
+                            return true;
+                        }
                     default:
                         await RejectAsync(
                             socket,

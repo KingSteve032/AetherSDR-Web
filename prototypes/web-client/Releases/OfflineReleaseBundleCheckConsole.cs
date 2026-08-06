@@ -11,7 +11,11 @@ public enum ReleaseUpdateConsoleCommandKind
     CheckOfflineBundle = 1,
     CheckGitHubRelease = 2,
     DownloadGitHubRelease = 3,
-    Status = 4
+    Status = 4,
+    InstallOfflineRelease = 5,
+    RollbackTransaction = 6,
+    TransactionStatus = 7,
+    TransactionSupervisor = 8
 }
 
 public sealed record ReleaseUpdateConsoleCommandLine(
@@ -24,6 +28,9 @@ public sealed record ReleaseUpdateConsoleCommandLine(
     int? ProtocolVersion,
     IReadOnlyList<string> ApplicationArguments)
 {
+    public string InstalledReleaseIdentity { get; init; } = string.Empty;
+    public string TransactionId { get; init; } = string.Empty;
+    public bool ApprovalRequested { get; init; }
     public static ReleaseUpdateConsoleCommandLine None(
         IReadOnlyList<string> applicationArguments) =>
         new(
@@ -46,6 +53,17 @@ public static class ReleaseUpdateConsoleCommandParser
     public const string DownloadGitHubReleaseSwitch =
         "--download-github-release";
     public const string StatusSwitch = "--release-status";
+    public const string InstallOfflineReleaseSwitch =
+        "--install-offline-release";
+    public const string RollbackTransactionSwitch =
+        "--rollback-release-transaction";
+    public const string TransactionStatusSwitch =
+        "--release-transaction-status";
+    public const string TransactionSupervisorSwitch =
+        "--release-update-supervisor";
+    public const string InstalledReleaseIdentitySwitch =
+        "--release-install-installed-identity";
+    public const string ApprovalSwitch = "--approve-release-transaction";
     public const string InstalledVersionSwitch =
         "--release-check-installed-version";
     public const string UpdateChannelSwitch =
@@ -77,6 +95,10 @@ public static class ReleaseUpdateConsoleCommandParser
         bool pinnedIdentitySeen = false;
         bool configurationSchemaVersionSeen = false;
         bool protocolVersionSeen = false;
+        string installedReleaseIdentity = string.Empty;
+        string transactionId = string.Empty;
+        bool installedReleaseIdentitySeen = false;
+        bool approvalRequested = false;
         List<string> applicationArguments = [];
 
         for (int index = 0; index < arguments.Count; index++)
@@ -105,6 +127,55 @@ public static class ReleaseUpdateConsoleCommandParser
                     SetCommand(
                         ref command,
                         ReleaseUpdateConsoleCommandKind.Status);
+                    break;
+                case InstallOfflineReleaseSwitch:
+                    SetCommand(
+                        ref command,
+                        ReleaseUpdateConsoleCommandKind.InstallOfflineRelease);
+                    bundleDirectory = ValidateBundleDirectory(
+                        RequireValue(arguments, ref index, argument));
+                    break;
+                case RollbackTransactionSwitch:
+                    SetCommand(
+                        ref command,
+                        ReleaseUpdateConsoleCommandKind.RollbackTransaction);
+                    transactionId = ValidateTransactionId(
+                        RequireValue(arguments, ref index, argument));
+                    break;
+                case TransactionStatusSwitch:
+                    SetCommand(
+                        ref command,
+                        ReleaseUpdateConsoleCommandKind.TransactionStatus);
+                    break;
+                case TransactionSupervisorSwitch:
+                    SetCommand(
+                        ref command,
+                        ReleaseUpdateConsoleCommandKind.TransactionSupervisor);
+                    break;
+                case InstalledReleaseIdentitySwitch:
+                    RejectDuplicate(
+                        ref installedReleaseIdentitySeen,
+                        "The installed release identity was supplied more than once.");
+                    string installedIdentityValue =
+                        RequireValue(arguments, ref index, argument);
+                    installedReleaseIdentity =
+                        InstallationReleaseIdentity.Parse(installedIdentityValue);
+                    if (!string.Equals(
+                            installedIdentityValue,
+                            installedReleaseIdentity,
+                            StringComparison.Ordinal))
+                    {
+                        throw new InvalidOperationException(
+                            "The installed release identity must be canonical.");
+                    }
+                    break;
+                case ApprovalSwitch:
+                    if (approvalRequested)
+                    {
+                        throw new InvalidOperationException(
+                            "Release transaction approval was requested more than once.");
+                    }
+                    approvalRequested = true;
                     break;
                 case InstalledVersionSwitch:
                     RejectDuplicate(
@@ -164,7 +235,9 @@ public static class ReleaseUpdateConsoleCommandParser
             updateChannelSeen ||
             pinnedIdentitySeen ||
             configurationSchemaVersionSeen ||
-            protocolVersionSeen;
+            protocolVersionSeen ||
+            installedReleaseIdentitySeen ||
+            approvalRequested;
         if (command == ReleaseUpdateConsoleCommandKind.None)
         {
             if (hasReleaseOption)
@@ -175,7 +248,9 @@ public static class ReleaseUpdateConsoleCommandParser
             return ReleaseUpdateConsoleCommandLine.None(
                 [.. applicationArguments]);
         }
-        if (command == ReleaseUpdateConsoleCommandKind.Status)
+        if (command is ReleaseUpdateConsoleCommandKind.Status or
+            ReleaseUpdateConsoleCommandKind.TransactionStatus or
+            ReleaseUpdateConsoleCommandKind.TransactionSupervisor)
         {
             if (hasReleaseOption)
             {
@@ -193,11 +268,36 @@ public static class ReleaseUpdateConsoleCommandParser
                 [.. applicationArguments]);
         }
 
+        if (command == ReleaseUpdateConsoleCommandKind.RollbackTransaction)
+        {
+            if (!approvalRequested || installedVersionSeen || updateChannelSeen ||
+                pinnedIdentitySeen || configurationSchemaVersionSeen ||
+                protocolVersionSeen || installedReleaseIdentitySeen)
+            {
+                throw new InvalidOperationException(
+                    "Rollback requires only its exact transaction ID and --approve-release-transaction.");
+            }
+            return new ReleaseUpdateConsoleCommandLine(
+                command,
+                string.Empty,
+                string.Empty,
+                UpdateChannel: null,
+                string.Empty,
+                ConfigurationSchemaVersion: null,
+                ProtocolVersion: null,
+                [.. applicationArguments])
+            {
+                TransactionId = transactionId,
+                ApprovalRequested = true
+            };
+        }
+
         if (!installedVersionSeen)
         {
             throw Missing(InstalledVersionSwitch);
         }
-        if (!updateChannelSeen || updateChannel is null)
+        if (command != ReleaseUpdateConsoleCommandKind.InstallOfflineRelease &&
+            (!updateChannelSeen || updateChannel is null))
         {
             throw Missing(UpdateChannelSwitch);
         }
@@ -211,7 +311,23 @@ public static class ReleaseUpdateConsoleCommandParser
             throw Missing(ProtocolVersionSwitch);
         }
 
-        if (updateChannel == InstallationUpdateChannel.Pinned)
+        if (command == ReleaseUpdateConsoleCommandKind.InstallOfflineRelease)
+        {
+            if (!installedReleaseIdentitySeen)
+            {
+                throw Missing(InstalledReleaseIdentitySwitch);
+            }
+            if (!approvalRequested)
+            {
+                throw Missing(ApprovalSwitch);
+            }
+            if (updateChannelSeen || pinnedIdentitySeen)
+            {
+                throw new InvalidOperationException(
+                    "Offline installation reads its channel and pinned policy from completed setup state.");
+            }
+        }
+        else if (updateChannel == InstallationUpdateChannel.Pinned)
         {
             if (!pinnedIdentitySeen)
             {
@@ -232,7 +348,11 @@ public static class ReleaseUpdateConsoleCommandParser
             pinnedReleaseIdentity,
             configurationSchemaVersion,
             protocolVersion,
-            [.. applicationArguments]);
+            [.. applicationArguments])
+        {
+            InstalledReleaseIdentity = installedReleaseIdentity,
+            ApprovalRequested = approvalRequested
+        };
     }
 
     private static void SetCommand(
@@ -292,6 +412,19 @@ public static class ReleaseUpdateConsoleCommandParser
                 "The offline release bundle check path must not contain relative segments.");
         }
         return fullPath;
+    }
+
+    private static string ValidateTransactionId(string? value)
+    {
+        string transactionId = value ?? string.Empty;
+        if (transactionId.Length != 32 ||
+            !transactionId.All(character =>
+                character is >= '0' and <= '9' or >= 'a' and <= 'f'))
+        {
+            throw new InvalidOperationException(
+                "The release transaction identity must contain exactly 32 lowercase hexadecimal characters.");
+        }
+        return transactionId;
     }
 
     private static string ValidateInstalledVersion(string? value)

@@ -25,6 +25,9 @@ builder.Services.AddSingleton<IStationRadioInventoryProvider>(
 builder.Services.AddSingleton<IHostedService>(
     services => services.GetRequiredService<FlexDiscoveryService>());
 builder.Services.AddSingleton<StationReceiveSessionManager>();
+builder.Services.AddSingleton<IStationReleaseUpdaterClient,
+    UnixSocketStationReleaseUpdaterClient>();
+builder.Services.AddSingleton<StationReleaseServiceControlService>();
 builder.Services.AddHostedService<StationLinkClient>();
 
 IHost host = builder.Build();

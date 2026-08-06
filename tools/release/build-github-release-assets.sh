@@ -115,6 +115,8 @@ web_project="${repo_root}/prototypes/web-client/AetherSDR.Web.csproj"
 watchdog_project="${repo_root}/prototypes/tx-watchdog/AetherSDR.TxWatchdog/AetherSDR.TxWatchdog.csproj"
 broker_project="${repo_root}/AetherRemote/src/AetherRemote.Broker/AetherRemote.Broker.csproj"
 agent_project="${repo_root}/AetherRemote/src/AetherRemote.Agent/AetherRemote.Agent.csproj"
+updater_project="${repo_root}/AetherRemote/src/AetherRemote.Updater/AetherRemote.Updater.csproj"
+updater_unit="${repo_root}/AetherRemote/deploy/aetherremote-release-updater.service"
 builder_project="${repo_root}/tools/release/AetherSDR.ReleaseBuilder/AetherSDR.ReleaseBuilder.csproj"
 builder_dll="${repo_root}/tools/release/AetherSDR.ReleaseBuilder/bin/Release/net10.0/AetherSDR.ReleaseBuilder.dll"
 
@@ -269,10 +271,11 @@ for runtime in linux-x64 linux-arm64; do
   web_publish="${runtime_root}/web"
   broker_publish="${runtime_root}/broker"
   agent_publish="${runtime_root}/agent"
+  updater_publish="${runtime_root}/updater"
   architecture_assets="${runtime_root}/assets"
   mkdir -p -- \
     "${web_publish}" "${broker_publish}" "${agent_publish}" \
-    "${architecture_assets}"
+    "${updater_publish}" "${architecture_assets}"
 
   common_publish=(
     --configuration Release
@@ -300,13 +303,23 @@ for runtime in linux-x64 linux-arm64; do
   dotnet publish "${agent_project}" \
     "${common_publish[@]}" \
     --output "${agent_publish}"
+  dotnet publish "${updater_project}" \
+    "${common_publish[@]}" \
+    --output "${updater_publish}"
+  mkdir -p -- "${agent_publish}/updater"
+  cp -a -- "${updater_publish}/." "${agent_publish}/updater/"
+  cp -- "${updater_unit}" \
+    "${agent_publish}/aetherremote-release-updater.service"
 
   normalize_tree \
     "${web_publish}" \
     AetherSDR.Web \
     watchdog/AetherSDR.TxWatchdog
   normalize_tree "${broker_publish}" AetherRemote.Broker
-  normalize_tree "${agent_publish}" AetherRemote.Agent
+  normalize_tree \
+    "${agent_publish}" \
+    AetherRemote.Agent \
+    updater/AetherRemote.Updater
   inspect_web_tree "${web_publish}" "${runtime}" "${runtime_root}"
 
   gateway_archive="${architecture_assets}/aethersdr-gateway-${runtime}.tar.gz"

@@ -2698,32 +2698,24 @@ M8C.
 
 ### M8B — Signed GitHub releases and transactional updates
 
-Status: active. The local-only signed-manifest verifier, normal-runtime public-key
-trust composition, immutable local offline-directory bundle reader, read-only
-offline bundle CLI `check`, read-only local release `status`, read-only offline
-install preflight, verified installation-plan composition, private verified staging,
-atomic inactive-release publication, activation-transaction plan composition,
-activation-readiness evidence evaluation, authoritative runtime evidence
-collection, exact-plan TX-lease admission closure/drain composition, exact-plan
-configuration-backup planning and atomic execution, exact-plan staged-copy
-migration planning, disabled-by-default locally pinned migration-runner trust and
-exact selection, callerless probe-only runner invocation, exact staged-copy migration
-execution, exact-plan migration evidence, exact service-control transaction
-planning, disabled-by-default exact local two-phase service-control execution and
-evidence, disabled-by-default exact atomic current-pointer switching and evidence,
-exact post-switch health-verification planning, disabled-by-default exact health
-execution, exact-plan health evidence, exact rollback transaction planning,
-disabled-by-default exact rollback execution and evidence, exact operator-approval
-authority, and disabled-by-default read-only GitHub release checking through the same
-signed-bundle verifier, deterministic dual-architecture package production, standalone
-signed-manifest generation, protected draft GitHub Release creation, CLI-only
-persistent verified GitHub bundle download, callerless verified archive extraction into
-a private immutable role tree, callerless exact extracted-tree publication-plan
-composition, and callerless atomic inactive publication of that extracted role tree are
-implemented; activation-plan adaptation, operational install orchestration, backup
-orchestration, transaction orchestration, host-restart and remote-node service-control
-transports, authenticated approval issuance, draft publication, and Admin/browser callers
-remain unimplemented.
+Status: complete for the reviewed M8B transaction boundary. The local signed-manifest/
+trust/offline/GitHub verification path, deterministic signed release production,
+protected draft creation and independently protected verified draft publication,
+persistent verified download, private staging and bounded extraction, atomic inactive
+extracted-tree publication, extracted-tree activation adaptation, configuration backup,
+staged migration, local and fixed-purpose remote service control, exact current-pointer
+switching, post-switch and post-boot health verification, automatic and freshly approved
+manual rollback, radio-authoritative safety evidence, exact TX-lease admission closure
+and reopening, durable transaction journaling, authenticated approval issuance, dedicated
+updater supervisors, and CLI/Admin/browser status/install/rollback callers are
+implemented. All mutation surfaces remain disabled by default. Host reboot is an exact
+coordinator-owned `RestartPending` transaction: ordinary service-stop execution is
+superseded, `current` is switched atomically, one transaction-bound durable marker is
+written, and the reboot request remains incomplete until a fail-closed hosted
+continuation records health and atomically completes the same journal. Unknown or failed
+reboot outcomes move the journal to reconciliation and retain the marker. No M8B path
+issues radio commands, arms a watchdog, grants TX authority, keys a transmitter, or
+overrides SmartSDR, Maestro, or hardware PTT.
 
 The first increment defines a strict version-1 JSON manifest for one release
 identity, semantic version, Stable/Beta/exact-Pinned channel, supported Linux
@@ -4273,6 +4265,113 @@ reviewed TX command string shape and the independent watchdog started empty and
 Disarmed. No deployment, real extracted-tree publication, `current` switch, activation,
 restart, GitHub mutation, radio connection, lease mutation, command, keying, transmit
 action, or live RF operation occurred.
+
+The thirty-fourth increment completes the reviewed operational transaction. Extracted
+inactive publication now adapts into the existing activation model with the full immutable
+file and directory inventory retained. Service packages bind to fixed role roots and the
+pointer switch validates every file digest plus exact 0400/0500 owner mode. Legacy
+archive-publication activation remains supported for existing tokens and tests.
+
+`ReleaseUpdateTransactionCoordinator` serializes preparation, approval, natural TX-lease
+drain, radio-authoritative safety collection, backup, migration, service stop, pointer
+switch, service start, health, final readiness, and rollback while preserving the exact
+internal tokens from each boundary. Admission closes without force-releasing leases and
+reopens only with the same authority. Automatic rollback handles every post-switch
+failure; manual rollback requires a second fresh approval and the exact successful
+transaction. Durable redacted journal state is written atomically. Terminal summaries may
+be recovered; interrupted nonterminal state becomes reconciliation because exact object
+authority is never reconstructed from disk.
+
+Mutation runs in the separate hardened `aethersdr-release-updater.service` over one
+owner-private bounded Unix socket, so gateway restart cannot destroy transaction state.
+CLI and Admin/browser callers are clients. Admin mutations require Admin policy,
+antiforgery, canonical server-derived bundle paths, and fresh server-derived `auth_time`;
+CLI mutations require an interactive terminal, explicit approval switch, and typed exact
+identity confirmation. Public reports and audit events remain path/digest/subject redacted.
+
+Remote control adds only the versioned capability `release-service-control-v1` and exact
+phase/action/role/unit/correlation fields. The broker authenticates administration and
+binds results to the same station connection. The station agent forwards validated frames
+to the separate owner-private `AetherRemote.Updater`, which alone invokes direct
+`systemctl --user` for the two fixed units and survives their restart. Remote execution
+defaults disabled. The host-restart transport is separately disabled, requires exact plan
+and pointer evidence, refuses to overwrite an unconsumed marker, writes a durable marker
+bound to exact setup/release/path/policy state, and invokes only direct nonblocking
+systemd reboot. The coordinator first journals the exact transaction as
+`RestartPending`, releases lease admission, and revokes approval. After the normal gateway
+starts, the post-boot continuation requires the marker to match that exact pending
+journal, double-reads setup and release status, requires the target to remain active, and
+runs only the fixed bounded unit/loopback/fresh-broker checks. It writes a durable terminal
+result, atomically changes the journal to `Completed`, and then consumes a successful
+marker. Failure changes the journal to `ReconciliationRequired` and retains the marker.
+Recovered pending state blocks another installation. Stale, altered, unhealthy,
+journal-mismatched, drifted, or previously failed state is not retried automatically and
+does not reconstruct approval, post-reboot rollback, pointer, service, radio, command,
+lease, watchdog, or TX authority.
+
+The new protected `publish-release.yml` workflow completes draft publication without the
+private signing key. It is manual, main-only, and protected by `release-publishing`; it
+requires one exact existing draft/tag/target commit, downloads exactly ten assets,
+verifies both architecture bundles through the production offline verifier using a
+protected public key, changes only the draft flag, and proves target plus asset
+name/size/digest inventories are unchanged. The release-automation validator rejects
+automatic triggers, rebuilds, new release creation, or private-key access in publication.
+
+The thirty-fifth increment closes the process-lifetime boundary with an end-to-end host
+restart transaction. The coordinator bypasses ordinary service-stop execution for the
+signed host-restart plan, performs the exact pointer switch, releases lease admission,
+revokes approval, and durably enters `RestartPending` before requesting reboot.
+`VerifiedReleaseActivationHostRestartTransport` requires that exact transaction identity
+and pointer evidence. Its strict owner-only marker is bound to transaction ID, setup
+revision, installed and target release identities, release root, current pointer, update
+channel, Pinned identity, TX-support policy, and a bounded request time. The transport
+refuses to overwrite an unconsumed marker and removes only a validated prior terminal
+result before starting a new reboot transaction.
+
+The normal gateway's hosted continuation waits until the web host is listening, then
+requires the marker to match the exact durable pending journal, validates any prior
+terminal result, double-reads release/setup state, requires the target release to remain
+active, and executes the same fixed bounded unit, loopback HTTP, canonical gateway-host,
+and topology-required fresh broker-link contracts used by activation health. It writes an
+owner-only terminal result, atomically completes the journal, and then removes a
+successful marker. Failed health atomically moves the journal to reconciliation and
+retains the marker. Success, failure, and recovered journal transitions are idempotent.
+Invalid permissions, links, stale or altered markers, wrong transaction, wrong active
+release, setup mismatch, unhealthy services, broker-link failure, observation drift,
+result mismatch, or interrupted persistence require reconciliation without automatic
+retry. A recovered pending journal blocks another installation. No durable document
+reconstructs operator approval, post-reboot rollback authority, pointer-switch evidence,
+service-control authority, radio command, lease, watchdog, keying, or TX capability.
+
+Automated checkpoint on 2026-08-06 for completed M8B transactional signed updates:
+changed C# paths passed scoped format verification; Bash scripts passed syntax checks;
+the protected publication workflow passed strict YAML parsing; `git diff --check` passed;
+and the strengthened release-automation boundary validator proved draft creation remains
+private-key/draft-only while publication is manual, main-only, public-key verified on
+native x64 and arm64 runners, and limited to promoting one exact unchanged draft. The
+14-project Release solution built with zero warnings and zero errors. The focused
+post-boot continuation suite passed 13/13, and the combined host-restart pointer,
+transport, journal, rollback-layout, and caller-surface set passed 59/59. Web tests passed
+1,667/1,667; independent-watchdog tests passed 57/57; TX-HIL isolation tests passed 48/48;
+release-builder tests passed 17/17; AetherRemote tests passed 77/77; and browser tests
+passed 138/138. The complete checkpoint covered 1,866 .NET tests and exactly 2,004 tests
+overall.
+
+The final validation-only release was `20260806-102740-flexweb-validation`. It reran the
+complete 2,004-test matrix, the zero-warning 14-project build, release creation/publication
+automation validation, production health, and normal web/watchdog artifact inspection.
+Health registered the disabled-by-default transaction supervisor, signed preflight
+through rollback composition, exact lease closure/reopening, authenticated CLI/Admin/
+browser callers, durable journaling, exact host-restart transport, and the idle post-boot
+continuation with strict marker/result, status/setup double-read, active-release, fixed
+unit/loopback/broker, idempotence, and reconciliation capabilities. Approval and rollback
+reconstruction, pointer mutation, service control, radio-command, command, and TX caller
+flags remained false. The production web artifact retained one reviewed key string and
+one deduplicated unkey string; the independent watchdog retained one unkey string, zero
+key strings, and started empty and Disarmed. No deployment, real release installation,
+service restart, pointer switch, host reboot, remote-node mutation, GitHub release
+publication, radio connection, lease mutation, command, keying, transmit action, or live
+RF operation occurred.
 
 - Publish architecture-specific gateway, broker, AetherRemote agent, and station-
   engine packages for `linux-x64` and `linux-arm64` through GitHub Releases.

@@ -8,6 +8,7 @@
   <Project Path="prototypes/tx-watchdog/AetherSDR.TxWatchdog.Tests/AetherSDR.TxWatchdog.Tests.csproj" />
   <Project Path="AetherRemote/src/AetherRemote.Protocol/AetherRemote.Protocol.csproj" />
   <Project Path="AetherRemote/src/AetherRemote.Agent/AetherRemote.Agent.csproj" />
+  <Project Path="AetherRemote/src/AetherRemote.Updater/AetherRemote.Updater.csproj" />
   <Project Path="AetherRemote/src/AetherRemote.Broker/AetherRemote.Broker.csproj" />
   <Project Path="AetherRemote/tests/AetherRemote.Tests/AetherRemote.Tests.csproj" />
   <Project Path="tools/release/AetherSDR.ReleaseBuilder/AetherSDR.ReleaseBuilder.csproj" />

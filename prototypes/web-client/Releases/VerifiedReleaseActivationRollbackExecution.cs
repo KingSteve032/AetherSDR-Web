@@ -19,7 +19,8 @@ public sealed class ReleaseActivationRollbackSettings
 public enum VerifiedReleaseActivationRollbackTriggerKind
 {
     PostSwitchServiceControlFailure = 1,
-    PostSwitchHealthFailure = 2
+    PostSwitchHealthFailure = 2,
+    OperatorRequested = 3
 }
 
 public enum VerifiedReleaseActivationRollbackExecutionFailureCode
@@ -622,6 +623,7 @@ public sealed class VerifiedReleaseActivationRollbackExecutionService
             VerifiedReleaseActivationRollbackTriggerKind.PostSwitchServiceControlFailure,
             failureReport,
             healthFailureReport: null,
+            operatorApprovalReport: null,
             cancellationToken);
 
     [SupportedOSPlatform("linux")]
@@ -637,6 +639,23 @@ public sealed class VerifiedReleaseActivationRollbackExecutionService
             VerifiedReleaseActivationRollbackTriggerKind.PostSwitchHealthFailure,
             serviceFailureReport: null,
             failureReport,
+            operatorApprovalReport: null,
+            cancellationToken);
+
+    [SupportedOSPlatform("linux")]
+    internal Task<VerifiedReleaseActivationRollbackExecutionReport>
+        ExecuteOperatorRequestedAsync(
+            VerifiedReleaseActivationRollbackPlanReport planReport,
+            VerifiedReleaseActivationCurrentPointerSwitchReport pointerReport,
+            VerifiedReleaseActivationOperatorApprovalReport approvalReport,
+            CancellationToken cancellationToken = default) =>
+        ExecuteAsync(
+            planReport,
+            pointerReport,
+            VerifiedReleaseActivationRollbackTriggerKind.OperatorRequested,
+            serviceFailureReport: null,
+            healthFailureReport: null,
+            approvalReport,
             cancellationToken);
 
     internal VerifiedReleaseActivationRollbackObservation Observe(
@@ -664,6 +683,7 @@ public sealed class VerifiedReleaseActivationRollbackExecutionService
         VerifiedReleaseActivationRollbackTriggerKind triggerKind,
         VerifiedReleaseActivationServiceControlExecutionReport? serviceFailureReport,
         VerifiedReleaseActivationHealthVerificationReport? healthFailureReport,
+        VerifiedReleaseActivationOperatorApprovalReport? operatorApprovalReport,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(planReport);
@@ -731,7 +751,9 @@ public sealed class VerifiedReleaseActivationRollbackExecutionService
                 plan,
                 triggerKind,
                 serviceFailureReport,
-                healthFailureReport))
+                healthFailureReport,
+                operatorApprovalReport,
+                m_timeProvider.GetUtcNow()))
         {
             return VerifiedReleaseActivationRollbackExecutionReport.Failure(
                 VerifiedReleaseActivationRollbackExecutionFailureCode.FailureTriggerInvalid,
@@ -1274,7 +1296,9 @@ public sealed class VerifiedReleaseActivationRollbackExecutionService
         VerifiedReleaseActivationRollbackPlan plan,
         VerifiedReleaseActivationRollbackTriggerKind triggerKind,
         VerifiedReleaseActivationServiceControlExecutionReport? serviceFailureReport,
-        VerifiedReleaseActivationHealthVerificationReport? healthFailureReport) =>
+        VerifiedReleaseActivationHealthVerificationReport? healthFailureReport,
+        VerifiedReleaseActivationOperatorApprovalReport? operatorApprovalReport,
+        DateTimeOffset now) =>
         triggerKind switch
         {
             VerifiedReleaseActivationRollbackTriggerKind.PostSwitchServiceControlFailure =>
@@ -1282,9 +1306,37 @@ public sealed class VerifiedReleaseActivationRollbackExecutionService
                 ValidateServiceFailure(plan, serviceFailureReport),
             VerifiedReleaseActivationRollbackTriggerKind.PostSwitchHealthFailure =>
                 serviceFailureReport is null && healthFailureReport is not null &&
+                operatorApprovalReport is null &&
                 ValidateHealthFailure(plan, healthFailureReport),
+            VerifiedReleaseActivationRollbackTriggerKind.OperatorRequested =>
+                serviceFailureReport is null && healthFailureReport is null &&
+                operatorApprovalReport is not null &&
+                ValidateOperatorApproval(plan, operatorApprovalReport, now),
             _ => false
         };
+
+    private static bool ValidateOperatorApproval(
+        VerifiedReleaseActivationRollbackPlan plan,
+        VerifiedReleaseActivationOperatorApprovalReport report,
+        DateTimeOffset now)
+    {
+        VerifiedReleaseActivationOperatorApproval? approval = report.Approval;
+        return report.Succeeded &&
+            report.FailureCode ==
+                VerifiedReleaseActivationOperatorApprovalFailureCode.None &&
+            report.ExactPlanBound &&
+            report.AuthenticationCurrent &&
+            report.AdministratorAuthorized &&
+            report.ReauthenticationCurrent &&
+            report.ApprovalFresh &&
+            report.ApprovalStored &&
+            !report.CurrentPointerChanged &&
+            !report.ActivationAuthorized &&
+            approval is not null &&
+            !approval.Revoked &&
+            approval.ExpiresAt > now &&
+            ReferenceEquals(approval.Plan, plan.ActivationPlan);
+    }
 
     private static bool ValidateServiceFailure(
         VerifiedReleaseActivationRollbackPlan plan,

@@ -506,6 +506,18 @@ ReleaseActivationOperatorApprovalSettings
             .Get<ReleaseActivationOperatorApprovalSettings>(options =>
                 options.ErrorOnUnknownConfiguration = true) ??
         new ReleaseActivationOperatorApprovalSettings();
+ReleaseUpdateTransactionSettings releaseUpdateTransactionSettings =
+    builder.Configuration
+        .GetSection(ReleaseUpdateTransactionSettings.SectionName)
+        .Get<ReleaseUpdateTransactionSettings>(options =>
+            options.ErrorOnUnknownConfiguration = true) ??
+    new ReleaseUpdateTransactionSettings();
+ReleaseActivationHostRestartSettings releaseActivationHostRestartSettings =
+    builder.Configuration
+        .GetSection(ReleaseActivationHostRestartSettings.SectionName)
+        .Get<ReleaseActivationHostRestartSettings>(options =>
+            options.ErrorOnUnknownConfiguration = true) ??
+    new ReleaseActivationHostRestartSettings();
 StationTxCommandTrustSettings stationTxCommandTrustSettings =
     builder.Configuration
         .GetSection(StationTxCommandTrustSettings.SectionName)
@@ -605,6 +617,10 @@ ReverseProxySettings reverseProxySettings =
 string[] allowedOrigins =
     builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? [];
 
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = ReleaseUpdateHttpAdapter.AntiforgeryHeaderName;
+});
 builder.Services.AddSingleton(Options.Create(authSettings));
 builder.Services.AddSingleton(Options.Create(radioSettings));
 builder.Services.AddSingleton(Options.Create(remoteStationSettings));
@@ -622,6 +638,9 @@ builder.Services.AddSingleton(
     Options.Create(releaseActivationRollbackSettings));
 builder.Services.AddSingleton(
     Options.Create(releaseActivationOperatorApprovalSettings));
+builder.Services.AddSingleton(Options.Create(releaseUpdateTransactionSettings));
+builder.Services.AddSingleton(
+    Options.Create(releaseActivationHostRestartSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandTrustSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandSigningSettings));
 builder.Services.AddSingleton(
@@ -674,16 +693,19 @@ builder.Services.AddSingleton<GitHubReleaseBundleDownloadService>(
             downloadPaths);
     });
 builder.Services.AddSingleton<GitHubReleaseBundleDownloadConsole>();
+builder.Services.AddSingleton(_ => resolveInstallationPaths());
 builder.Services.AddSingleton(
-    _ =>
+    services =>
     {
-        InstallationPaths statusPaths = resolveInstallationPaths();
+        InstallationPaths statusPaths =
+            services.GetRequiredService<InstallationPaths>();
         return new InstallationSetupStore(statusPaths.SetupStatePath);
     });
 builder.Services.AddSingleton(
     services =>
     {
-        InstallationPaths statusPaths = resolveInstallationPaths();
+        InstallationPaths statusPaths =
+            services.GetRequiredService<InstallationPaths>();
         return new ReleaseInstallationStatusReader(
             services.GetRequiredService<InstallationSetupStore>(),
             statusPaths);
@@ -733,6 +755,18 @@ builder.Services.AddSingleton<VerifiedReleaseActivationReadinessEvaluator>();
 builder.Services.AddSingleton<
     VerifiedReleaseActivationLeaseQuiescenceBoundary>();
 builder.Services.AddSingleton<VerifiedReleaseActivationEvidenceCollector>();
+builder.Services.AddSingleton<
+    ReleaseUpdateOperatorAuthenticationEvidenceFactory>();
+builder.Services.AddSingleton<ReleaseUpdateTransactionCoordinator>();
+builder.Services.AddSingleton<
+    VerifiedReleaseActivationHostRestartTransport>();
+builder.Services.AddSingleton<
+    VerifiedReleaseActivationPostBootContinuationService>();
+builder.Services.AddHostedService<
+    VerifiedReleaseActivationPostBootContinuationHostedService>();
+builder.Services.AddSingleton<ReleaseUpdateSupervisor>();
+builder.Services.AddSingleton<ReleaseUpdateSupervisorClient>();
+builder.Services.AddSingleton<ReleaseUpdateTransactionConsole>();
 builder.Services.AddSingleton<StationTxCommandTrustRegistry>();
 builder.Services.AddSingleton<StationTxCommandSigningAuthority>();
 builder.Services.AddSingleton<StationTxCommandEnvelopeCoordinator>();
@@ -819,6 +853,35 @@ builder.Services.AddRateLimiter(options =>
 });
 
 WebApplication app = builder.Build();
+if (releaseUpdateCommandLine.Command ==
+    ReleaseUpdateConsoleCommandKind.TransactionSupervisor)
+{
+    if (!OperatingSystem.IsLinux())
+    {
+        Environment.ExitCode = 2;
+        return;
+    }
+    ReleaseUpdateSupervisor supervisor =
+        app.Services.GetRequiredService<ReleaseUpdateSupervisor>();
+    await supervisor.RunAsync();
+    return;
+}
+if (releaseUpdateCommandLine.Command is
+    ReleaseUpdateConsoleCommandKind.InstallOfflineRelease or
+    ReleaseUpdateConsoleCommandKind.RollbackTransaction or
+    ReleaseUpdateConsoleCommandKind.TransactionStatus)
+{
+    bool interactive =
+        !Console.IsInputRedirected && !Console.IsOutputRedirected;
+    ReleaseUpdateTransactionConsole transactionConsole =
+        app.Services.GetRequiredService<ReleaseUpdateTransactionConsole>();
+    Environment.ExitCode = await transactionConsole.ExecuteAsync(
+        releaseUpdateCommandLine,
+        Console.In,
+        Console.Out,
+        interactive);
+    return;
+}
 ReleaseManifestTrustRegistry releaseManifestTrustRegistry =
     app.Services.GetRequiredService<ReleaseManifestTrustRegistry>();
 SignedReleaseManifestVerificationService releaseManifestVerificationService =
@@ -928,6 +991,16 @@ VerifiedReleaseActivationLeaseQuiescenceBoundary
 VerifiedReleaseActivationEvidenceCollector releaseActivationEvidenceCollector =
     app.Services.GetRequiredService<
         VerifiedReleaseActivationEvidenceCollector>();
+ReleaseUpdateTransactionCoordinator releaseUpdateTransactionCoordinator =
+    app.Services.GetRequiredService<ReleaseUpdateTransactionCoordinator>();
+VerifiedReleaseActivationHostRestartTransport
+    releaseActivationHostRestartTransport =
+        app.Services.GetRequiredService<
+            VerifiedReleaseActivationHostRestartTransport>();
+VerifiedReleaseActivationPostBootContinuationService
+    releaseActivationPostBootContinuationService =
+        app.Services.GetRequiredService<
+            VerifiedReleaseActivationPostBootContinuationService>();
 StationTxIndependentWatchdogRegistry independentTxWatchdogRegistry =
     app.Services.GetRequiredService<StationTxIndependentWatchdogRegistry>();
 StationTxCommandTrustRegistry stationTxCommandTrustRegistry =
@@ -965,6 +1038,7 @@ app.Use(async (context, next) =>
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
+_ = ReleaseUpdateHttpAdapter.Map(app);
 app.UseRateLimiter();
 app.UseWebSockets(
     new WebSocketOptions
@@ -1089,6 +1163,17 @@ app.MapGet(
             VerifiedReleaseActivationEvidenceCollectionDiagnostics
                 releaseActivationEvidence =
                     releaseActivationEvidenceCollector.Snapshot;
+            ReleaseUpdateTransactionDiagnostics releaseUpdateTransaction =
+                releaseUpdateTransactionCoordinator.Snapshot;
+            VerifiedReleaseActivationHostRestartDiagnostics
+                releaseActivationHostRestart =
+                    releaseActivationHostRestartTransport.Snapshot;
+            VerifiedReleaseActivationPostBootContinuationDiagnostics
+                releaseActivationPostBootContinuation =
+                    releaseActivationPostBootContinuationService.Snapshot;
+            VerifiedReleaseActivationPostBootContinuationStateDiagnostics
+                releaseActivationPostBootContinuationState =
+                    releaseActivationPostBootContinuationService.State;
             StationTxIndependentWatchdogAggregate watchdog =
                 independentTxWatchdogRegistry.Snapshot;
             StationTxCommandTrustDiagnostics commandTrust =
@@ -3745,6 +3830,164 @@ app.MapGet(
                     releaseActivationEvidence.LeaseCallerRegistered,
                 releaseActivationEvidenceTxCallerRegistered =
                     releaseActivationEvidence.TxCallerRegistered,
+                releaseUpdateTransactionRegistered =
+                    releaseUpdateTransaction.Registered,
+                releaseUpdateTransactionExecutionEnabled =
+                    releaseUpdateTransaction.ExecutionEnabled,
+                releaseUpdateTransactionLeaseDrainSeconds =
+                    releaseUpdateTransaction.LeaseDrainSeconds,
+                releaseUpdateTransactionOfflinePreflightRegistered =
+                    releaseUpdateTransaction.OfflinePreflightRegistered,
+                releaseUpdateTransactionVerifiedStagingRegistered =
+                    releaseUpdateTransaction.VerifiedStagingRegistered,
+                releaseUpdateTransactionVerifiedExtractionRegistered =
+                    releaseUpdateTransaction.VerifiedExtractionRegistered,
+                releaseUpdateTransactionAtomicInactivePublicationRegistered =
+                    releaseUpdateTransaction.AtomicInactivePublicationRegistered,
+                releaseUpdateTransactionActivationAdaptationRegistered =
+                    releaseUpdateTransaction.ActivationPlanAdaptationRegistered,
+                releaseUpdateTransactionConfigurationBackupRegistered =
+                    releaseUpdateTransaction
+                        .ConfigurationBackupExecutionRegistered,
+                releaseUpdateTransactionMigrationRegistered =
+                    releaseUpdateTransaction.MigrationExecutionRegistered,
+                releaseUpdateTransactionLeaseClosureRegistered =
+                    releaseUpdateTransaction.TxLeaseAdmissionClosureRegistered,
+                releaseUpdateTransactionSafetyEvidenceRegistered =
+                    releaseUpdateTransaction
+                        .RadioAuthoritativeSafetyEvidenceRegistered,
+                releaseUpdateTransactionServiceControlRegistered =
+                    releaseUpdateTransaction.ServiceControlExecutionRegistered,
+                releaseUpdateTransactionCurrentPointerSwitchRegistered =
+                    releaseUpdateTransaction
+                        .AtomicCurrentPointerSwitchRegistered,
+                releaseUpdateTransactionHealthVerificationRegistered =
+                    releaseUpdateTransaction.HealthVerificationRegistered,
+                releaseUpdateTransactionHostRestartRegistered =
+                    releaseUpdateTransaction.HostRestartExecutionRegistered,
+                releaseUpdateTransactionAutomaticRollbackRegistered =
+                    releaseUpdateTransaction.AutomaticRollbackRegistered,
+                releaseUpdateTransactionManualRollbackRegistered =
+                    releaseUpdateTransaction.ManualRollbackRegistered,
+                releaseUpdateTransactionAuthenticatedApprovalRegistered =
+                    releaseUpdateTransaction.AuthenticatedApprovalRegistered,
+                releaseUpdateTransactionDurableJournalRegistered =
+                    releaseUpdateTransaction.DurableJournalRegistered,
+                releaseUpdateTransactionCliCallerRegistered =
+                    releaseUpdateTransaction.CliCallerRegistered,
+                releaseUpdateTransactionAdminCallerRegistered =
+                    releaseUpdateTransaction.AdminCallerRegistered,
+                releaseUpdateTransactionBrowserCallerRegistered =
+                    releaseUpdateTransaction.BrowserCallerRegistered,
+                releaseUpdateTransactionRadioCommandRegistered =
+                    releaseUpdateTransaction.RadioCommandRegistered,
+                releaseUpdateTransactionTxCallerRegistered =
+                    releaseUpdateTransaction.TxCallerRegistered,
+                releaseActivationHostRestartRegistered =
+                    releaseActivationHostRestart.Registered,
+                releaseActivationHostRestartExecutionEnabled =
+                    releaseActivationHostRestart.ExecutionEnabled,
+                releaseActivationHostRestartExactPlanInputRegistered =
+                    releaseActivationHostRestart
+                        .ExactHostRestartPlanInputRegistered,
+                releaseActivationHostRestartPointerEvidenceRegistered =
+                    releaseActivationHostRestart
+                        .ExactPointerEvidenceInputRegistered,
+                releaseActivationHostRestartDurableMarkerRegistered =
+                    releaseActivationHostRestart
+                        .DurablePreRestartMarkerRegistered,
+                releaseActivationHostRestartDirectSystemctlRegistered =
+                    releaseActivationHostRestart.DirectSystemctlRegistered,
+                releaseActivationHostRestartShellRegistered =
+                    releaseActivationHostRestart.ShellRegistered,
+                releaseActivationHostRestartArbitraryCommandRegistered =
+                    releaseActivationHostRestart.ArbitraryCommandRegistered,
+                releaseActivationHostRestartPostBootVerificationRequired =
+                    releaseActivationHostRestart.PostBootVerificationRequired,
+                releaseActivationHostRestartRadioCallerRegistered =
+                    releaseActivationHostRestart.RadioCallerRegistered,
+                releaseActivationHostRestartCommandCallerRegistered =
+                    releaseActivationHostRestart.CommandCallerRegistered,
+                releaseActivationHostRestartTxCallerRegistered =
+                    releaseActivationHostRestart.TxCallerRegistered,
+                releaseActivationPostBootContinuationRegistered =
+                    releaseActivationPostBootContinuation.Registered,
+                releaseActivationPostBootContinuationExecutionEnabled =
+                    releaseActivationPostBootContinuation.ExecutionEnabled,
+                releaseActivationPostBootContinuationMarkerReadRegistered =
+                    releaseActivationPostBootContinuation
+                        .OwnerOnlyMarkerReadRegistered,
+                releaseActivationPostBootContinuationStrictSchemaRegistered =
+                    releaseActivationPostBootContinuation
+                        .StrictMarkerSchemaRegistered,
+                releaseActivationPostBootContinuationFreshnessRegistered =
+                    releaseActivationPostBootContinuation
+                        .MarkerFreshnessRegistered,
+                releaseActivationPostBootContinuationStatusDoubleReadRegistered =
+                    releaseActivationPostBootContinuation
+                        .ReleaseStatusDoubleReadRegistered,
+                releaseActivationPostBootContinuationSetupDoubleReadRegistered =
+                    releaseActivationPostBootContinuation
+                        .SetupStateDoubleReadRegistered,
+                releaseActivationPostBootContinuationActiveReleaseBindingRegistered =
+                    releaseActivationPostBootContinuation
+                        .ExactActiveReleaseBindingRegistered,
+                releaseActivationPostBootContinuationUnitActivityRegistered =
+                    releaseActivationPostBootContinuation
+                        .FixedUnitActivityRegistered,
+                releaseActivationPostBootContinuationLoopbackHealthRegistered =
+                    releaseActivationPostBootContinuation
+                        .LoopbackHealthRegistered,
+                releaseActivationPostBootContinuationBrokerLinkRegistered =
+                    releaseActivationPostBootContinuation
+                        .FreshBrokerLinkRegistered,
+                releaseActivationPostBootContinuationTerminalResultRegistered =
+                    releaseActivationPostBootContinuation
+                        .DurableTerminalResultRegistered,
+                releaseActivationPostBootContinuationIdempotenceRegistered =
+                    releaseActivationPostBootContinuation
+                        .IdempotentMarkerConsumptionRegistered,
+                releaseActivationPostBootContinuationApprovalReconstructionRegistered =
+                    releaseActivationPostBootContinuation
+                        .ApprovalAuthorityReconstructionRegistered,
+                releaseActivationPostBootContinuationRollbackReconstructionRegistered =
+                    releaseActivationPostBootContinuation
+                        .RollbackAuthorityReconstructionRegistered,
+                releaseActivationPostBootContinuationPointerMutationRegistered =
+                    releaseActivationPostBootContinuation
+                        .CurrentPointerMutationRegistered,
+                releaseActivationPostBootContinuationServiceControlRegistered =
+                    releaseActivationPostBootContinuation.ServiceControlRegistered,
+                releaseActivationPostBootContinuationRadioCallerRegistered =
+                    releaseActivationPostBootContinuation.RadioCallerRegistered,
+                releaseActivationPostBootContinuationCommandCallerRegistered =
+                    releaseActivationPostBootContinuation.CommandCallerRegistered,
+                releaseActivationPostBootContinuationTxCallerRegistered =
+                    releaseActivationPostBootContinuation.TxCallerRegistered,
+                releaseActivationPostBootContinuationMarkerObserved =
+                    releaseActivationPostBootContinuationState.MarkerObserved,
+                releaseActivationPostBootContinuationResultObserved =
+                    releaseActivationPostBootContinuationState
+                        .TerminalResultObserved,
+                releaseActivationPostBootContinuationCompleted =
+                    releaseActivationPostBootContinuationState
+                        .ContinuationCompleted,
+                releaseActivationPostBootContinuationHealthVerified =
+                    releaseActivationPostBootContinuationState.HealthVerified,
+                releaseActivationPostBootContinuationMarkerConsumed =
+                    releaseActivationPostBootContinuationState.MarkerConsumed,
+                releaseActivationPostBootContinuationReconciliationRequired =
+                    releaseActivationPostBootContinuationState
+                        .ReconciliationRequired,
+                releaseActivationPostBootContinuationUnitAttemptCount =
+                    releaseActivationPostBootContinuationState
+                        .UnitActivityAttemptCount,
+                releaseActivationPostBootContinuationHttpAttemptCount =
+                    releaseActivationPostBootContinuationState
+                        .LoopbackHttpAttemptCount,
+                releaseActivationPostBootContinuationBrokerAttemptCount =
+                    releaseActivationPostBootContinuationState
+                        .BrokerLinkObservationCount,
                 radioMode = radioSettings.Mode,
                 transmitEnabled =
                     stationTxProductionActivationBinding.BindingApplied,

@@ -1290,6 +1290,76 @@ activation-plan adaptation. This increment does not switch `current`, activate, 
 migrate, control services, issue approval, or touch Admin/browser, radio, watchdog,
 command, lease, keying, TX, or RF state.
 
+The thirty-fourth M8B increment composes those callerless boundaries into the operational
+transaction while preserving their token identities. Extracted activation adaptation
+retains the full immutable file/directory inventory and binds each service role to its
+fixed published role root. The current-pointer executor therefore proves every file,
+digest, path, directory count, and 0400/0500 owner mode before switching, rather than
+validating only the earlier five compressed bundle files.
+
+One `ReleaseUpdateTransactionCoordinator` owns a serialized exact transaction. Prepare
+performs preflight, installation-plan composition, verified staging, extraction, inactive
+publication, activation adaptation, configuration backup, staged migration, service and
+health planning, and rollback planning. Activate consumes fresh approval, closes lease
+admission, waits for natural lease drain, collects radio-authoritative session/radio/
+watchdog evidence, executes pre-switch service stop, pointer switch, post-switch service
+start, health verification, and final readiness. It reopens lease admission only with the
+same closure authority and revokes approval. Post-switch failure invokes the exact
+retained rollback plan; manual rollback requires new approval and the original successful
+pointer/rollback tokens. No step has radio-command, lease-force-release, watchdog-arming,
+keying, or TX authority.
+
+The coordinator runs in `aethersdr-release-updater.service`, a separate hardened process
+that is not one of the services being restarted. Gateway and terminal callers use a fixed
+owner-private Unix socket under installation state. The protocol has only prepare,
+activate, rollback, and status operations with bounded length-prefixed JSON. An atomic
+owner-only journal records redacted phase/identity state. Terminal state can be reported
+after process restart; interrupted nonterminal state becomes reconciliation because
+object-reference authority is deliberately not reconstructed from disk.
+
+The Admin surface requires the existing Admin policy plus antiforgery on every mutation.
+The browser supplies a canonical release identity, never a filesystem path. The server
+derives the architecture-specific verified download inventory child and derives approval
+subject, role, and authentication time from the principal. Only a hashed subject binding
+crosses the local supervisor socket. CLI mutations additionally require an interactive
+terminal, an explicit approval switch, and typed exact release/transaction confirmation.
+
+Remote service control is not an arbitrary broker command. The AetherRemote protocol
+allows only two phases, two actions, two service roles, two reviewed unit names, one exact
+release identity, and a 128-bit correlation ID. The broker authenticates administration
+and correlates the result to the same station connection. The agent validates the frame
+and forwards it to a separate owner-private `AetherRemote.Updater`; only that daemon calls
+direct `systemctl --user` for the fixed units. Both station capability and execution
+configuration default disabled.
+
+Host restart is a separate process-lifetime boundary. For one signed host-restart plan,
+the transaction coordinator bypasses ordinary service-stop execution, performs the exact
+atomic pointer switch, restores lease admission, revokes in-memory approval, and journals
+the transaction as `RestartPending`. The reboot transport then requires that transaction
+identity and pointer evidence, writes one owner-only marker bound to transaction, setup
+revision, installed/target identities, release root, current-pointer path, update channel,
+pinned identity, and TX-support policy, and sends one direct nonblocking systemd reboot
+request. An unconsumed marker cannot be overwritten.
+
+After the rebooted gateway has started listening, a hosted continuation double-reads
+setup and release status, requires the exact target to remain active, and executes only
+the fixed bounded unit, loopback-health, and topology-required fresh broker-link checks.
+It writes an owner-only terminal result, atomically moves the exact matching transaction
+journal from `RestartPending` to `Completed`, and then removes a successful marker.
+Failure moves the journal to `ReconciliationRequired` and retains the marker. Recovered
+pending state blocks another installation. Failure, journal mismatch, staleness,
+tampering, observation drift, or an existing failed result remains explicit
+reconciliation and is never retried automatically. Approval, post-reboot rollback,
+pointer-switch, service-control, radio-command, lease, watchdog, and TX authority are not
+reconstructed from durable state.
+
+Release publication is separated from signing. `draft-release.yml` remains the only
+private-key workflow and creates one protected draft. `publish-release.yml` is manual,
+main-only, and protected independently. It receives only the public verification key,
+requires one exact existing draft/tag/commit and ten exact assets, verifies both
+architecture bundles with the production offline verifier, then changes only the draft
+flag and proves target plus asset name/size/digest inventories are unchanged.
+
 ## Trust boundaries
 
 ### Browser

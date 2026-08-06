@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
+using System.Text.Json;
 using AetherSDR.Web.Releases;
 using AetherSDR.Web.Setup;
 using Microsoft.Extensions.Configuration;
@@ -189,6 +191,87 @@ public sealed class VerifiedReleaseActivationCurrentPointerSwitchTests
         Assert.False(observation.ReconciliationRequired);
         Assert.NotNull(
             fixture.PointerService.GetEvidence(fixture.ServiceControlPlan));
+    }
+
+    [Fact]
+    public async Task HostRestartPlanSwitchesWithoutServiceStopEvidence()
+    {
+        using Fixture fixture = new(restartHost: true);
+
+        VerifiedReleaseActivationCurrentPointerSwitchReport report =
+            await fixture.ExecutePointerAsync();
+
+        Assert.True(report.Succeeded, report.Message);
+        Assert.True(report.PreSwitchServiceControlReady);
+        Assert.True(report.CurrentPointerChanged);
+        Assert.True(report.TargetReleaseActiveAfterSwitch);
+        Assert.Equal(1, fixture.PointerRuntime.CreateCount);
+        Assert.Equal(1, fixture.PointerRuntime.ReplaceCount);
+        Assert.Null(
+            fixture.PointerService.GetEvidence(fixture.ServiceControlPlan)!
+                .PreSwitchEvidence);
+        VerifiedReleaseActivationServiceControlObservation serviceObservation =
+            fixture.ServiceControl.ObservePlan(fixture.ServiceControlPlan);
+        Assert.False(serviceObservation.ServiceControlReady);
+        Assert.Equal(0, serviceObservation.ExecutedStopActionCount);
+        Assert.False(report.ActivationAuthorized);
+    }
+
+    [Fact]
+    public async Task HostRestartTransportWritesTransactionBoundMarkerAndUsesFixedSystemctl()
+    {
+        const string transactionId =
+            "0123456789abcdef0123456789abcdef";
+        using Fixture fixture = new(restartHost: true);
+        VerifiedReleaseActivationCurrentPointerSwitchReport pointer =
+            await fixture.ExecutePointerAsync();
+        Assert.True(pointer.Succeeded, pointer.Message);
+        ProcessStartInfo? captured = null;
+        VerifiedReleaseActivationHostRestartTransport transport = new(
+            new ReleaseActivationHostRestartSettings
+            {
+                ExecutionEnabled = true
+            },
+            fixture.Paths,
+            (start, _) =>
+            {
+                captured = start;
+                return Task.FromResult(0);
+            },
+            fixture.Time);
+
+        VerifiedReleaseActivationHostRestartReport report =
+            await transport.RequestAsync(
+                transactionId,
+                fixture.ServiceControlPlanReport,
+                pointer);
+
+        Assert.True(report.Succeeded, report.Message);
+        Assert.True(report.HostRestartRequested);
+        Assert.True(report.DurableRestartMarkerWritten);
+        Assert.True(report.PostBootVerificationRequired);
+        Assert.False(report.ShellUsed);
+        Assert.False(report.ActivationAuthorized);
+        Assert.False(report.RadioCommandIssued);
+        Assert.False(report.TxActionPerformed);
+        Assert.NotNull(captured);
+        Assert.Equal("/usr/bin/systemctl", captured!.FileName);
+        Assert.False(captured.UseShellExecute);
+        Assert.Equal(
+            ["--no-ask-password", "--no-pager", "--no-block", "reboot"],
+            captured.ArgumentList.ToArray());
+        HostRestartContinuationPaths storage =
+            HostRestartContinuationStorage.Resolve(fixture.Paths);
+        Assert.Equal(UnixFileMode.UserRead, File.GetUnixFileMode(storage.Marker));
+        HostRestartMarker? marker = JsonSerializer.Deserialize<HostRestartMarker>(
+            File.ReadAllBytes(storage.Marker),
+            HostRestartContinuationStorage.JsonOptions);
+        Assert.NotNull(marker);
+        Assert.Equal(transactionId, marker!.TransactionId);
+        Assert.Equal(fixture.ActivationPlan.SetupRevision, marker.SetupRevision);
+        Assert.Equal(fixture.InstalledIdentity, marker.InstalledReleaseIdentity);
+        Assert.Equal(fixture.TargetIdentity, marker.TargetReleaseIdentity);
+        Assert.True(marker.PostBootVerificationRequired);
     }
 
     [Fact]
@@ -616,18 +699,21 @@ public sealed class VerifiedReleaseActivationCurrentPointerSwitchTests
         private readonly bool m_restartBroker;
         private readonly bool m_restartAgent;
         private readonly bool m_restartEngine;
+        private readonly bool m_restartHost;
 
         internal Fixture(
             bool pointerEnabled = true,
             bool restartGateway = true,
             bool restartBroker = true,
             bool restartAgent = true,
-            bool restartEngine = true)
+            bool restartEngine = true,
+            bool restartHost = false)
         {
             m_restartGateway = restartGateway;
             m_restartBroker = restartBroker;
             m_restartAgent = restartAgent;
             m_restartEngine = restartEngine;
+            m_restartHost = restartHost;
             Root = Path.Combine(
                 Path.GetTempPath(),
                 $"pointer-switch-{Guid.NewGuid():N}");
@@ -750,6 +836,7 @@ public sealed class VerifiedReleaseActivationCurrentPointerSwitchTests
         internal int PointerStatusReads { get; private set; }
         internal int PointerSetupReads { get; private set; }
         internal bool ForceInstalledStatusAfterSwitch { get; set; }
+        internal TimeProvider Time => m_time;
 
         internal async Task CompletePreSwitchAsync()
         {
@@ -813,7 +900,7 @@ public sealed class VerifiedReleaseActivationCurrentPointerSwitchTests
                 restartBroker: m_restartBroker,
                 restartAetherRemoteAgent: m_restartAgent,
                 restartStationEngine: m_restartEngine,
-                restartHost: false,
+                restartHost: m_restartHost,
                 txSupportCapable: false,
                 releaseNotesTitle: "AetherSDR 8.2.0",
                 releaseNotesSummary:

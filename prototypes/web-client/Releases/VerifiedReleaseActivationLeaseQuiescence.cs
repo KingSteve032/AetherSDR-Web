@@ -12,7 +12,8 @@ public enum VerifiedReleaseActivationLeaseQuiescenceFailureCode
     QuiescencePlanUnavailable = 5,
     QuiescencePlanMismatch = 6,
     DifferentTransactionActive = 7,
-    AdmissionClosureRejected = 8
+    AdmissionClosureRejected = 8,
+    AdmissionReopenRejected = 9
 }
 
 public sealed record VerifiedReleaseActivationLeaseQuiescenceReport(
@@ -371,6 +372,44 @@ public sealed class VerifiedReleaseActivationLeaseQuiescenceBoundary
                 observation.Drained
                     ? "TX-lease admission remains closed and the stored lease set is drained; no radio-idle or activation authority is inferred."
                     : "TX-lease admission remains closed and existing leases have not yet drained.");
+        }
+    }
+
+    internal VerifiedReleaseActivationLeaseQuiescenceReport ReleaseAdmission(
+        VerifiedReleaseActivationLeaseQuiescenceReport quiescencePlan)
+    {
+        ArgumentNullException.ThrowIfNull(quiescencePlan);
+        VerifiedReleaseActivationLeaseQuiescencePlan? plan = quiescencePlan.Plan;
+        if (!IsEligibleQuiescencePlan(quiescencePlan) ||
+            plan is null ||
+            !MatchesQuiescencePlan(quiescencePlan, plan))
+        {
+            return VerifiedReleaseActivationLeaseQuiescenceReport.Failure(
+                VerifiedReleaseActivationLeaseQuiescenceFailureCode
+                    .QuiescencePlanNotEligible,
+                "An exact successful lease-quiescence transaction token is required to reopen admission.",
+                quiescence: quiescencePlan);
+        }
+
+        lock (m_gate)
+        {
+            if (!ReferenceEquals(m_activePlan, plan) ||
+                !m_leases.TryOpenAdmission(
+                    plan.AdmissionAuthority,
+                    out TxLeaseAdmissionClosureObservation observation))
+            {
+                return VerifiedReleaseActivationLeaseQuiescenceReport.Failure(
+                    VerifiedReleaseActivationLeaseQuiescenceFailureCode
+                        .AdmissionReopenRejected,
+                    "TX-lease admission could not be reopened because the exact closure authority is no longer active.",
+                    quiescence: quiescencePlan);
+            }
+
+            m_activePlan = null;
+            return VerifiedReleaseActivationLeaseQuiescenceReport.Observed(
+                plan,
+                observation,
+                "TX-lease admission was reopened by the exact activation transaction without changing any lease or radio state.");
         }
     }
 

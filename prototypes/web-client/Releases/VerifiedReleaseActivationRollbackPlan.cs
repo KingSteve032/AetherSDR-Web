@@ -113,9 +113,11 @@ public sealed record VerifiedReleaseActivationRollbackPlanReport(
         new(
             true,
             VerifiedReleaseActivationRollbackPlanFailureCode.None,
-            plan.MigrationPlan.MigrationRequired
-                ? "An exact callerless rollback transaction was composed to restore the immutable original backup rather than reverse-running migration code."
-                : "An exact callerless rollback transaction was composed from the immutable original backup without executing any rollback action.",
+            plan.ServiceControlPlan.HostRestartRequired
+                ? "An exact pre-reboot recovery layout was composed; post-reboot failure remains reconciliation because host-restart rollback authority is not reconstructed."
+                : plan.MigrationPlan.MigrationRequired
+                    ? "An exact callerless rollback transaction was composed to restore the immutable original backup rather than reverse-running migration code."
+                    : "An exact callerless rollback transaction was composed from the immutable original backup without executing any rollback action.",
             plan.ActivationPlan.SetupRevision,
             plan.ActivationPlan.InstalledReleaseIdentity,
             plan.ActivationPlan.TargetReleaseIdentity,
@@ -139,7 +141,7 @@ public sealed record VerifiedReleaseActivationRollbackPlanReport(
             InstalledServiceStartPlanned:
                 plan.ServiceControlPlan.StartActions.Count > 0,
             InstalledHealthVerificationPlanned: true,
-            HostRestartRequired: false,
+            HostRestartRequired: plan.ServiceControlPlan.HostRestartRequired,
             HostRestartRollbackPlanned: false,
             SourceReadPerformed: false,
             FileWritePerformed: false,
@@ -277,9 +279,10 @@ internal sealed class VerifiedReleaseActivationRollbackPlan
 /// immutable backup; migration code is never run backward. Three live roots are
 /// assigned same-parent staging and displaced-tree identities, followed by an
 /// atomic current-pointer return, deterministic installed-service starts, and
-/// installed-release health verification. Signed host-restart transactions fail
-/// closed because no reviewed host-restart rollback transport exists. The planner
-/// performs no source read, write, directory mutation, process, systemd command,
+/// installed-release health verification. Signed host-restart transactions retain
+/// this pre-reboot recovery layout, but never claim that post-reboot rollback can be
+/// reconstructed or executed from durable summaries. The planner performs no source
+/// read, write, directory mutation, process, systemd command,
 /// network request, health probe, current-pointer mutation, rollback, activation,
 /// radio, watchdog, command, lease, or TX action and exposes no operational caller.
 /// </summary>
@@ -466,15 +469,6 @@ public sealed class VerifiedReleaseActivationRollbackPlanComposer
                 "Service-control metadata or action ordering does not match the exact activation plan.",
                 activationResult);
         }
-        if (activation.RestartHost || serviceControl.HostRestartRequired)
-        {
-            return VerifiedReleaseActivationRollbackPlanReport.Failure(
-                VerifiedReleaseActivationRollbackPlanFailureCode
-                    .HostRestartUnsupported,
-                "Host-restart rollback remains outside this callerless planning boundary.",
-                activationResult);
-        }
-
         if (!IsEligibleHealthReport(healthReport))
         {
             return VerifiedReleaseActivationRollbackPlanReport.Failure(
@@ -727,9 +721,13 @@ public sealed class VerifiedReleaseActivationRollbackPlanComposer
         ReferenceEquals(
             plan.HealthPlan.ServiceControlPlan,
             plan.ServiceControlPlan) &&
-        !plan.ActivationPlan.RestartHost &&
-        !plan.ServiceControlPlan.HostRestartRequired &&
-        plan.ServiceControlPlan.HostRestartActions.Count == 0 &&
+        plan.ActivationPlan.RestartHost ==
+            plan.ServiceControlPlan.HostRestartRequired &&
+        (plan.ServiceControlPlan.HostRestartRequired
+            ? plan.ServiceControlPlan.HostRestartActions.Count == 1 &&
+              plan.ServiceControlPlan.StopActions.Count == 0 &&
+              plan.ServiceControlPlan.StartActions.Count == 0
+            : plan.ServiceControlPlan.HostRestartActions.Count == 0) &&
         plan.RestoreSources.Count == ExpectedRestoreSourceCount &&
         !plan.ReverseMigrationRunnerRequired &&
         !string.IsNullOrEmpty(plan.RollbackIdentity) &&
@@ -1216,7 +1214,6 @@ public sealed class VerifiedReleaseActivationRollbackPlanComposer
             !report.ConfigurationRestorePlanned ||
             !report.AtomicCurrentPointerRollbackPlanned ||
             !report.InstalledHealthVerificationPlanned ||
-            report.HostRestartRequired ||
             report.HostRestartRollbackPlanned ||
             report.SourceReadPerformed ||
             report.FileWritePerformed ||
@@ -1243,6 +1240,8 @@ public sealed class VerifiedReleaseActivationRollbackPlanComposer
             report.StopActionCount != plan.ServiceControlPlan.StopActions.Count ||
             report.StartActionCount != plan.ServiceControlPlan.StartActions.Count ||
             report.HealthTargetCount != plan.HealthPlan.Targets.Count ||
+            report.HostRestartRequired !=
+                plan.ServiceControlPlan.HostRestartRequired ||
             report.TargetServiceStopPlanned !=
                 (plan.ServiceControlPlan.StopActions.Count > 0) ||
             report.InstalledServiceStartPlanned !=

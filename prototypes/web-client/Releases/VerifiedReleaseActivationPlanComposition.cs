@@ -74,6 +74,37 @@ public sealed record VerifiedReleaseActivationPlanCompositionResult(
             CurrentPointerMutationPerformed: false,
             ActivationPerformed: false);
 
+    internal static VerifiedReleaseActivationPlanCompositionResult Failure(
+        VerifiedReleaseActivationPlanFailureCode failureCode,
+        string message,
+        VerifiedReleaseExtractedPublicationReport publication) =>
+        new(
+            false,
+            failureCode,
+            message,
+            publication.SetupRevision,
+            publication.InstalledReleaseIdentity,
+            publication.TargetReleaseIdentity,
+            TargetVersion: string.Empty,
+            Architecture: null,
+            publication.PackageCount,
+            publication.PublishedBytes,
+            TargetConfigurationSchemaVersion: null,
+            MigrationKind: null,
+            MigrationRequired: false,
+            RestartServiceCount: 0,
+            HostRestartRequired: false,
+            TxLeaseAdmissionClosureRequired: true,
+            RadioAuthoritativeIdleRequired: true,
+            WatchdogsDisarmedRequired: true,
+            ConfigurationBackupRequired: true,
+            AtomicCurrentPointerSwitchRequired: true,
+            ServiceHealthVerificationRequired: true,
+            AutomaticRollbackRequired: true,
+            OperatorApprovalRequired: true,
+            CurrentPointerMutationPerformed: false,
+            ActivationPerformed: false);
+
     internal static VerifiedReleaseActivationPlanCompositionResult Success(
         VerifiedReleasePublicationReport publication,
         VerifiedReleaseActivationPlan plan) =>
@@ -81,6 +112,39 @@ public sealed record VerifiedReleaseActivationPlanCompositionResult(
             true,
             VerifiedReleaseActivationPlanFailureCode.None,
             "A verified release activation transaction plan was composed without mutating current or executing activation work.",
+            plan.SetupRevision,
+            plan.InstalledReleaseIdentity,
+            plan.TargetReleaseIdentity,
+            plan.TargetVersion,
+            plan.Architecture,
+            plan.Packages.Count,
+            publication.PublishedBytes,
+            plan.TargetConfigurationSchemaVersion,
+            plan.MigrationKind,
+            plan.MigrationRequired,
+            plan.RestartServiceCount,
+            plan.RestartHost,
+            TxLeaseAdmissionClosureRequired: true,
+            RadioAuthoritativeIdleRequired: true,
+            WatchdogsDisarmedRequired: true,
+            ConfigurationBackupRequired: true,
+            AtomicCurrentPointerSwitchRequired: true,
+            ServiceHealthVerificationRequired: true,
+            AutomaticRollbackRequired: true,
+            OperatorApprovalRequired: true,
+            CurrentPointerMutationPerformed: false,
+            ActivationPerformed: false)
+        {
+            Plan = plan
+        };
+
+    internal static VerifiedReleaseActivationPlanCompositionResult Success(
+        VerifiedReleaseExtractedPublicationReport publication,
+        VerifiedReleaseActivationPlan plan) =>
+        new(
+            true,
+            VerifiedReleaseActivationPlanFailureCode.None,
+            "A verified extracted-release activation transaction plan was composed without mutating current or executing activation work.",
             plan.SetupRevision,
             plan.InstalledReleaseIdentity,
             plan.TargetReleaseIdentity,
@@ -166,10 +230,47 @@ internal sealed class VerifiedReleaseActivationPackagePlan
     internal ReadOnlySpan<byte> Sha256 => m_sha256;
 }
 
+internal sealed class VerifiedReleaseActivationFilePlan
+{
+    private readonly byte[] m_sha256;
+
+    internal VerifiedReleaseActivationFilePlan(
+        ReleasePackageRole role,
+        string relativePath,
+        string publishedPath,
+        long length,
+        ReadOnlySpan<byte> sha256,
+        bool executable)
+    {
+        if (!ReleasePackagePath.IsSafe(relativePath) ||
+            string.IsNullOrEmpty(publishedPath) ||
+            length < 0 ||
+            sha256.Length != 32)
+        {
+            throw new InvalidOperationException(
+                "Activation file metadata is incomplete or unsafe.");
+        }
+        Role = role;
+        RelativePath = relativePath;
+        PublishedPath = publishedPath;
+        Length = length;
+        m_sha256 = sha256.ToArray();
+        Executable = executable;
+    }
+
+    internal ReleasePackageRole Role { get; }
+    internal string RelativePath { get; }
+    internal string PublishedPath { get; }
+    internal long Length { get; }
+    internal ReadOnlySpan<byte> Sha256 => m_sha256;
+    internal bool Executable { get; }
+}
+
 internal sealed class VerifiedReleaseActivationPlan
 {
     private readonly ReadOnlyCollection<VerifiedReleaseActivationPackagePlan>
         m_packages;
+    private readonly ReadOnlyCollection<VerifiedReleaseActivationFilePlan> m_files;
     private readonly byte[] m_manifestSha256;
 
     internal VerifiedReleaseActivationPlan(
@@ -179,7 +280,9 @@ internal sealed class VerifiedReleaseActivationPlan
         string currentPointerPath,
         string installedCurrentLinkTarget,
         string targetCurrentLinkTarget,
-        IReadOnlyList<VerifiedReleaseActivationPackagePlan> packages)
+        IReadOnlyList<VerifiedReleaseActivationPackagePlan> packages,
+        IReadOnlyList<VerifiedReleaseActivationFilePlan>? files = null,
+        int extractedDirectoryCount = 0)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(packages);
@@ -202,6 +305,8 @@ internal sealed class VerifiedReleaseActivationPlan
         InstalledCurrentLinkTarget = installedCurrentLinkTarget;
         TargetCurrentLinkTarget = targetCurrentLinkTarget;
         m_packages = Array.AsReadOnly(packages.ToArray());
+        m_files = Array.AsReadOnly((files ?? []).ToArray());
+        ExtractedDirectoryCount = extractedDirectoryCount;
         TargetConfigurationSchemaVersion =
             source.TargetConfigurationSchemaVersion;
         MigrationKind = source.MigrationKind;
@@ -239,6 +344,9 @@ internal sealed class VerifiedReleaseActivationPlan
     internal string TargetCurrentLinkTarget { get; }
     internal IReadOnlyList<VerifiedReleaseActivationPackagePlan> Packages =>
         m_packages;
+    internal IReadOnlyList<VerifiedReleaseActivationFilePlan> Files => m_files;
+    internal int ExtractedDirectoryCount { get; }
+    internal bool UsesExtractedRoleTree => m_files.Count > 0;
     internal int TargetConfigurationSchemaVersion { get; }
     internal ReleaseMigrationKind MigrationKind { get; }
     internal int? MigrationFromConfigurationSchemaVersion { get; }
@@ -442,6 +550,446 @@ public sealed class VerifiedReleaseActivationPlanComposer
             publication,
             plan);
     }
+
+    public VerifiedReleaseActivationPlanCompositionResult Compose(
+        VerifiedReleaseExtractedPublicationReport publication)
+    {
+        ArgumentNullException.ThrowIfNull(publication);
+
+        if (!IsEligibleExtractedPublication(publication))
+        {
+            return VerifiedReleaseActivationPlanCompositionResult.Failure(
+                VerifiedReleaseActivationPlanFailureCode.PublicationNotEligible,
+                "A successful immutable inactive extracted publication without reconciliation is required.",
+                publication);
+        }
+
+        VerifiedExtractedPublishedRelease? publishedRelease =
+            publication.PublishedRelease;
+        if (publishedRelease is null)
+        {
+            return VerifiedReleaseActivationPlanCompositionResult.Failure(
+                VerifiedReleaseActivationPlanFailureCode.PublishedReleaseUnavailable,
+                "The successful extracted publication does not retain its verified internal release token.",
+                publication);
+        }
+
+        VerifiedReleaseExtractedPublicationPlan extractedPlan =
+            publishedRelease.Plan;
+        VerifiedReleaseInstallationPlan source = extractedPlan.Source.Plan;
+        if (!MatchesExtractedPublication(
+                publication,
+                publishedRelease,
+                extractedPlan))
+        {
+            return VerifiedReleaseActivationPlanCompositionResult.Failure(
+                VerifiedReleaseActivationPlanFailureCode.PublicationPlanMismatch,
+                "Extracted publication metadata does not match its exact immutable release token.",
+                publication);
+        }
+
+        string installedReleasePath;
+        string targetReleasePath;
+        string currentPointerPath;
+        string installedCurrentLinkTarget;
+        string targetCurrentLinkTarget;
+        try
+        {
+            if (!ValidateExtractedSourcePlan(source, publishedRelease, extractedPlan))
+            {
+                throw new InvalidOperationException(
+                    "The extracted published release plan is incomplete or non-canonical.");
+            }
+
+            installedReleasePath = CanonicalDirectReleasePath(
+                source.ReleaseRootPath,
+                source.InstalledReleaseIdentity);
+            targetReleasePath = CanonicalDirectReleasePath(
+                source.ReleaseRootPath,
+                source.TargetReleaseIdentity);
+            if (!PathEquals(targetReleasePath, publishedRelease.PublishedPath) ||
+                !PathEquals(targetReleasePath, extractedPlan.TargetPath) ||
+                !PathEquals(targetReleasePath, source.TargetReleasePath))
+            {
+                throw new InvalidOperationException(
+                    "The extracted published release path does not match the target plan.");
+            }
+
+            currentPointerPath = Path.GetFullPath(
+                Path.Combine(source.DeploymentRootPath, "current"));
+            if (!PathEquals(
+                    Path.GetDirectoryName(currentPointerPath),
+                    source.DeploymentRootPath))
+            {
+                throw new InvalidOperationException(
+                    "The current pointer must be a direct deployment child.");
+            }
+
+            installedCurrentLinkTarget = CanonicalRelativeLinkTarget(
+                source.DeploymentRootPath,
+                installedReleasePath);
+            targetCurrentLinkTarget = CanonicalRelativeLinkTarget(
+                source.DeploymentRootPath,
+                targetReleasePath);
+            if (string.Equals(
+                    installedCurrentLinkTarget,
+                    targetCurrentLinkTarget,
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "The previous and target current-link values must differ.");
+            }
+        }
+        catch (Exception exception)
+            when (exception is InvalidOperationException or ArgumentException or
+                NotSupportedException or PathTooLongException)
+        {
+            return VerifiedReleaseActivationPlanCompositionResult.Failure(
+                VerifiedReleaseActivationPlanFailureCode.InvalidActivationPaths,
+                "Extracted publication metadata cannot produce canonical activation paths.",
+                publication);
+        }
+
+        if (!TryCreateExtractedPackagePlans(
+                source,
+                targetReleasePath,
+                out VerifiedReleaseActivationPackagePlan[] packages))
+        {
+            return VerifiedReleaseActivationPlanCompositionResult.Failure(
+                VerifiedReleaseActivationPlanFailureCode.InvalidPackagePlan,
+                "Extracted role-root metadata cannot produce one bounded activation service plan.",
+                publication);
+        }
+        if (!TryCreateActivationFilePlans(
+                extractedPlan,
+                targetReleasePath,
+                out VerifiedReleaseActivationFilePlan[] files))
+        {
+            return VerifiedReleaseActivationPlanCompositionResult.Failure(
+                VerifiedReleaseActivationPlanFailureCode.InvalidPackagePlan,
+                "The immutable extracted file inventory cannot be bound to the activation target.",
+                publication);
+        }
+        if (!ValidateMigrationPlan(source))
+        {
+            return VerifiedReleaseActivationPlanCompositionResult.Failure(
+                VerifiedReleaseActivationPlanFailureCode.InvalidMigrationPlan,
+                "Published migration metadata is incomplete or contradictory.",
+                publication);
+        }
+
+        VerifiedReleaseActivationPlan plan = new(
+            source,
+            installedReleasePath,
+            targetReleasePath,
+            currentPointerPath,
+            installedCurrentLinkTarget,
+            targetCurrentLinkTarget,
+            packages,
+            files,
+            extractedPlan.DirectoryCount);
+        return VerifiedReleaseActivationPlanCompositionResult.Success(
+            publication,
+            plan);
+    }
+
+    private static bool IsEligibleExtractedPublication(
+        VerifiedReleaseExtractedPublicationReport publication) =>
+        publication.Succeeded &&
+        publication.FailureCode ==
+            VerifiedReleaseExtractedPublicationFailureCode.None &&
+        publication.SetupRevision is >= 1 &&
+        !string.IsNullOrEmpty(publication.InstalledReleaseIdentity) &&
+        !string.IsNullOrEmpty(publication.TargetReleaseIdentity) &&
+        publication.PackageCount == RequiredRoles.Length &&
+        publication.FileCount is >= 5 and <=
+            VerifiedReleaseArchiveExtractionService.MaximumExtractedFileCount &&
+        publication.DirectoryCount is >= 4 and <=
+            VerifiedReleaseArchiveExtractionService.MaximumExtractedDirectoryCount &&
+        publication.PublishedBytes > 0 &&
+        publication.PublishedBytes <=
+            VerifiedReleaseArchiveExtractionService.MaximumExpandedBytes &&
+        publication.SourceExtractionTreeConsumed &&
+        publication.TargetPublished &&
+        publication.TargetImmutable &&
+        !publication.CurrentPointerChanged &&
+        !publication.ActivationPerformed &&
+        !publication.ReconciliationRequired;
+
+    private static bool MatchesExtractedPublication(
+        VerifiedReleaseExtractedPublicationReport publication,
+        VerifiedExtractedPublishedRelease publishedRelease,
+        VerifiedReleaseExtractedPublicationPlan plan)
+    {
+        VerifiedReleaseInstallationPlan source = plan.Source.Plan;
+        long expectedBytes;
+        try
+        {
+            expectedBytes = plan.Files.Sum(file => file.Length);
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
+
+        return source.SetupRevision == publication.SetupRevision &&
+            string.Equals(
+                source.InstalledReleaseIdentity,
+                publication.InstalledReleaseIdentity,
+                StringComparison.Ordinal) &&
+            string.Equals(
+                source.TargetReleaseIdentity,
+                publication.TargetReleaseIdentity,
+                StringComparison.Ordinal) &&
+            source.Packages.Count == publication.PackageCount &&
+            plan.Files.Count == publication.FileCount &&
+            plan.DirectoryCount == publication.DirectoryCount &&
+            publishedRelease.PublishedBytes == publication.PublishedBytes &&
+            plan.PublicationBytes == publication.PublishedBytes &&
+            expectedBytes == publication.PublishedBytes;
+    }
+
+    private static bool ValidateExtractedSourcePlan(
+        VerifiedReleaseInstallationPlan source,
+        VerifiedExtractedPublishedRelease publishedRelease,
+        VerifiedReleaseExtractedPublicationPlan extractedPlan)
+    {
+        if (source.SetupRevision < 1 ||
+            !IsCanonicalReleaseIdentity(source.InstalledReleaseIdentity) ||
+            !IsCanonicalReleaseIdentity(source.TargetReleaseIdentity) ||
+            string.Equals(
+                source.InstalledReleaseIdentity,
+                source.TargetReleaseIdentity,
+                StringComparison.Ordinal) ||
+            !ReleaseSemanticVersion.TryParse(
+                source.TargetVersion,
+                out ReleaseSemanticVersion parsedVersion) ||
+            !string.Equals(
+                source.TargetVersion,
+                CanonicalSemanticVersion(parsedVersion),
+                StringComparison.Ordinal) ||
+            source.Architecture is not ReleaseManifestArchitecture.LinuxX64 and
+                not ReleaseManifestArchitecture.LinuxArm64 ||
+            source.UpdateChannel is not InstallationUpdateChannel.Stable and
+                not InstallationUpdateChannel.Beta and
+                not InstallationUpdateChannel.Pinned ||
+            source.InstallTransmitSupport != source.TxSupportCapable ||
+            source.ManifestLength is < 1 or >
+                SignedReleaseManifestJson.MaximumManifestBytes ||
+            source.ManifestSha256.Length != 32 ||
+            !IsCanonicalAbsolutePath(source.ReleaseRootPath) ||
+            !IsCanonicalAbsolutePath(source.DeploymentRootPath) ||
+            !IsCanonicalAbsolutePath(source.TargetReleasePath) ||
+            !IsCanonicalAbsolutePath(publishedRelease.PublishedPath) ||
+            !IsCanonicalAbsolutePath(extractedPlan.TargetPath) ||
+            !PathEquals(
+                Path.GetDirectoryName(source.ReleaseRootPath),
+                source.DeploymentRootPath) ||
+            !PathEquals(
+                Path.GetDirectoryName(source.TargetReleasePath),
+                source.ReleaseRootPath) ||
+            source.Packages.Count != RequiredRoles.Length ||
+            extractedPlan.Files.Count is < 5 or >
+                VerifiedReleaseArchiveExtractionService.MaximumExtractedFileCount ||
+            extractedPlan.DirectoryCount is < 4 or >
+                VerifiedReleaseArchiveExtractionService.MaximumExtractedDirectoryCount)
+        {
+            return false;
+        }
+
+        if (source.UpdateChannel == InstallationUpdateChannel.Pinned)
+        {
+            if (!string.Equals(
+                    source.PinnedReleaseIdentity,
+                    source.TargetReleaseIdentity,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+        else if (!string.IsNullOrEmpty(source.PinnedReleaseIdentity))
+        {
+            return false;
+        }
+
+        return ReferenceEquals(extractedPlan.Source.Plan, source) &&
+            PathEquals(extractedPlan.TargetPath, source.TargetReleasePath);
+    }
+
+    private static bool TryCreateExtractedPackagePlans(
+        VerifiedReleaseInstallationPlan source,
+        string targetReleasePath,
+        out VerifiedReleaseActivationPackagePlan[] plans)
+    {
+        plans = [];
+        if (source.Packages.Count != RequiredRoles.Length)
+        {
+            return false;
+        }
+
+        List<VerifiedReleaseActivationPackagePlan> result = [];
+        HashSet<ReleasePackageRole> roles = [];
+        foreach (VerifiedReleaseInstallationPackagePlan package in source.Packages)
+        {
+            if (!RequiredRoles.Contains(package.Role) ||
+                !roles.Add(package.Role) ||
+                string.IsNullOrWhiteSpace(package.PackageIdentity) ||
+                package.Length is < 1 or >
+                    SignedReleaseManifestVerifier.MaximumDeclaredPackageLength ||
+                package.Sha256.Length != 32)
+            {
+                return false;
+            }
+
+            string roleRoot;
+            try
+            {
+                roleRoot = Path.GetFullPath(
+                    Path.Combine(targetReleasePath, RoleDirectoryName(package.Role)));
+            }
+            catch (Exception exception)
+                when (exception is ArgumentException or NotSupportedException or
+                    PathTooLongException)
+            {
+                return false;
+            }
+            if (!PathEquals(Path.GetDirectoryName(roleRoot), targetReleasePath))
+            {
+                return false;
+            }
+            result.Add(
+                new VerifiedReleaseActivationPackagePlan(
+                    package.Role,
+                    package.PackageIdentity,
+                    roleRoot,
+                    package.Length,
+                    package.Sha256));
+        }
+
+        if (!roles.SetEquals(RequiredRoles))
+        {
+            return false;
+        }
+        plans = result
+            .OrderBy(plan => Array.IndexOf(RequiredRoles, plan.Role))
+            .ToArray();
+        return true;
+    }
+
+    private static bool TryCreateActivationFilePlans(
+        VerifiedReleaseExtractedPublicationPlan extractedPlan,
+        string targetReleasePath,
+        out VerifiedReleaseActivationFilePlan[] plans)
+    {
+        plans = [];
+        HashSet<string> relativePaths = new(StringComparer.Ordinal);
+        HashSet<string> targetPaths = new(
+            OperatingSystem.IsWindows()
+                ? StringComparer.OrdinalIgnoreCase
+                : StringComparer.Ordinal);
+        HashSet<ReleasePackageRole> roles = [];
+        bool manifestFound = false;
+        List<VerifiedReleaseActivationFilePlan> result = [];
+        string previous = string.Empty;
+
+        foreach (VerifiedReleaseExtractedPublicationFilePlan file in
+            extractedPlan.Files.OrderBy(file => file.RelativePath, StringComparer.Ordinal))
+        {
+            if (!ReleasePackagePath.IsSafe(file.RelativePath) ||
+                !relativePaths.Add(file.RelativePath) ||
+                file.Length < 0 ||
+                file.Sha256.Length != 32 ||
+                previous.Length > 0 &&
+                    string.CompareOrdinal(previous, file.RelativePath) >= 0)
+            {
+                return false;
+            }
+            previous = file.RelativePath;
+
+            string expectedTarget;
+            try
+            {
+                expectedTarget = Path.GetFullPath(
+                    Path.Combine(
+                        targetReleasePath,
+                        file.RelativePath.Replace(
+                            '/',
+                            Path.DirectorySeparatorChar)));
+            }
+            catch (Exception exception)
+                when (exception is ArgumentException or NotSupportedException or
+                    PathTooLongException)
+            {
+                return false;
+            }
+            if (!PathEquals(expectedTarget, file.TargetPath) ||
+                !expectedTarget.StartsWith(
+                    targetReleasePath + Path.DirectorySeparatorChar,
+                    OperatingSystem.IsWindows()
+                        ? StringComparison.OrdinalIgnoreCase
+                        : StringComparison.Ordinal) ||
+                !targetPaths.Add(expectedTarget))
+            {
+                return false;
+            }
+
+            bool manifest = string.Equals(
+                file.RelativePath,
+                LocalOfflineReleaseBundleVerificationService.ManifestFileName,
+                StringComparison.Ordinal);
+            if (manifest)
+            {
+                if (manifestFound ||
+                    file.Role != ReleasePackageRole.Unknown ||
+                    file.Executable ||
+                    file.Length != extractedPlan.Source.Plan.ManifestLength ||
+                    !file.Sha256.SequenceEqual(
+                        extractedPlan.Source.Plan.ManifestSha256))
+                {
+                    return false;
+                }
+                manifestFound = true;
+            }
+            else
+            {
+                if (!RequiredRoles.Contains(file.Role) ||
+                    !file.RelativePath.StartsWith(
+                        RoleDirectoryName(file.Role) + "/",
+                        StringComparison.Ordinal))
+                {
+                    return false;
+                }
+                roles.Add(file.Role);
+            }
+
+            result.Add(
+                new VerifiedReleaseActivationFilePlan(
+                    file.Role,
+                    file.RelativePath,
+                    expectedTarget,
+                    file.Length,
+                    file.Sha256,
+                    file.Executable));
+        }
+
+        if (!manifestFound || !roles.SetEquals(RequiredRoles))
+        {
+            return false;
+        }
+        plans = result.ToArray();
+        return true;
+    }
+
+    private static string RoleDirectoryName(ReleasePackageRole role) =>
+        role switch
+        {
+            ReleasePackageRole.GatewayWeb => "gateway-web",
+            ReleasePackageRole.Broker => "broker",
+            ReleasePackageRole.AetherRemoteAgent => "aetherremote-agent",
+            ReleasePackageRole.StationEngine => "station-engine",
+            _ => throw new InvalidOperationException(
+                "The activation role root is unsupported.")
+        };
 
     private static bool IsEligiblePublication(
         VerifiedReleasePublicationReport publication) =>
