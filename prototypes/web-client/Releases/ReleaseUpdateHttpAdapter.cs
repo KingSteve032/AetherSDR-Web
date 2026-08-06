@@ -23,7 +23,7 @@ public sealed record PrepareReleaseUpdateHttpRequest(
 /// </summary>
 public static class ReleaseUpdateHttpAdapter
 {
-    public const string AntiforgeryHeaderName = "X-Aether-CSRF";
+    public const string AntiforgeryHeaderName = AetherAntiforgery.HeaderName;
 
     public static RouteGroupBuilder Map(WebApplication app)
     {

@@ -1422,13 +1422,13 @@ function renderReleaseTransaction() {
 }
 
 async function postReleaseJson(url, body) {
-  const antiforgery = await getJson("/api/admin/releases/antiforgery");
+  const antiforgeryHeaders = await getAntiforgeryHeaders();
   const options = {
     method: "POST",
     credentials: "same-origin",
     headers: {
       Accept: "application/json",
-      [antiforgery.headerName]: antiforgery.requestToken
+      ...antiforgeryHeaders
     }
   };
   if (body !== undefined) {
@@ -1466,10 +1466,14 @@ async function getJson(url) {
 }
 
 async function postJson(url, body) {
+  const antiforgeryHeaders = await getAntiforgeryHeaders();
   const options = {
     method: "POST",
     credentials: "same-origin",
-    headers: { Accept: "application/json" }
+    headers: {
+      Accept: "application/json",
+      ...antiforgeryHeaders
+    }
   };
   if (body !== undefined) {
     options.headers["Content-Type"] = "application/json";
@@ -1477,6 +1481,14 @@ async function postJson(url, body) {
   }
   const response = await fetch(url, options);
   return requireJson(response);
+}
+
+async function getAntiforgeryHeaders() {
+  const token = await getJson("/api/antiforgery");
+  if (token.headerName !== "X-Aether-CSRF" || !token.requestToken) {
+    throw new Error("The request security token is invalid.");
+  }
+  return { [token.headerName]: token.requestToken };
 }
 
 async function requireJson(response) {

@@ -20,8 +20,8 @@ fail-closed until the dedicated TX-safety milestone is complete.
 | M4 — Multi-radio administration | Complete | Observable and manageable radio fleet |
 | M5 — AetherD engine boundary | Blocked on RFC stages 3–5 | Versioned production engine connection |
 | M6 — Remote station connectivity | Complete | Secure access to radios on other networks |
-| M7 — Transmit safety | Active | Intentional, leased, fail-closed transmit |
-| M8 — Production release | Planned | Supported deployment, upgrades, and recovery |
+| M7 — Transmit safety | Complete | Intentional, leased, fail-closed transmit |
+| M8 — Production release | Active | Supported deployment, upgrades, and recovery |
 
 ## M0 — Browser console foundation
 

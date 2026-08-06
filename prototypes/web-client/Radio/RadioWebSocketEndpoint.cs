@@ -759,25 +759,54 @@ public static class OriginPolicy
 {
     public static bool IsAllowed(HttpContext context, OriginSettings settings)
     {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(settings);
+
         string? origin = context.Request.Headers.Origin.FirstOrDefault();
-        if (!Uri.TryCreate(origin, UriKind.Absolute, out Uri? originUri))
+        if (!TryParseOrigin(origin, out Uri originUri))
         {
             return false;
         }
 
-        string requestAuthority = context.Request.Host.Value ?? string.Empty;
-        if (string.Equals(
-                originUri.Authority,
-                requestAuthority,
-                StringComparison.OrdinalIgnoreCase))
+        if (TryParseOrigin(
+                $"{context.Request.Scheme}://{context.Request.Host.Value}",
+                out Uri requestOrigin) &&
+            IsSameOrigin(requestOrigin, originUri))
         {
             return true;
         }
 
         return settings.Values.Any(
-            allowed => string.Equals(
-                allowed.TrimEnd('/'),
-                originUri.GetLeftPart(UriPartial.Authority),
-                StringComparison.OrdinalIgnoreCase));
+            allowed =>
+                TryParseOrigin(allowed, out Uri allowedUri) &&
+                IsSameOrigin(allowedUri, originUri));
+    }
+
+    private static bool IsSameOrigin(Uri left, Uri right) =>
+        string.Equals(
+            left.Scheme,
+            right.Scheme,
+            StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(
+            left.IdnHost,
+            right.IdnHost,
+            StringComparison.OrdinalIgnoreCase) &&
+        left.Port == right.Port;
+
+    private static bool TryParseOrigin(string? value, out Uri origin)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out Uri? parsed) ||
+            parsed.Scheme is not ("http" or "https") ||
+            !string.IsNullOrEmpty(parsed.UserInfo) ||
+            parsed.AbsolutePath != "/" ||
+            !string.IsNullOrEmpty(parsed.Query) ||
+            !string.IsNullOrEmpty(parsed.Fragment))
+        {
+            origin = null!;
+            return false;
+        }
+
+        origin = parsed;
+        return true;
     }
 }

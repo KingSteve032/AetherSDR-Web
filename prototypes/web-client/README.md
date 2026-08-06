@@ -1428,11 +1428,14 @@ dotnet publish prototypes/web-client/AetherSDR.Web.csproj `
 
 The pilot deployment keeps immutable releases under
 `~/aethersdr/releases/`, atomically points `~/aethersdr/current` at the active
-release, and uses the unit in
-[`deploy/aethersdr-web.service`](deploy/aethersdr-web.service). Copy
-[`deploy/environment.development.example`](deploy/environment.development.example)
-to `~/.config/aethersdr-web/environment`, restrict it to the service account,
-and replace its temporary development-auth values before production.
+release, and uses the dedicated user unit in
+[`deploy/user/aethersdr-web.service`](deploy/user/aethersdr-web.service).
+Copy [`deploy/environment.development.example`](deploy/environment.development.example)
+to `~/.config/aethersdr-web/environment` with mode `0600` and replace its
+temporary development-auth values before production. The user unit creates the
+owner-only `~/.local/state/aethersdr-web` directory used by that example. Do not
+install the root-managed [system unit](deploy/aethersdr-web.service) in the user
+service manager.
 
 Before pushing a change that modifies the FlexWeb server, run the guarded
 pre-push deployment gate from the exact working tree:
@@ -1441,10 +1444,12 @@ pre-push deployment gate from the exact working tree:
 bash prototypes/web-client/deploy/validate-deploy-flexweb.sh
 ```
 
-The default `rx-only` health profile requires the deployed service to retain all
-fail-closed receive-only settings. A station whose reviewed production TX
-configuration is already staged and operator-validated must select the explicit
-profile instead:
+The default `rx-only` profile requires the deployed service's exact bounded
+health response to report `FlexRx` with `transmitEnabled=false`. The offline
+artifact inspection and separate watchdog probe retain the deeper fail-closed
+receive-only checks without publishing operational diagnostics. A station whose
+reviewed production TX configuration is already staged and operator-validated
+must select the explicit profile instead:
 
 ```bash
 bash prototypes/web-client/deploy/validate-deploy-flexweb.sh \
@@ -1454,10 +1459,11 @@ bash prototypes/web-client/deploy/validate-deploy-flexweb.sh \
 That profile does not enable TX or alter the owner-only environment. Before the
 service restart it runs the packaged non-starting activation preflight against
 the configured primary radio and requires the trust ring, signing key, all three
-allowlists, watchdog executable, and activation binding to match. After restart
-it requires internal and public health to show the exact TX-enabled configuration
-while remaining idle, session-empty, command-transport unavailable, and
-independent-watchdog Disarmed.
+allowlists, watchdog executable, and activation binding to match. After restart,
+internal and public health must return only the exact three-field readiness
+payload with `transmitEnabled=true`, and the independent watchdog artifact must
+still start empty and Disarmed. Authenticated administrators can inspect the
+full operational snapshot at `/api/admin/diagnostics/health`.
 
 The gate has no skip-tests option. It builds the complete solution, runs the
 server, independent-watchdog, TX-HIL isolation, AetherRemote, and browser test
@@ -1470,11 +1476,11 @@ privileged service cgroup and communicates only over redirected standard
 input/output; it has no listener, key capability, arbitrary-command surface, or
 arming request. Its optional unkey-only FLEX client defaults disabled. The gate
 deploys FlexWeb through the `flexweb-gateway` SSH alias (resolving to
-`flexweb@10.2.0.254`), and verifies internal and public fail-closed health. After
-all local validation passes, it prompts once without echo for the FlexWeb sudo
-password, validates it before activation, and reuses it only for the service
-restart or automatic rollback. The existing configuration and credentials are
-preserved, the previous immutable release remains available, and a failed
+`flexweb@10.2.0.254`), and verifies internal and public fail-closed health. It
+controls only the `flexweb` user service through the authenticated SSH session;
+it neither accepts nor transports a sudo password. The existing configuration
+and credentials are preserved, the previous immutable release remains
+available, and a failed
 activation or health check rolls the `current` link back automatically. The
 script never commits or pushes; a Browser Bridge acceptance pass against the
 deployed site is required before Git publication. The default `rx-only` profile
@@ -2169,10 +2175,15 @@ input meter and no samples are transmitted. Admin shows the lease holder,
 activation binding, transaction/heartbeat state, expiry or revocation reason,
 and latest outcome without exposing the opaque lease ID.
 
-The user service needs lingering to start at boot without an interactive SSH
-login:
+Install the pilot unit into the `flexweb` user manager under its canonical
+service name, then enable lingering so it can start at boot without an
+interactive SSH login:
 
 ```bash
+install -d -m 0700 ~/.config/systemd/user
+install -m 0644 prototypes/web-client/deploy/user/aethersdr-web.service \
+  ~/.config/systemd/user/aethersdr-web.service
+systemctl --user daemon-reload
 sudo loginctl enable-linger flexweb
 systemctl --user enable --now aethersdr-web.service
 ```
@@ -2180,7 +2191,9 @@ systemctl --user enable --now aethersdr-web.service
 For a no-sudo pilot only, `deploy/start-aethersdr-web.sh` can be launched by
 the service account's crontab using `deploy/aethersdr-web.cron`. Remove that
 fallback before enabling the managed user service so only one process owns the
-HTTP and radio ports.
+HTTP and radio ports. The root-managed stack instead installs
+`deploy/aethersdr-web.service` under `/etc/systemd/system` and controls it
+with system `systemctl`; never enable both units on the same host.
 
 ## Microsoft Entra ID / Active Directory authentication
 
@@ -2224,6 +2237,7 @@ ReverseProxy__Enabled=true
 ReverseProxy__KnownProxies__0=<exact-proxy-LAN-IP>
 DataProtection__KeyPath=/var/lib/aethersdr-web/keys
 RadioAccess__PolicyPath=/var/lib/aethersdr-web/radio-access.json
+RadioAccess__AuditPath=/var/lib/aethersdr-web/audit.json
 ```
 
 The production deployment uses `deploy/aethersdr-web.service` as a
@@ -2231,7 +2245,9 @@ root-installed system unit while the process itself runs as the unprivileged
 `flexweb` account. The unit starts after `network-online.target`, restarts on
 failure, writes to the persistent system journal, exposes only the required
 network address families, and makes the host filesystem read-only except for
-the owner-only Data Protection key and radio-policy directories.
+the owner-only `/var/lib/aethersdr-web` state directory created by systemd.
+Data Protection keys, radio policy, and administrative audit records all live
+under that one canonical directory.
 
 Accounts assigned `Aether.Admin` get a **Radio allocation** applet. It reports
 discovered capacity and active operators, applies persistent shared or
@@ -2272,9 +2288,13 @@ gateway or a tightly configured reverse proxy, and prefer the WireGuard
 topology accepted in the AetherD RFC. Do not expose the AetherD listener
 directly to the public internet.
 
-The public browser origin must appear in `AllowedOrigins`. WebSocket requests
-without an `Origin` header, with an unlisted foreign origin, or without the
-expected subprotocol are rejected before a radio session is created.
+The public browser origin must appear in `AllowedOrigins` as one exact
+HTTP(S) scheme and authority with no path, query, or fragment. WebSocket
+requests without an `Origin` header, with the wrong scheme or authority, or
+without the expected subprotocol are rejected before a radio session is
+created. Anonymous `GET /healthz` returns only the bounded readiness contract;
+the full operational snapshot is available only to `Aether.Admin` at
+`GET /api/admin/diagnostics/health`.
 
 ## Multi-user behavior
 

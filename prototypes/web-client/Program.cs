@@ -8,6 +8,7 @@ using AetherSDR.Web.Setup;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -619,7 +620,7 @@ string[] allowedOrigins =
 
 builder.Services.AddAntiforgery(options =>
 {
-    options.HeaderName = ReleaseUpdateHttpAdapter.AntiforgeryHeaderName;
+    options.HeaderName = AetherAntiforgery.HeaderName;
 });
 builder.Services.AddSingleton(Options.Create(authSettings));
 builder.Services.AddSingleton(Options.Create(radioSettings));
@@ -832,24 +833,28 @@ builder.Services.AddSingleton<IHostedService>(
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddFixedWindowLimiter(
+    options.AddPolicy(
         "websocket",
-        limiter =>
-        {
-            limiter.PermitLimit = 20;
-            limiter.Window = TimeSpan.FromMinutes(1);
-            limiter.QueueLimit = 0;
-            limiter.AutoReplenishment = true;
-        });
-    options.AddFixedWindowLimiter(
+        context => RateLimitPartition.GetFixedWindowLimiter(
+            RequestRateLimitPartitionKey.ForAuthenticatedUserOrAddress(context),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+    options.AddPolicy(
         "station-enrollment",
-        limiter =>
-        {
-            limiter.PermitLimit = 10;
-            limiter.Window = TimeSpan.FromMinutes(1);
-            limiter.QueueLimit = 0;
-            limiter.AutoReplenishment = true;
-        });
+        context => RateLimitPartition.GetFixedWindowLimiter(
+            RequestRateLimitPartitionKey.ForAddress(context),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
 });
 
 WebApplication app = builder.Build();
@@ -1048,7 +1053,7 @@ app.UseWebSockets(
     });
 
 app.MapGet(
-        "/healthz",
+        "/api/admin/diagnostics/health",
         () =>
         {
             ReleaseManifestTrustDiagnostics releaseTrust =
@@ -4243,13 +4248,24 @@ app.MapGet(
                 txSafetySupervisorArmingAvailable = false
             });
         })
+    .RequireAuthorization(AetherPolicies.Admin);
+
+app.MapGet(
+        "/healthz",
+        () => Results.Ok(new
+        {
+            status = "ok",
+            radioMode = radioSettings.Mode,
+            transmitEnabled =
+                stationTxProductionActivationBinding.BindingApplied
+        }))
     .AllowAnonymous();
 
 app.MapGet(
         "/auth/login",
         (HttpContext context, string? returnUrl) =>
         {
-            string safeReturnUrl = SafeReturnUrl(returnUrl);
+            string safeReturnUrl = LocalReturnUrl.Normalize(returnUrl);
             if (string.Equals(
                     authSettings.Mode,
                     "Development",
@@ -4267,6 +4283,12 @@ app.MapGet(
     .AllowAnonymous();
 
 app.MapGet(
+        "/auth/logout",
+        (HttpContext context, IAntiforgery antiforgery) =>
+            AetherAntiforgery.IssueLogoutConfirmation(context, antiforgery))
+    .RequireAuthorization();
+
+app.MapPost(
         "/auth/logout",
         () =>
         {
@@ -4287,6 +4309,13 @@ app.MapGet(
                     OpenIdConnectDefaults.AuthenticationScheme
                 ]);
         })
+    .RequireAuthorization()
+    .RequireAetherAntiforgery();
+
+app.MapGet(
+        "/api/antiforgery",
+        (HttpContext context, IAntiforgery antiforgery) =>
+            AetherAntiforgery.IssueToken(context, antiforgery))
     .RequireAuthorization();
 
 app.MapGet(
@@ -4541,7 +4570,8 @@ app.MapPost(
                 sessionId = selectedSession.SessionId
             });
         })
-    .RequireAuthorization(AetherPolicies.Control);
+    .RequireAuthorization(AetherPolicies.Control)
+    .RequireAetherAntiforgery();
 
 app.MapPost(
         "/api/session/release",
@@ -4558,7 +4588,8 @@ app.MapPost(
                 : Results.NotFound(
                     new { error = "That radio session is not available." });
         })
-    .RequireAuthorization(AetherPolicies.Observe);
+    .RequireAuthorization(AetherPolicies.Observe)
+    .RequireAetherAntiforgery();
 
 app.MapPost(
         "/api/radio/low-bandwidth",
@@ -4584,7 +4615,8 @@ app.MapPost(
                 reconnecting
             });
         })
-    .RequireAuthorization(AetherPolicies.Control);
+    .RequireAuthorization(AetherPolicies.Control)
+    .RequireAetherAntiforgery();
 
 app.MapGet(
         "/api/admin/radios",
@@ -4672,7 +4704,8 @@ app.MapPost(
                     statusCode: StatusCodes.Status503ServiceUnavailable);
             }
         })
-    .RequireAuthorization(AetherPolicies.Admin);
+    .RequireAuthorization(AetherPolicies.Admin)
+    .RequireAetherAntiforgery();
 
 app.MapPost(
         "/api/admin/stations/{stationId}/{action}",
@@ -4760,7 +4793,8 @@ app.MapPost(
                     statusCode: StatusCodes.Status503ServiceUnavailable);
             }
         })
-    .RequireAuthorization(AetherPolicies.Admin);
+    .RequireAuthorization(AetherPolicies.Admin)
+    .RequireAetherAntiforgery();
 
 app.MapPost(
         "/api/station-enrollment/redeem",
@@ -4884,7 +4918,8 @@ app.MapPost(
                 return Results.NotFound(new { error = exception.Message });
             }
         })
-    .RequireAuthorization(AetherPolicies.Admin);
+    .RequireAuthorization(AetherPolicies.Admin)
+    .RequireAetherAntiforgery();
 
 app.MapPost(
         "/api/admin/radios/{radioId}/operators/{userId}/disconnect",
@@ -4939,7 +4974,8 @@ app.MapPost(
                 return Results.NotFound(new { error = exception.Message });
             }
         })
-    .RequireAuthorization(AetherPolicies.Admin);
+    .RequireAuthorization(AetherPolicies.Admin)
+    .RequireAetherAntiforgery();
 
 app.MapGet(
         "/styles.css",
@@ -5396,19 +5432,6 @@ static void ConfigureReverseProxy(
             options.KnownProxies.Add(address);
         }
     });
-}
-
-static string SafeReturnUrl(string? returnUrl)
-{
-    if (string.IsNullOrWhiteSpace(returnUrl) ||
-        !Uri.TryCreate(returnUrl, UriKind.Relative, out Uri? parsed) ||
-        !returnUrl.StartsWith("/", StringComparison.Ordinal) ||
-        returnUrl.StartsWith("//", StringComparison.Ordinal))
-    {
-        return "/";
-    }
-
-    return parsed.ToString();
 }
 
 static IResult RadioAccessDeniedResult(

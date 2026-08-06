@@ -1,4 +1,5 @@
-# Temporary receive-only pilot profile for a trusted LAN/VPN.
+# Temporary receive-only pilot profile for deploy/user/aethersdr-web.service
+# on a trusted LAN/VPN. Do not use these home-state paths with the system unit.
 # Replace Development authentication with OIDC before production use.
 ASPNETCORE_ENVIRONMENT=Development
 InstallationSetupOnly__Enabled=false
@@ -37,4 +38,6 @@ StationTxCommandTrust__VerificationEnabled=false
 StationTxCommandSigning__SigningEnabled=false
 StationTxCommandEnvelopeCoordinator__SubmissionEnabled=false
 Radio__StationName=AETHER-WEB-RX
-RadioAccess__PolicyPath=/home/flexweb/aethersdr/state/radio-access.json
+DataProtection__KeyPath=/home/flexweb/.local/state/aethersdr-web/keys
+RadioAccess__PolicyPath=/home/flexweb/.local/state/aethersdr-web/radio-access.json
+RadioAccess__AuditPath=/home/flexweb/.local/state/aethersdr-web/audit.json

@@ -28,10 +28,13 @@ files are updated together.
 
 ```bash
 dotnet build AetherSDR-Web.slnx -c Release
+dotnet format AetherSDR-Web.slnx --verify-no-changes --no-restore
 
 dotnet test prototypes/web-client/tests/AetherSDR.Web.Tests.csproj -c Release
 dotnet test prototypes/web-client/tx-hil-tests/AetherSDR.TxHil.Tests.csproj -c Release
+dotnet test prototypes/tx-watchdog/AetherSDR.TxWatchdog.Tests/AetherSDR.TxWatchdog.Tests.csproj -c Release
 dotnet test AetherRemote/tests/AetherRemote.Tests/AetherRemote.Tests.csproj -c Release
+dotnet test tools/release/AetherSDR.ReleaseBuilder.Tests/AetherSDR.ReleaseBuilder.Tests.csproj -c Release
 node --test prototypes/web-client/tests-ui/*.test.mjs
 ```
 
@@ -40,3 +43,13 @@ node --test prototypes/web-client/tests-ui/*.test.mjs
 Production is receive-only unless transmit is explicitly enabled through the
 intended station configuration and build path. TX state is radio-authoritative,
 operator intent is mandatory, and stale or ambiguous ownership fails closed.
+
+## Project policies
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change. Report
+vulnerabilities through the private process in [SECURITY.md](SECURITY.md), and
+follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## License
+
+AetherSDR-Web is licensed under the [GNU General Public License v3.0](LICENSE).
