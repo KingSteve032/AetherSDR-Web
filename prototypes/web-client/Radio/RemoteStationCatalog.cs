@@ -5,6 +5,7 @@ using System.Text;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using AetherSDR.Web.Setup;
 using Microsoft.Extensions.Options;
 
 namespace AetherSDR.Web.Radio;
@@ -106,6 +107,25 @@ public sealed record RemoteStationEnrollmentResult(
     string Purpose,
     DateTimeOffset EnrolledAt,
     DateTimeOffset? RotatedAt);
+
+public sealed record RemoteReleaseServiceControlRequest(
+    string StationId,
+    string ReleaseIdentity,
+    string Phase,
+    string Action,
+    string ServiceRole,
+    string UnitIdentity);
+
+public sealed record RemoteReleaseServiceControlResult(
+    string StationId,
+    string CorrelationId,
+    string ReleaseIdentity,
+    string Phase,
+    string Action,
+    string ServiceRole,
+    string UnitIdentity,
+    bool Succeeded,
+    string Outcome);
 
 public sealed class RemoteStationManagementException(
     HttpStatusCode statusCode,
@@ -352,6 +372,23 @@ public sealed class RemoteStationCatalogService(
                 cancellationToken);
     }
 
+    public async Task<RemoteReleaseServiceControlResult>
+        ControlReleaseServiceAsync(
+            RemoteReleaseServiceControlRequest request,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        RemoteStationManagementValidator.ValidateStationId(request.StationId);
+        RemoteStationManagementValidator.ValidateReleaseServiceControl(request);
+        return await PostAsync<
+            RemoteReleaseServiceControlRequest,
+            RemoteReleaseServiceControlResult>(
+                "api/release-service-control",
+                request,
+                m_settings.AdministrationCredentialFile,
+                cancellationToken);
+    }
+
     public async Task<RemoteStationEnrollmentResult> RedeemEnrollmentAsync(
         RedeemRemoteStationEnrollmentRequest request,
         CancellationToken cancellationToken)
@@ -565,8 +602,86 @@ internal static partial class RemoteStationManagementValidator
                         "The station enrollment response is invalid.");
                 }
                 break;
+            case RemoteReleaseServiceControlResult result:
+                ValidateReleaseServiceControlResult(result);
+                break;
         }
     }
+
+    public static void ValidateReleaseServiceControl(
+        RemoteReleaseServiceControlRequest request)
+    {
+        if (!IsStationId(request.StationId) ||
+            !IsCanonicalReleaseIdentity(request.ReleaseIdentity) ||
+            request.Phase is not "pre-switch-stop" and
+                not "post-switch-start" ||
+            request.Action is not "stop" and not "start" ||
+            request.ServiceRole is not "aetherremote-agent" and
+                not "station-engine" ||
+            request.Phase == "pre-switch-stop" && request.Action != "stop" ||
+            request.Phase == "post-switch-start" && request.Action != "start" ||
+            !IsExactRemoteUnit(request.ServiceRole, request.UnitIdentity))
+        {
+            throw new ArgumentException(
+                "The remote release service-control request is invalid.",
+                nameof(request));
+        }
+    }
+
+    public static void ValidateReleaseServiceControlResult(
+        RemoteReleaseServiceControlResult result)
+    {
+        ValidateReleaseServiceControl(
+            new RemoteReleaseServiceControlRequest(
+                result.StationId,
+                result.ReleaseIdentity,
+                result.Phase,
+                result.Action,
+                result.ServiceRole,
+                result.UnitIdentity));
+        if (result.CorrelationId is not { Length: 32 } ||
+            !result.CorrelationId.All(character =>
+                character is >= '0' and <= '9' or >= 'a' and <= 'f') ||
+            !IsIdentifier(result.Outcome, 64))
+        {
+            throw new InvalidDataException(
+                "The remote release service-control response is invalid.");
+        }
+    }
+
+    private static bool IsCanonicalReleaseIdentity(string value)
+    {
+        try
+        {
+            return string.Equals(
+                InstallationReleaseIdentity.Parse(value),
+                value,
+                StringComparison.Ordinal);
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsExactRemoteUnit(string role, string unit) =>
+        role switch
+        {
+            "aetherremote-agent" => string.Equals(
+                unit,
+                "aetherremote-agent.service",
+                StringComparison.Ordinal),
+            "station-engine" => string.Equals(
+                unit,
+                "aetherremote-station-engine.service",
+                StringComparison.Ordinal),
+            _ => false
+        };
+
+    private static bool IsIdentifier(string? value, int maximumLength) =>
+        value is { Length: > 0 } &&
+        value.Length <= maximumLength &&
+        IdentifierPattern().IsMatch(value);
 
     public static void ValidateCredential(
         RemoteStationCredentialAdministrationEntry credential)

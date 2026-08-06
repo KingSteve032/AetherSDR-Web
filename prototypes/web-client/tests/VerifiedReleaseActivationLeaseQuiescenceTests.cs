@@ -162,6 +162,36 @@ public sealed class VerifiedReleaseActivationLeaseQuiescenceTests
     }
 
     [Fact]
+    public void ExactClosureAuthorityCanReopenAdmissionWithoutMutatingLeases()
+    {
+        Fixture fixture = new();
+        TxLeaseManager leases = new(fixture.Time);
+        VerifiedReleaseActivationLeaseQuiescenceBoundary boundary = new(leases);
+        VerifiedReleaseActivationLeaseQuiescenceReport closed =
+            boundary.CloseAdmission(boundary.Compose(fixture.PlanResult));
+        Assert.True(closed.Succeeded);
+        Assert.True(closed.AdmissionClosed);
+        Assert.True(closed.DrainSatisfied);
+
+        VerifiedReleaseActivationLeaseQuiescenceReport reopened =
+            boundary.ReleaseAdmission(closed);
+
+        Assert.True(reopened.Succeeded, reopened.Message);
+        Assert.False(reopened.AdmissionClosed);
+        Assert.False(boundary.State.AdmissionClosureActive);
+        Assert.False(reopened.TxLeaseMutationPerformed);
+        Assert.True(Acquire(leases, "radio-after-update", out _));
+
+        VerifiedReleaseActivationLeaseQuiescenceReport repeated =
+            boundary.ReleaseAdmission(closed);
+        Assert.False(repeated.Succeeded);
+        Assert.Equal(
+            VerifiedReleaseActivationLeaseQuiescenceFailureCode
+                .AdmissionReopenRejected,
+            repeated.FailureCode);
+    }
+
+    [Fact]
     public void ClosureObservationDoesNotExpireOrForceReleaseStoredLease()
     {
         Fixture fixture = new();

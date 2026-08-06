@@ -45,6 +45,20 @@ const elements = {
   enrollmentCreate: document.querySelector("#admin-enrollment-create"),
   enrollmentResult: document.querySelector("#admin-enrollment-result"),
   credentialList: document.querySelector("#admin-credential-list"),
+  releaseForm: document.querySelector("#admin-release-form"),
+  releaseIdentity: document.querySelector("#admin-release-identity"),
+  releaseInstalledIdentity: document.querySelector(
+    "#admin-release-installed-identity"),
+  releaseInstalledVersion: document.querySelector(
+    "#admin-release-installed-version"),
+  releaseSchemaVersion: document.querySelector(
+    "#admin-release-schema-version"),
+  releaseProtocolVersion: document.querySelector(
+    "#admin-release-protocol-version"),
+  releasePrepare: document.querySelector("#admin-release-prepare"),
+  releaseResult: document.querySelector("#admin-release-result"),
+  releaseActivate: document.querySelector("#admin-release-activate"),
+  releaseRollback: document.querySelector("#admin-release-rollback"),
   auditCount: document.querySelector("#admin-audit-count"),
   auditList: document.querySelector("#admin-audit-list")
 };
@@ -60,6 +74,7 @@ const state = {
     credentials: []
   },
   enrollmentCode: null,
+  releaseTransaction: null,
   auditEvents: [],
   refreshing: false,
   sessionDiagnosticExpansion: new Map()
@@ -77,6 +92,9 @@ async function initialize() {
   elements.enrollmentForm.addEventListener(
     "submit",
     createEnrollmentCode);
+  elements.releaseForm.addEventListener("submit", prepareReleaseUpdate);
+  elements.releaseActivate.addEventListener("click", activateReleaseUpdate);
+  elements.releaseRollback.addEventListener("click", rollbackReleaseUpdate);
   await refreshInventory();
   window.setInterval(refreshInventory, 5000);
 }
@@ -88,15 +106,18 @@ async function refreshInventory(announce = false) {
   state.refreshing = true;
   elements.refresh.disabled = true;
   try {
-    const [result, stations, audit] = await Promise.all([
+    const [result, stations, audit, releaseTransaction] = await Promise.all([
       getJson("/api/admin/radios"),
       getJson("/api/admin/stations"),
-      getJson("/api/admin/audit?limit=50")
+      getJson("/api/admin/audit?limit=50"),
+      getJson("/api/admin/releases/transaction")
     ]);
     state.radios = Array.isArray(result.radios) ? result.radios : [];
     state.stationAdministration = stations || state.stationAdministration;
     state.auditEvents = Array.isArray(audit.events) ? audit.events : [];
+    state.releaseTransaction = releaseTransaction || null;
     renderCredentialSecurity();
+    renderReleaseTransaction();
     renderStations();
     renderInventory();
     renderAudit();
@@ -1263,6 +1284,177 @@ function buildOperatorRow(radio, operator) {
 
   row.append(identity, disconnect);
   return row;
+}
+
+async function prepareReleaseUpdate(event) {
+  event.preventDefault();
+  elements.releasePrepare.disabled = true;
+  try {
+    const result = await postReleaseJson(
+      "/api/admin/releases/prepare",
+      {
+        releaseIdentity: elements.releaseIdentity.value.trim(),
+        installedReleaseIdentity:
+          elements.releaseInstalledIdentity.value.trim(),
+        installedVersion: elements.releaseInstalledVersion.value.trim(),
+        configurationSchemaVersion:
+          Number.parseInt(elements.releaseSchemaVersion.value, 10),
+        protocolVersion:
+          Number.parseInt(elements.releaseProtocolVersion.value, 10)
+      });
+    state.releaseTransaction = result;
+    renderReleaseTransaction();
+    showNotice(
+      `${result.targetReleaseIdentity || "Release"} is prepared inactive; ` +
+      "fresh approval is required before activation.");
+    await refreshInventory();
+  } catch (error) {
+    showNotice(error.message || "The release was not prepared.", true);
+  } finally {
+    elements.releasePrepare.disabled = false;
+  }
+}
+
+async function activateReleaseUpdate() {
+  const transaction = state.releaseTransaction;
+  if (!transaction?.transactionId ||
+      transaction.phase !== "awaitingApproval") {
+    return;
+  }
+  const confirmed = window.confirm(
+    `Activate ${transaction.targetReleaseIdentity}? ` +
+    "This closes TX-lease admission, requires all radios idle and watchdogs " +
+    "Disarmed, restarts only signed services, verifies health, and rolls back " +
+    "automatically on failure.");
+  if (!confirmed) {
+    return;
+  }
+  elements.releaseActivate.disabled = true;
+  try {
+    const result = await postReleaseJson(
+      `/api/admin/releases/${encodeURIComponent(transaction.transactionId)}` +
+      "/activate");
+    state.releaseTransaction = result;
+    renderReleaseTransaction();
+    showNotice(result.message || "Release activation completed.");
+    await refreshInventory();
+  } catch (error) {
+    showNotice(
+      error.message ||
+      "Release activation was rejected. Sign in again for fresh reauthentication.",
+      true);
+  } finally {
+    renderReleaseTransaction();
+  }
+}
+
+async function rollbackReleaseUpdate() {
+  const transaction = state.releaseTransaction;
+  if (!transaction?.transactionId || transaction.phase !== "completed") {
+    return;
+  }
+  const typed = window.prompt(
+    "Type the exact transaction ID to approve rollback:",
+    "");
+  if (typed !== transaction.transactionId) {
+    showNotice("Rollback confirmation did not match the transaction ID.", true);
+    return;
+  }
+  elements.releaseRollback.disabled = true;
+  try {
+    const result = await postReleaseJson(
+      `/api/admin/releases/${encodeURIComponent(transaction.transactionId)}` +
+      "/rollback");
+    state.releaseTransaction = result;
+    renderReleaseTransaction();
+    showNotice(result.message || "Release rollback completed.");
+    await refreshInventory();
+  } catch (error) {
+    showNotice(
+      error.message ||
+      "Release rollback was rejected. Sign in again for fresh reauthentication.",
+      true);
+  } finally {
+    renderReleaseTransaction();
+  }
+}
+
+function renderReleaseTransaction() {
+  const transaction = state.releaseTransaction;
+  elements.releaseResult.replaceChildren();
+  if (!transaction?.transactionId) {
+    elements.releaseResult.append(
+      createElement(
+        "p",
+        "muted",
+        transaction?.message || "No release update transaction is active."));
+    elements.releaseActivate.disabled = true;
+    elements.releaseRollback.disabled = true;
+    return;
+  }
+
+  const heading = createElement("div", "admin-enrollment-result-heading");
+  heading.append(
+    createElement(
+      "strong",
+      "",
+      `${transaction.targetReleaseIdentity || "Release"} · ` +
+      `${transaction.phase || "unknown"}`),
+    createElement(
+      "span",
+      transaction.reconciliationRequired
+        ? "status-pill degraded"
+        : "status-pill",
+      transaction.succeeded ? "READY" : "ATTENTION"));
+  const details = createElement(
+    "p",
+    "",
+    transaction.message || "Transaction status is available.");
+  const identity = createElement(
+    "code",
+    "admin-enrollment-command",
+    transaction.transactionId);
+  elements.releaseResult.append(heading, details, identity);
+  elements.releaseActivate.disabled =
+    transaction.phase !== "awaitingApproval";
+  elements.releaseRollback.disabled =
+    transaction.phase !== "completed" || !transaction.rollbackReady;
+}
+
+async function postReleaseJson(url, body) {
+  const antiforgery = await getJson("/api/admin/releases/antiforgery");
+  const options = {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json",
+      [antiforgery.headerName]: antiforgery.requestToken
+    }
+  };
+  if (body !== undefined) {
+    options.headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify(body);
+  }
+  const response = await fetch(url, options);
+  if (response.status === 401) {
+    window.location.assign(
+      `/auth/login?returnUrl=${encodeURIComponent("/admin")}`);
+    throw new Error("Sign-in is required.");
+  }
+  const text = await response.text();
+  let result = {};
+  if (text) {
+    try {
+      result = JSON.parse(text);
+    } catch {
+      result = {};
+    }
+  }
+  if (!response.ok) {
+    throw new Error(
+      result.error || result.message || `Request failed (${response.status}).`);
+  }
+  return result;
 }
 
 async function getJson(url) {

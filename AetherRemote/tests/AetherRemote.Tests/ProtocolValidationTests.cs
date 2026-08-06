@@ -116,6 +116,61 @@ public sealed class ProtocolValidationTests
     }
 
     [Fact]
+    public void ReleaseServiceControlAcceptsOnlyExactFixedUnitOperations()
+    {
+        BrokerReleaseServiceControlMessage valid = new(
+            StationMessageTypes.ReleaseServiceControl,
+            "0123456789abcdef0123456789abcdef",
+            "aethersdr-8.3.0",
+            "pre-switch-stop",
+            "stop",
+            "aetherremote-agent",
+            "aetherremote-agent.service");
+
+        Assert.Null(
+            StationProtocolValidator.ValidateReleaseServiceControl(valid));
+        Assert.NotNull(
+            StationProtocolValidator.ValidateReleaseServiceControl(
+                valid with { UnitIdentity = "../../evil.service" }));
+        Assert.NotNull(
+            StationProtocolValidator.ValidateReleaseServiceControl(
+                valid with { Action = "restart" }));
+        Assert.NotNull(
+            StationProtocolValidator.ValidateReleaseServiceControl(
+                valid with { Phase = "post-switch-start" }));
+        Assert.NotNull(
+            StationProtocolValidator.ValidateReleaseServiceControl(
+                valid with { ServiceRole = "gateway-web" }));
+        Assert.NotNull(
+            StationProtocolValidator.ValidateReleaseServiceControl(
+                valid with { ReleaseIdentity = "release-latest" }));
+    }
+
+    [Fact]
+    public void ReleaseServiceControlResultMustEchoExactRequestShape()
+    {
+        StationReleaseServiceControlResultMessage valid = new(
+            StationMessageTypes.ReleaseServiceControlResult,
+            "0123456789abcdef0123456789abcdef",
+            "aethersdr-8.3.0",
+            "post-switch-start",
+            "start",
+            "station-engine",
+            "aetherremote-station-engine.service",
+            Succeeded: true,
+            Outcome: "completed");
+
+        Assert.Null(
+            StationProtocolValidator.ValidateReleaseServiceControlResult(valid));
+        Assert.NotNull(
+            StationProtocolValidator.ValidateReleaseServiceControlResult(
+                valid with { Outcome = "contains spaces" }));
+        Assert.NotNull(
+            StationProtocolValidator.ValidateReleaseServiceControlResult(
+                valid with { CorrelationId = "short" }));
+    }
+
+    [Fact]
     public void ReceiveProjectionBinaryRequiresKnownBoundedFraming()
     {
         byte[] valid = new byte[16];

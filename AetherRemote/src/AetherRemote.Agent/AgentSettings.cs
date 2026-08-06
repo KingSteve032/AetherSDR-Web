@@ -20,6 +20,7 @@ public sealed class AgentSettings
     public string LocalEngineOrigin { get; set; } =
         "http://127.0.0.1:5081";
     public bool AllowInsecureDevelopmentTransport { get; set; }
+    public bool ReleaseServiceControlEnabled { get; set; }
     public string[]? Capabilities { get; set; }
     public ConfiguredRadioSettings[] ConfiguredRadios { get; set; } = [];
 }

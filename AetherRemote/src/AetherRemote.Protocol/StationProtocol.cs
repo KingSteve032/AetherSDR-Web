@@ -40,14 +40,20 @@ public static class StationMessageTypes
     public const string OpenReceiveSession = "broker.receive.open";
     public const string CloseReceiveSession = "broker.receive.close";
     public const string SendReceiveText = "broker.receive.text";
+    public const string ReleaseServiceControl =
+        "broker.release.service-control";
+    public const string ReleaseServiceControlResult =
+        "station.release.service-control-result";
 }
 
 public static class StationCapabilities
 {
     public const string ReceiveProjectionV1 = "receive-projection-v1";
+    public const string ReleaseServiceControlV1 =
+        "release-service-control-v1";
 
     public static bool IsKnown(string? capability) =>
-        capability is ReceiveProjectionV1;
+        capability is ReceiveProjectionV1 or ReleaseServiceControlV1;
 }
 
 public sealed record StationLinkTokenRequest(
@@ -132,6 +138,26 @@ public sealed record BrokerReceiveTextMessage(
     string Type,
     string SessionId,
     string Payload);
+
+public sealed record BrokerReleaseServiceControlMessage(
+    string Type,
+    string CorrelationId,
+    string ReleaseIdentity,
+    string Phase,
+    string Action,
+    string ServiceRole,
+    string UnitIdentity);
+
+public sealed record StationReleaseServiceControlResultMessage(
+    string Type,
+    string CorrelationId,
+    string ReleaseIdentity,
+    string Phase,
+    string Action,
+    string ServiceRole,
+    string UnitIdentity,
+    bool Succeeded,
+    string Outcome);
 
 public sealed record StationRadioAdvertisement(
     string RadioId,
@@ -448,6 +474,70 @@ public static partial class StationProtocolValidator
         return ValidateClientProjectionCommand(message.Payload);
     }
 
+    public static string? ValidateReleaseServiceControl(
+        BrokerReleaseServiceControlMessage? message)
+    {
+        if (message is null ||
+            !string.Equals(
+                message.Type,
+                StationMessageTypes.ReleaseServiceControl,
+                StringComparison.Ordinal) ||
+            !IsSessionId(message.CorrelationId) ||
+            !IsReleaseIdentity(message.ReleaseIdentity) ||
+            message.Phase is not "pre-switch-stop" and
+                not "post-switch-start" ||
+            message.Action is not "stop" and not "start" ||
+            message.ServiceRole is not "aetherremote-agent" and
+                not "station-engine" ||
+            !IsExactReleaseUnit(message.ServiceRole, message.UnitIdentity) ||
+            message.Phase == "pre-switch-stop" && message.Action != "stop" ||
+            message.Phase == "post-switch-start" && message.Action != "start")
+        {
+            return "The remote release service-control request is invalid.";
+        }
+        return null;
+    }
+
+    public static string? ValidateReleaseServiceControlResult(
+        StationReleaseServiceControlResultMessage? message)
+    {
+        if (message is null ||
+            !string.Equals(
+                message.Type,
+                StationMessageTypes.ReleaseServiceControlResult,
+                StringComparison.Ordinal) ||
+            ValidateReleaseServiceControl(
+                new BrokerReleaseServiceControlMessage(
+                    StationMessageTypes.ReleaseServiceControl,
+                    message.CorrelationId,
+                    message.ReleaseIdentity,
+                    message.Phase,
+                    message.Action,
+                    message.ServiceRole,
+                    message.UnitIdentity)) is not null ||
+            !IsIdentifier(message.Outcome, 64))
+        {
+            return "The remote release service-control result is invalid.";
+        }
+        return null;
+    }
+
+    private static bool IsExactReleaseUnit(string role, string unit) =>
+        role switch
+        {
+            "aetherremote-agent" =>
+                string.Equals(
+                    unit,
+                    "aetherremote-agent.service",
+                    StringComparison.Ordinal),
+            "station-engine" =>
+                string.Equals(
+                    unit,
+                    "aetherremote-station-engine.service",
+                    StringComparison.Ordinal),
+            _ => false
+        };
+
     public static string? ValidateClientProjectionCommand(string? payload)
     {
         if (!IsProjectionJson(payload))
@@ -511,6 +601,10 @@ public static partial class StationProtocolValidator
         value.Length is > 0 &&
         value.Length <= maximumLength &&
         IdentifierPattern().IsMatch(value);
+
+    public static bool IsReleaseIdentity(string? value) =>
+        value is { Length: >= 15 and <= 128 } &&
+        ReleaseIdentityPattern().IsMatch(value);
 
     public static bool IsText(string? value, int maximumLength) =>
         value is not null &&
@@ -628,4 +722,9 @@ public static partial class StationProtocolValidator
 
     [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9._:-]*$", RegexOptions.CultureInvariant)]
     private static partial Regex IdentifierPattern();
+
+    [GeneratedRegex(
+        "^aethersdr-(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex ReleaseIdentityPattern();
 }

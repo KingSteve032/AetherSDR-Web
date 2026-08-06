@@ -241,11 +241,17 @@ internal sealed class VerifiedReleaseActivationCurrentPointerSwitchEvidence
                 "Current-pointer switch evidence timestamps are invalid.");
         }
         if (serviceControlPlan.ServiceControlRequired &&
+            !serviceControlPlan.HostRestartRequired &&
             (preSwitchEvidence is null ||
              !ReferenceEquals(preSwitchEvidence.Plan, serviceControlPlan)))
         {
             throw new InvalidOperationException(
                 "Current-pointer switch evidence requires the exact pre-switch service-control token.");
+        }
+        if (serviceControlPlan.HostRestartRequired && preSwitchEvidence is not null)
+        {
+            throw new InvalidOperationException(
+                "Host-restart pointer evidence cannot retain a service-stop token.");
         }
         if (!serviceControlPlan.ServiceControlRequired && preSwitchEvidence is not null)
         {
@@ -361,7 +367,7 @@ public sealed class VerifiedReleaseActivationCurrentPointerSwitchService
         UnixFileMode.OtherWrite;
     private const int MaximumDirectoryCount =
         VerifiedReleaseStagingService.MaximumDirectoryCount;
-    private const int ExpectedFileCount =
+    private const int LegacyExpectedFileCount =
         LocalOfflineReleaseBundleVerificationService.RequiredPackageCount + 1;
 
     private readonly Func<CancellationToken, Task<ReleaseStatusReadResult>>
@@ -551,46 +557,39 @@ public sealed class VerifiedReleaseActivationCurrentPointerSwitchService
                 planReport,
                 exactPlanBound: true);
         }
-        if (plan.HostRestartRequired)
-        {
-            return VerifiedReleaseActivationCurrentPointerSwitchReport.Failure(
-                VerifiedReleaseActivationCurrentPointerSwitchFailureCode
-                    .PreSwitchServiceControlUnavailable,
-                "Host-restart activation plans are not eligible for this local pointer-switch boundary.",
-                m_settings,
-                planReport,
-                exactPlanBound: true);
-        }
-
-        VerifiedReleaseActivationServiceControlObservation serviceObservation =
-            m_serviceControl.ObservePlan(plan);
-        if (serviceObservation.ReconciliationRequired)
-        {
-            return VerifiedReleaseActivationCurrentPointerSwitchReport.Failure(
-                VerifiedReleaseActivationCurrentPointerSwitchFailureCode
-                    .PreSwitchServiceControlReconciliationRequired,
-                "Pre-switch service control requires reconciliation.",
-                m_settings,
-                planReport,
-                exactPlanBound: true,
-                reconciliationRequired: true);
-        }
         VerifiedReleaseActivationServiceControlPreSwitchEvidence? preSwitchEvidence =
-            plan.ServiceControlRequired
+            null;
+        if (!plan.HostRestartRequired)
+        {
+            VerifiedReleaseActivationServiceControlObservation serviceObservation =
+                m_serviceControl.ObservePlan(plan);
+            if (serviceObservation.ReconciliationRequired)
+            {
+                return VerifiedReleaseActivationCurrentPointerSwitchReport.Failure(
+                    VerifiedReleaseActivationCurrentPointerSwitchFailureCode
+                        .PreSwitchServiceControlReconciliationRequired,
+                    "Pre-switch service control requires reconciliation.",
+                    m_settings,
+                    planReport,
+                    exactPlanBound: true,
+                    reconciliationRequired: true);
+            }
+            preSwitchEvidence = plan.ServiceControlRequired
                 ? m_serviceControl.GetPreSwitchEvidence(plan)
                 : null;
-        if (!ValidatePreSwitchServiceControl(
-                plan,
-                serviceObservation,
-                preSwitchEvidence))
-        {
-            return VerifiedReleaseActivationCurrentPointerSwitchReport.Failure(
-                VerifiedReleaseActivationCurrentPointerSwitchFailureCode
-                    .PreSwitchServiceControlUnavailable,
-                "The exact pre-switch service-control phase is not complete.",
-                m_settings,
-                planReport,
-                exactPlanBound: true);
+            if (!ValidatePreSwitchServiceControl(
+                    plan,
+                    serviceObservation,
+                    preSwitchEvidence))
+            {
+                return VerifiedReleaseActivationCurrentPointerSwitchReport.Failure(
+                    VerifiedReleaseActivationCurrentPointerSwitchFailureCode
+                        .PreSwitchServiceControlUnavailable,
+                    "The exact pre-switch service-control phase is not complete.",
+                    m_settings,
+                    planReport,
+                    exactPlanBound: true);
+            }
         }
 
         await m_executionGate.WaitAsync(cancellationToken);
@@ -1185,7 +1184,39 @@ public sealed class VerifiedReleaseActivationCurrentPointerSwitchService
                 }
             }
 
-            if (files.Count != ExpectedFileCount ||
+            if (activation.UsesExtractedRoleTree)
+            {
+                if (files.Count != activation.Files.Count ||
+                    directoryCount != activation.ExtractedDirectoryCount + 1)
+                {
+                    return false;
+                }
+                foreach (VerifiedReleaseActivationFilePlan expected in
+                    activation.Files)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    string relative = expected.RelativePath.Replace(
+                        '/',
+                        Path.DirectorySeparatorChar);
+                    if (!files.TryGetValue(relative, out FileInfo? file) ||
+                        !string.Equals(
+                            Path.GetFullPath(file.FullName),
+                            Path.GetFullPath(expected.PublishedPath),
+                            StringComparison.Ordinal) ||
+                        !await HashMatchesAsync(
+                            file,
+                            expected.Length,
+                            expected.Sha256.ToArray(),
+                            cancellationToken,
+                            expected.Executable))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            if (files.Count != LegacyExpectedFileCount ||
                 !files.TryGetValue(
                     LocalOfflineReleaseBundleVerificationService.ManifestFileName,
                     out FileInfo? manifest) ||
@@ -1230,15 +1261,26 @@ public sealed class VerifiedReleaseActivationCurrentPointerSwitchService
         FileInfo file,
         long expectedLength,
         ReadOnlyMemory<byte> expectedSha256,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool? executable = null)
     {
         file.Refresh();
+        UnixFileMode mode = file.Exists
+            ? File.GetUnixFileMode(file.FullName)
+            : 0;
+        UnixFileMode? requiredMode = executable switch
+        {
+            true => UnixFileMode.UserRead | UnixFileMode.UserExecute,
+            false => UnixFileMode.UserRead,
+            null => null
+        };
         if (!file.Exists ||
             file.LinkTarget is not null ||
             (file.Attributes & FileAttributes.ReparsePoint) != 0 ||
             file.Length != expectedLength ||
             expectedSha256.Length != 32 ||
-            (File.GetUnixFileMode(file.FullName) & AnyWritableUnixModes) != 0)
+            (mode & AnyWritableUnixModes) != 0 ||
+            requiredMode is not null && mode != requiredMode.Value)
         {
             return false;
         }
@@ -1270,11 +1312,13 @@ public sealed class VerifiedReleaseActivationCurrentPointerSwitchService
         }
         byte[] actual = hash.GetHashAndReset();
         file.Refresh();
+        UnixFileMode finalMode = File.GetUnixFileMode(file.FullName);
         return total == expectedLength &&
             file.Exists &&
             file.LinkTarget is null &&
             file.Length == expectedLength &&
-            (File.GetUnixFileMode(file.FullName) & AnyWritableUnixModes) == 0 &&
+            (finalMode & AnyWritableUnixModes) == 0 &&
+            (requiredMode is null || finalMode == requiredMode.Value) &&
             CryptographicOperations.FixedTimeEquals(
                 actual,
                 expectedSha256.Span);

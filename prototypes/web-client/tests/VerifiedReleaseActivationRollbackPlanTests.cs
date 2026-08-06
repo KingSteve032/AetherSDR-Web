@@ -253,7 +253,7 @@ public sealed class VerifiedReleaseActivationRollbackPlanTests : IDisposable
     }
 
     [Fact]
-    public void HostRestartPlanFailsClosed()
+    public void HostRestartPlanRetainsPreRebootRecoveryWithoutClaimingRestartRollback()
     {
         Fixture fixture = CreateFixture(
             ReleaseMigrationKind.None,
@@ -261,12 +261,18 @@ public sealed class VerifiedReleaseActivationRollbackPlanTests : IDisposable
 
         VerifiedReleaseActivationRollbackPlanReport report = fixture.Compose();
 
-        AssertFailure(
-            report,
-            VerifiedReleaseActivationRollbackPlanFailureCode
-                .HostRestartUnsupported);
+        Assert.True(report.Succeeded, report.Message);
+        Assert.Equal(
+            VerifiedReleaseActivationRollbackPlanFailureCode.None,
+            report.FailureCode);
         Assert.True(report.HostRestartRequired);
         Assert.False(report.HostRestartRollbackPlanned);
+        Assert.False(report.TargetServiceStopPlanned);
+        Assert.False(report.InstalledServiceStartPlanned);
+        Assert.True(report.ConfigurationRestorePlanned);
+        Assert.True(report.AtomicCurrentPointerRollbackPlanned);
+        Assert.NotNull(report.Plan);
+        AssertNoExecution(report);
     }
 
     [Fact]

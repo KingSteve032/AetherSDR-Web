@@ -13,6 +13,7 @@ public sealed class StationLinkClient(
     IOptions<AgentSettings> settings,
     IStationRadioInventoryProvider inventory,
     StationReceiveSessionManager receiveSessions,
+    StationReleaseServiceControlService releaseServiceControl,
     ILogger<StationLinkClient> logger)
     : BackgroundService
 {
@@ -449,6 +450,30 @@ public sealed class StationLinkClient(
                             exception.Message),
                         cancellationToken);
                 }
+                continue;
+            }
+            if (type == StationMessageTypes.ReleaseServiceControl)
+            {
+                BrokerReleaseServiceControlMessage? request =
+                    document.RootElement
+                        .Deserialize<BrokerReleaseServiceControlMessage>(
+                            StationProtocol.JsonOptions);
+                string? validation =
+                    StationProtocolValidator.ValidateReleaseServiceControl(
+                        request);
+                if (validation is not null || request is null)
+                {
+                    throw new InvalidDataException(validation);
+                }
+                StationReleaseServiceControlResultMessage result =
+                    await releaseServiceControl.ExecuteAsync(
+                        request,
+                        cancellationToken);
+                await SendJsonAsync(
+                    socket,
+                    sendGate,
+                    result,
+                    cancellationToken);
                 continue;
             }
             if (type == StationMessageTypes.CloseReceiveSession)

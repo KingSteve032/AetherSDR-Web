@@ -106,6 +106,27 @@ public sealed class TxLeaseManager(TimeProvider? timeProvider = null)
         }
     }
 
+    internal bool TryOpenAdmission(
+        TxLeaseAdmissionClosureAuthority authority,
+        out TxLeaseAdmissionClosureObservation observation)
+    {
+        ArgumentNullException.ThrowIfNull(authority);
+
+        lock (m_gate)
+        {
+            if (!ReferenceEquals(m_admissionClosureAuthority, authority))
+            {
+                observation = CreateAdmissionObservationLocked(authority);
+                return false;
+            }
+
+            m_admissionClosureAuthority = null;
+            m_admissionClosedAt = null;
+            observation = CreateAdmissionObservationLocked(authority: null);
+            return true;
+        }
+    }
+
     internal TxLeaseAdmissionClosureObservation ObserveAdmissionClosure(
         TxLeaseAdmissionClosureAuthority? authority)
     {

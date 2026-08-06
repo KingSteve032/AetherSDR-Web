@@ -1306,9 +1306,92 @@ The public report omits paths, file names, digests, package identities, and exec
 names. The published role tree remains inactive: this increment does not compose or run
 activation, switch `current`, control services, migrate, back up state, issue approval,
 or touch Admin/browser, AetherRemote runtime, radio, watchdog, command, lease, keying,
-TX, or live RF state. Activation-plan adaptation, operational installation orchestration,
-host-restart/remote service-control transports, authenticated approval issuance, and
-Admin/browser update workflows remain later M8B work.
+TX, or live RF state.
+
+The thirty-fourth M8B increment completes the operational signed-update path around that
+inactive role tree. `VerifiedReleaseActivationPlanComposer` now has a second typed input
+for `VerifiedReleaseExtractedPublicationReport`. It retains every immutable extracted
+file, digest, owner-executable bit, and directory count in the activation token, while the
+four service package plans bind to the fixed role roots rather than the old compressed
+archives. The atomic pointer switch validates the entire role tree and exact owner modes
+before `current` can move; the legacy archive-publication input remains available only for
+compatibility with the earlier tests and transaction tokens.
+
+`ReleaseUpdateTransactionCoordinator` carries the existing internal authority tokens
+through one exact prepare/activate/rollback state machine. Preparation performs signed
+preflight, installation planning, private verified staging, archive extraction, atomic
+inactive publication, extracted activation adaptation, immutable configuration backup,
+staged-copy migration, service-control/health planning, and rollback planning. Activation
+requires fresh operator approval, closes new TX-lease admission without force-releasing
+an existing lease, waits a bounded time for natural drain, collects radio-authoritative
+idle/session/watchdog evidence, stops only planned services, atomically switches
+`current`, starts only planned services, verifies health, re-evaluates readiness, reopens
+lease admission with the exact closure authority, and revokes approval. Any post-switch
+service, health, or final-evidence failure invokes the exact automatic rollback plan.
+Manual rollback requires a second fresh approval and the original successful transaction
+tokens. No transaction step issues a radio command, arms a watchdog, keys a transmitter,
+or claims ownership of SmartSDR, Maestro, or hardware PTT.
+
+Operational mutation runs in the separate `aethersdr-release-updater.service`, not in the
+gateway process it may stop. Gateway and CLI callers use a bounded owner-private Unix
+socket below installation state. The supervisor accepts only `prepare`, `activate`,
+`rollback`, and `status`, uses length-prefixed JSON capped at 64 KiB, serializes one
+transaction, and writes an owner-only atomic journal. Terminal summaries may be recovered
+after updater restart; a nonterminal or unsafe journal becomes explicit reconciliation
+because exact in-memory authority is never reconstructed. The web gateway remains an
+authenticated client and may restart without destroying the coordinator.
+
+The Admin API is role-protected and antiforgery-protected. The browser selects only a
+canonical release identity; the server derives its immutable download-inventory path.
+Subject, Admin role, and `auth_time` come only from the authenticated server principal and
+are converted to a bounded SHA-256 subject binding. Stale or missing reauthentication
+fails before approval. The Admin page can prepare, approve activation, inspect status,
+and approve rollback. The CLI offers the same exact operations but refuses redirected
+input, requires `--approve-release-transaction`, and requires the operator to type the
+exact release identity or transaction ID.
+
+Split deployments use a fixed AetherRemote release-control protocol. It carries only an
+exact release identity, phase (`pre-switch-stop` or `post-switch-start`), action (`stop` or
+`start`), role, reviewed systemd unit, and correlation ID. Broker requests require the
+administration credential and the station capability `release-service-control-v1`.
+The station agent validates and forwards the request over an owner-private Unix socket to
+the separate `AetherRemote.Updater` daemon, which may control only
+`aetherremote-agent.service` and `aetherremote-station-engine.service` through direct
+`systemctl --user` arguments. The agent and broker expose no arbitrary shell or remote
+command channel, and remote execution defaults disabled.
+
+Host reboot remains a distinct disabled-by-default transport because it crosses process
+lifetime. The transaction coordinator skips ordinary service-stop execution for one
+signed host-restart plan, atomically switches `current`, restores lease admission, revokes
+the in-memory approval, durably journals the exact transaction as `RestartPending`, and
+then calls `VerifiedReleaseActivationHostRestartTransport`. The transport requires that
+exact transaction identity plus completed pointer-switch evidence, refuses to overwrite
+an unconsumed marker, writes one owner-only marker bound to transaction, setup, release
+paths, channel, pinned identity, and TX-support policy, and invokes only direct
+`systemctl --no-block reboot`.
+
+After the normal gateway host is listening,
+`VerifiedReleaseActivationPostBootContinuationHostedService` consumes that marker through
+`VerifiedReleaseActivationPostBootContinuationService`. It double-reads setup and release
+status, requires the exact target to remain active, executes only the fixed bounded unit,
+loopback-health, and optional fresh broker-link checks, then writes an owner-only terminal
+result, atomically moves the same durable transaction journal to `Completed`, and only
+then removes the marker. Failed health moves the journal to `ReconciliationRequired` and
+retains the marker. Success and failure recovery are idempotent. Invalid, stale,
+unhealthy, mismatched-journal, changed, or ambiguous evidence is retained as
+reconciliation and is not retried automatically. A recovered `RestartPending` journal
+blocks another installation. The continuation never reconstructs approval or post-reboot
+rollback authority, changes `current`, controls a service, operates a radio, issues a
+command, or performs a TX action.
+
+Release production is also complete as a two-person-style protected boundary. The draft
+workflow still builds and signs deterministic dual-architecture assets with the private
+key in `release-signing`. The separate manual `publish-release.yml` workflow runs only
+from `main` in the protected `release-publishing` environment, receives only a public
+verification key, requires the exact existing draft tag and target commit, downloads the
+exact ten assets, verifies both architecture bundles through the production offline
+verifier, and changes only the draft flag. It rejects rebuilding, asset replacement,
+private signing-key access, target drift, or asset name/size/digest drift.
 
 Normal web startup can now opt into the same exact runtime binding through the
 strict `InstallationRuntime` configuration section. The default remains disabled

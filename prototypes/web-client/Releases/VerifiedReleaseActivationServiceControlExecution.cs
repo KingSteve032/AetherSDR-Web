@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.Versioning;
 using System.Text;
+using AetherSDR.Web.Radio;
 using AetherSDR.Web.Setup;
 using Microsoft.Extensions.Options;
 
@@ -11,6 +12,8 @@ public sealed class ReleaseActivationServiceControlSettings
     public const string SectionName = "ReleaseActivationServiceControl";
 
     public bool ExecutionEnabled { get; init; }
+    public bool RemoteExecutionEnabled { get; init; }
+    public string RemoteStationId { get; init; } = string.Empty;
 }
 
 public enum VerifiedReleaseActivationServiceControlExecutionPhase
@@ -331,17 +334,49 @@ internal sealed class VerifiedReleaseActivationServiceControlPreSwitchEvidence
 internal sealed record ServiceControlAttemptResult(
     bool Succeeded,
     bool ProcessStarted,
+    bool MutationAttempted,
     bool OutcomeKnown,
     string Reason)
 {
     internal static ServiceControlAttemptResult Success() =>
-        new(true, ProcessStarted: true, OutcomeKnown: true, string.Empty);
+        new(
+            true,
+            ProcessStarted: true,
+            MutationAttempted: true,
+            OutcomeKnown: true,
+            string.Empty);
+
+    internal static ServiceControlAttemptResult RemoteSuccess() =>
+        new(
+            true,
+            ProcessStarted: false,
+            MutationAttempted: true,
+            OutcomeKnown: true,
+            string.Empty);
 
     internal static ServiceControlAttemptResult NotStarted(string reason) =>
-        new(false, ProcessStarted: false, OutcomeKnown: true, reason);
+        new(
+            false,
+            ProcessStarted: false,
+            MutationAttempted: false,
+            OutcomeKnown: true,
+            reason);
 
     internal static ServiceControlAttemptResult Unknown(string reason) =>
-        new(false, ProcessStarted: true, OutcomeKnown: false, reason);
+        new(
+            false,
+            ProcessStarted: true,
+            MutationAttempted: true,
+            OutcomeKnown: false,
+            reason);
+
+    internal static ServiceControlAttemptResult RemoteUnknown(string reason) =>
+        new(
+            false,
+            ProcessStarted: false,
+            MutationAttempted: true,
+            OutcomeKnown: false,
+            reason);
 }
 
 internal interface IVerifiedReleaseActivationServiceControlRuntime
@@ -613,6 +648,12 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
     private readonly Func<CancellationToken, Task<InstallationSetupState>>
         m_setupReader;
     private readonly IVerifiedReleaseActivationServiceControlRuntime m_runtime;
+    private readonly Func<
+        VerifiedReleaseActivationServiceControlAction,
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationServiceControlExecutionPhase,
+        CancellationToken,
+        Task<ServiceControlAttemptResult>> m_remoteRuntime;
     private readonly ReleaseActivationServiceControlSettings m_settings;
     private readonly TimeProvider m_timeProvider;
     private readonly SemaphoreSlim m_executionGate = new(1, 1);
@@ -625,7 +666,8 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
     public VerifiedReleaseActivationServiceControlExecutionService(
         ReleaseInstallationStatusReader statusReader,
         InstallationSetupStore setupStore,
-        IOptions<ReleaseActivationServiceControlSettings> settings)
+        IOptions<ReleaseActivationServiceControlSettings> settings,
+        RemoteStationCatalogService remoteStations)
         : this(
             statusReader is null
                 ? throw new ArgumentNullException(nameof(statusReader))
@@ -635,7 +677,10 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
                 : setupStore.LoadAsync,
             new LinuxVerifiedReleaseActivationServiceControlRuntime(),
             settings?.Value ?? throw new ArgumentNullException(nameof(settings)),
-            TimeProvider.System)
+            TimeProvider.System,
+            CreateRemoteRuntime(
+                remoteStations,
+                settings?.Value ?? throw new ArgumentNullException(nameof(settings))))
     {
     }
 
@@ -644,7 +689,13 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
         Func<CancellationToken, Task<InstallationSetupState>> setupReader,
         IVerifiedReleaseActivationServiceControlRuntime runtime,
         ReleaseActivationServiceControlSettings settings,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        Func<
+            VerifiedReleaseActivationServiceControlAction,
+            VerifiedReleaseActivationPlan,
+            VerifiedReleaseActivationServiceControlExecutionPhase,
+            CancellationToken,
+            Task<ServiceControlAttemptResult>>? remoteRuntime = null)
     {
         m_statusReader = statusReader ??
             throw new ArgumentNullException(nameof(statusReader));
@@ -652,6 +703,20 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
             throw new ArgumentNullException(nameof(setupReader));
         m_runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         m_settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        if (m_settings.RemoteExecutionEnabled)
+        {
+            RemoteStationManagementValidator.ValidateStationId(
+                m_settings.RemoteStationId);
+        }
+        else if (!string.IsNullOrEmpty(m_settings.RemoteStationId))
+        {
+            throw new InvalidOperationException(
+                "A remote release-control station ID requires remote execution to be enabled.");
+        }
+        m_remoteRuntime = remoteRuntime ??
+            ((_, _, _, _) => Task.FromResult(
+                ServiceControlAttemptResult.NotStarted(
+                    "Remote release service control is unavailable.")));
         m_timeProvider = timeProvider ??
             throw new ArgumentNullException(nameof(timeProvider));
 
@@ -685,7 +750,8 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
             PartialFailureReconciliationRegistered: true,
             AutomaticRetryRegistered: false,
             HostRestartExecutionRegistered: false,
-            RemoteServiceControlRegistered: false,
+            RemoteServiceControlRegistered:
+                m_settings.RemoteExecutionEnabled,
             CurrentPointerMutationRegistered: false,
             RollbackRegistered: false,
             ActivationAuthorityRegistered: false,
@@ -704,6 +770,70 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
             CommandCallerRegistered: false,
             LeaseCallerRegistered: false,
             TxCallerRegistered: false);
+    }
+
+    private static Func<
+        VerifiedReleaseActivationServiceControlAction,
+        VerifiedReleaseActivationPlan,
+        VerifiedReleaseActivationServiceControlExecutionPhase,
+        CancellationToken,
+        Task<ServiceControlAttemptResult>> CreateRemoteRuntime(
+            RemoteStationCatalogService remoteStations,
+            ReleaseActivationServiceControlSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(remoteStations);
+        ArgumentNullException.ThrowIfNull(settings);
+        return async (action, activation, phase, cancellationToken) =>
+        {
+            if (!settings.RemoteExecutionEnabled)
+            {
+                return ServiceControlAttemptResult.NotStarted(
+                    "Remote release service control is disabled.");
+            }
+            if (action.ServiceRole is not
+                    (VerifiedReleaseActivationServiceRole.AetherRemoteAgent or
+                     VerifiedReleaseActivationServiceRole.StationEngine))
+            {
+                return ServiceControlAttemptResult.NotStarted(
+                    "The planned remote service role is unsupported.");
+            }
+            string role = action.ServiceRole ==
+                VerifiedReleaseActivationServiceRole.AetherRemoteAgent
+                ? "aetherremote-agent"
+                : "station-engine";
+            try
+            {
+                RemoteReleaseServiceControlResult result =
+                    await remoteStations.ControlReleaseServiceAsync(
+                        new RemoteReleaseServiceControlRequest(
+                            settings.RemoteStationId,
+                            activation.TargetReleaseIdentity,
+                            phase ==
+                                VerifiedReleaseActivationServiceControlExecutionPhase
+                                    .PreSwitchStop
+                                ? "pre-switch-stop"
+                                : "post-switch-start",
+                            action.Kind ==
+                                VerifiedReleaseActivationServiceControlActionKind.Stop
+                                ? "stop"
+                                : "start",
+                            role,
+                            action.UnitIdentity),
+                        cancellationToken);
+                return result.Succeeded
+                    ? ServiceControlAttemptResult.RemoteSuccess()
+                    : ServiceControlAttemptResult.NotStarted(
+                        "The remote station rejected the fixed service-control action.");
+            }
+            catch (Exception exception)
+                when (exception is RemoteStationManagementException or
+                    HttpRequestException or IOException or InvalidDataException or
+                    OperationCanceledException)
+            {
+                return ServiceControlAttemptResult.RemoteUnknown(
+                    "The remote release service-control outcome is unknown.");
+            }
+        };
     }
 
     public VerifiedReleaseActivationServiceControlExecutionDiagnostics Snapshot
@@ -1132,6 +1262,25 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
                     preSwitchComplete: !preSwitch);
             }
 
+            if (boundActions.Any(action => action.Remote) &&
+                !m_settings.RemoteExecutionEnabled)
+            {
+                return VerifiedReleaseActivationServiceControlExecutionReport.Failure(
+                    VerifiedReleaseActivationServiceControlExecutionFailureCode
+                        .RemoteServiceControlUnavailable,
+                    "The exact plan requires service control on a remote node, and the fixed remote release-control transport is disabled.",
+                    m_settings,
+                    phase,
+                    planReport,
+                    tally,
+                    exactPlanBound: true,
+                    setupBound: true,
+                    topologyBound: true,
+                    installedActiveBefore: preSwitch,
+                    targetActiveBefore: !preSwitch,
+                    preSwitchComplete: !preSwitch);
+            }
+
             try
             {
                 foreach (ServiceControlBoundAction boundAction in boundActions)
@@ -1142,8 +1291,13 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
                         continue;
                     }
                     tally.ControlAttemptCount++;
-                    ServiceControlAttemptResult result =
-                        await m_runtime.ControlUnitAsync(
+                    ServiceControlAttemptResult result = boundAction.Remote
+                        ? await m_remoteRuntime(
+                            boundAction.Action,
+                            plan.ActivationPlan,
+                            phase,
+                            cancellationToken)
+                        : await m_runtime.ControlUnitAsync(
                             boundAction.Action,
                             UnitControlTimeout,
                             cancellationToken);
@@ -1154,7 +1308,7 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
                     if (!result.Succeeded)
                     {
                         bool reconciliation =
-                            result.ProcessStarted ||
+                            result.MutationAttempted ||
                             tally.ExecutedActionCount > 0;
                         if (reconciliation)
                         {
@@ -1553,13 +1707,32 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
             };
             if (local)
             {
-                result.Add(new ServiceControlBoundAction(action, TopologyNoOp: false));
+                result.Add(
+                    new ServiceControlBoundAction(
+                        action,
+                        TopologyNoOp: false,
+                        Remote: false));
                 continue;
             }
             if (role == VerifiedReleaseActivationServiceRole.AetherRemoteAgent &&
                 !topology.AcceptsRemoteStations)
             {
-                result.Add(new ServiceControlBoundAction(action, TopologyNoOp: true));
+                result.Add(
+                    new ServiceControlBoundAction(
+                        action,
+                        TopologyNoOp: true,
+                        Remote: false));
+                continue;
+            }
+            if (topology.AcceptsRemoteStations &&
+                role is VerifiedReleaseActivationServiceRole.AetherRemoteAgent or
+                    VerifiedReleaseActivationServiceRole.StationEngine)
+            {
+                result.Add(
+                    new ServiceControlBoundAction(
+                        action,
+                        TopologyNoOp: false,
+                        Remote: true));
                 continue;
             }
             boundActions = [];
@@ -1720,7 +1893,8 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
 
     private sealed record ServiceControlBoundAction(
         VerifiedReleaseActivationServiceControlAction Action,
-        bool TopologyNoOp);
+        bool TopologyNoOp,
+        bool Remote);
 }
 
 internal sealed class ServiceControlPhaseTally

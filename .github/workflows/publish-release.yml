@@ -1,0 +1,326 @@
+name: Publish verified signed release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact existing draft tag (aethersdr-X.Y.Z)
+        required: true
+        type: string
+      expected_commit:
+        description: Exact 40-character commit targeted by the draft
+        required: true
+        type: string
+      channel:
+        description: Signed update channel
+        required: true
+        type: choice
+        options:
+          - stable
+          - beta
+          - pinned
+      installed_version:
+        description: Compatible installed semantic version used for verification
+        required: true
+        type: string
+      configuration_schema_version:
+        description: Compatible installed configuration schema version
+        required: true
+        type: string
+      protocol_version:
+        description: Compatible installed protocol version
+        required: true
+        type: string
+      key_id:
+        description: Exact public release-signing key identifier
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "true"
+  NUGET_XMLDOC_MODE: skip
+
+jobs:
+  validate-draft:
+    name: Validate exact existing draft
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release-publishing
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out exact main workflow commit
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate publication inputs, target, and asset inventory
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          set -Eeuo pipefail
+          [[ "${GITHUB_REF}" == "refs/heads/main" ]]
+          [[ "$(git rev-parse HEAD)" == "${GITHUB_SHA}" ]]
+          [[ "${RELEASE_TAG}" =~ ^aethersdr-(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]
+          [[ "${EXPECTED_COMMIT}" =~ ^[0-9a-f]{40}$ ]]
+
+          git fetch --force origin main
+          git cat-file -e "${EXPECTED_COMMIT}^{commit}"
+          git merge-base --is-ancestor "${EXPECTED_COMMIT}" origin/main
+
+          draft_json="${RUNNER_TEMP}/release-draft.json"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+            >"${draft_json}"
+          [[ "$(jq -r '.draft' "${draft_json}")" == "true" ]]
+          [[ "$(jq -r '.tag_name' "${draft_json}")" == "${RELEASE_TAG}" ]]
+          [[ "$(jq -r '.target_commitish' "${draft_json}")" == "${EXPECTED_COMMIT}" ]]
+          [[ "$(jq '.assets | length' "${draft_json}")" == "10" ]]
+
+          expected=(
+            aetherremote-agent-linux-arm64.tar.gz
+            aetherremote-agent-linux-x64.tar.gz
+            aethersdr-broker-linux-arm64.tar.gz
+            aethersdr-broker-linux-x64.tar.gz
+            aethersdr-gateway-linux-arm64.tar.gz
+            aethersdr-gateway-linux-x64.tar.gz
+            aethersdr-station-engine-linux-arm64.tar.gz
+            aethersdr-station-engine-linux-x64.tar.gz
+            release-manifest-linux-arm64.json
+            release-manifest-linux-x64.json
+          )
+          mapfile -t actual < <(
+            jq -r '.assets[].name' "${draft_json}" | sort
+          )
+          [[ "${#actual[@]}" == "${#expected[@]}" ]]
+          diff -u \
+            <(printf '%s\n' "${expected[@]}") \
+            <(printf '%s\n' "${actual[@]}")
+
+  verify-architecture:
+    name: Verify ${{ matrix.runtime }} signed bundle
+    needs: validate-draft
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - runtime: linux-x64
+            runner: ubuntu-24.04
+            machine: x86_64
+          - runtime: linux-arm64
+            runner: ubuntu-24.04-arm
+            machine: aarch64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    environment: release-publishing
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out exact main workflow commit
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Verify native runner architecture
+        shell: bash
+        env:
+          EXPECTED_MACHINE: ${{ matrix.machine }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$(uname -m)" == "${EXPECTED_MACHINE}" ]]
+
+      - name: Download exact draft asset inventory
+        id: assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          directory="$(mktemp -d "${RUNNER_TEMP}/aethersdr-publish-assets.XXXXXX")"
+          gh release download "${RELEASE_TAG}" --dir "${directory}"
+
+          expected=(
+            aetherremote-agent-linux-arm64.tar.gz
+            aetherremote-agent-linux-x64.tar.gz
+            aethersdr-broker-linux-arm64.tar.gz
+            aethersdr-broker-linux-x64.tar.gz
+            aethersdr-gateway-linux-arm64.tar.gz
+            aethersdr-gateway-linux-x64.tar.gz
+            aethersdr-station-engine-linux-arm64.tar.gz
+            aethersdr-station-engine-linux-x64.tar.gz
+            release-manifest-linux-arm64.json
+            release-manifest-linux-x64.json
+          )
+          mapfile -t actual < <(
+            find "${directory}" -maxdepth 1 -type f -printf '%f\n' | sort
+          )
+          [[ "${#actual[@]}" == "${#expected[@]}" ]]
+          diff -u \
+            <(printf '%s\n' "${expected[@]}") \
+            <(printf '%s\n' "${actual[@]}")
+          printf 'directory=%s\n' "${directory}" >>"${GITHUB_OUTPUT}"
+
+      - name: Prepare protected public verification key
+        id: trust
+        shell: bash
+        env:
+          TRUST_KEY_BASE64: ${{ secrets.AETHERSDR_RELEASE_TRUST_KEY_PEM_BASE64 }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          [[ -n "${TRUST_KEY_BASE64}" ]] || {
+            echo "The protected release verification key is unavailable." >&2
+            exit 2
+          }
+          key_directory="$(mktemp -d "${RUNNER_TEMP}/aethersdr-release-trust.XXXXXX")"
+          key_path="${key_directory}/release-public-key.pem"
+          printf '%s' "${TRUST_KEY_BASE64}" | base64 --decode >"${key_path}"
+          chmod 0700 "${key_directory}"
+          chmod 0400 "${key_path}"
+          printf 'directory=%s\n' "${key_directory}" >>"${GITHUB_OUTPUT}"
+          printf 'path=%s\n' "${key_path}" >>"${GITHUB_OUTPUT}"
+
+      - name: Verify native signed architecture bundle
+        shell: bash
+        env:
+          ASSET_DIRECTORY: ${{ steps.assets.outputs.directory }}
+          TRUST_KEY_PATH: ${{ steps.trust.outputs.path }}
+          RUNTIME: ${{ matrix.runtime }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+          INSTALLED_VERSION: ${{ inputs.installed_version }}
+          CONFIGURATION_SCHEMA_VERSION: ${{ inputs.configuration_schema_version }}
+          PROTOCOL_VERSION: ${{ inputs.protocol_version }}
+          RELEASE_KEY_ID: ${{ inputs.key_id }}
+          ReleaseManifestTrust__VerificationEnabled: "true"
+          ReleaseManifestTrust__Keys__0__Algorithm: "EcdsaP256Sha256"
+        run: |
+          set -Eeuo pipefail
+          export ReleaseManifestTrust__Keys__0__KeyId="${RELEASE_KEY_ID}"
+          export ReleaseManifestTrust__Keys__0__PublicKeyPath="${TRUST_KEY_PATH}"
+
+          bundle="$(mktemp -d "${RUNNER_TEMP}/aethersdr-${RUNTIME}.XXXXXX")"
+          cp -- \
+            "${ASSET_DIRECTORY}/release-manifest-${RUNTIME}.json" \
+            "${bundle}/release-manifest.json"
+          cp -- \
+            "${ASSET_DIRECTORY}/aethersdr-gateway-${RUNTIME}.tar.gz" \
+            "${ASSET_DIRECTORY}/aethersdr-broker-${RUNTIME}.tar.gz" \
+            "${ASSET_DIRECTORY}/aetherremote-agent-${RUNTIME}.tar.gz" \
+            "${ASSET_DIRECTORY}/aethersdr-station-engine-${RUNTIME}.tar.gz" \
+            "${bundle}/"
+          chmod 0500 "${bundle}"
+          chmod 0400 "${bundle}"/*
+
+          arguments=(
+            --check-offline-release-bundle "${bundle}"
+            --release-installed-version "${INSTALLED_VERSION}"
+            --release-update-channel "${RELEASE_CHANNEL}"
+            --release-configuration-schema-version "${CONFIGURATION_SCHEMA_VERSION}"
+            --release-protocol-version "${PROTOCOL_VERSION}"
+          )
+          if [[ "${RELEASE_CHANNEL}" == "pinned" ]]; then
+            arguments+=(--release-pinned-identity "${RELEASE_TAG}")
+          fi
+          report="${RUNNER_TEMP}/verify-${RUNTIME}.json"
+          dotnet run \
+            --project prototypes/web-client/AetherSDR.Web.csproj \
+            --configuration Release \
+            --no-launch-profile \
+            -- "${arguments[@]}" >"${report}"
+          [[ "$(jq -r '.succeeded' "${report}")" == "true" ]]
+          [[ "$(jq -r '.targetReleaseIdentity' "${report}")" == "${RELEASE_TAG}" ]]
+
+      - name: Remove verification key
+        if: always()
+        shell: bash
+        env:
+          TRUST_DIRECTORY: ${{ steps.trust.outputs.directory }}
+        run: |
+          set -Eeuo pipefail
+          if [[ -n "${TRUST_DIRECTORY}" && -d "${TRUST_DIRECTORY}" ]]; then
+            rm -rf -- "${TRUST_DIRECTORY}"
+          fi
+
+  publish:
+    name: Publish unchanged verified draft
+    needs:
+      - validate-draft
+      - verify-architecture
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release-publishing
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out exact main workflow commit
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Revalidate and publish without changing assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          set -Eeuo pipefail
+          [[ "${GITHUB_REF}" == "refs/heads/main" ]]
+          [[ "$(git rev-parse HEAD)" == "${GITHUB_SHA}" ]]
+          [[ "${EXPECTED_COMMIT}" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --force origin main
+          git cat-file -e "${EXPECTED_COMMIT}^{commit}"
+          git merge-base --is-ancestor "${EXPECTED_COMMIT}" origin/main
+
+          before="${RUNNER_TEMP}/release-before.json"
+          after="${RUNNER_TEMP}/release-after.json"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+            >"${before}"
+          [[ "$(jq -r '.draft' "${before}")" == "true" ]]
+          [[ "$(jq -r '.tag_name' "${before}")" == "${RELEASE_TAG}" ]]
+          [[ "$(jq -r '.target_commitish' "${before}")" == "${EXPECTED_COMMIT}" ]]
+          [[ "$(jq '.assets | length' "${before}")" == "10" ]]
+          before_assets="$(jq -c '[.assets[] | [.name, .size, .digest]] | sort' "${before}")"
+
+          gh release edit "${RELEASE_TAG}" --draft=false
+
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+            >"${after}"
+          [[ "$(jq -r '.draft' "${after}")" == "false" ]]
+          [[ "$(jq -r '.tag_name' "${after}")" == "${RELEASE_TAG}" ]]
+          [[ "$(jq -r '.target_commitish' "${after}")" == "${EXPECTED_COMMIT}" ]]
+          [[ "$(jq -c '[.assets[] | [.name, .size, .digest]] | sort' "${after}")" == "${before_assets}" ]]
+
+          git fetch --force origin \
+            "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          [[ "$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")" == "${EXPECTED_COMMIT}" ]]
