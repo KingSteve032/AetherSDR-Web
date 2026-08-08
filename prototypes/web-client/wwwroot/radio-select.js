@@ -216,17 +216,19 @@ async function connectToRadio(radio) {
   }
 }
 
-function selectRadio(
+async function selectRadio(
   radioId,
   browserClientId,
   currentSessionId,
   lowBandwidth) {
+  const antiforgeryHeaders = await getAntiforgeryHeaders();
   return fetch("/api/radios/select", {
     method: "POST",
     credentials: "same-origin",
     headers: {
       Accept: "application/json",
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      ...antiforgeryHeaders
     },
     body: JSON.stringify({
       radioId,
@@ -245,6 +247,14 @@ function getBrowserClientId() {
   const next = crypto.randomUUID().replaceAll("-", "");
   window.sessionStorage.setItem(browserClientKey, next);
   return next;
+}
+
+async function getAntiforgeryHeaders() {
+  const token = await getJson("/api/antiforgery");
+  if (token.headerName !== "X-Aether-CSRF" || !token.requestToken) {
+    throw new Error("The request security token is invalid.");
+  }
+  return { [token.headerName]: token.requestToken };
 }
 
 async function getJson(url) {

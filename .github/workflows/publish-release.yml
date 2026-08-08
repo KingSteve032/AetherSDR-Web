@@ -60,7 +60,7 @@ jobs:
 
     steps:
       - name: Check out exact main workflow commit
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
 
@@ -133,12 +133,12 @@ jobs:
 
     steps:
       - name: Check out exact main workflow commit
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
 
       - name: Set up .NET 10
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 10.0.x
 
@@ -254,6 +254,52 @@ jobs:
           [[ "$(jq -r '.succeeded' "${report}")" == "true" ]]
           [[ "$(jq -r '.targetReleaseIdentity' "${report}")" == "${RELEASE_TAG}" ]]
 
+      - name: Record verified architecture asset digests
+        id: inventory
+        shell: bash
+        env:
+          ASSET_DIRECTORY: ${{ steps.assets.outputs.directory }}
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          inventory_directory="$(
+            mktemp -d "${RUNNER_TEMP}/aethersdr-verified-inventory.XXXXXX"
+          )"
+          inventory_path="${inventory_directory}/verified-${RUNTIME}.json"
+          names=(
+            "aetherremote-agent-${RUNTIME}.tar.gz"
+            "aethersdr-broker-${RUNTIME}.tar.gz"
+            "aethersdr-gateway-${RUNTIME}.tar.gz"
+            "aethersdr-station-engine-${RUNTIME}.tar.gz"
+            "release-manifest-${RUNTIME}.json"
+          )
+          {
+            for name in "${names[@]}"; do
+              path="${ASSET_DIRECTORY}/${name}"
+              [[ -f "${path}" ]]
+              size="$(stat -c '%s' -- "${path}")"
+              digest="$(sha256sum -- "${path}" | awk '{print $1}')"
+              jq -n \
+                --arg name "${name}" \
+                --argjson size "${size}" \
+                --arg digest "sha256:${digest}" \
+                '{name: $name, size: $size, digest: $digest}'
+            done
+          } | jq -s 'sort_by(.name)' >"${inventory_path}"
+          [[ "$(jq 'length' "${inventory_path}")" == "5" ]]
+          chmod 0400 "${inventory_path}"
+          printf 'path=%s\n' "${inventory_path}" >>"${GITHUB_OUTPUT}"
+
+      - name: Preserve immutable verified digest inventory
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: verified-release-${{ matrix.runtime }}
+          path: ${{ steps.inventory.outputs.path }}
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
       - name: Remove verification key
         if: always()
         shell: bash
@@ -279,16 +325,24 @@ jobs:
 
     steps:
       - name: Check out exact main workflow commit
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
 
-      - name: Revalidate and publish without changing assets
+      - name: Download immutable verified digest inventories
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: verified-release-*
+          path: ${{ runner.temp }}/aethersdr-verified-inventories
+          merge-multiple: true
+
+      - name: Bind verified assets and publish without changing them
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          VERIFIED_INVENTORY_DIRECTORY: ${{ runner.temp }}/aethersdr-verified-inventories
         run: |
           set -Eeuo pipefail
           [[ "${GITHUB_REF}" == "refs/heads/main" ]]
@@ -297,6 +351,48 @@ jobs:
           git fetch --force origin main
           git cat-file -e "${EXPECTED_COMMIT}^{commit}"
           git merge-base --is-ancestor "${EXPECTED_COMMIT}" origin/main
+
+          mapfile -t inventories < <(
+            find "${VERIFIED_INVENTORY_DIRECTORY}" \
+              -maxdepth 1 \
+              -type f \
+              -name 'verified-linux-*.json' \
+              -print |
+              sort
+          )
+          [[ "${#inventories[@]}" == "2" ]]
+          verified_assets="$(
+            jq -s -c \
+              'add | map([.name, .size, .digest]) | sort' \
+              "${inventories[@]}"
+          )"
+          [[ "$(jq 'length' <<<"${verified_assets}")" == "10" ]]
+          [[ "$(
+            jq '[.[][0]] | unique | length' <<<"${verified_assets}"
+          )" == "10" ]]
+          jq -e \
+            'all(.[]; .[2] | test("^sha256:[0-9a-f]{64}$"))' \
+            <<<"${verified_assets}" >/dev/null
+
+          publication_attempted=false
+          redraft_on_failure() {
+            local status="$?"
+            trap - ERR
+            if [[ "${publication_attempted}" == "true" ]]; then
+              draft_state="$(
+                gh api \
+                  "/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+                  --jq '.draft' 2>/dev/null ||
+                  true
+              )"
+              if [[ "${draft_state}" != "true" ]]; then
+                echo "Post-publication verification failed; returning the release to draft." >&2
+                gh release edit "${RELEASE_TAG}" --draft || true
+              fi
+            fi
+            exit "${status}"
+          }
+          trap redraft_on_failure ERR
 
           before="${RUNNER_TEMP}/release-before.json"
           after="${RUNNER_TEMP}/release-after.json"
@@ -308,8 +404,12 @@ jobs:
           [[ "$(jq -r '.tag_name' "${before}")" == "${RELEASE_TAG}" ]]
           [[ "$(jq -r '.target_commitish' "${before}")" == "${EXPECTED_COMMIT}" ]]
           [[ "$(jq '.assets | length' "${before}")" == "10" ]]
-          before_assets="$(jq -c '[.assets[] | [.name, .size, .digest]] | sort' "${before}")"
+          before_assets="$(
+            jq -c '[.assets[] | [.name, .size, .digest]] | sort' "${before}"
+          )"
+          [[ "${before_assets}" == "${verified_assets}" ]]
 
+          publication_attempted=true
           gh release edit "${RELEASE_TAG}" --draft=false
 
           gh api \
@@ -319,8 +419,13 @@ jobs:
           [[ "$(jq -r '.draft' "${after}")" == "false" ]]
           [[ "$(jq -r '.tag_name' "${after}")" == "${RELEASE_TAG}" ]]
           [[ "$(jq -r '.target_commitish' "${after}")" == "${EXPECTED_COMMIT}" ]]
-          [[ "$(jq -c '[.assets[] | [.name, .size, .digest]] | sort' "${after}")" == "${before_assets}" ]]
+          after_assets="$(
+            jq -c '[.assets[] | [.name, .size, .digest]] | sort' "${after}"
+          )"
+          [[ "${after_assets}" == "${verified_assets}" ]]
 
           git fetch --force origin \
             "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
           [[ "$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")" == "${EXPECTED_COMMIT}" ]]
+          publication_attempted=false
+          trap - ERR

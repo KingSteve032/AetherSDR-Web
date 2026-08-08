@@ -180,7 +180,7 @@ lifecycle immediately, releases only that lifecycle's tracked lease, and starts
 a bounded asynchronous retry. A ready response from the replacement process is
 diagnostic only and cannot restore the released lease.
 
-`GET /healthz` additionally reports
+Admin-only `GET /api/admin/diagnostics/health` additionally reports
 `txGateLifecycleRegistered=true`, `txLifecycleWatchdogRegistered=true`,
 `txBrowserIntentProtocolVersion=1`,
 `txBrowserIntentValidationRegistered=true`,

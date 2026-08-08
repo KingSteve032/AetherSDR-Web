@@ -39,6 +39,7 @@ public sealed class InstallationSetupOnlyProgramCompositionTests
                 new InstallationSetupHttpSecuritySettings());
 
         Assert.Equal(CanonicalUrl, report.CanonicalAccessUrl);
+        Assert.Equal("radio.example.org", builder.Configuration["AllowedHosts"]);
         Assert.Equal(paths.SetupStatePath, report.SetupStatePath);
         Assert.Equal(initial.Revision, report.SetupRevision);
         Assert.DoesNotContain(builder.Services, IsNormalRuntimeService);

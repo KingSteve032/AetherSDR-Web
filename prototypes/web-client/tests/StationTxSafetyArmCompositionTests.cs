@@ -616,7 +616,8 @@ public sealed class StationTxSafetyArmCompositionTests
         public StationTxSafetyArmComposition Composition { get; }
         public int ResolveCount { get; private set; }
         public Func<StationTxCommandAuthority, StationTxCommandAuthority>
-            AuthorityTransform { get; set; } = authority => authority;
+            AuthorityTransform
+        { get; set; } = authority => authority;
 
         public ValueTask DisposeAsync() => Supervisor.DisposeAsync();
 

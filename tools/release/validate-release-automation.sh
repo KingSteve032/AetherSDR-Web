@@ -56,6 +56,16 @@ require_text 'runtime: linux-x64' "${publish_workflow}"
 require_text 'runner: ubuntu-24.04-arm' "${publish_workflow}"
 require_text 'Verify native runner architecture' "${publish_workflow}"
 require_text 'Verify native signed architecture bundle' "${publish_workflow}"
+require_text 'Record verified architecture asset digests' "${publish_workflow}"
+require_text 'Preserve immutable verified digest inventory' "${publish_workflow}"
+require_text 'actions/upload-artifact@' "${publish_workflow}"
+require_text 'Download immutable verified digest inventories' "${publish_workflow}"
+require_text 'actions/download-artifact@' "${publish_workflow}"
+require_text 'verified_assets' "${publish_workflow}"
+require_text '[[ "${before_assets}" == "${verified_assets}" ]]' "${publish_workflow}"
+require_text '[[ "${after_assets}" == "${verified_assets}" ]]' "${publish_workflow}"
+require_text 'redraft_on_failure' "${publish_workflow}"
+require_text 'gh release edit "${RELEASE_TAG}" --draft || true' "${publish_workflow}"
 require_text 'needs:' "${publish_workflow}"
 require_text '- verify-architecture' "${publish_workflow}"
 require_text 'gh release edit "${RELEASE_TAG}" --draft=false' "${publish_workflow}"
@@ -83,6 +93,18 @@ if grep -Eq \
   exit 1
 fi
 
+for workflow_path in \
+  "${workflow}" \
+  "${publish_workflow}" \
+  "${repo_root}/.github/workflows/ci.yml"; do
+  while IFS= read -r action_line; do
+    if [[ ! "${action_line}" =~ uses:[[:space:]]+[^@[:space:]]+@[0-9a-f]{40}([[:space:]]+\#.*)?$ ]]; then
+      echo "GitHub Actions dependencies must use immutable 40-character SHAs: ${action_line}" >&2
+      exit 1
+    fi
+  done < <(grep -E '^[[:space:]]+uses:' "${workflow_path}")
+done
+
 if grep -Eq \
   '(^|[[:space:]])(gh|curl|scp|ssh)[[:space:]]' \
   "${package_script}"; then
@@ -104,4 +126,4 @@ require_text '--numeric-owner' "${package_script}"
 require_text 'AetherSDR.ReleaseBuilder.dll' "${package_script}"
 require_text 'No GitHub release, deployment, service, radio, command, lease, TX, or RF action was performed.' "${package_script}"
 
-echo "Release automation remains manual, protected, deterministic, signed-verifying, and non-deploying; publication can only promote one exact existing verified draft."
+echo "Release automation remains manual, protected, deterministic, signed-verifying, immutable-action-pinned, and non-deploying; publication is bound to the exact verified asset digests."

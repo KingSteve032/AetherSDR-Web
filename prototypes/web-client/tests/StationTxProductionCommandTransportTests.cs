@@ -484,7 +484,9 @@ public sealed class StationTxProductionCommandTransportTests
         public uint ClientHandle { get; set; }
         public List<CommandCall> Commands { get; } = [];
         public Func<uint, string, TimeSpan, CancellationToken,
-            Task<FlexCommandResponse>> Handler { get; set; } =
+            Task<FlexCommandResponse>>
+        Handler
+        { get; set; } =
             (_, _, _, _) => Task.FromResult(new FlexCommandResponse(0, string.Empty));
 
         public Task<FlexCommandResponse> SendForClientAsync(

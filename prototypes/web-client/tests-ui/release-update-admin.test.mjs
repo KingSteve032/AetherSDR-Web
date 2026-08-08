@@ -22,8 +22,9 @@ test("Admin release workflow selects only canonical release identity, never a pa
 });
 
 test("Admin release mutations require antiforgery and server authentication evidence", () => {
-  assert.match(page, /\/api\/admin\/releases\/antiforgery/);
-  assert.match(page, /\[antiforgery\.headerName\]: antiforgery\.requestToken/);
+  assert.match(page, /\/api\/antiforgery/);
+  assert.match(page, /getAntiforgeryHeaders/);
+  assert.match(page, /\[token\.headerName\]: token\.requestToken/);
   assert.match(adapter, /ValidateRequestAsync/);
   assert.match(adapter, /ReleaseUpdateOperatorAuthenticationEvidenceFactory/);
   assert.match(adapter, /RequireAuthorization\(AetherPolicies\.Admin\)/);

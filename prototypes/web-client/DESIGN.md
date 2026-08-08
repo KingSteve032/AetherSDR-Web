@@ -1467,7 +1467,8 @@ single-reader observation queue records exact gateway instance, engine instance,
 session, browser connection, authentication, local FLEX handle, and lease
 changes. Queue failure releases only that session's lease and marks the lifecycle
 faulted. The read-only lifecycle snapshot is included in administrative session
-diagnostics, while `/healthz` proves that the lifecycle is registered and both
+diagnostics, while Admin-only `/api/admin/diagnostics/health` proves that the
+lifecycle is registered and both
 command transport and supervisor arming remain unavailable.
 
 Phase 2B adds monotonic exact-identity observation sequences and timestamps for

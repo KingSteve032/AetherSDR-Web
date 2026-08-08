@@ -752,7 +752,7 @@ public sealed class RemoteReceiveSessionBroker
         public string GuiClientId { get; } = guiClientId;
         public DateTimeOffset OpenedAt { get; } = openedAt;
         public TaskCompletionSource<RemoteReceiveSessionSnapshot> Opened
-            { get; } =
+        { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         public RemoteReceiveSessionSnapshot? Snapshot { get; set; }
         public Channel<RemoteProjectionFrame> Frames { get; } =

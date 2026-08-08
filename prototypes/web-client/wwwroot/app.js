@@ -470,12 +470,14 @@ async function selectRadio(radioId) {
   elements.radioSelector.disabled = true;
   showToast("Opening your private session on the selected radio…");
   try {
+    const antiforgeryHeaders = await getAntiforgeryHeaders();
     const response = await fetch("/api/radios/select", {
       method: "POST",
       credentials: "same-origin",
       headers: {
         Accept: "application/json",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...antiforgeryHeaders
       },
       body: JSON.stringify({
         radioId,
@@ -534,12 +536,14 @@ async function setLowBandwidth(
         ? "Enabling low-bandwidth VPN mode and reconnecting the radio…"
         : "Returning to adaptive normal bandwidth and reconnecting the radio…");
   try {
+    const antiforgeryHeaders = await getAntiforgeryHeaders();
     const response = await fetch("/api/radio/low-bandwidth", {
       method: "POST",
       credentials: "same-origin",
       headers: {
         Accept: "application/json",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...antiforgeryHeaders
       },
       body: JSON.stringify({
         enabled,
@@ -849,6 +853,7 @@ async function saveAdminPolicy(
   button) {
   button.disabled = true;
   try {
+    const antiforgeryHeaders = await getAntiforgeryHeaders();
     const response = await fetch(
       `/api/admin/radios/${encodeURIComponent(radioId)}/policy`,
       {
@@ -856,7 +861,8 @@ async function saveAdminPolicy(
         credentials: "same-origin",
         headers: {
           Accept: "application/json",
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          ...antiforgeryHeaders
         },
         body: JSON.stringify(buildPolicyRequest(mode, reservedUserId))
       });
@@ -880,13 +886,17 @@ async function forceDisconnectOperator(
   button) {
   button.disabled = true;
   try {
+    const antiforgeryHeaders = await getAntiforgeryHeaders();
     const response = await fetch(
       `/api/admin/radios/${encodeURIComponent(radioId)}` +
       `/operators/${encodeURIComponent(userId)}/disconnect`,
       {
         method: "POST",
         credentials: "same-origin",
-        headers: { Accept: "application/json" }
+        headers: {
+          Accept: "application/json",
+          ...antiforgeryHeaders
+        }
       });
     const result = await response.json();
     if (!response.ok) {
@@ -2444,6 +2454,21 @@ function openAppMenu(anchor, menuName) {
   elements.operatorsPopover.hidden = true;
 }
 
+async function getAntiforgeryHeaders() {
+  const response = await fetch("/api/antiforgery", {
+    credentials: "same-origin",
+    headers: { Accept: "application/json" }
+  });
+  if (!response.ok) {
+    throw new Error("The request security token is unavailable.");
+  }
+  const token = await response.json();
+  if (token.headerName !== "X-Aether-CSRF" || !token.requestToken) {
+    throw new Error("The request security token is invalid.");
+  }
+  return { [token.headerName]: token.requestToken };
+}
+
 async function leaveRadioConsole(destination) {
   const sessionId = state.session?.sessionId;
   state.forcedDisconnect = true;
@@ -2454,11 +2479,13 @@ async function leaveRadioConsole(destination) {
   }
   if (sessionId) {
     try {
+      const antiforgeryHeaders = await getAntiforgeryHeaders();
       await fetch(
         `/api/session/release?sessionId=${encodeURIComponent(sessionId)}`,
         {
           method: "POST",
           credentials: "same-origin",
+          headers: antiforgeryHeaders,
           keepalive: true
         });
     } catch {

@@ -372,7 +372,8 @@ public sealed class BrowserTxTransactionIngressTests
         public ManualTimeProvider Time { get; }
 
         public StationTxCommandTransactionCompositionDiagnostics
-            TransactionSnapshot { get; set; } = Snapshot();
+            TransactionSnapshot
+        { get; set; } = Snapshot();
 
         public StationTxCommandTransactionOutcome NextOutcome { get; set; } =
             StationTxCommandTransactionOutcome.Accepted;

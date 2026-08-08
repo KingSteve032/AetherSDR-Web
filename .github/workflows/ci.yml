@@ -24,20 +24,20 @@ env:
 jobs:
   validate:
     name: Build and test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up .NET 10
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 10.0.x
 
       - name: Set up Node.js 24
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
           package-manager-cache: false
@@ -45,11 +45,17 @@ jobs:
       - name: Validate release automation boundaries
         run: bash tools/release/validate-release-automation.sh
 
+      - name: Validate deployment unit boundaries
+        run: bash prototypes/web-client/deploy/validate-service-units.sh
+
       - name: Restore .NET dependencies
         run: dotnet restore AetherSDR-Web.slnx
 
       - name: Build solution
         run: dotnet build AetherSDR-Web.slnx --configuration Release --no-restore
+
+      - name: Verify .NET formatting
+        run: dotnet format AetherSDR-Web.slnx --verify-no-changes --no-restore
 
       - name: Run web server tests
         run: >-
@@ -62,6 +68,13 @@ jobs:
         run: >-
           dotnet test
           prototypes/web-client/tx-hil-tests/AetherSDR.TxHil.Tests.csproj
+          --configuration Release
+          --no-build
+
+      - name: Run independent TX watchdog tests (no live RF)
+        run: >-
+          dotnet test
+          prototypes/tx-watchdog/AetherSDR.TxWatchdog.Tests/AetherSDR.TxWatchdog.Tests.csproj
           --configuration Release
           --no-build
 

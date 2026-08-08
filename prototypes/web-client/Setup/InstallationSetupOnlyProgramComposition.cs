@@ -72,6 +72,8 @@ public static class InstallationSetupOnlyProgramComposition
                 "remote-station, watchdog, command, or TX services are registered.");
         }
 
+        builder.Configuration["AllowedHosts"] = parsedAccessUrl.Uri.IdnHost;
+
         TimeProvider time = timeProvider ?? TimeProvider.System;
         InstallationSetupHttpSecurityPolicy security =
             new(canonicalAccessUrl, securitySettings);

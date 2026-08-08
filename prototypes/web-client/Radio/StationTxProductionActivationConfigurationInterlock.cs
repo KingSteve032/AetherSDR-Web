@@ -43,7 +43,7 @@ public sealed record StationTxProductionActivationConfigurationDiagnostics(
 internal static class StationTxProductionActivationConfigurationInterlock
 {
     public static StationTxProductionActivationConfigurationDiagnostics Dormant
-        { get; } = Evaluate(new(
+    { get; } = Evaluate(new(
             ActivationRequested: false,
             LocalFlexModeConfigured: false,
             AllowTransmitConfigured: false,

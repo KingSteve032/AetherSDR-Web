@@ -396,129 +396,129 @@ public sealed class InstallationSetupConsole
         switch (commandLine.Command)
         {
             case InstallationSetupConsoleCommandKind.Status:
-            {
-                InstallationSetupState state =
-                    await m_store.LoadOrCreateAsync(cancellationToken);
-                await WriteStatusAsync(state, output);
-                break;
-            }
+                {
+                    InstallationSetupState state =
+                        await m_store.LoadOrCreateAsync(cancellationToken);
+                    await WriteStatusAsync(state, output);
+                    break;
+                }
             case InstallationSetupConsoleCommandKind.IssueBootstrapToken:
-            {
-                InstallationSetupState state =
-                    await m_store.LoadOrCreateAsync(cancellationToken);
-                InstallationBootstrapTokenIssue issue =
-                    await m_tokenService.IssueAsync(
-                        state.Revision,
-                        cancellationToken: cancellationToken);
-                await output.WriteLineAsync(
-                    "AetherSDR first-administrator bootstrap token");
-                await output.WriteLineAsync($"Token: {issue.Token}");
-                await output.WriteLineAsync(
-                    $"Expires at: {issue.ExpiresAt:O}");
-                await output.WriteLineAsync(
-                    "This token is shown once. Do not redirect or retain this output.");
-                break;
-            }
+                {
+                    InstallationSetupState state =
+                        await m_store.LoadOrCreateAsync(cancellationToken);
+                    InstallationBootstrapTokenIssue issue =
+                        await m_tokenService.IssueAsync(
+                            state.Revision,
+                            cancellationToken: cancellationToken);
+                    await output.WriteLineAsync(
+                        "AetherSDR first-administrator bootstrap token");
+                    await output.WriteLineAsync($"Token: {issue.Token}");
+                    await output.WriteLineAsync(
+                        $"Expires at: {issue.ExpiresAt:O}");
+                    await output.WriteLineAsync(
+                        "This token is shown once. Do not redirect or retain this output.");
+                    break;
+                }
             case InstallationSetupConsoleCommandKind.ClaimBootstrapToken:
-            {
-                InstallationSetupState state =
-                    await m_store.LoadAsync(cancellationToken);
-                await output.WriteAsync("Bootstrap token: ");
-                string token = await secretReader!(cancellationToken);
-                await output.WriteLineAsync();
-                InstallationSetupState claimed =
-                    await m_tokenService.ClaimAsync(
-                        state.Revision,
-                        token,
-                        cancellationToken);
-                await WriteStatusAsync(claimed, output);
-                break;
-            }
+                {
+                    InstallationSetupState state =
+                        await m_store.LoadAsync(cancellationToken);
+                    await output.WriteAsync("Bootstrap token: ");
+                    string token = await secretReader!(cancellationToken);
+                    await output.WriteLineAsync();
+                    InstallationSetupState claimed =
+                        await m_tokenService.ClaimAsync(
+                            state.Revision,
+                            token,
+                            cancellationToken);
+                    await WriteStatusAsync(claimed, output);
+                    break;
+                }
             case InstallationSetupConsoleCommandKind.ConfigureTopology:
-            {
-                InstallationSetupState state =
-                    await m_store.LoadAsync(cancellationToken);
-                InstallationSetupState updated =
-                    await m_workflow.ConfigureTopologyAsync(
-                        state.Revision,
-                        commandLine.Topology ??
-                            throw MissingValue("topology"),
-                        cancellationToken);
-                await WriteStatusAsync(updated, output);
-                break;
-            }
+                {
+                    InstallationSetupState state =
+                        await m_store.LoadAsync(cancellationToken);
+                    InstallationSetupState updated =
+                        await m_workflow.ConfigureTopologyAsync(
+                            state.Revision,
+                            commandLine.Topology ??
+                                throw MissingValue("topology"),
+                            cancellationToken);
+                    await WriteStatusAsync(updated, output);
+                    break;
+                }
             case InstallationSetupConsoleCommandKind.ConfigurePublicUrl:
-            {
-                InstallationSetupState state =
-                    await m_store.LoadAsync(cancellationToken);
-                InstallationSetupState updated =
-                    await m_workflow.ConfigurePublicUrlAsync(
-                        state.Revision,
-                        commandLine.PublicUrl,
-                        cancellationToken);
-                await WriteStatusAsync(updated, output);
-                break;
-            }
+                {
+                    InstallationSetupState state =
+                        await m_store.LoadAsync(cancellationToken);
+                    InstallationSetupState updated =
+                        await m_workflow.ConfigurePublicUrlAsync(
+                            state.Revision,
+                            commandLine.PublicUrl,
+                            cancellationToken);
+                    await WriteStatusAsync(updated, output);
+                    break;
+                }
             case InstallationSetupConsoleCommandKind.ConfigurePaths:
-            {
-                InstallationPaths paths = installationPaths ??
-                    throw MissingValue("resolved installation paths");
-                InstallationSetupState state =
-                    await m_store.LoadAsync(cancellationToken);
-                InstallationSetupState updated =
-                    await m_workflow.ConfigurePathsAsync(
-                        state.Revision,
-                        paths,
-                        cancellationToken);
-                await WriteStatusAsync(updated, output);
-                break;
-            }
+                {
+                    InstallationPaths paths = installationPaths ??
+                        throw MissingValue("resolved installation paths");
+                    InstallationSetupState state =
+                        await m_store.LoadAsync(cancellationToken);
+                    InstallationSetupState updated =
+                        await m_workflow.ConfigurePathsAsync(
+                            state.Revision,
+                            paths,
+                            cancellationToken);
+                    await WriteStatusAsync(updated, output);
+                    break;
+                }
             case InstallationSetupConsoleCommandKind.ConfigureUpdateChannel:
-            {
-                InstallationSetupState state =
-                    await m_store.LoadAsync(cancellationToken);
-                InstallationSetupState updated =
-                    await m_workflow.ConfigureUpdateChannelAsync(
-                        state.Revision,
-                        commandLine.UpdateChannel ??
-                            throw MissingValue("update channel"),
-                        commandLine.PinnedRelease,
-                        cancellationToken);
-                await WriteStatusAsync(updated, output);
-                break;
-            }
+                {
+                    InstallationSetupState state =
+                        await m_store.LoadAsync(cancellationToken);
+                    InstallationSetupState updated =
+                        await m_workflow.ConfigureUpdateChannelAsync(
+                            state.Revision,
+                            commandLine.UpdateChannel ??
+                                throw MissingValue("update channel"),
+                            commandLine.PinnedRelease,
+                            cancellationToken);
+                    await WriteStatusAsync(updated, output);
+                    break;
+                }
             case InstallationSetupConsoleCommandKind.ConfirmBackupLocation:
-            {
-                InstallationSetupState state =
-                    await m_store.LoadAsync(cancellationToken);
-                InstallationSetupState updated =
-                    await m_workflow.ConfirmBackupLocationAsync(
-                        state.Revision,
-                        cancellationToken);
-                await WriteStatusAsync(updated, output);
-                break;
-            }
+                {
+                    InstallationSetupState state =
+                        await m_store.LoadAsync(cancellationToken);
+                    InstallationSetupState updated =
+                        await m_workflow.ConfirmBackupLocationAsync(
+                            state.Revision,
+                            cancellationToken);
+                    await WriteStatusAsync(updated, output);
+                    break;
+                }
             case InstallationSetupConsoleCommandKind.ConfigureTransmitSupport:
-            {
-                InstallationSetupState state =
-                    await m_store.LoadAsync(cancellationToken);
-                InstallationSetupState updated =
-                    await m_workflow.ConfigureTransmitSupportAsync(
-                        state.Revision,
-                        commandLine.InstallTransmitSupport ??
-                            throw MissingValue("transmit-support choice"),
-                        cancellationToken);
-                await WriteStatusAsync(updated, output);
-                break;
-            }
+                {
+                    InstallationSetupState state =
+                        await m_store.LoadAsync(cancellationToken);
+                    InstallationSetupState updated =
+                        await m_workflow.ConfigureTransmitSupportAsync(
+                            state.Revision,
+                            commandLine.InstallTransmitSupport ??
+                                throw MissingValue("transmit-support choice"),
+                            cancellationToken);
+                    await WriteStatusAsync(updated, output);
+                    break;
+                }
             case InstallationSetupConsoleCommandKind.Preflight:
-            {
-                InstallationSetupPreflightReport report =
-                    await m_preflight.CreateAsync(cancellationToken);
-                await output.WriteLineAsync(
-                    JsonSerializer.Serialize(report, JsonOptions));
-                break;
-            }
+                {
+                    InstallationSetupPreflightReport report =
+                        await m_preflight.CreateAsync(cancellationToken);
+                    await output.WriteLineAsync(
+                        JsonSerializer.Serialize(report, JsonOptions));
+                    break;
+                }
             case InstallationSetupConsoleCommandKind.None:
                 throw new InvalidOperationException(
                     "No installation setup console command was requested.");

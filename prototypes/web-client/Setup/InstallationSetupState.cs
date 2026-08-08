@@ -104,33 +104,33 @@ public static class InstallationSetupStateValidator
         switch (setupLock.Mode)
         {
             case InstallationSetupLockMode.BootstrapRequired:
-            {
-                if (setupLock.ClaimedAt is not null ||
-                    setupLock.CompletedAt is not null)
                 {
-                    throw new InvalidOperationException(
-                        "A bootstrap-required setup lock cannot be claimed or complete.");
-                }
+                    if (setupLock.ClaimedAt is not null ||
+                        setupLock.CompletedAt is not null)
+                    {
+                        throw new InvalidOperationException(
+                            "A bootstrap-required setup lock cannot be claimed or complete.");
+                    }
 
-                bool hasHash = !string.IsNullOrWhiteSpace(
-                    setupLock.BootstrapTokenHash);
-                bool hasIssuedAt = setupLock.BootstrapTokenIssuedAt is not null;
-                bool hasExpiresAt = setupLock.BootstrapTokenExpiresAt is not null;
-                if (hasHash != hasIssuedAt || hasHash != hasExpiresAt)
-                {
-                    throw new InvalidOperationException(
-                        "Bootstrap token hash and lifetime must be persisted together.");
+                    bool hasHash = !string.IsNullOrWhiteSpace(
+                        setupLock.BootstrapTokenHash);
+                    bool hasIssuedAt = setupLock.BootstrapTokenIssuedAt is not null;
+                    bool hasExpiresAt = setupLock.BootstrapTokenExpiresAt is not null;
+                    if (hasHash != hasIssuedAt || hasHash != hasExpiresAt)
+                    {
+                        throw new InvalidOperationException(
+                            "Bootstrap token hash and lifetime must be persisted together.");
+                    }
+                    if (hasHash &&
+                        (!IsSha256Hex(setupLock.BootstrapTokenHash) ||
+                         setupLock.BootstrapTokenExpiresAt <=
+                            setupLock.BootstrapTokenIssuedAt))
+                    {
+                        throw new InvalidOperationException(
+                            "Bootstrap token state is malformed.");
+                    }
+                    break;
                 }
-                if (hasHash &&
-                    (!IsSha256Hex(setupLock.BootstrapTokenHash) ||
-                     setupLock.BootstrapTokenExpiresAt <=
-                        setupLock.BootstrapTokenIssuedAt))
-                {
-                    throw new InvalidOperationException(
-                        "Bootstrap token state is malformed.");
-                }
-                break;
-            }
             case InstallationSetupLockMode.Claimed:
                 RequireClearedToken(setupLock);
                 if (setupLock.ClaimedAt is null ||
