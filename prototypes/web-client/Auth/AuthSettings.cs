@@ -15,7 +15,13 @@ public sealed class AuthSettings
     public string SignedOutCallbackPath { get; init; } = "/signout-callback-oidc";
     public string NameClaimType { get; init; } = "name";
     public string RoleClaimType { get; init; } = "roles";
+    public AuthenticationSessionSettings Session { get; init; } = new();
     public DevelopmentUserSettings DevelopmentUser { get; init; } = new();
+}
+
+public sealed class AuthenticationSessionSettings
+{
+    public int AbsoluteLifetimeMinutes { get; init; } = 480;
 }
 
 public sealed class DevelopmentUserSettings

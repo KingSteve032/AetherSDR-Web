@@ -2,6 +2,7 @@ using AetherSDR.Web.Auth;
 using AetherSDR.Web.Auth.Identity;
 using AetherSDR.Web.Setup;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -10,7 +11,7 @@ namespace AetherSDR.Web.Tests;
 public sealed class AetherIdentityPersistenceTests
 {
     [Fact]
-    public void RegistrationDoesNotCreateOrMigrateTheDatabase()
+    public async Task RegistrationDoesNotCreateOrMigrateTheDatabase()
     {
         using TemporaryDirectory temporary = new();
         InstallationPaths paths = InstallationPaths.Resolve(
@@ -25,6 +26,8 @@ public sealed class AetherIdentityPersistenceTests
             scope.ServiceProvider.GetRequiredService<AetherIdentityDbContext>();
 
         _ = context.Model;
+        _ = await Assert.ThrowsAsync<SqliteException>(
+            () => context.Users.CountAsync());
 
         Assert.False(File.Exists(paths.IdentityDatabasePath));
         Assert.False(Directory.Exists(paths.IdentityStoreDirectory));
@@ -38,6 +41,7 @@ public sealed class AetherIdentityPersistenceTests
             temporary.Path,
             InstallationPathLayout.Development);
         Directory.CreateDirectory(paths.IdentityStoreDirectory);
+        await File.WriteAllBytesAsync(paths.IdentityDatabasePath, []);
         ServiceCollection services = new();
         services.AddAetherIdentityPersistence(paths);
 
@@ -140,6 +144,7 @@ public sealed class AetherIdentityPersistenceTests
             temporary.Path,
             InstallationPathLayout.Development);
         Directory.CreateDirectory(paths.IdentityStoreDirectory);
+        await File.WriteAllBytesAsync(paths.IdentityDatabasePath, []);
         ServiceCollection services = new();
         services.AddAetherIdentityPersistence(paths);
 

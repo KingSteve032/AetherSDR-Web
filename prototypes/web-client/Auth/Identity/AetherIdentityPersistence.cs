@@ -33,7 +33,7 @@ internal static class AetherIdentityPersistence
         SqliteConnectionStringBuilder connection = new()
         {
             DataSource = databasePath,
-            Mode = SqliteOpenMode.ReadWriteCreate,
+            Mode = SqliteOpenMode.ReadWrite,
             Cache = SqliteCacheMode.Shared,
             Pooling = true,
             ForeignKeys = true

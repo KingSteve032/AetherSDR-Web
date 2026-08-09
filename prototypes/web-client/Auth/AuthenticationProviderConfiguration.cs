@@ -26,7 +26,8 @@ internal sealed record AetherExternalProviderDescriptor(
 internal sealed record AetherAuthenticationTopology(
     AetherAuthenticationMode Mode,
     bool LocalAccountsEnabled,
-    AetherExternalProviderDescriptor? ExternalProvider);
+    AetherExternalProviderDescriptor? ExternalProvider,
+    TimeSpan SessionAbsoluteLifetime);
 
 internal static class AetherAuthenticationConfiguration
 {
@@ -36,6 +37,7 @@ internal static class AetherAuthenticationConfiguration
     {
         ArgumentNullException.ThrowIfNull(settings);
         AetherAuthenticationMode mode = ParseMode(settings.Mode);
+        TimeSpan sessionLifetime = ValidateSessionLifetime(settings.Session);
 
         if (mode == AetherAuthenticationMode.Development)
         {
@@ -47,13 +49,21 @@ internal static class AetherAuthenticationConfiguration
             }
             ValidateDevelopmentUser(settings.DevelopmentUser);
             RejectDisabledExternalConfiguration(settings);
-            return new(mode, LocalAccountsEnabled: false, ExternalProvider: null);
+            return new(
+                mode,
+                LocalAccountsEnabled: false,
+                ExternalProvider: null,
+                sessionLifetime);
         }
 
         if (mode == AetherAuthenticationMode.Local)
         {
             RejectDisabledExternalConfiguration(settings);
-            return new(mode, LocalAccountsEnabled: true, ExternalProvider: null);
+            return new(
+                mode,
+                LocalAccountsEnabled: true,
+                ExternalProvider: null,
+                sessionLifetime);
         }
 
         if (mode != AetherAuthenticationMode.Combined &&
@@ -79,7 +89,21 @@ internal static class AetherAuthenticationConfiguration
         return new(
             mode,
             LocalAccountsEnabled: mode == AetherAuthenticationMode.Combined,
-            provider);
+            provider,
+            sessionLifetime);
+    }
+
+    private static TimeSpan ValidateSessionLifetime(
+        AuthenticationSessionSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        if (settings.AbsoluteLifetimeMinutes is < 5 or > 1440)
+        {
+            throw new InvalidOperationException(
+                "Auth:Session:AbsoluteLifetimeMinutes must be between 5 and " +
+                "1440 minutes.");
+        }
+        return TimeSpan.FromMinutes(settings.AbsoluteLifetimeMinutes);
     }
 
     private static AetherAuthenticationMode ParseMode(string value)

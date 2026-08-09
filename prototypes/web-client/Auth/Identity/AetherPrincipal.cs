@@ -237,8 +237,7 @@ internal static class AetherCanonicalPrincipalFactory
             session.AbsoluteExpiresAtUtc <= now ||
             session.AbsoluteExpiresAtUtc <= session.CreatedAtUtc ||
             session.ReauthenticatedAtUtc is DateTimeOffset reauthenticatedAt &&
-            (reauthenticatedAt < session.CreatedAtUtc ||
-             reauthenticatedAt > now))
+            reauthenticatedAt > now)
         {
             throw new InvalidOperationException(
                 "The authentication session is not current canonical authority.");

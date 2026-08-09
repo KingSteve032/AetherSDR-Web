@@ -42,6 +42,7 @@ public sealed class AuthenticationProviderConfigurationTests
         Assert.Equal(AetherAuthenticationMode.Local, local.Mode);
         Assert.True(local.LocalAccountsEnabled);
         Assert.Null(local.ExternalProvider);
+        Assert.Equal(TimeSpan.FromHours(8), local.SessionAbsoluteLifetime);
 
         Assert.Equal(
             AetherExternalProviderKind.MicrosoftEntraId,
@@ -74,6 +75,17 @@ public sealed class AuthenticationProviderConfigurationTests
                 {
                     Mode = "Local",
                     ClientSecret = "dormant-secret"
+                },
+                isDevelopmentEnvironment: false));
+        Assert.Throws<InvalidOperationException>(
+            () => AetherAuthenticationConfiguration.Validate(
+                new AuthSettings
+                {
+                    Mode = "Local",
+                    Session = new AuthenticationSessionSettings
+                    {
+                        AbsoluteLifetimeMinutes = 1
+                    }
                 },
                 isDevelopmentEnvironment: false));
         Assert.Throws<InvalidOperationException>(
