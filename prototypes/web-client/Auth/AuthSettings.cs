@@ -14,12 +14,24 @@ public sealed class AuthSettings
     public string CallbackPath { get; init; } = "/signin-oidc";
     public string SignedOutCallbackPath { get; init; } = "/signout-callback-oidc";
     public AuthenticationSessionSettings Session { get; init; } = new();
+    public LocalAuthenticationSettings Local { get; init; } = new();
     public DevelopmentUserSettings DevelopmentUser { get; init; } = new();
 }
 
 public sealed class AuthenticationSessionSettings
 {
     public int AbsoluteLifetimeMinutes { get; init; } = 480;
+}
+
+public sealed class LocalAuthenticationSettings
+{
+    public int PasswordHashIterationCount { get; init; } = 210_000;
+    public int MinimumPasswordLength { get; init; } = 12;
+    public int MaximumPasswordLength { get; init; } = 256;
+    public int MaximumFailedAttempts { get; init; } = 5;
+    public int LockoutMinutes { get; init; } = 15;
+    public int RateLimitPermitCount { get; init; } = 10;
+    public int RateLimitWindowSeconds { get; init; } = 60;
 }
 
 public sealed class DevelopmentUserSettings

@@ -23,11 +23,21 @@ internal sealed record AetherExternalProviderDescriptor(
     string CallbackPath,
     string SignedOutCallbackPath);
 
+internal sealed record AetherLocalAuthenticationPolicy(
+    int PasswordHashIterationCount,
+    int MinimumPasswordLength,
+    int MaximumPasswordLength,
+    int MaximumFailedAttempts,
+    TimeSpan LockoutDuration,
+    int RateLimitPermitCount,
+    TimeSpan RateLimitWindow);
+
 internal sealed record AetherAuthenticationTopology(
     AetherAuthenticationMode Mode,
     bool LocalAccountsEnabled,
     AetherExternalProviderDescriptor? ExternalProvider,
-    TimeSpan SessionAbsoluteLifetime);
+    TimeSpan SessionAbsoluteLifetime,
+    AetherLocalAuthenticationPolicy LocalPolicy);
 
 internal static class AetherAuthenticationConfiguration
 {
@@ -38,6 +48,8 @@ internal static class AetherAuthenticationConfiguration
         ArgumentNullException.ThrowIfNull(settings);
         AetherAuthenticationMode mode = ParseMode(settings.Mode);
         TimeSpan sessionLifetime = ValidateSessionLifetime(settings.Session);
+        AetherLocalAuthenticationPolicy localPolicy =
+            ValidateLocalPolicy(settings.Local);
 
         if (mode == AetherAuthenticationMode.Development)
         {
@@ -53,7 +65,8 @@ internal static class AetherAuthenticationConfiguration
                 mode,
                 LocalAccountsEnabled: false,
                 ExternalProvider: null,
-                sessionLifetime);
+                sessionLifetime,
+                localPolicy);
         }
 
         if (mode == AetherAuthenticationMode.Local)
@@ -63,7 +76,8 @@ internal static class AetherAuthenticationConfiguration
                 mode,
                 LocalAccountsEnabled: true,
                 ExternalProvider: null,
-                sessionLifetime);
+                sessionLifetime,
+                localPolicy);
         }
 
         if (mode != AetherAuthenticationMode.Combined &&
@@ -90,7 +104,55 @@ internal static class AetherAuthenticationConfiguration
             mode,
             LocalAccountsEnabled: mode == AetherAuthenticationMode.Combined,
             provider,
-            sessionLifetime);
+            sessionLifetime,
+            localPolicy);
+    }
+
+    private static AetherLocalAuthenticationPolicy ValidateLocalPolicy(
+        LocalAuthenticationSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        if (settings.PasswordHashIterationCount is < 100_000 or > 1_000_000)
+        {
+            throw new InvalidOperationException(
+                "Auth:Local:PasswordHashIterationCount must be between " +
+                "100000 and 1000000.");
+        }
+        if (settings.MinimumPasswordLength is < 12 or > 128 ||
+            settings.MaximumPasswordLength <
+                settings.MinimumPasswordLength ||
+            settings.MaximumPasswordLength > 1024)
+        {
+            throw new InvalidOperationException(
+                "Auth:Local password lengths must require at least 12 " +
+                "characters and have a bounded maximum no greater than 1024.");
+        }
+        if (settings.MaximumFailedAttempts is < 3 or > 10)
+        {
+            throw new InvalidOperationException(
+                "Auth:Local:MaximumFailedAttempts must be between 3 and 10.");
+        }
+        if (settings.LockoutMinutes is < 1 or > 1440)
+        {
+            throw new InvalidOperationException(
+                "Auth:Local:LockoutMinutes must be between 1 and 1440.");
+        }
+        if (settings.RateLimitPermitCount is < 1 or > 100 ||
+            settings.RateLimitWindowSeconds is < 1 or > 3600)
+        {
+            throw new InvalidOperationException(
+                "Auth:Local rate limiting must allow between 1 and 100 " +
+                "attempts in a window between 1 and 3600 seconds.");
+        }
+
+        return new(
+            settings.PasswordHashIterationCount,
+            settings.MinimumPasswordLength,
+            settings.MaximumPasswordLength,
+            settings.MaximumFailedAttempts,
+            TimeSpan.FromMinutes(settings.LockoutMinutes),
+            settings.RateLimitPermitCount,
+            TimeSpan.FromSeconds(settings.RateLimitWindowSeconds));
     }
 
     private static TimeSpan ValidateSessionLifetime(

@@ -669,6 +669,8 @@ if (authenticationTopology.Mode != AetherAuthenticationMode.Development)
             "validated before production authentication can start.");
     }
     builder.Services.AddAetherIdentityPersistence(identityRuntimePaths);
+    builder.Services.AddAetherLocalAuthenticationFoundation(
+        authenticationTopology.LocalPolicy);
 }
 builder.Services.AddSingleton(authenticationTopology);
 builder.Services.AddSingleton(TimeProvider.System);
@@ -1073,6 +1075,13 @@ builder.Services.AddSingleton<IHostedService>(
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(
+        AetherLocalAuthenticationDefaults.RateLimitPolicy,
+        context => RateLimitPartition.GetFixedWindowLimiter(
+            RequestRateLimitPartitionKey.ForAddress(context),
+            _ => AetherLocalAuthenticationDefaults
+                .CreateRateLimiterOptions(
+                    authenticationTopology.LocalPolicy)));
     options.AddPolicy(
         "websocket",
         context => RateLimitPartition.GetFixedWindowLimiter(

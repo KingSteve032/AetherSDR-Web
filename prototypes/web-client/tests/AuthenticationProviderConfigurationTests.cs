@@ -43,6 +43,20 @@ public sealed class AuthenticationProviderConfigurationTests
         Assert.True(local.LocalAccountsEnabled);
         Assert.Null(local.ExternalProvider);
         Assert.Equal(TimeSpan.FromHours(8), local.SessionAbsoluteLifetime);
+        Assert.Equal(210_000, local.LocalPolicy.PasswordHashIterationCount);
+        Assert.Equal(12, local.LocalPolicy.MinimumPasswordLength);
+        Assert.Equal(256, local.LocalPolicy.MaximumPasswordLength);
+        Assert.Equal(5, local.LocalPolicy.MaximumFailedAttempts);
+        Assert.Equal(TimeSpan.FromMinutes(15), local.LocalPolicy.LockoutDuration);
+        Assert.Equal(10, local.LocalPolicy.RateLimitPermitCount);
+        Assert.Equal(TimeSpan.FromMinutes(1), local.LocalPolicy.RateLimitWindow);
+        System.Threading.RateLimiting.FixedWindowRateLimiterOptions rateLimit =
+            AetherLocalAuthenticationDefaults.CreateRateLimiterOptions(
+                local.LocalPolicy);
+        Assert.Equal(10, rateLimit.PermitLimit);
+        Assert.Equal(TimeSpan.FromMinutes(1), rateLimit.Window);
+        Assert.Equal(0, rateLimit.QueueLimit);
+        Assert.True(rateLimit.AutoReplenishment);
 
         Assert.Equal(
             AetherExternalProviderKind.MicrosoftEntraId,
@@ -85,6 +99,51 @@ public sealed class AuthenticationProviderConfigurationTests
                     Session = new AuthenticationSessionSettings
                     {
                         AbsoluteLifetimeMinutes = 1
+                    }
+                },
+                isDevelopmentEnvironment: false));
+        Assert.Throws<InvalidOperationException>(
+            () => AetherAuthenticationConfiguration.Validate(
+                new AuthSettings
+                {
+                    Mode = "Local",
+                    Local = new LocalAuthenticationSettings
+                    {
+                        PasswordHashIterationCount = 99_999
+                    }
+                },
+                isDevelopmentEnvironment: false));
+        Assert.Throws<InvalidOperationException>(
+            () => AetherAuthenticationConfiguration.Validate(
+                new AuthSettings
+                {
+                    Mode = "Local",
+                    Local = new LocalAuthenticationSettings
+                    {
+                        MinimumPasswordLength = 20,
+                        MaximumPasswordLength = 19
+                    }
+                },
+                isDevelopmentEnvironment: false));
+        Assert.Throws<InvalidOperationException>(
+            () => AetherAuthenticationConfiguration.Validate(
+                new AuthSettings
+                {
+                    Mode = "Local",
+                    Local = new LocalAuthenticationSettings
+                    {
+                        MaximumFailedAttempts = 2
+                    }
+                },
+                isDevelopmentEnvironment: false));
+        Assert.Throws<InvalidOperationException>(
+            () => AetherAuthenticationConfiguration.Validate(
+                new AuthSettings
+                {
+                    Mode = "Local",
+                    Local = new LocalAuthenticationSettings
+                    {
+                        RateLimitPermitCount = 0
                     }
                 },
                 isDevelopmentEnvironment: false));
