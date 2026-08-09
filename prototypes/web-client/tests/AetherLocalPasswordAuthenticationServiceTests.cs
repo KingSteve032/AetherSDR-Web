@@ -32,7 +32,12 @@ public sealed class AetherLocalPasswordAuthenticationServiceTests
 
         Assert.True(result.ReadyForSecondFactor);
         Assert.Equal("local-second-factor-required", result.Code);
-        Assert.Equal(user.Id, result.UserId);
+        Assert.NotNull(result.ChallengeToken);
+        Assert.Equal(64, result.ChallengeToken.Length);
+        Assert.DoesNotContain(
+            user.Id.ToString("D"),
+            result.ChallengeToken,
+            StringComparison.OrdinalIgnoreCase);
         Assert.Empty(
             await fixture.Database.AuthenticationSessions.ToArrayAsync());
         AetherIdentityAuditRecord audit =
@@ -70,7 +75,7 @@ public sealed class AetherLocalPasswordAuthenticationServiceTests
 
             Assert.False(rejected.ReadyForSecondFactor);
             Assert.Equal("local-password-rejected", rejected.Code);
-            Assert.Null(rejected.UserId);
+            Assert.Null(rejected.ChallengeToken);
         }
 
         AetherIdentityUser locked =
@@ -140,8 +145,8 @@ public sealed class AetherLocalPasswordAuthenticationServiceTests
             rejectedDisabled.Code);
         Assert.False(unknown.ReadyForSecondFactor);
         Assert.False(rejectedDisabled.ReadyForSecondFactor);
-        Assert.Null(unknown.UserId);
-        Assert.Null(rejectedDisabled.UserId);
+        Assert.Null(unknown.ChallengeToken);
+        Assert.Null(rejectedDisabled.ChallengeToken);
         Assert.Empty(
             await fixture.Database.AuthenticationSessions.ToArrayAsync());
 
@@ -183,12 +188,12 @@ public sealed class AetherLocalPasswordAuthenticationServiceTests
 
         Assert.False(result.ReadyForSecondFactor);
         Assert.Equal("local-mfa-enrollment-required", result.Code);
-        Assert.Null(result.UserId);
+        Assert.Null(result.ChallengeToken);
         AetherIdentityUser persisted =
             await fixture.Database.Users.SingleAsync(
                 candidate => candidate.Id == user.Id);
-        Assert.Equal(0, persisted.AccessFailedCount);
-        Assert.Null(persisted.LockoutEnd);
+        Assert.Equal(2, persisted.AccessFailedCount);
+        Assert.Equal(fixture.Now.AddMinutes(-1), persisted.LockoutEnd);
         Assert.Equal(
             210_000,
             ReadIterationCount(persisted.PasswordHash!));

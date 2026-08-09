@@ -30,7 +30,9 @@ internal sealed record AetherLocalAuthenticationPolicy(
     int MaximumFailedAttempts,
     TimeSpan LockoutDuration,
     int RateLimitPermitCount,
-    TimeSpan RateLimitWindow);
+    TimeSpan RateLimitWindow,
+    TimeSpan MfaChallengeLifetime,
+    int MaximumOutstandingMfaChallenges);
 
 internal sealed record AetherAuthenticationTopology(
     AetherAuthenticationMode Mode,
@@ -144,6 +146,13 @@ internal static class AetherAuthenticationConfiguration
                 "Auth:Local rate limiting must allow between 1 and 100 " +
                 "attempts in a window between 1 and 3600 seconds.");
         }
+        if (settings.MfaChallengeLifetimeMinutes is < 1 or > 10 ||
+            settings.MaximumOutstandingMfaChallenges is < 128 or > 65_536)
+        {
+            throw new InvalidOperationException(
+                "Auth:Local MFA challenges must expire between 1 and 10 " +
+                "minutes and have a bounded capacity between 128 and 65536.");
+        }
 
         return new(
             settings.PasswordHashIterationCount,
@@ -152,7 +161,9 @@ internal static class AetherAuthenticationConfiguration
             settings.MaximumFailedAttempts,
             TimeSpan.FromMinutes(settings.LockoutMinutes),
             settings.RateLimitPermitCount,
-            TimeSpan.FromSeconds(settings.RateLimitWindowSeconds));
+            TimeSpan.FromSeconds(settings.RateLimitWindowSeconds),
+            TimeSpan.FromMinutes(settings.MfaChallengeLifetimeMinutes),
+            settings.MaximumOutstandingMfaChallenges);
     }
 
     private static TimeSpan ValidateSessionLifetime(

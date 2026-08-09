@@ -46,7 +46,10 @@ internal static class AetherLocalAuthenticationComposition
             PasswordHasher<AetherIdentityUser>>();
         services.AddSingleton(
             AetherLocalPasswordTimingDefense.Create(policy));
+        services.AddSingleton<AetherLocalMfaChallengeStore>();
+        services.AddSingleton<AetherLocalMfaCredentialProtector>();
         services.AddScoped<AetherLocalPasswordAuthenticationService>();
+        services.AddScoped<AetherLocalMfaAuthenticationService>();
         return services;
     }
 }

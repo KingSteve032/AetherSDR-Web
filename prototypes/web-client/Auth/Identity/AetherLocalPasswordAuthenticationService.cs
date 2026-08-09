@@ -7,13 +7,14 @@ namespace AetherSDR.Web.Auth.Identity;
 internal sealed record AetherLocalPasswordVerificationResult(
     bool ReadyForSecondFactor,
     string Code,
-    Guid? UserId);
+    string? ChallengeToken);
 
 internal sealed class AetherLocalPasswordAuthenticationService(
     AetherIdentityDbContext database,
     IPasswordHasher<AetherIdentityUser> passwordHasher,
     ILookupNormalizer normalizer,
     AetherLocalPasswordTimingDefense timingDefense,
+    AetherLocalMfaChallengeStore challenges,
     AetherLocalAuthenticationPolicy policy,
     TimeProvider timeProvider)
 {
@@ -125,7 +126,21 @@ internal sealed class AetherLocalPasswordAuthenticationService(
 
         if (verification == PasswordVerificationResult.Failed)
         {
-            int failedAttempts = checked(user.AccessFailedCount + 1);
+            if (user.AccessFailedCount < 0 ||
+                user.AccessFailedCount >= policy.MaximumFailedAttempts)
+            {
+                AddAudit(
+                    user.Id,
+                    correlationId,
+                    AetherIdentityAuditOutcome.Failed,
+                    "local-password-state-invalid",
+                    user.AccessFailedCount,
+                    user.LockoutEnd);
+                await database.SaveChangesAsync(cancellationToken);
+                return Rejected();
+            }
+
+            int failedAttempts = user.AccessFailedCount + 1;
             string auditCode = "local-password-rejected";
             if (failedAttempts >= policy.MaximumFailedAttempts)
             {
@@ -150,22 +165,11 @@ internal sealed class AetherLocalPasswordAuthenticationService(
             return Rejected();
         }
 
-        bool userMutated = false;
-        if (user.AccessFailedCount != 0 || user.LockoutEnd is not null)
-        {
-            user.AccessFailedCount = 0;
-            user.LockoutEnd = null;
-            userMutated = true;
-        }
         if (verification ==
             PasswordVerificationResult.SuccessRehashNeeded)
         {
             user.PasswordHash =
                 passwordHasher.HashPassword(user, password!);
-            userMutated = true;
-        }
-        if (userMutated)
-        {
             MarkUserMutation(user);
         }
 
@@ -182,7 +186,21 @@ internal sealed class AetherLocalPasswordAuthenticationService(
             return new(
                 ReadyForSecondFactor: false,
                 Code: "local-mfa-enrollment-required",
-                UserId: null);
+                ChallengeToken: null);
+        }
+
+        AetherLocalMfaChallengeIssue challenge = challenges.Issue(user);
+        if (!challenge.Succeeded || challenge.Token is null)
+        {
+            AddAudit(
+                user.Id,
+                correlationId,
+                AetherIdentityAuditOutcome.Failed,
+                "local-mfa-challenge-unavailable",
+                user.AccessFailedCount,
+                user.LockoutEnd);
+            await database.SaveChangesAsync(cancellationToken);
+            return Rejected();
         }
 
         AddAudit(
@@ -196,7 +214,7 @@ internal sealed class AetherLocalPasswordAuthenticationService(
         return new(
             ReadyForSecondFactor: true,
             Code: "local-second-factor-required",
-            user.Id);
+            challenge.Token);
     }
 
     private PasswordVerificationResult VerifyStoredPassword(
@@ -282,7 +300,7 @@ internal sealed class AetherLocalPasswordAuthenticationService(
         new(
             ReadyForSecondFactor: false,
             Code: "local-password-rejected",
-            UserId: null);
+            ChallengeToken: null);
 
     private static void ValidateCorrelationId(string value)
     {

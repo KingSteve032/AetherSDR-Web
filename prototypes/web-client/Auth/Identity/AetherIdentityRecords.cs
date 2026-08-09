@@ -41,7 +41,8 @@ internal enum AetherAuthenticationMethod
 {
     LocalPasswordWithTotp = 1,
     LocalPasskey = 2,
-    ExternalOpenIdConnect = 3
+    ExternalOpenIdConnect = 3,
+    LocalPasswordWithRecoveryCode = 4
 }
 
 internal sealed class AetherAuthenticationSession

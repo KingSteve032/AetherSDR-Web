@@ -50,6 +50,12 @@ public sealed class AuthenticationProviderConfigurationTests
         Assert.Equal(TimeSpan.FromMinutes(15), local.LocalPolicy.LockoutDuration);
         Assert.Equal(10, local.LocalPolicy.RateLimitPermitCount);
         Assert.Equal(TimeSpan.FromMinutes(1), local.LocalPolicy.RateLimitWindow);
+        Assert.Equal(
+            TimeSpan.FromMinutes(5),
+            local.LocalPolicy.MfaChallengeLifetime);
+        Assert.Equal(
+            4096,
+            local.LocalPolicy.MaximumOutstandingMfaChallenges);
         System.Threading.RateLimiting.FixedWindowRateLimiterOptions rateLimit =
             AetherLocalAuthenticationDefaults.CreateRateLimiterOptions(
                 local.LocalPolicy);
@@ -144,6 +150,17 @@ public sealed class AuthenticationProviderConfigurationTests
                     Local = new LocalAuthenticationSettings
                     {
                         RateLimitPermitCount = 0
+                    }
+                },
+                isDevelopmentEnvironment: false));
+        Assert.Throws<InvalidOperationException>(
+            () => AetherAuthenticationConfiguration.Validate(
+                new AuthSettings
+                {
+                    Mode = "Local",
+                    Local = new LocalAuthenticationSettings
+                    {
+                        MfaChallengeLifetimeMinutes = 11
                     }
                 },
                 isDevelopmentEnvironment: false));
