@@ -64,6 +64,7 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
             "/var/lib/aethersdr",
             "/var/lib/aethersdr/secrets",
             "/var/lib/aethersdr/secrets/data-protection",
+            "/var/lib/aethersdr/identity",
             "/var/lib/aethersdr-installer",
             "/var/lib/aethersdr-installer/proxy",
             "/var/lib/aethersdr-installer/firewall",
@@ -183,6 +184,9 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
                 StringComparison.Ordinal) ||
             action.Target.EndsWith(
                 "/data-protection",
+                StringComparison.Ordinal) ||
+            action.Target.EndsWith(
+                "/identity",
                 StringComparison.Ordinal);
         bool sharedReleaseRoot = string.Equals(
             action.Target,

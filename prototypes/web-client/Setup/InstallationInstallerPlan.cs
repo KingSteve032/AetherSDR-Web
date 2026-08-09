@@ -125,7 +125,7 @@ internal sealed class InstallationInstallerPlan
 
 public static class InstallationInstallerPlanComposer
 {
-    public const int CurrentPlanSchemaVersion = 4;
+    public const int CurrentPlanSchemaVersion = 5;
 
     public static InstallationInstallerPlanReport Compose(
         InstallationSetupState state,
@@ -334,6 +334,10 @@ public static class InstallationInstallerPlanComposer
             Path.Combine(installerStateRoot, "firewall"),
             Path.Combine(installerStateRoot, "releases")
         ];
+        if (profile.GatewayRunsHere)
+        {
+            directories.Add(paths.IdentityStoreDirectory);
+        }
         if (profile.BrokerRunsHere ||
             profile.StationEngineRunsHere ||
             profile.AgentRunsHere)

@@ -38,11 +38,16 @@ public sealed class InstallationInstallerCoordinatorTests
         Assert.Equal(
             ["aethersdr", "aetherremote"],
             first.ServiceUsers);
-        Assert.Equal(19, first.Directories.Count);
+        Assert.Equal(20, first.Directories.Count);
         Assert.Contains(
             first.Directories,
             directory => directory.EndsWith(
                 "/secrets/data-protection",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            first.Directories,
+            directory => directory.EndsWith(
+                "/identity",
                 StringComparison.Ordinal));
         Assert.Contains(
             first.Directories,
@@ -153,6 +158,10 @@ public sealed class InstallationInstallerCoordinatorTests
                 linux,
                 DefaultSelection());
 
+        Assert.Equal(5, plan.SchemaVersion);
+        Assert.Contains(
+            "/var/lib/aethersdr/identity",
+            plan.Directories);
         Assert.Contains(
             "/var/lib/aethersdr-installer",
             plan.Directories);
