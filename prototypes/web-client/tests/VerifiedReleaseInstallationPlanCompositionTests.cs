@@ -179,6 +179,47 @@ public sealed class VerifiedReleaseInstallationPlanCompositionTests
     }
 
     [Fact]
+    public void InitialCompositionAcceptsOnlyExactBootstrapWithoutPreviousVersion()
+    {
+        SignedReleaseManifestPayload payload = CreatePayload(CreatePackages());
+        OfflineReleaseInstallPreflightResult bootstrap =
+            SuccessfulPreflight(payload) with
+            {
+                InstalledReleaseIdentity =
+                    VerifiedReleaseInstallationPlanComposer
+                        .InitialInstallationBootstrapIdentity,
+                InstalledVersion = string.Empty
+            };
+        VerifiedReleaseInstallationPlanComposer composer = new();
+
+        VerifiedReleaseInstallationPlanCompositionResult initial =
+            composer.ComposeInitial(bootstrap, CreatePaths());
+        VerifiedReleaseInstallationPlanCompositionResult regular =
+            composer.Compose(bootstrap, CreatePaths());
+        VerifiedReleaseInstallationPlanCompositionResult wrongIdentity =
+            composer.ComposeInitial(
+                bootstrap with
+                {
+                    InstalledReleaseIdentity = "aethersdr-not-bootstrap-0.0.0"
+                },
+                CreatePaths());
+
+        Assert.True(initial.Succeeded);
+        Assert.Equal(
+            VerifiedReleaseInstallationPlanComposer
+                .InitialInstallationBootstrapIdentity,
+            initial.Plan!.InstalledReleaseIdentity);
+        Assert.False(regular.Succeeded);
+        Assert.Equal(
+            VerifiedReleaseInstallationPlanFailureCode.VerifiedBundleUnavailable,
+            regular.FailureCode);
+        Assert.False(wrongIdentity.Succeeded);
+        Assert.Equal(
+            VerifiedReleaseInstallationPlanFailureCode.VerifiedBundleUnavailable,
+            wrongIdentity.FailureCode);
+    }
+
+    [Fact]
     public void SignedRestartMigrationAndNotesMetadataSurviveComposition()
     {
         SignedReleaseManifestPayload payload = CreatePayload(CreatePackages());

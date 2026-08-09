@@ -4394,6 +4394,177 @@ RF operation occurred.
 
 ### M8C — Guided standalone installer, reverse proxy, and TLS
 
+Status: the transactional standalone installer, signed initial-release
+publication, reviewed proxy/TLS and firewall paths, exact activation, health
+verification, bounded rollback, repair, and complete-plan inspection are
+implemented. Automated validation and disposable Ubuntu 24.04 x64 acceptance are
+complete. ARM64 acceptance is explicitly deferred and is not claimed by this
+checkpoint; M8C closes on the tested `linux-x64` scope.
+
+The first increment composes one exact deterministic installer plan from the
+claimed M8A setup state plus explicit Linux architecture, reverse-proxy/TLS mode,
+and release identity. The plan retains the exact setup snapshot, ordered service
+users, directories, services, and host actions, and a SHA-256 identity over a
+length-prefixed canonical inventory. Changed summaries and stale setup revisions
+fail before host inspection or mutation.
+
+One serialized coordinator exposes non-mutating validation and disabled-by-default
+apply and repair operations through a single injected host-transaction participant.
+Apply performs one mutation attempt and requires post-apply exact-plan convergence.
+Repair is a no-op for a converged host and mutates only known drift. Unknown
+inspection or mutation outcomes require reconciliation and are never retried or
+inferred successful.
+
+The second increment adds an unregistered Ubuntu participant with an injected,
+read-only runtime. It compares only the exact planned architecture, service users,
+directories, and fixed systemd unit names, exposes no shell or arbitrary-command
+channel, and returns bounded drift or unknown results.
+
+The third increment accepts only a retained successful immutable M8B staging
+result, verifies its complete public summary, and binds its internal release,
+setup revision, architecture, release identity, and TX-support choice to the exact
+installer plan. The binding produces one typed mutation request.
+
+The fourth increment adds fixed-purpose step sequencing and a standalone CLI for
+plan, validate, apply, and repair. A non-mutating preparation pass precedes all
+steps; typed actions execute once in exact order; unknown outcomes stop; and
+rejection after a prior write requires reconciliation. Apply and repair require
+the exact 64-character plan identity. Coordinator execution and local Ubuntu
+mutation are independently disabled by default, and the CLI registers no concrete
+write primitives or staged-release authority yet.
+
+The fifth increment composes each installer action into a bounded Ubuntu primitive
+inventory. Service-user creation uses only fixed `/usr/sbin/useradd` arguments,
+directory creation uses only fixed `/usr/bin/install` arguments, systemd reload
+uses only `/usr/bin/systemctl daemon-reload`, and only five reviewed service
+identities are accepted. Release and proxy/TLS/firewall/health work remain typed
+operations with no shell command. Preflight rejects an unknown unit before any
+primitive is called. Legacy `flexweb` units were found to target the old home
+layout, so they are not reused or overwritten; M8C requires separate signed
+installer-native units for the canonical system paths.
+
+The sixth increment adds five separate hardened installer-native systemd units for
+gateway, updater, broker, station engine, and agent. They use only the canonical
+`/opt/aethersdr/current/<role>`, `/etc/aethersdr`, and
+`/var/lib/aethersdr` layouts, production environments, dedicated service users,
+empty capability sets, and strict filesystem/kernel/namespace protections. The
+gateway role package carries them under one fixed `installer/systemd` directory,
+which becomes part of the signed package digest. Legacy production units remain
+unchanged.
+
+The seventh increment registered the concrete direct-process foundation beneath the
+independently disabled local runtime. Fixed absolute executables must be real,
+executable files that are not group- or other-writable; every argument comes from
+the exact primitive planner; the child environment is empty; and execution is
+time-bounded. There is no shell, PATH lookup, command string, or arbitrary
+directory, unit, or remote-command channel.
+
+The remaining implementation slices bind an immutable signed offline bundle
+through the normal M8B verifier, reject a wrong host architecture, setup revision,
+release identity, TX-support choice, schema, protocol, migration, or host-restart
+requirement, and reuse M8B staging, bounded extraction, and atomic inactive-release
+publication. Published role trees are root-owned, service-readable, and
+non-writable. A root-private inventory records exact file hashes, lengths,
+executable intent, and directory count for future validation and repair.
+
+Reviewed Caddy, Nginx, and operator requirements are packaged inside the signed
+gateway role. Existing-proxy modes write only root-owned operator artifacts.
+Managed public Caddy requires a DNS name; LAN-only Caddy requires explicit internal
+certificate mode. Both default and non-default HTTPS ports are rendered exactly.
+Caddy installation is runtime-masked before package installation and unmasked only
+after a validated, atomically published reviewed configuration and ownership marker
+exist.
+
+Firewall guidance is always retained. Optional UFW execution requires UFW to be
+already operator-enabled and can add only missing exact TCP rules for the selected
+public port plus public-Caddy certificate issuance. It cannot enable UFW, reset or
+flush policy, change defaults, delete rules, or expose loopback port 5080.
+
+Exact-plan validation now covers architecture, users, directory metadata, reviewed
+unit bytes, immutable release hashes, current-pointer identity, service activation,
+proxy/firewall state, public health, and trusted TLS. Repair acts on that complete
+known drift rather than a shallow resource-presence snapshot. Clean hosts classify
+planned not-yet-installed systemd units as missing rather than unknowable.
+
+Initial activation creates `/opt/aethersdr/current` only when absent, activates
+reviewed services in dependency order, and performs bounded public health and
+trusted-TLS checks. A failed verification disables only transaction-applied
+services in reverse order and removes only the exact transaction-owned symlink;
+pre-existing converged services, operator policy, credentials, immutable release
+bytes, and installer evidence are retained. Cancellation uses the same rollback
+boundary. An uncertain rollback outcome requires reconciliation.
+
+Installer-owned evidence was moved out of the application-writable state tree to
+the root-owned `/var/lib/aethersdr-installer` root. The shared immutable release
+root is root-owned and service-readable. Coordinator execution and local Ubuntu
+mutation remain independently disabled by default, signed verification remains
+mandatory, and no installer action grants radio, watchdog, command, lease, TX, or
+live-RF authority.
+
+The 2026-08-08 automated gate passed 36 focused installer tests, 1,721 FlexWeb
+server tests, 57 independent-watchdog tests, 48 TX-HIL isolation tests, 77
+AetherRemote tests, 17 release-builder tests, and 142 browser tests (2,062 total),
+plus a zero-warning 14-project build, release/deployment boundary validation, and
+RX-only production artifact inspection. The validation-only release was
+`20260808-152349-flexweb-validation`. No package, user, directory, service, proxy,
+TLS, firewall, credential, radio, watchdog, TX, deployment, commit, or Git remote
+operation occurred during the automated gate.
+
+The 2026-08-08 expanded M8C implementation gate passed 61 focused installer
+tests inside 1,746 FlexWeb server tests, plus 57 independent-watchdog tests, 48
+TX-HIL isolation tests, 77 AetherRemote tests, 17 release-builder tests, and 142
+browser tests: 1,945 .NET tests and 2,087 overall. The 14-project Release build
+completed with zero warnings and zero errors. This automated gate performed no
+package installation, user or directory mutation, service start, proxy/TLS or
+firewall change, pointer switch, reboot, radio/watchdog command, TX action, or
+live RF operation.
+
+The 2026-08-09 final x64 implementation gate passed 94 focused installer tests
+inside 1,752 FlexWeb server tests, plus 57 independent-watchdog tests, 48 TX-HIL
+isolation tests, 77 AetherRemote tests, 17 release-builder tests, and 142 browser
+tests: 1,951 .NET tests and 2,093 overall. The 14-project Release build again
+completed with zero warnings and zero errors.
+
+A signed `linux-x64` validation release, `aethersdr-8.3.0-beta.3`, then exercised
+the exact 38-action schema-v4 plan on a disposable Ubuntu Server 24.04 host. A
+validation-only host allowlist initially omitted the loopback host used by Caddy's
+active upstream probe. Public health therefore remained unavailable and the
+installer performed its bounded rollback: transaction-started services were
+stopped and disabled, the transaction-owned `current` pointer was removed, and
+the immutable release, root-owned inventory, proxy ownership, firewall guidance,
+and internal-CA evidence were retained. No pre-existing authority or operator
+policy was reconstructed.
+
+After correcting that validation-only operator configuration, Repair applied the
+same exact plan and release. Non-mutating validation returned
+`ubuntu-host-converged`, and a second Repair returned the same result with
+`MutationAttempted=false`. The current pointer resolved to the exact immutable
+beta release; gateway, station engine, and Caddy were active and enabled; normal
+system-trust HTTPS returned HTTP 200; gateway and station listeners remained
+loopback-only on ports 5080 and 5081; and only Caddy listened publicly on 443. The
+web and station Data Protection directories had their exact service owner and mode
+`0700`, and the Caddy internal root verified through the Ubuntu trust store.
+Runtime health remained `Simulation` with `transmitEnabled=false`; no radio,
+watchdog, command, lease, TX, or live-RF operation occurred.
+
+A disposable clean Ubuntu 24.04 x64 VM at the M8C checkpoint had systemd running,
+AppArmor active, all required fixed executables present, and no pre-existing
+AetherSDR users, canonical directories, or service units. Before mutation, the five
+installer units parsed without unit errors and each received a `3.2 OK` offline
+`systemd-analyze security` exposure score.
+
+The bounded clean-host foundation rehearsal then created only the two non-login
+service users and the canonical configuration, state, secret, release, backup, and
+log directories. AetherRemote role subdirectories are owned by `aetherremote`; the
+shared roots remain owned by `aethersdr`; the secret directory is mode `0700`; and
+all other directories are mode `0750`. The exact five reviewed units were installed
+root-owned at mode `0644` and systemd was reloaded. A second fixed-directory pass
+converged to the same ownership and modes. Every installed unit remained byte-for-
+byte equal to its reviewed asset, disabled, and inactive; no `current` release
+existed. Unit verification reported only the expected missing release executables.
+No package, release, proxy, TLS, firewall, credential, service start, reboot,
+pointer switch, radio, watchdog, command, lease, TX, or live RF operation occurred.
+
 - Provide one supported native installer that creates dedicated service users,
   directories, permissions, hardened systemd units, release directories, and
   required firewall guidance.
