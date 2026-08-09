@@ -1,0 +1,39 @@
+[Unit]
+Description=AetherRemote central station broker
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=aetherremote
+Group=aetherremote
+WorkingDirectory=/opt/aethersdr/current/broker
+Environment=DOTNET_ENVIRONMENT=Production
+EnvironmentFile=-/etc/aethersdr/aetherremote/broker/environment
+ExecStart=/opt/aethersdr/current/broker/AetherRemote.Broker
+Restart=always
+RestartSec=2
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/aethersdr/aetherremote/broker /var/log/aethersdr/aetherremote
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

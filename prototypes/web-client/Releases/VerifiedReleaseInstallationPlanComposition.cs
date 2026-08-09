@@ -259,6 +259,9 @@ internal sealed class VerifiedReleaseInstallationPlan
 /// </summary>
 public sealed class VerifiedReleaseInstallationPlanComposer
 {
+    internal const string InitialInstallationBootstrapIdentity =
+        "aethersdr-bootstrap-0.0.0";
+
     private static readonly ReleasePackageRole[] RequiredRoles =
     [
         ReleasePackageRole.GatewayWeb,
@@ -295,7 +298,18 @@ public sealed class VerifiedReleaseInstallationPlanComposer
 
     public VerifiedReleaseInstallationPlanCompositionResult Compose(
         OfflineReleaseInstallPreflightResult preflight,
-        InstallationPaths paths)
+        InstallationPaths paths) =>
+        Compose(preflight, paths, initialInstallation: false);
+
+    internal VerifiedReleaseInstallationPlanCompositionResult ComposeInitial(
+        OfflineReleaseInstallPreflightResult preflight,
+        InstallationPaths paths) =>
+        Compose(preflight, paths, initialInstallation: true);
+
+    private VerifiedReleaseInstallationPlanCompositionResult Compose(
+        OfflineReleaseInstallPreflightResult preflight,
+        InstallationPaths paths,
+        bool initialInstallation)
     {
         ArgumentNullException.ThrowIfNull(preflight);
         ArgumentNullException.ThrowIfNull(paths);
@@ -332,6 +346,13 @@ public sealed class VerifiedReleaseInstallationPlanComposer
         }
 
         VerifiedOfflineReleaseBundleSnapshot? bundle = preflight.VerifiedBundle;
+        bool installedContextRetained = initialInstallation
+            ? string.IsNullOrEmpty(preflight.InstalledVersion) &&
+                string.Equals(
+                    preflight.InstalledReleaseIdentity,
+                    InitialInstallationBootstrapIdentity,
+                    StringComparison.Ordinal)
+            : !string.IsNullOrEmpty(preflight.InstalledVersion);
         if (bundle is null ||
             bundle.ManifestLength is < 1 or >
                 SignedReleaseManifestJson.MaximumManifestBytes ||
@@ -340,7 +361,7 @@ public sealed class VerifiedReleaseInstallationPlanComposer
             preflight.UpdateChannel is null ||
             preflight.ConfigurationSchemaVersion is null or < 1 ||
             preflight.ProtocolVersion is null or < 1 ||
-            string.IsNullOrEmpty(preflight.InstalledVersion))
+            !installedContextRetained)
         {
             return VerifiedReleaseInstallationPlanCompositionResult.Failure(
                 VerifiedReleaseInstallationPlanFailureCode.VerifiedBundleUnavailable,

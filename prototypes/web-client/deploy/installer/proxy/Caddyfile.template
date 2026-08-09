@@ -1,0 +1,19 @@
+# AetherSDR managed Caddy configuration.
+# Render only {{PUBLIC_AUTHORITY}} and {{TLS_DIRECTIVE}} from the exact installer plan.
+{{PUBLIC_AUTHORITY}} {
+	{{TLS_DIRECTIVE}}
+	encode zstd gzip
+
+	header {
+		-Server
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		X-Frame-Options "DENY"
+	}
+
+	reverse_proxy 127.0.0.1:5080 {
+		health_uri /healthz
+		health_interval 30s
+		health_timeout 5s
+	}
+}

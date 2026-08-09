@@ -440,6 +440,106 @@ script is read-only and requires trusted HTTPS. Production administrator creatio
 remains M8D work; native installer, proxy, service, package, and firewall mutation
 remains M8C work.
 
+M8C now provides one deterministic standalone Ubuntu installer transaction derived
+from the claimed M8A setup state plus explicit architecture, reverse-proxy/TLS,
+firewall, and signed-release choices. The schema-versioned plan retains the exact
+setup snapshot and hashes a length-prefixed inventory of every user, directory,
+unit, proxy, firewall, activation, health, and TLS action. Changed summaries, stale
+setup revisions, noncanonical paths, unsupported units, and wrong plan confirmations
+fail before mutation.
+
+The current M8C acceptance matrix covers Ubuntu Server 24.04 `linux-x64` only.
+`linux-arm64` plan and package composition remain implemented but unaccepted and
+must not be represented as a supported standalone deployment at this checkpoint.
+
+Plan and validate are read-only. Validation inspects the complete plan: host
+architecture, service identities, ownership and modes, reviewed unit bytes,
+root-protected release inventory and hashes, `current` symlink, active units,
+proxy artifact or managed Caddy configuration, selected UFW state/rules, public
+health, and trusted TLS. Apply and repair remain independently disabled by default
+at both coordinator and local Ubuntu runtime boundaries.
+
+```bash
+./AetherSDR.Web --installation-installer-plan \
+  --installation-architecture linux-x64 \
+  --installation-reverse-proxy managed-caddy \
+  --installation-firewall guidance \
+  --installation-release 2026.8.0
+```
+
+Apply or repair additionally requires the exact printed plan ID, an immutable
+signed offline bundle, and the local compatibility versions:
+
+```bash
+InstallationInstaller__Enabled=true \
+InstallationInstallerUbuntu__MutationEnabled=true \
+./AetherSDR.Web --installation-installer-apply \
+  --installation-architecture linux-x64 \
+  --installation-reverse-proxy managed-caddy \
+  --installation-firewall guidance \
+  --installation-release 2026.8.0 \
+  --confirm-installation-plan <exact-64-character-plan-id> \
+  --installation-bundle /srv/aethersdr/bundles/aethersdr-2026.8.0 \
+  --installation-configuration-schema 1 \
+  --installation-protocol-version 2
+```
+
+The normal `ReleaseManifestTrust` configuration must also enable verification and
+name at least one reviewed `EcdsaP256Sha256` public key. The installer performs the
+same M8B signature, architecture, channel/pin, schema, protocol, package-integrity,
+and TX-capability verification before any host write. Initial installation rejects
+manifests that require a migration or host restart because M8C does not reconstruct
+those update authorities.
+
+Managed Caddy activation expects the owner-only gateway runtime environment to
+allow the canonical public host plus `localhost` and `127.0.0.1`, and to configure
+`ReverseProxy__KnownProxies__0=127.0.0.1`. Caddy's active `/healthz` probe uses the
+loopback upstream identity; an incomplete allowlist fails the bounded public-health
+gate. Authentication credentials and other operator policy remain external to the
+installer and are never generated or overwritten.
+
+The Ubuntu transaction uses only fixed absolute executables and argument shapes with
+an empty child environment. It has no shell, PATH lookup, command string, arbitrary
+path, or arbitrary service channel. It creates only reviewed non-login identities,
+canonical directories, five hardened installer-native units, and a verified
+immutable release. The shared release root is root-owned and service-readable.
+Gateway and station Data Protection keys persist in separate owner-only mode-`0700`
+directories selected by their reviewed systemd units. Installer evidence,
+managed-proxy ownership, firewall guidance, and release hashes live under the
+separate root-owned `/var/lib/aethersdr-installer` tree, outside the
+application-writable state root.
+
+Existing Caddy, Nginx, and other proxy modes generate reviewed operator artifacts
+without replacing operator policy. Managed public Caddy requires a DNS name and
+uses normal automatic HTTPS; LAN Caddy requires the explicit
+`lan-internal-certificate` choice and normal trusted certificate validation. The
+installer validates Caddy's self-issued CA, installs its exact root into the Ubuntu
+system trust store through the fixed `update-ca-certificates` command, records
+root-owned digest evidence, and verifies an ordinary certificate chain without a
+TLS bypass. Other client devices must still explicitly trust that private root.
+Default and non-default HTTPS ports flow through both proxy and firewall plans.
+The `apply-ufw` choice adds only missing reviewed rules to an already operator-
+enabled UFW policy; it never enables UFW, resets policy, changes defaults, deletes
+rules, or exposes loopback port 5080.
+
+Release publication reuses M8B immutable staging, bounded archive extraction, and
+atomic directory publication. A root-private durable inventory records every file
+length, SHA-256 digest, executable bit, and directory count. Repair recomputes that
+inventory and refuses symlinks, extra files, unsafe modes, operator-owned proxy
+drift, an unexpected current pointer, or an ambiguous process outcome.
+
+Initial activation creates `/opt/aethersdr/current` only when absent, starts only
+the exact dependency-ordered reviewed services, and verifies public health plus
+trusted TLS. If health or TLS fails, the installer disables only services proven
+newly activated by that transaction and removes only the exact transaction-owned
+current symlink. It retains the immutable release and root-owned evidence for a
+later repair. Services that were already converged are never disabled, and any
+uncertain rollback postcondition requires explicit reconciliation.
+
+No installer path grants radio, watchdog, command, lease, keying, browser TX, or
+live-RF authority. Production execution defaults remain off, and legacy
+`flexweb` units and operator-managed proxy configuration remain untouched.
+
 The first M8B increment adds a typed signed-release manifest and local verification
 boundary under `Releases/`. It accepts only caller-provided manifest bytes,
 immutable copied package bytes, an exact local compatibility/channel context, and

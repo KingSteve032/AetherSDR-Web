@@ -23,8 +23,11 @@ const string ProductionTxPreflightSwitch =
     "--validate-production-tx-activation";
 const string ProductionTxRadioIdSwitch =
     "--production-tx-radio-id";
+InstallationInstallerConsoleCommandLine installationInstallerCommandLine =
+    InstallationInstallerConsoleCommandParser.Parse(args);
 InstallationSetupConsoleCommandLine installationSetupCommandLine =
-    InstallationSetupConsoleCommandParser.Parse(args);
+    InstallationSetupConsoleCommandParser.Parse(
+        installationInstallerCommandLine.ApplicationArguments);
 OfflineReleaseInstallPreflightCommandLine releaseInstallPreflightCommandLine =
     OfflineReleaseInstallPreflightCommandParser.Parse(
         installationSetupCommandLine.ApplicationArguments);
@@ -80,6 +83,37 @@ if (productionTxPreflightRequested &&
 {
     throw new InvalidOperationException(
         "Production TX activation preflight requires --production-tx-radio-id.");
+}
+if (installationInstallerCommandLine.Command !=
+        InstallationInstallerConsoleCommandKind.None &&
+    installationSetupCommandLine.Command !=
+        InstallationSetupConsoleCommandKind.None)
+{
+    throw new InvalidOperationException(
+        "Installer commands cannot run with installation setup commands.");
+}
+if (installationInstallerCommandLine.Command !=
+        InstallationInstallerConsoleCommandKind.None &&
+    releaseInstallPreflightCommandLine.Command !=
+        OfflineReleaseInstallPreflightCommandKind.None)
+{
+    throw new InvalidOperationException(
+        "Installer commands cannot run with release install preflight.");
+}
+if (installationInstallerCommandLine.Command !=
+        InstallationInstallerConsoleCommandKind.None &&
+    releaseUpdateCommandLine.Command !=
+        ReleaseUpdateConsoleCommandKind.None)
+{
+    throw new InvalidOperationException(
+        "Installer commands cannot run with release update commands.");
+}
+if (productionTxPreflightRequested &&
+    installationInstallerCommandLine.Command !=
+        InstallationInstallerConsoleCommandKind.None)
+{
+    throw new InvalidOperationException(
+        "Installer commands cannot run with production TX preflight.");
 }
 if (productionTxPreflightRequested &&
     installationSetupCommandLine.Command !=
@@ -329,6 +363,120 @@ if (releaseUpdateCommandLine.Command ==
             releaseStatusPaths));
     Environment.ExitCode = await releaseStatusCommandConsole.ExecuteAsync(
         releaseUpdateCommandLine,
+        Console.Out);
+    return;
+}
+
+if (installationInstallerCommandLine.Command !=
+    InstallationInstallerConsoleCommandKind.None)
+{
+    InstallationPathSettings installerPathSettings =
+        builder.Configuration
+            .GetSection(InstallationPathSettings.SectionName)
+            .Get<InstallationPathSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new InstallationPathSettings();
+    InstallationPathLayout installerPathLayout =
+        builder.Environment.IsDevelopment()
+            ? InstallationPathLayout.Development
+            : OperatingSystem.IsLinux()
+                ? InstallationPathLayout.LinuxSystem
+                : throw new InvalidOperationException(
+                    "Standalone installer commands require Linux.");
+    InstallationPaths installerPaths = InstallationPaths.Resolve(
+        builder.Environment.ContentRootPath,
+        installerPathLayout,
+        installerPathSettings);
+    InstallationInstallerExecutionSettings installerExecutionSettings =
+        builder.Configuration
+            .GetSection(InstallationInstallerExecutionSettings.SectionName)
+            .Get<InstallationInstallerExecutionSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new InstallationInstallerExecutionSettings();
+    InstallationInstallerUbuntuRuntimeSettings installerRuntimeSettings =
+        builder.Configuration
+            .GetSection(
+                InstallationInstallerUbuntuRuntimeSettings.SectionName)
+            .Get<InstallationInstallerUbuntuRuntimeSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new InstallationInstallerUbuntuRuntimeSettings();
+    InstallationSetupStore installerSetupStore =
+        new(installerPaths.SetupStatePath);
+    InstallationInstallerVerifiedReleaseBinding? installerRelease = null;
+    if (installationInstallerCommandLine.Command is
+        InstallationInstallerConsoleCommandKind.Apply or
+        InstallationInstallerConsoleCommandKind.Repair)
+    {
+        try
+        {
+            ReleaseManifestTrustSettings installerTrustSettings =
+                builder.Configuration
+                    .GetSection(ReleaseManifestTrustSettings.SectionName)
+                    .Get<ReleaseManifestTrustSettings>(options =>
+                        options.ErrorOnUnknownConfiguration = true) ??
+                new ReleaseManifestTrustSettings();
+            ReleaseManifestTrustRegistry installerTrustRegistry = new(
+                Options.Create(installerTrustSettings),
+                NullLogger<ReleaseManifestTrustRegistry>.Instance);
+            SignedReleaseManifestVerificationService installerManifestVerifier =
+                new(
+                    installerTrustRegistry,
+                    new SignedReleaseManifestVerifier());
+            LocalOfflineReleaseBundleVerificationService
+                installerBundleVerifier =
+                    new(installerManifestVerifier);
+            InstallationInstallerInitialReleasePreparation
+                installerPreparation =
+                    new(installerBundleVerifier);
+            InstallationSetupState installerSetupState =
+                await installerSetupStore.LoadAsync();
+            installerRelease = await installerPreparation.PrepareAsync(
+                installationInstallerCommandLine.BundleDirectory,
+                installationInstallerCommandLine.Architecture ??
+                    throw new InvalidOperationException(
+                        "Installer architecture is required."),
+                installationInstallerCommandLine.ReleaseIdentity,
+                installationInstallerCommandLine.ConfigurationSchemaVersion ??
+                    throw new InvalidOperationException(
+                        "Installer configuration schema is required."),
+                installationInstallerCommandLine.ProtocolVersion ??
+                    throw new InvalidOperationException(
+                        "Installer protocol version is required."),
+                installerSetupState,
+                installerPaths);
+        }
+        catch (Exception exception)
+            when (exception is InvalidOperationException or IOException or
+                UnauthorizedAccessException or
+                System.Security.Cryptography.CryptographicException)
+        {
+            await Console.Out.WriteLineAsync(
+                JsonSerializer.Serialize(
+                    new
+                    {
+                        outcome = "rejected",
+                        code = "verified-release-preparation-rejected",
+                        mutationAttempted = false
+                    }));
+            Environment.ExitCode = 2;
+            return;
+        }
+    }
+    InstallationInstallerUbuntuMutationExecutor installerMutationExecutor =
+        new(new LocalInstallationInstallerUbuntuMutationPrimitives());
+    LocalInstallationInstallerUbuntuRuntime installerRuntime =
+        new(installerMutationExecutor, installerRuntimeSettings);
+    InstallationInstallerUbuntuHostTransaction installerHost =
+        new(installerRuntime, installerRelease);
+    using InstallationInstallerCoordinator installerCoordinator =
+        new(
+            installerSetupStore,
+            installerHost,
+            installerExecutionSettings);
+    InstallationInstallerConsole installerConsole =
+        new(installerCoordinator);
+    Environment.ExitCode = await installerConsole.ExecuteAsync(
+        installationInstallerCommandLine,
         Console.Out);
     return;
 }

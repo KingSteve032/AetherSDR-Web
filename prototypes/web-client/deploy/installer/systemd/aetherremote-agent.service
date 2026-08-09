@@ -1,0 +1,39 @@
+[Unit]
+Description=AetherRemote station agent
+Wants=network-online.target aetherremote-station-engine.service
+After=network-online.target aetherremote-station-engine.service
+
+[Service]
+Type=simple
+User=aetherremote
+Group=aetherremote
+WorkingDirectory=/opt/aethersdr/current/aetherremote-agent
+Environment=DOTNET_ENVIRONMENT=Production
+EnvironmentFile=-/etc/aethersdr/aetherremote/agent/environment
+ExecStart=/opt/aethersdr/current/aetherremote-agent/AetherRemote.Agent
+Restart=always
+RestartSec=2
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/aethersdr/aetherremote/agent /var/log/aethersdr/aetherremote
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,34 @@
+# AetherSDR reviewed Nginx HTTPS reverse-proxy template.
+# This file belongs in the http context, normally /etc/nginx/conf.d/.
+map $http_upgrade $aethersdr_connection_upgrade {
+	default upgrade;
+	'' close;
+}
+
+server {
+	listen {{HTTPS_PORT}} ssl;
+	http2 on;
+	server_name {{PUBLIC_HOST}};
+
+	ssl_certificate {{TLS_CERTIFICATE_PATH}};
+	ssl_certificate_key {{TLS_KEY_PATH}};
+	client_max_body_size 32m;
+
+	add_header X-Content-Type-Options "nosniff" always;
+	add_header Referrer-Policy "no-referrer" always;
+	add_header X-Frame-Options "DENY" always;
+
+	location / {
+		proxy_pass http://127.0.0.1:5080;
+		proxy_http_version 1.1;
+		proxy_set_header Host $host;
+		proxy_set_header X-Forwarded-Host $host;
+		proxy_set_header X-Forwarded-Proto https;
+		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection $aethersdr_connection_upgrade;
+		proxy_read_timeout 3600s;
+		proxy_send_timeout 3600s;
+		proxy_buffering off;
+	}
+}

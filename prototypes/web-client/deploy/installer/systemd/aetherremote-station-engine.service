@@ -1,0 +1,44 @@
+[Unit]
+Description=AetherRemote station-local receive engine
+Wants=network-online.target
+After=network-online.target
+Before=aetherremote-agent.service
+
+[Service]
+Type=simple
+User=aetherremote
+Group=aetherremote
+WorkingDirectory=/opt/aethersdr/current/station-engine
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_ENVIRONMENT=Production
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5081
+Environment=DataProtection__KeyPath=/var/lib/aethersdr/aetherremote/station-engine/data-protection
+EnvironmentFile=-/etc/aethersdr/aetherremote/station-engine/environment
+ExecStart=/opt/aethersdr/current/station-engine/AetherSDR.Web
+Restart=on-failure
+RestartSec=3
+TimeoutStartSec=30
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/aethersdr/aetherremote/station-engine /var/log/aethersdr/aetherremote
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
