@@ -1,4 +1,5 @@
 using AetherSDR.Web.Setup;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -37,6 +38,8 @@ internal static class AetherIdentityPersistence
             Pooling = true,
             ForeignKeys = true
         };
+        services.Configure<IdentityOptions>(options =>
+            options.Stores.SchemaVersion = IdentitySchemaVersions.Version3);
         services.AddDbContext<AetherIdentityDbContext>(options =>
             options.UseSqlite(connection.ConnectionString));
         return services;

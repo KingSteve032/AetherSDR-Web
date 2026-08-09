@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Net;
 using System.Text.Json;
 using AetherSDR.Web.Auth;
+using AetherSDR.Web.Auth.Identity;
 using AetherSDR.Web.Radio;
 using AetherSDR.Web.Releases;
 using AetherSDR.Web.Setup;
@@ -34,15 +35,18 @@ OfflineReleaseInstallPreflightCommandLine releaseInstallPreflightCommandLine =
 ReleaseUpdateConsoleCommandLine releaseUpdateCommandLine =
     ReleaseUpdateConsoleCommandParser.Parse(
         releaseInstallPreflightCommandLine.ApplicationArguments);
+AetherIdentityDatabaseCommandLine identityDatabaseCommandLine =
+    AetherIdentityDatabaseCommandParser.Parse(
+        releaseUpdateCommandLine.ApplicationArguments);
 bool productionTxPreflightRequested = false;
 string? productionTxPreflightRadioId = null;
 List<string> applicationArguments = [];
 for (int index = 0;
-     index < releaseUpdateCommandLine.ApplicationArguments.Count;
+     index < identityDatabaseCommandLine.ApplicationArguments.Count;
      index++)
 {
     string argument =
-        releaseUpdateCommandLine.ApplicationArguments[index];
+        identityDatabaseCommandLine.ApplicationArguments[index];
     if (string.Equals(
             argument,
             ProductionTxPreflightSwitch,
@@ -160,6 +164,21 @@ if (productionTxPreflightRequested &&
     throw new InvalidOperationException(
         "Release update commands cannot run with production TX preflight.");
 }
+if (identityDatabaseCommandLine.Command !=
+        AetherIdentityDatabaseCommandKind.None &&
+    (installationInstallerCommandLine.Command !=
+        InstallationInstallerConsoleCommandKind.None ||
+     installationSetupCommandLine.Command !=
+        InstallationSetupConsoleCommandKind.None ||
+     releaseInstallPreflightCommandLine.Command !=
+        OfflineReleaseInstallPreflightCommandKind.None ||
+     releaseUpdateCommandLine.Command !=
+        ReleaseUpdateConsoleCommandKind.None ||
+     productionTxPreflightRequested))
+{
+    throw new InvalidOperationException(
+        "Identity database commands cannot run with another standalone command.");
+}
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(
     [.. applicationArguments]);
@@ -169,6 +188,42 @@ builder.Logging.AddSimpleConsole(options =>
     options.SingleLine = true;
     options.TimestampFormat = "HH:mm:ss ";
 });
+
+if (identityDatabaseCommandLine.Command !=
+    AetherIdentityDatabaseCommandKind.None)
+{
+    InstallationPathSettings identityPathSettings =
+        builder.Configuration
+            .GetSection(InstallationPathSettings.SectionName)
+            .Get<InstallationPathSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new InstallationPathSettings();
+    InstallationPathLayout identityPathLayout =
+        builder.Environment.IsDevelopment()
+            ? InstallationPathLayout.Development
+            : OperatingSystem.IsLinux()
+                ? InstallationPathLayout.LinuxSystem
+                : throw new InvalidOperationException(
+                    "Standalone production identity database commands require Linux.");
+    InstallationPaths identityPaths = InstallationPaths.Resolve(
+        builder.Environment.ContentRootPath,
+        identityPathLayout,
+        identityPathSettings);
+    if (!builder.Environment.IsDevelopment() &&
+        !string.Equals(
+            Environment.UserName,
+            "aethersdr",
+            StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException(
+            "Production identity database commands must run as the aethersdr service user.");
+    }
+    Environment.ExitCode = await AetherIdentityDatabaseConsole.ExecuteAsync(
+        identityDatabaseCommandLine,
+        identityPaths,
+        Console.Out);
+    return;
+}
 
 if (releaseInstallPreflightCommandLine.Command ==
     OfflineReleaseInstallPreflightCommandKind.Preflight)

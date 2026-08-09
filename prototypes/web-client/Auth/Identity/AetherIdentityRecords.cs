@@ -2,6 +2,13 @@ using Microsoft.AspNetCore.Identity;
 
 namespace AetherSDR.Web.Auth.Identity;
 
+internal sealed class AetherIdentitySchemaVersion
+{
+    public int Id { get; set; }
+
+    public int Version { get; set; }
+}
+
 internal sealed class AetherIdentityUser : IdentityUser<Guid>
 {
     public string DisplayName { get; set; } = string.Empty;

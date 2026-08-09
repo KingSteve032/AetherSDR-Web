@@ -6,9 +6,21 @@ namespace AetherSDR.Web.Auth.Identity;
 
 internal sealed class AetherIdentityDbContext(
     DbContextOptions<AetherIdentityDbContext> options)
-    : IdentityDbContext<AetherIdentityUser, IdentityRole<Guid>, Guid>(options)
+    : IdentityDbContext<
+        AetherIdentityUser,
+        IdentityRole<Guid>,
+        Guid,
+        IdentityUserClaim<Guid>,
+        IdentityUserRole<Guid>,
+        IdentityUserLogin<Guid>,
+        IdentityRoleClaim<Guid>,
+        IdentityUserToken<Guid>,
+        IdentityUserPasskey<Guid>>(options)
 {
     internal const int CurrentSchemaVersion = 1;
+
+    internal DbSet<AetherIdentitySchemaVersion> IdentitySchemaVersions =>
+        Set<AetherIdentitySchemaVersion>();
 
     internal DbSet<AetherExternalIdentity> ExternalIdentities =>
         Set<AetherExternalIdentity>();
@@ -23,10 +35,29 @@ internal sealed class AetherIdentityDbContext(
     {
         base.OnModelCreating(builder);
 
+        ConfigureSchemaVersion(builder);
         ConfigureUsers(builder);
         ConfigureExternalIdentities(builder);
         ConfigureAuthenticationSessions(builder);
         ConfigureAuditRecords(builder);
+    }
+
+    private static void ConfigureSchemaVersion(ModelBuilder builder)
+    {
+        builder.Entity<AetherIdentitySchemaVersion>(entity =>
+        {
+            entity.ToTable("IdentitySchemaVersions");
+            entity.HasKey(version => version.Id);
+            entity.HasData(new AetherIdentitySchemaVersion
+            {
+                Id = 1,
+                Version = CurrentSchemaVersion
+            });
+            entity.ToTable(table =>
+                table.HasCheckConstraint(
+                    "CK_IdentitySchemaVersions_SingleRow",
+                    "[Id] = 1 AND [Version] > 0"));
+        });
     }
 
     private static void ConfigureUsers(ModelBuilder builder)
@@ -71,6 +102,8 @@ internal sealed class AetherIdentityDbContext(
             .ToTable("IdentityRoleClaims");
         builder.Entity<IdentityUserToken<Guid>>()
             .ToTable("IdentityUserTokens");
+        builder.Entity<IdentityUserPasskey<Guid>>()
+            .ToTable("IdentityUserPasskeys");
     }
 
     private static IdentityRole<Guid> Role(string id, string name) =>
