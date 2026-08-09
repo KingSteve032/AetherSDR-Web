@@ -4,7 +4,9 @@ public sealed class AuthSettings
 {
     public const string SectionName = "Auth";
 
-    public string Mode { get; init; } = "Oidc";
+    public string Mode { get; init; } = "OpenIdConnect";
+    public string ProviderId { get; init; } = "primary";
+    public string ProviderType { get; init; } = string.Empty;
     public string Authority { get; init; } = string.Empty;
     public string ClientId { get; init; } = string.Empty;
     public string ClientSecret { get; init; } = string.Empty;
