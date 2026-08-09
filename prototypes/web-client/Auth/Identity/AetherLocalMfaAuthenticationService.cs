@@ -1,4 +1,3 @@
-using System.Buffers.Binary;
 using System.Globalization;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -17,6 +16,10 @@ internal sealed record AetherLocalMfaAuthenticationResult(
     Guid? SessionId,
     DateTimeOffset? AbsoluteExpiresAtUtc);
 
+internal sealed record AetherLocalTotpEnrollmentCredential(
+    string SharedSecretBase32,
+    IdentityUserToken<Guid> Token);
+
 internal sealed record AetherLocalRecoveryCredential(
     string Code,
     IdentityUserToken<Guid> Token);
@@ -33,6 +36,22 @@ internal sealed class AetherLocalMfaCredentialProtector(
     private readonly IDataProtector protector =
         dataProtectionProvider.CreateProtector(
             "AetherSDR.Web.Auth.LocalTotpSecret.v1");
+
+    internal AetherLocalTotpEnrollmentCredential
+        GenerateTotpEnrollmentCredential(Guid userId)
+    {
+        byte[] secret = RandomNumberGenerator.GetBytes(20);
+        try
+        {
+            return new(
+                EncodeBase32(secret),
+                CreateTotpSecretToken(userId, secret));
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(secret);
+        }
+    }
 
     internal IdentityUserToken<Guid> CreateTotpSecretToken(
         Guid userId,
@@ -127,6 +146,29 @@ internal sealed class AetherLocalMfaCredentialProtector(
         {
             CryptographicOperations.ZeroMemory(protectedSecret);
         }
+    }
+
+    private static string EncodeBase32(ReadOnlySpan<byte> value)
+    {
+        const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+        StringBuilder encoded = new(32);
+        int buffer = 0;
+        int bitsInBuffer = 0;
+        foreach (byte current in value)
+        {
+            buffer = (buffer << 8) | current;
+            bitsInBuffer += 8;
+            while (bitsInBuffer >= 5)
+            {
+                bitsInBuffer -= 5;
+                encoded.Append(alphabet[(buffer >> bitsInBuffer) & 31]);
+            }
+        }
+        if (bitsInBuffer > 0)
+        {
+            encoded.Append(alphabet[(buffer << (5 - bitsInBuffer)) & 31]);
+        }
+        return encoded.ToString();
     }
 
     internal static AetherLocalRecoveryCredential
@@ -245,9 +287,6 @@ internal sealed class AetherLocalMfaAuthenticationService(
     TimeProvider timeProvider)
 {
     private const string AuditAction = "authentication.local.mfa";
-    private const int TotpDigits = 6;
-    private const int TotpPeriodSeconds = 30;
-    private const int TotpAllowedDriftSteps = 1;
 
     internal async Task<AetherLocalMfaAuthenticationResult> AuthenticateAsync(
         string? challengeToken,
@@ -328,9 +367,13 @@ internal sealed class AetherLocalMfaAuthenticationService(
                 cancellationToken);
         }
 
-        bool isTotp = TryReadTotpCode(
-            verificationCode,
-            out string totpCode);
+        bool isTotp =
+            verificationCode is { Length: 6 } &&
+            verificationCode.All(
+                character => character is >= '0' and <= '9');
+        string totpCode = isTotp
+            ? verificationCode!
+            : string.Empty;
         bool isRecovery =
             AetherLocalMfaCredentialProtector.TryNormalizeRecoveryCode(
                 verificationCode,
@@ -369,10 +412,14 @@ internal sealed class AetherLocalMfaAuthenticationService(
 
             try
             {
-                acceptedTotpStep = FindMatchingTotpStep(
-                    secret,
-                    totpCode,
-                    now);
+                if (AetherTotp.TryVerify(
+                        secret,
+                        totpCode,
+                        now,
+                        out long matchingStep))
+                {
+                    acceptedTotpStep = matchingStep;
+                }
             }
             finally
             {
@@ -626,71 +673,6 @@ internal sealed class AetherLocalMfaAuthenticationService(
         });
     }
 
-    private static long? FindMatchingTotpStep(
-        ReadOnlySpan<byte> secret,
-        string code,
-        DateTimeOffset now)
-    {
-        long currentStep = now.ToUnixTimeSeconds() / TotpPeriodSeconds;
-        ReadOnlySpan<int> driftSteps = [0, -1, TotpAllowedDriftSteps];
-        foreach (int drift in driftSteps)
-        {
-            long candidate = currentStep + drift;
-            if (candidate >= 0 &&
-                FixedTimeCodeEquals(
-                    ComputeTotp(secret, candidate),
-                    code))
-            {
-                return candidate;
-            }
-        }
-        return null;
-    }
-
-    private static string ComputeTotp(
-        ReadOnlySpan<byte> secret,
-        long step)
-    {
-        Span<byte> counter = stackalloc byte[sizeof(long)];
-        BinaryPrimitives.WriteInt64BigEndian(counter, step);
-        byte[] hash = HMACSHA1.HashData(secret, counter);
-        try
-        {
-            int offset = hash[^1] & 0x0f;
-            int binaryCode =
-                ((hash[offset] & 0x7f) << 24) |
-                ((hash[offset + 1] & 0xff) << 16) |
-                ((hash[offset + 2] & 0xff) << 8) |
-                (hash[offset + 3] & 0xff);
-            return (binaryCode % 1_000_000).ToString(
-                $"D{TotpDigits}",
-                CultureInfo.InvariantCulture);
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(hash);
-        }
-    }
-
-    private static bool FixedTimeCodeEquals(
-        string expected,
-        string actual)
-    {
-        byte[] expectedBytes = Encoding.ASCII.GetBytes(expected);
-        byte[] actualBytes = Encoding.ASCII.GetBytes(actual);
-        try
-        {
-            return CryptographicOperations.FixedTimeEquals(
-                expectedBytes,
-                actualBytes);
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(expectedBytes);
-            CryptographicOperations.ZeroMemory(actualBytes);
-        }
-    }
-
     private static bool IsNewTotpStep(
         IdentityUserToken<Guid>? replayState,
         long acceptedStep)
@@ -706,20 +688,6 @@ internal sealed class AetherLocalMfaAuthenticationService(
                 out long previousStep) &&
             previousStep >= 0 &&
             acceptedStep > previousStep;
-    }
-
-    private static bool TryReadTotpCode(
-        string? value,
-        out string code)
-    {
-        code = string.Empty;
-        if (value is not { Length: TotpDigits } ||
-            value.Any(character => character is < '0' or > '9'))
-        {
-            return false;
-        }
-        code = value;
-        return true;
     }
 
     private static AetherLocalMfaAuthenticationResult Rejected() =>

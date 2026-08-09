@@ -48,8 +48,10 @@ internal static class AetherLocalAuthenticationComposition
             AetherLocalPasswordTimingDefense.Create(policy));
         services.AddSingleton<AetherLocalMfaChallengeStore>();
         services.AddSingleton<AetherLocalMfaCredentialProtector>();
+        services.AddSingleton<AetherFirstLocalAdministratorProvisioningLock>();
         services.AddScoped<AetherLocalPasswordAuthenticationService>();
         services.AddScoped<AetherLocalMfaAuthenticationService>();
+        services.AddScoped<AetherFirstLocalAdministratorProvisioningService>();
         return services;
     }
 }
