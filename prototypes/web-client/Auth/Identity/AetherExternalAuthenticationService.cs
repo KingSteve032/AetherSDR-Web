@@ -11,7 +11,8 @@ internal sealed record AetherExternalAuthenticationResult(
     bool Succeeded,
     string Code,
     ClaimsPrincipal? Principal,
-    Guid? SessionId);
+    Guid? SessionId,
+    DateTimeOffset? AbsoluteExpiresAtUtc);
 
 internal sealed class AetherExternalAuthenticationService(
     AetherIdentityDbContext database,
@@ -147,7 +148,8 @@ internal sealed class AetherExternalAuthenticationService(
             Succeeded: true,
             Code: "external-identity-authenticated",
             principal,
-            session.Id);
+            session.Id,
+            session.AbsoluteExpiresAtUtc);
     }
 
     private async Task<AetherExternalAuthenticationResult> RejectAsync(
@@ -174,7 +176,8 @@ internal sealed class AetherExternalAuthenticationService(
             Succeeded: false,
             code,
             Principal: null,
-            SessionId: null);
+            SessionId: null,
+            AbsoluteExpiresAtUtc: null);
     }
 
     private static AetherIdentityAuditRecord Audit(

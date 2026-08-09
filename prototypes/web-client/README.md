@@ -2295,11 +2295,21 @@ HTTP and radio ports. The root-managed stack instead installs
 `deploy/aethersdr-web.service` under `/etc/systemd/system` and controls it
 with system `systemctl`; never enable both units on the same host.
 
-## Microsoft Entra ID / Active Directory authentication
+## Production external authentication
 
 The browser uses the backend-for-frontend pattern: the ASP.NET Core gateway is
 the confidential OIDC client, the browser receives only a secure session
 cookie, and authorization is enforced again at the WebSocket boundary.
+Microsoft Entra ID and generic OpenID Connect establish external identity only.
+A durable link must exactly match the configured provider ID plus the validated
+`iss` and `sub` claims. Email addresses, display names, Entra object IDs,
+groups, and external role claims never create links or grant Aether authority.
+
+The canonical authorization roles remain `Aether.Observe`, `Aether.Control`,
+`Aether.Transmit`, and `Aether.Admin`. They are assigned to the internal
+Aether user and loaded from the identity database for every authenticated
+request. A provider role can therefore neither create nor preserve Transmit or
+Admin authority.
 
 For Microsoft Entra ID:
 
@@ -2307,57 +2317,67 @@ For Microsoft Entra ID:
 2. Add redirect URI `https://radio.example.com/signin-oidc`.
 3. Add front-channel logout URI
    `https://radio.example.com/signout-callback-oidc`.
-4. Define these user/group app roles with the exact values below.
-5. Assign users or, preferably, station security groups to the roles.
-6. Enable **Assignment required** on the enterprise application.
-7. Put the client secret in a secret store or owner-only file, never in this
-   repository. `deploy/set-client-secret.sh` writes the file without echoing
-   the secret to the terminal.
-
-| App role value | Purpose |
-|---|---|
-| `Aether.Observe` | View radio state, spectrum, waterfall, meters, and presence |
-| `Aether.Control` | Change RX state in the user's assigned radio session |
-| `Aether.Transmit` | Become eligible to request the single-holder TX lease |
-| `Aether.Admin` | Manage the gateway and all non-keying controls |
+4. Enable **Assignment required** on the enterprise application if tenant
+   policy should limit who may attempt sign-in. This is not Aether role
+   assignment.
+5. Put the client secret in an owner-only file beneath
+   `/var/lib/aethersdr/secrets`; never commit it or put it directly in normal
+   configuration.
+6. Initialize the identity schema through the explicit
+   `--identity-database-plan` and confirmed `--identity-database-apply`
+   commands before starting production runtime.
 
 Example production environment:
 
 ```text
 ASPNETCORE_ENVIRONMENT=Production
-Auth__Mode=Oidc
+Auth__Mode=EntraId
+Auth__ProviderId=entra-primary
 Auth__Authority=https://login.microsoftonline.com/<tenant-id>/v2.0
 Auth__ClientId=<application-client-id>
-Auth__ClientSecretFile=/home/flexweb/.config/aethersdr-web/client-secret
-Auth__NameClaimType=name
-Auth__RoleClaimType=roles
+Auth__ClientSecretFile=/var/lib/aethersdr/secrets/entra-primary-client-secret
+Auth__Session__AbsoluteLifetimeMinutes=480
 AllowedHosts=radio.example.com
 AllowedOrigins__0=https://radio.example.com
 ReverseProxy__Enabled=true
 ReverseProxy__KnownProxies__0=<exact-proxy-LAN-IP>
-DataProtection__KeyPath=/var/lib/aethersdr-web/keys
-RadioAccess__PolicyPath=/var/lib/aethersdr-web/radio-access.json
-RadioAccess__AuditPath=/var/lib/aethersdr-web/audit.json
 ```
 
-The production deployment uses `deploy/aethersdr-web.service` as a
-root-installed system unit while the process itself runs as the unprivileged
-`flexweb` account. The unit starts after `network-online.target`, restarts on
-failure, writes to the persistent system journal, exposes only the required
-network address families, and makes the host filesystem read-only except for
-the owner-only `/var/lib/aethersdr-web` state directory created by systemd.
-Data Protection keys, radio policy, and administrative audit records all live
-under that one canonical directory.
+Use `Auth__Mode=OpenIdConnect` with the provider's HTTPS issuer authority for
+a generic provider, including AD FS configured for OIDC. `Auth__ProviderId`
+is a stable lowercase identifier and must not change after identities are
+linked. The production runtime refuses to create a missing identity database
+or run against an unconverged schema.
 
-Accounts assigned `Aether.Admin` get a **Radio allocation** applet. It reports
-discovered capacity and active operators, applies persistent shared or
-exclusive access per radio, optionally reserves a radio to one Entra object
-ID, and can immediately release a selected operator's browser and radio
-sessions. These rules are enforced when the server creates the physical radio
-session; hiding the applet is not the security boundary. Administrators bypass
-radio reservations so a bad policy cannot lock them out of the control plane.
-Policy changes affect new sessions. Existing operators remain connected until
-they leave or an administrator explicitly disconnects them.
+External sign-in fails closed until an administrator has explicitly linked the
+exact external subject to an enabled internal user. The administrator
+provisioning workflow is a later M8D slice; do not hand-edit the SQLite
+database. `Local` and `Combined` modes also remain startup-disabled until
+the local password and MFA flow is implemented.
+
+A successful external sign-in creates a durable, absolute-lifetime Aether
+session. Every cookie request revalidates the session, user status, authority
+version, expiry, and current persisted roles. Logout revokes that exact session
+and records the event in the durable identity audit; a stale, revoked, expired,
+disabled, or malformed session is rejected.
+
+The M8C standalone layout runs the gateway as its fixed-purpose unprivileged
+service identity. Identity data lives in
+`/var/lib/aethersdr/identity/aethersdr-identity.db`, while gateway Data
+Protection keys live separately in
+`/var/lib/aethersdr/secrets/data-protection`. Those paths do not contain or
+reconstruct TX leases, approvals, radio sessions, command authority, watchdog
+authority, release approvals, rollback authority, or pointer-switch authority.
+
+Accounts with the persisted `Aether.Admin` role get a **Radio allocation**
+applet. It reports discovered capacity and active operators, applies persistent
+shared or exclusive access per radio, optionally reserves a radio to one
+internal user, and can immediately release a selected operator's browser and
+radio sessions. These rules are enforced when the server creates the physical
+radio session; hiding the applet is not the security boundary. Administrators
+bypass radio reservations so a bad policy cannot lock them out of the control
+plane. Policy changes affect new sessions. Existing operators remain connected
+until they leave or an administrator explicitly disconnects them.
 
 The same Admin page manages remote station device identity. Enrollment codes
 are random, single-use, and short-lived. The browser displays a code only in
@@ -2365,21 +2385,6 @@ the Admin session that created it; the gateway does not put it in a URL.
 Disabling or revoking a station closes that station's outbound link and remote
 receive sessions without disturbing other stations or local radios. Revocation
 requires a fresh one-time enrollment, while disable can be reversed.
-
-Microsoft recommends app roles for application authorization. Groups can be
-assigned to those roles, avoiding direct dependence on tenant-specific group
-IDs and JWT group-overage behavior:
-
-- [Add app roles and receive them in a token](https://learn.microsoft.com/en-us/entra/identity-platform/howto-add-app-roles-in-apps)
-- [Configure group claims and app roles](https://learn.microsoft.com/en-us/security/zero-trust/develop/configure-tokens-group-claims-app-roles)
-- [Configure OIDC web authentication in ASP.NET Core](https://learn.microsoft.com/en-us/aspnet/core/security/authentication/configure-oidc-web-authentication?view=aspnetcore-10.0)
-
-For on-premises Active Directory, use AD FS as the OIDC authority. Set
-`Auth__RoleClaimType` to the claim type emitted by that relying-party
-configuration. Microsoft recommends AD FS/OIDC when Windows Authentication
-would otherwise need to cross a proxy or load balancer:
-
-- [Windows Authentication and AD FS/OIDC guidance](https://learn.microsoft.com/en-us/aspnet/core/security/authentication/windowsauth?view=aspnetcore-10.0)
 
 ## Network placement
 

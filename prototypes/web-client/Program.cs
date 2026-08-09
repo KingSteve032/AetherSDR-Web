@@ -16,8 +16,6 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Microsoft.IdentityModel.Protocols.OpenIdConnect;
-using Microsoft.IdentityModel.Tokens;
 using System.Threading.RateLimiting;
 
 const string ProductionTxPreflightSwitch =
@@ -640,8 +638,44 @@ if (installationHostStartupPlan.Mode == InstallationHostStartupMode.SetupOnly)
 }
 
 AuthSettings authSettings =
-    builder.Configuration.GetSection(AuthSettings.SectionName).Get<AuthSettings>() ??
+    builder.Configuration
+        .GetSection(AuthSettings.SectionName)
+        .Get<AuthSettings>(options =>
+            options.ErrorOnUnknownConfiguration = true) ??
     new AuthSettings();
+AetherAuthenticationTopology authenticationTopology =
+    AetherAuthenticationConfiguration.Validate(
+        authSettings,
+        builder.Environment.IsDevelopment());
+if (authenticationTopology.LocalAccountsEnabled)
+{
+    throw new InvalidOperationException(
+        "Local and Combined runtime authentication remain disabled until " +
+        "the production local login flow is installed.");
+}
+if (authenticationTopology.Mode != AetherAuthenticationMode.Development)
+{
+    InstallationPaths identityRuntimePaths = resolveInstallationPaths();
+    AetherIdentityDatabaseReport identityDatabase =
+        await AetherIdentityDatabaseMigration.ValidateAsync(
+            identityRuntimePaths);
+    if (!string.Equals(
+            identityDatabase.Outcome,
+            "converged",
+            StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException(
+            "The identity database must be explicitly initialized and " +
+            "validated before production authentication can start.");
+    }
+    builder.Services.AddAetherIdentityPersistence(identityRuntimePaths);
+}
+builder.Services.AddSingleton(authenticationTopology);
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<AetherExternalAuthenticationService>();
+builder.Services.AddScoped<AetherAuthenticationSessionService>();
+builder.Services.AddScoped<AetherOpenIdConnectEvents>();
+builder.Services.AddScoped<AetherCookieAuthenticationEvents>();
 RadioSettings radioSettings =
     builder.Configuration.GetSection(RadioSettings.SectionName).Get<RadioSettings>() ??
     new RadioSettings();
@@ -1003,7 +1037,10 @@ builder.Services
     .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionPath))
     .SetApplicationName("AetherSDR.Web");
 
-ConfigureAuthentication(builder, authSettings);
+AetherAuthenticationComposition.Configure(
+    builder,
+    authSettings,
+    authenticationTopology);
 ConfigureAuthorization(builder.Services);
 
 builder.Services.AddSingleton<RadioSelectionManager>();
@@ -4469,10 +4506,8 @@ app.MapGet(
         (HttpContext context, string? returnUrl) =>
         {
             string safeReturnUrl = LocalReturnUrl.Normalize(returnUrl);
-            if (string.Equals(
-                    authSettings.Mode,
-                    "Development",
-                    StringComparison.OrdinalIgnoreCase))
+            if (authenticationTopology.Mode ==
+                AetherAuthenticationMode.Development)
             {
                 return Results.Redirect(safeReturnUrl);
             }
@@ -4493,14 +4528,29 @@ app.MapGet(
 
 app.MapPost(
         "/auth/logout",
-        () =>
+        async (
+            HttpContext context,
+            ClaimsPrincipal user,
+            CancellationToken cancellationToken) =>
         {
-            if (string.Equals(
-                    authSettings.Mode,
-                    "Development",
-                    StringComparison.OrdinalIgnoreCase))
+            if (authenticationTopology.Mode ==
+                AetherAuthenticationMode.Development)
             {
                 return Results.Redirect("/");
+            }
+
+            AetherAuthenticationSessionService sessions =
+                context.RequestServices
+                    .GetRequiredService<
+                        AetherAuthenticationSessionService>();
+            AetherAuthenticationSessionRevocationResult revoked =
+                await sessions.RevokeAsync(
+                    user,
+                    "user-logout",
+                    cancellationToken);
+            if (!revoked.Succeeded)
+            {
+                return Results.Unauthorized();
             }
 
             AuthenticationProperties properties =
@@ -5470,102 +5520,6 @@ static IResult RemoteStationManagementFailure(
     return Results.Json(
         new { error = exception.Message },
         statusCode: statusCode);
-}
-
-static void ConfigureAuthentication(
-    WebApplicationBuilder builder,
-    AuthSettings authSettings)
-{
-    bool developmentAuth = string.Equals(
-        authSettings.Mode,
-        "Development",
-        StringComparison.OrdinalIgnoreCase);
-
-    if (developmentAuth)
-    {
-        if (!builder.Environment.IsDevelopment())
-        {
-            throw new InvalidOperationException(
-                "Development authentication is forbidden outside the Development environment.");
-        }
-
-        builder.Services
-            .AddAuthentication(options =>
-            {
-                options.DefaultAuthenticateScheme =
-                    DevelopmentAuthenticationDefaults.Scheme;
-                options.DefaultChallengeScheme =
-                    DevelopmentAuthenticationDefaults.Scheme;
-            })
-            .AddScheme<
-                AuthenticationSchemeOptions,
-                DevelopmentAuthenticationHandler>(
-                DevelopmentAuthenticationDefaults.Scheme,
-                _ => { });
-        return;
-    }
-
-    string clientSecret = OidcClientSecretResolver.Resolve(authSettings);
-    if (string.IsNullOrWhiteSpace(authSettings.Authority) ||
-        string.IsNullOrWhiteSpace(authSettings.ClientId) ||
-        string.IsNullOrWhiteSpace(clientSecret))
-    {
-        throw new InvalidOperationException(
-            "OIDC authentication requires Auth:Authority, Auth:ClientId, and " +
-            "either Auth:ClientSecret or Auth:ClientSecretFile.");
-    }
-
-    builder.Services
-        .AddAuthentication(options =>
-        {
-            options.DefaultAuthenticateScheme =
-                CookieAuthenticationDefaults.AuthenticationScheme;
-            options.DefaultSignInScheme =
-                CookieAuthenticationDefaults.AuthenticationScheme;
-            options.DefaultChallengeScheme =
-                OpenIdConnectDefaults.AuthenticationScheme;
-        })
-        .AddCookie(
-            CookieAuthenticationDefaults.AuthenticationScheme,
-            options =>
-            {
-                options.Cookie.Name = "__Host-AetherSdrWeb";
-                options.Cookie.HttpOnly = true;
-                options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-                options.Cookie.SameSite = SameSiteMode.Lax;
-                options.Cookie.Path = "/";
-                options.AccessDeniedPath = "/access-denied";
-                options.ExpireTimeSpan = TimeSpan.FromHours(8);
-                options.SlidingExpiration = true;
-            })
-        .AddOpenIdConnect(
-            OpenIdConnectDefaults.AuthenticationScheme,
-            options =>
-            {
-                options.Authority = authSettings.Authority.TrimEnd('/');
-                options.ClientId = authSettings.ClientId;
-                options.ClientSecret = clientSecret;
-                options.CallbackPath = authSettings.CallbackPath;
-                options.SignedOutCallbackPath =
-                    authSettings.SignedOutCallbackPath;
-                options.SignInScheme =
-                    CookieAuthenticationDefaults.AuthenticationScheme;
-                options.ResponseType = OpenIdConnectResponseType.Code;
-                options.UsePkce = true;
-                options.SaveTokens = false;
-                options.GetClaimsFromUserInfoEndpoint = false;
-                options.MapInboundClaims = false;
-                options.Scope.Clear();
-                options.Scope.Add("openid");
-                options.Scope.Add("profile");
-                options.Scope.Add("email");
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    NameClaimType = authSettings.NameClaimType,
-                    RoleClaimType = authSettings.RoleClaimType,
-                    ValidateIssuer = true
-                };
-            });
 }
 
 static void ConfigureAuthorization(IServiceCollection services)
