@@ -3,6 +3,9 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using AetherSDR.Web.Auth.Identity;
 
 namespace AetherSDR.Web.Setup;
 
@@ -30,6 +33,10 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
 {
     private const string AptGetExecutable = "/usr/bin/apt-get";
     private const string SystemctlExecutable = "/usr/bin/systemctl";
+    private const string RunUserExecutable = "/usr/sbin/runuser";
+    private const string IdentityServiceUser = "aethersdr";
+    private const string IdentityDatabasePath =
+        "/var/lib/aethersdr/identity/aethersdr-identity.db";
     private const string DefaultCurrentPointer = "/opt/aethersdr/current";
     private const string ManagedCaddyMarker =
         "/var/lib/aethersdr-installer/proxy/managed-caddy.sha256";
@@ -42,6 +49,16 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
     private const string UpdateCaCertificatesExecutable =
         "/usr/sbin/update-ca-certificates";
     private const int MaximumManagedFileBytes = 64 * 1024;
+    private const int MaximumIdentityReportBytes = 8 * 1024;
+
+    private static readonly JsonSerializerOptions IdentityReportJsonOptions =
+        new()
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            PropertyNameCaseInsensitive = false,
+            UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+            MaxDepth = 4
+        };
 
     private static readonly IReadOnlySet<
         InstallationInstallerUbuntuPrimitiveKind> SupportedKinds =
@@ -53,7 +70,8 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
             InstallationInstallerUbuntuPrimitiveKind.TrustInternalCertificate,
             InstallationInstallerUbuntuPrimitiveKind.WriteFirewallGuidance,
             InstallationInstallerUbuntuPrimitiveKind.ActivateInitialRelease,
-            InstallationInstallerUbuntuPrimitiveKind.VerifyHealth
+            InstallationInstallerUbuntuPrimitiveKind.VerifyHealth,
+            InstallationInstallerUbuntuPrimitiveKind.InitializeIdentityDatabase
         };
 
     private readonly InstallationInstallerUbuntuDirectProcessRunner m_runner;
@@ -110,6 +128,11 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
                 InspectReleaseAsync(request, cancellationToken),
             InstallationInstallerUbuntuPrimitiveKind.ConfigureReverseProxy =>
                 InspectProxyAsync(request, cancellationToken),
+            InstallationInstallerUbuntuPrimitiveKind.InitializeIdentityDatabase =>
+                InspectIdentityDatabaseAsync(
+                    request,
+                    operation,
+                    cancellationToken),
             InstallationInstallerUbuntuPrimitiveKind.WriteFirewallGuidance =>
                 InspectFirewallAsync(request, cancellationToken),
             InstallationInstallerUbuntuPrimitiveKind.ActivateInitialRelease =>
@@ -184,6 +207,12 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
                 InstallationInstallerUbuntuPrimitiveKind
                     .ConfigureReverseProxy =>
                     await ConfigureProxyAsync(request, cancellationToken),
+                InstallationInstallerUbuntuPrimitiveKind
+                    .InitializeIdentityDatabase =>
+                    await InitializeIdentityDatabaseAsync(
+                        request,
+                        operation,
+                        cancellationToken),
                 InstallationInstallerUbuntuPrimitiveKind
                     .WriteFirewallGuidance =>
                     await ConfigureFirewallAsync(request, cancellationToken),
@@ -662,6 +691,347 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
                 "ubuntu-firewall-postcondition-unknown",
                 "The firewall plan could not be reconciled after execution.");
     }
+
+    private async Task<InstallationInstallerUbuntuPrimitiveInspection>
+        InspectIdentityDatabaseAsync(
+            InstallationInstallerUbuntuMutationRequest request,
+            InstallationInstallerUbuntuPrimitiveOperation operation,
+            CancellationToken cancellationToken)
+    {
+        if (!IdentityOperationIsExact(operation) ||
+            !SafeExecutable(RunUserExecutable))
+        {
+            return Rejected(
+                "ubuntu-identity-command-unsafe",
+                "The fixed identity database command boundary is unavailable or unsafe.");
+        }
+
+        string releaseDirectory;
+        string gatewayDirectory;
+        string gatewayExecutable;
+        try
+        {
+            releaseDirectory = Path.GetFullPath(request.TargetReleasePath);
+            gatewayDirectory = Path.Combine(releaseDirectory, "gateway-web");
+            gatewayExecutable = Path.Combine(
+                gatewayDirectory,
+                "AetherSDR.Web");
+        }
+        catch
+        {
+            return Rejected(
+                "ubuntu-identity-command-unsafe",
+                "The fixed identity database command boundary is unavailable or unsafe.");
+        }
+
+        DirectoryInfo release = new(releaseDirectory);
+        release.Refresh();
+        if (!release.Exists && release.LinkTarget is null)
+        {
+            return Missing();
+        }
+        if (!SafeImmutableDirectory(releaseDirectory))
+        {
+            return Rejected(
+                "ubuntu-identity-release-unsafe",
+                "The identity database command requires the exact immutable release directory.");
+        }
+
+        DirectoryInfo gateway = new(gatewayDirectory);
+        gateway.Refresh();
+        if (!gateway.Exists && gateway.LinkTarget is null)
+        {
+            return Missing();
+        }
+        if (!SafeImmutableDirectory(gatewayDirectory))
+        {
+            return Rejected(
+                "ubuntu-identity-release-unsafe",
+                "The identity database command requires the exact immutable gateway directory.");
+        }
+
+        FileInfo executable = new(gatewayExecutable);
+        executable.Refresh();
+        if (!executable.Exists && executable.LinkTarget is null)
+        {
+            return Missing();
+        }
+        if (!SafeExecutable(gatewayExecutable))
+        {
+            return Rejected(
+                "ubuntu-identity-executable-unsafe",
+                "The immutable gateway identity command executable is unavailable or unsafe.");
+        }
+
+        InstallationInstallerUbuntuDirectProcessResult validation;
+        try
+        {
+            validation = await RunIdentityDatabaseCommandAsync(
+                gatewayExecutable,
+                gatewayDirectory,
+                [AetherIdentityDatabaseCommandParser.ValidateSwitch],
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return Unknown(
+                "ubuntu-identity-inspection-unknown",
+                "The identity database schema could not be inspected.");
+        }
+
+        if (validation.ExitCode != 0 ||
+            !TryParseIdentityReport(validation, out AetherIdentityDatabaseReport report))
+        {
+            return validation.ExitCode == 2
+                ? Rejected(
+                    "ubuntu-identity-validation-rejected",
+                    "The identity database schema validation was rejected.")
+                : Unknown(
+                    "ubuntu-identity-inspection-unknown",
+                    "The identity database schema could not be classified.");
+        }
+        if (IdentityReportIsConverged(report))
+        {
+            return Converged();
+        }
+        if (IdentityReportIsMissing(report))
+        {
+            return Missing();
+        }
+        return Rejected(
+            "ubuntu-identity-validation-rejected",
+            "The identity database schema report did not match an allowed exact state.");
+    }
+
+    private async Task<InstallationInstallerUbuntuStepResult>
+        InitializeIdentityDatabaseAsync(
+            InstallationInstallerUbuntuMutationRequest request,
+            InstallationInstallerUbuntuPrimitiveOperation operation,
+            CancellationToken cancellationToken)
+    {
+        string gatewayDirectory = Path.Combine(
+            Path.GetFullPath(request.TargetReleasePath),
+            "gateway-web");
+        string gatewayExecutable = Path.Combine(
+            gatewayDirectory,
+            "AetherSDR.Web");
+
+        InstallationInstallerUbuntuDirectProcessResult planned =
+            await RunIdentityDatabaseCommandAsync(
+                gatewayExecutable,
+                gatewayDirectory,
+                [AetherIdentityDatabaseCommandParser.PlanSwitch],
+                cancellationToken);
+        if (planned.ExitCode != 0 ||
+            !TryParseIdentityReport(planned, out AetherIdentityDatabaseReport plan))
+        {
+            return InstallationInstallerUbuntuStepResult.Rejected(
+                "ubuntu-identity-plan-rejected",
+                "The fixed identity database initialization plan was not accepted.");
+        }
+        if (IdentityReportIsConverged(plan))
+        {
+            return InstallationInstallerUbuntuStepResult.Converged();
+        }
+        if (!IdentityReportIsPlanned(plan) ||
+            !string.Equals(
+                plan.DatabasePath,
+                operation.Target,
+                StringComparison.Ordinal))
+        {
+            return InstallationInstallerUbuntuStepResult.Rejected(
+                "ubuntu-identity-plan-rejected",
+                "The identity database initialization plan did not match the reviewed target.");
+        }
+
+        InstallationInstallerUbuntuDirectProcessResult applied =
+            await RunIdentityDatabaseCommandAsync(
+                gatewayExecutable,
+                gatewayDirectory,
+                [
+                    AetherIdentityDatabaseCommandParser.ApplySwitch,
+                    AetherIdentityDatabaseCommandParser.ConfirmPlanSwitch,
+                    plan.PlanId
+                ],
+                cancellationToken);
+        if (applied.ExitCode != 0 ||
+            !TryParseIdentityReport(applied, out AetherIdentityDatabaseReport result) ||
+            (!IdentityReportIsApplied(result) &&
+             !IdentityReportIsConverged(result)))
+        {
+            return InstallationInstallerUbuntuStepResult.Unknown(
+                "ubuntu-identity-apply-unknown",
+                "Identity database initialization may require reconciliation.");
+        }
+
+        InstallationInstallerUbuntuDirectProcessResult validation =
+            await RunIdentityDatabaseCommandAsync(
+                gatewayExecutable,
+                gatewayDirectory,
+                [AetherIdentityDatabaseCommandParser.ValidateSwitch],
+                cancellationToken);
+        if (validation.ExitCode != 0 ||
+            !TryParseIdentityReport(
+                validation,
+                out AetherIdentityDatabaseReport postcondition) ||
+            !IdentityReportIsConverged(postcondition))
+        {
+            return InstallationInstallerUbuntuStepResult.Unknown(
+                "ubuntu-identity-postcondition-unknown",
+                "The identity database schema postcondition could not be confirmed.");
+        }
+
+        return IdentityReportIsApplied(result)
+            ? InstallationInstallerUbuntuStepResult.Applied(
+                "ubuntu-identity-schema-initialized",
+                "The production identity database schema is initialized under the fixed service identity.")
+            : InstallationInstallerUbuntuStepResult.Converged();
+    }
+
+    private async Task<InstallationInstallerUbuntuDirectProcessResult>
+        RunIdentityDatabaseCommandAsync(
+            string gatewayExecutable,
+            string gatewayDirectory,
+            IReadOnlyList<string> commandArguments,
+            CancellationToken cancellationToken)
+    {
+        List<string> arguments =
+        [
+            "--user",
+            IdentityServiceUser,
+            "--",
+            gatewayExecutable
+        ];
+        arguments.AddRange(commandArguments);
+        return await RunAsync(
+            RunUserExecutable,
+            arguments,
+            cancellationToken,
+            gatewayDirectory);
+    }
+
+    private static bool IdentityOperationIsExact(
+        InstallationInstallerUbuntuPrimitiveOperation operation) =>
+        operation.Kind ==
+            InstallationInstallerUbuntuPrimitiveKind.InitializeIdentityDatabase &&
+        string.Equals(
+            operation.Target,
+            IdentityDatabasePath,
+            StringComparison.Ordinal) &&
+        string.IsNullOrEmpty(operation.Executable) &&
+        operation.Arguments.Count == 0;
+
+    private static bool TryParseIdentityReport(
+        InstallationInstallerUbuntuDirectProcessResult result,
+        out AetherIdentityDatabaseReport report)
+    {
+        report = null!;
+        if (!string.IsNullOrEmpty(result.StandardError) ||
+            string.IsNullOrWhiteSpace(result.StandardOutput) ||
+            Encoding.UTF8.GetByteCount(result.StandardOutput) >
+                MaximumIdentityReportBytes)
+        {
+            return false;
+        }
+        try
+        {
+            AetherIdentityDatabaseReport? parsed =
+                JsonSerializer.Deserialize<AetherIdentityDatabaseReport>(
+                    result.StandardOutput,
+                    IdentityReportJsonOptions);
+            if (parsed is null)
+            {
+                return false;
+            }
+            report = parsed;
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IdentityReportIsPlanned(
+        AetherIdentityDatabaseReport report) =>
+        IdentityReportHasExactEnvelope(report) &&
+        string.Equals(report.Outcome, "planned", StringComparison.Ordinal) &&
+        string.Equals(
+            report.Code,
+            "identity-schema-initialization-required",
+            StringComparison.Ordinal) &&
+        report.ExistingSchemaVersion is null &&
+        report.MutationRequired;
+
+    private static bool IdentityReportIsMissing(
+        AetherIdentityDatabaseReport report) =>
+        IdentityReportHasExactEnvelope(report) &&
+        string.Equals(report.Outcome, "incomplete", StringComparison.Ordinal) &&
+        string.Equals(
+            report.Code,
+            "identity-schema-not-initialized",
+            StringComparison.Ordinal) &&
+        report.ExistingSchemaVersion is null &&
+        report.MutationRequired;
+
+    private static bool IdentityReportIsConverged(
+        AetherIdentityDatabaseReport report) =>
+        IdentityReportHasExactEnvelope(report) &&
+        string.Equals(report.Outcome, "converged", StringComparison.Ordinal) &&
+        string.Equals(
+            report.Code,
+            "identity-schema-converged",
+            StringComparison.Ordinal) &&
+        report.ExistingSchemaVersion ==
+            AetherIdentityDbContext.CurrentSchemaVersion &&
+        !report.MutationRequired;
+
+    private static bool IdentityReportIsApplied(
+        AetherIdentityDatabaseReport report) =>
+        IdentityReportHasCommonValues(report) &&
+        string.Equals(report.Outcome, "applied", StringComparison.Ordinal) &&
+        string.Equals(
+            report.Code,
+            "identity-schema-initialized",
+            StringComparison.Ordinal) &&
+        report.ExistingSchemaVersion ==
+            AetherIdentityDbContext.CurrentSchemaVersion &&
+        !report.MutationRequired &&
+        report.MutationAttempted &&
+        report.DatabaseCreated &&
+        !report.BackupRequired &&
+        !report.RollbackAttempted &&
+        !report.RollbackSucceeded;
+
+    private static bool IdentityReportHasExactEnvelope(
+        AetherIdentityDatabaseReport report) =>
+        IdentityReportHasCommonValues(report) &&
+        !report.MutationAttempted &&
+        !report.DatabaseCreated &&
+        !report.BackupRequired &&
+        !report.RollbackAttempted &&
+        !report.RollbackSucceeded;
+
+    private static bool IdentityReportHasCommonValues(
+        AetherIdentityDatabaseReport report) =>
+        report.TargetSchemaVersion ==
+            AetherIdentityDbContext.CurrentSchemaVersion &&
+        string.Equals(
+            report.DatabasePath,
+            IdentityDatabasePath,
+            StringComparison.Ordinal) &&
+        IsLowercaseSha256(report.PlanId);
+
+    private static bool IsLowercaseSha256(string? value) =>
+        value is not null &&
+        value.Length == 64 &&
+        value.All(character =>
+            char.IsAsciiHexDigit(character) &&
+            !char.IsAsciiLetterUpper(character));
 
     private InstallationInstallerUbuntuPrimitiveInspection
         InspectInitialPointer(InstallationInstallerUbuntuMutationRequest request)
@@ -1234,7 +1604,8 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
     private async Task<InstallationInstallerUbuntuDirectProcessResult> RunAsync(
         string executable,
         IReadOnlyList<string> arguments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? workingDirectory = null)
     {
         if (!SafeExecutable(executable))
         {
@@ -1252,6 +1623,15 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
             CreateNoWindow = true
         };
         start.Environment.Clear();
+        if (workingDirectory is not null)
+        {
+            if (!SafeImmutableDirectory(workingDirectory))
+            {
+                throw new InvalidOperationException(
+                    "A fixed managed working directory is unavailable or unsafe.");
+            }
+            start.WorkingDirectory = workingDirectory;
+        }
         foreach (string argument in arguments)
         {
             start.ArgumentList.Add(argument);
@@ -1312,6 +1692,24 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
                 (UnixFileMode.UserExecute |
                  UnixFileMode.GroupExecute |
                  UnixFileMode.OtherExecute)) != 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool SafeImmutableDirectory(string path)
+    {
+        if (!OperatingSystem.IsLinux() || !SafeDirectory(path))
+        {
+            return false;
+        }
+        try
+        {
+            UnixFileMode mode = File.GetUnixFileMode(path);
+            return (mode &
+                (UnixFileMode.GroupWrite | UnixFileMode.OtherWrite)) == 0;
         }
         catch
         {

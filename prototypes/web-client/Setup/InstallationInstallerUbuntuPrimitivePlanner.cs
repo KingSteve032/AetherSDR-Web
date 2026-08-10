@@ -13,7 +13,8 @@ public enum InstallationInstallerUbuntuPrimitiveKind
     ActivateInitialRelease = 9,
     ActivateSystemdUnit = 10,
     VerifyHealth = 11,
-    TrustInternalCertificate = 12
+    TrustInternalCertificate = 12,
+    InitializeIdentityDatabase = 13
 }
 
 public sealed record InstallationInstallerUbuntuPrimitiveOperation(
@@ -98,6 +99,8 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
                         DirectoryOwner(action.Target, request.Actions)),
                 InstallationInstallerActionKind.InstallVerifiedRelease =>
                     VerifyRelease(action, request),
+                InstallationInstallerActionKind.InitializeIdentityDatabase =>
+                    InitializeIdentityDatabase(action),
                 InstallationInstallerActionKind.InstallSystemdUnit =>
                     InstallUnit(action, request),
                 InstallationInstallerActionKind.ConfigureReverseProxy =>
@@ -226,6 +229,24 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
             request.TargetReleasePath,
             Executable: string.Empty,
             Arguments: []);
+    }
+
+    private static InstallationInstallerUbuntuPrimitiveOperation
+        InitializeIdentityDatabase(InstallationInstallerPlanAction action)
+    {
+        const string identityDatabase =
+            "/var/lib/aethersdr/identity/aethersdr-identity.db";
+        if (!string.Equals(
+                action.Target,
+                identityDatabase,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The installer plan contains a noncanonical identity database.");
+        }
+        return Typed(
+            action,
+            InstallationInstallerUbuntuPrimitiveKind.InitializeIdentityDatabase);
     }
 
     private static InstallationInstallerUbuntuPrimitiveOperation InstallUnit(

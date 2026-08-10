@@ -39,7 +39,8 @@ public enum InstallationInstallerActionKind
     ActivateInitialRelease = 9,
     ActivateSystemdUnit = 10,
     VerifyHealth = 11,
-    TrustInternalCertificate = 12
+    TrustInternalCertificate = 12,
+    InitializeIdentityDatabase = 13
 }
 
 public sealed record InstallationInstallerSelection(
@@ -125,7 +126,7 @@ internal sealed class InstallationInstallerPlan
 
 public static class InstallationInstallerPlanComposer
 {
-    public const int CurrentPlanSchemaVersion = 5;
+    public const int CurrentPlanSchemaVersion = 6;
 
     public static InstallationInstallerPlanReport Compose(
         InstallationSetupState state,
@@ -168,6 +169,7 @@ public static class InstallationInstallerPlanComposer
             profile,
             normalizedSelection,
             canonicalPublicUrl,
+            paths,
             users,
             directories,
             services);
@@ -405,6 +407,7 @@ public static class InstallationInstallerPlanComposer
         InstallationTopologyProfile profile,
         InstallationInstallerSelection selection,
         string canonicalPublicUrl,
+        InstallationPaths paths,
         IReadOnlyList<string> users,
         IReadOnlyList<string> directories,
         IReadOnlyList<string> services)
@@ -428,6 +431,13 @@ public static class InstallationInstallerPlanComposer
             actions,
             InstallationInstallerActionKind.InstallVerifiedRelease,
             $"{selection.ReleaseIdentity}/{ArchitectureMoniker(selection.Architecture)}");
+        if (profile.GatewayRunsHere)
+        {
+            AddAction(
+                actions,
+                InstallationInstallerActionKind.InitializeIdentityDatabase,
+                paths.IdentityDatabasePath);
+        }
 
         foreach (string service in services)
         {

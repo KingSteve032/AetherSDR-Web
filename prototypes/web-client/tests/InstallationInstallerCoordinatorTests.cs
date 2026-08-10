@@ -75,12 +75,21 @@ public sealed class InstallationInstallerCoordinatorTests
         Assert.Equal(
             InstallationInstallerActionKind.EnsureServiceUser,
             first.Actions[0].Kind);
-        Assert.Contains(
+        Assert.Equal(39, first.Actions.Count);
+        InstallationInstallerPlanAction release = Assert.Single(
             first.Actions,
-            action =>
-                action.Kind ==
-                    InstallationInstallerActionKind.InstallVerifiedRelease &&
-                action.Target == "2026.8.0/linux-x64");
+            action => action.Kind ==
+                InstallationInstallerActionKind.InstallVerifiedRelease);
+        Assert.Equal("2026.8.0/linux-x64", release.Target);
+        InstallationInstallerPlanAction identity = Assert.Single(
+            first.Actions,
+            action => action.Kind ==
+                InstallationInstallerActionKind.InitializeIdentityDatabase);
+        Assert.EndsWith(
+            Path.Combine("identity", "aethersdr-identity.db"),
+            identity.Target,
+            StringComparison.Ordinal);
+        Assert.Equal(release.Order + 1, identity.Order);
         Assert.Contains(
             first.Actions,
             action =>
@@ -158,13 +167,20 @@ public sealed class InstallationInstallerCoordinatorTests
                 linux,
                 DefaultSelection());
 
-        Assert.Equal(5, plan.SchemaVersion);
+        Assert.Equal(6, plan.SchemaVersion);
         Assert.Contains(
             "/var/lib/aethersdr/identity",
             plan.Directories);
         Assert.Contains(
             "/var/lib/aethersdr-installer",
             plan.Directories);
+        Assert.Contains(
+            plan.Actions,
+            action =>
+                action.Kind ==
+                    InstallationInstallerActionKind.InitializeIdentityDatabase &&
+                action.Target ==
+                    "/var/lib/aethersdr/identity/aethersdr-identity.db");
         Assert.Contains(
             "/var/lib/aethersdr-installer/releases",
             plan.Directories);
@@ -254,6 +270,11 @@ public sealed class InstallationInstallerCoordinatorTests
             nodePlan.Actions,
             action =>
                 action.Kind == InstallationInstallerActionKind.VerifyHealth);
+        Assert.DoesNotContain(
+            nodePlan.Actions,
+            action =>
+                action.Kind ==
+                    InstallationInstallerActionKind.InitializeIdentityDatabase);
     }
 
     [Fact]

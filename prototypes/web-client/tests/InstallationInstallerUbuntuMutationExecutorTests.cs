@@ -382,6 +382,68 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
     }
 
     [Fact]
+    public void IdentityDatabaseMapsToOneExactTypedManagedPrimitive()
+    {
+        InstallationInstallerUbuntuMutationRequest request = Request(
+        [
+            new(
+                1,
+                InstallationInstallerActionKind.EnsureServiceUser,
+                "aethersdr"),
+            new(
+                2,
+                InstallationInstallerActionKind.InstallVerifiedRelease,
+                "2026.8.0/linux-x64"),
+            new(
+                3,
+                InstallationInstallerActionKind.InitializeIdentityDatabase,
+                "/var/lib/aethersdr/identity/aethersdr-identity.db")
+        ]);
+
+        InstallationInstallerUbuntuPrimitiveOperation identity =
+            InstallationInstallerUbuntuPrimitivePlanner.Compose(request)[2];
+
+        Assert.Equal(
+            InstallationInstallerUbuntuPrimitiveKind.InitializeIdentityDatabase,
+            identity.Kind);
+        Assert.Equal(
+            "/var/lib/aethersdr/identity/aethersdr-identity.db",
+            identity.Target);
+        Assert.Empty(identity.Executable);
+        Assert.Empty(identity.Arguments);
+    }
+
+    [Fact]
+    public void NoncanonicalIdentityDatabaseFailsBeforePrimitiveExecution()
+    {
+        InstallationInstallerUbuntuMutationRequest request = Request(
+        [
+            new(
+                1,
+                InstallationInstallerActionKind.EnsureServiceUser,
+                "aethersdr"),
+            new(
+                2,
+                InstallationInstallerActionKind.InstallVerifiedRelease,
+                "2026.8.0/linux-x64"),
+            new(
+                3,
+                InstallationInstallerActionKind.InitializeIdentityDatabase,
+                "/tmp/operator-selected.db")
+        ]);
+
+        InvalidOperationException exception =
+            Assert.Throws<InvalidOperationException>(
+                () => InstallationInstallerUbuntuPrimitivePlanner.Compose(
+                    request));
+
+        Assert.Contains(
+            "noncanonical identity database",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void LanCertificateTrustMapsToOneTypedManagedPrimitive()
     {
         InstallationInstallerUbuntuMutationRequest request = Request(
@@ -796,6 +858,195 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
     }
 
     [Fact]
+    public async Task IdentityInspectionIsMissingBeforeReleasePublication()
+    {
+        using TemporaryDirectory temporary = new();
+        LocalInstallationInstallerUbuntuManagedPrimitiveHandler handler = new(
+            (_, _) => throw new InvalidOperationException(
+                "A missing release must not start the identity command."));
+
+        InstallationInstallerUbuntuPrimitiveInspection inspection =
+            await handler.InspectAsync(
+                Request(targetReleasePath:
+                    Path.Combine(temporary.Path, "missing-release")),
+                IdentityOperation());
+
+        Assert.Equal(
+            InstallationInstallerUbuntuPrimitiveInspectionOutcome.Missing,
+            inspection.Outcome);
+    }
+
+    [Fact]
+    public async Task IdentityInitializationUsesFixedServiceIdentityAndExactPlan()
+    {
+        using TemporaryDirectory temporary = new();
+        string release = CreateExecutableGatewayRelease(temporary.Path);
+        string missingPlanId = new('b', 64);
+        Queue<InstallationInstallerUbuntuDirectProcessResult> results = new(
+        [
+            ProcessResult(IdentityReport(
+                "incomplete",
+                "identity-schema-not-initialized",
+                existingSchemaVersion: null,
+                mutationRequired: true,
+                mutationAttempted: false,
+                databaseCreated: false,
+                new string('a', 64))),
+            ProcessResult(IdentityReport(
+                "planned",
+                "identity-schema-initialization-required",
+                existingSchemaVersion: null,
+                mutationRequired: true,
+                mutationAttempted: false,
+                databaseCreated: false,
+                missingPlanId)),
+            ProcessResult(IdentityReport(
+                "applied",
+                "identity-schema-initialized",
+                existingSchemaVersion: 1,
+                mutationRequired: false,
+                mutationAttempted: true,
+                databaseCreated: true,
+                new string('c', 64))),
+            ProcessResult(IdentityReport(
+                "converged",
+                "identity-schema-converged",
+                existingSchemaVersion: 1,
+                mutationRequired: false,
+                mutationAttempted: false,
+                databaseCreated: false,
+                new string('d', 64)))
+        ]);
+        List<ProcessStartInfo> starts = [];
+        LocalInstallationInstallerUbuntuManagedPrimitiveHandler handler = new(
+            (start, _) =>
+            {
+                starts.Add(start);
+                return Task.FromResult(results.Dequeue());
+            });
+
+        InstallationInstallerUbuntuStepResult result = await handler.ExecuteAsync(
+            Request(targetReleasePath: release),
+            IdentityOperation());
+
+        Assert.Equal(
+            InstallationInstallerUbuntuStepOutcome.Applied,
+            result.Outcome);
+        Assert.Equal("ubuntu-identity-schema-initialized", result.Code);
+        Assert.Empty(results);
+        Assert.Equal(4, starts.Count);
+        Assert.All(
+            starts,
+            start =>
+            {
+                Assert.Equal("/usr/sbin/runuser", start.FileName);
+                Assert.Equal(
+                    Path.Combine(release, "gateway-web"),
+                    start.WorkingDirectory);
+                Assert.False(start.UseShellExecute);
+                Assert.Empty(start.Environment);
+                Assert.Equal(
+                    ["--user", "aethersdr", "--",
+                        Path.Combine(
+                            release,
+                            "gateway-web",
+                            "AetherSDR.Web")],
+                    start.ArgumentList.Cast<string>().Take(4));
+            });
+        Assert.Equal(
+            "--identity-database-validate",
+            starts[0].ArgumentList[4]);
+        Assert.Equal(
+            "--identity-database-plan",
+            starts[1].ArgumentList[4]);
+        Assert.Equal(
+            [
+                "--identity-database-apply",
+                "--confirm-identity-database-plan",
+                missingPlanId
+            ],
+            starts[2].ArgumentList.Cast<string>().Skip(4));
+        Assert.Equal(
+            "--identity-database-validate",
+            starts[3].ArgumentList[4]);
+    }
+
+    [Fact]
+    public async Task IdentityInitializationIsIdempotentWhenAlreadyConverged()
+    {
+        using TemporaryDirectory temporary = new();
+        string release = CreateExecutableGatewayRelease(temporary.Path);
+        List<ProcessStartInfo> starts = [];
+        LocalInstallationInstallerUbuntuManagedPrimitiveHandler handler = new(
+            (start, _) =>
+            {
+                starts.Add(start);
+                return Task.FromResult(ProcessResult(IdentityReport(
+                    "converged",
+                    "identity-schema-converged",
+                    existingSchemaVersion: 1,
+                    mutationRequired: false,
+                    mutationAttempted: false,
+                    databaseCreated: false,
+                    new string('a', 64))));
+            });
+
+        InstallationInstallerUbuntuStepResult result = await handler.ExecuteAsync(
+            Request(targetReleasePath: release, repair: true),
+            IdentityOperation());
+
+        Assert.Equal(
+            InstallationInstallerUbuntuStepOutcome.Converged,
+            result.Outcome);
+        ProcessStartInfo start = Assert.Single(starts);
+        Assert.Equal(
+            "--identity-database-validate",
+            start.ArgumentList[4]);
+    }
+
+    [Fact]
+    public async Task IdentityApplyFailureRequiresReconciliation()
+    {
+        using TemporaryDirectory temporary = new();
+        string release = CreateExecutableGatewayRelease(temporary.Path);
+        Queue<InstallationInstallerUbuntuDirectProcessResult> results = new(
+        [
+            ProcessResult(IdentityReport(
+                "incomplete",
+                "identity-schema-not-initialized",
+                existingSchemaVersion: null,
+                mutationRequired: true,
+                mutationAttempted: false,
+                databaseCreated: false,
+                new string('a', 64))),
+            ProcessResult(IdentityReport(
+                "planned",
+                "identity-schema-initialization-required",
+                existingSchemaVersion: null,
+                mutationRequired: true,
+                mutationAttempted: false,
+                databaseCreated: false,
+                new string('b', 64))),
+            new(
+                2,
+                "{\"outcome\":\"rejected\"}",
+                string.Empty)
+        ]);
+        LocalInstallationInstallerUbuntuManagedPrimitiveHandler handler = new(
+            (_, _) => Task.FromResult(results.Dequeue()));
+
+        InstallationInstallerUbuntuStepResult result = await handler.ExecuteAsync(
+            Request(targetReleasePath: release),
+            IdentityOperation());
+
+        Assert.Equal(
+            InstallationInstallerUbuntuStepOutcome.Unknown,
+            result.Outcome);
+        Assert.Equal("ubuntu-identity-apply-unknown", result.Code);
+        Assert.Empty(results);
+    }
+
+    [Fact]
     public async Task PointerRollbackPreservesMismatchedSymlink()
     {
         using TemporaryDirectory temporary = new();
@@ -852,6 +1103,68 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
             result.Outcome);
         Assert.False(Directory.Exists(current));
         Assert.Null(new DirectoryInfo(current).LinkTarget);
+    }
+
+    private static InstallationInstallerUbuntuPrimitiveOperation
+        IdentityOperation() =>
+        new(
+            3,
+            InstallationInstallerUbuntuPrimitiveKind.InitializeIdentityDatabase,
+            "/var/lib/aethersdr/identity/aethersdr-identity.db",
+            Executable: string.Empty,
+            Arguments: []);
+
+    private static InstallationInstallerUbuntuDirectProcessResult ProcessResult(
+        string output) =>
+        new(0, output, string.Empty);
+
+    private static string IdentityReport(
+        string outcome,
+        string code,
+        int? existingSchemaVersion,
+        bool mutationRequired,
+        bool mutationAttempted,
+        bool databaseCreated,
+        string planId) =>
+        System.Text.Json.JsonSerializer.Serialize(new
+        {
+            outcome,
+            code,
+            targetSchemaVersion = 1,
+            existingSchemaVersion,
+            databasePath =
+                "/var/lib/aethersdr/identity/aethersdr-identity.db",
+            planId,
+            mutationRequired,
+            mutationAttempted,
+            databaseCreated,
+            backupRequired = false,
+            rollbackAttempted = false,
+            rollbackSucceeded = false
+        });
+
+    private static string CreateExecutableGatewayRelease(string root)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            throw new PlatformNotSupportedException(
+                "The Ubuntu primitive test requires Linux.");
+        }
+        string release = Path.Combine(root, "release");
+        string gateway = Path.Combine(release, "gateway-web");
+        string executable = Path.Combine(gateway, "AetherSDR.Web");
+        Directory.CreateDirectory(gateway);
+        File.WriteAllText(executable, "#!/bin/false\n");
+        File.SetUnixFileMode(
+            executable,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupExecute |
+            UnixFileMode.OtherRead |
+            UnixFileMode.OtherExecute);
+        return release;
     }
 
     private static InstallationInstallerUbuntuPrimitiveInspection Inspection(
