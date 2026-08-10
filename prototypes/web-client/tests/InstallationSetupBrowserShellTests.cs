@@ -95,7 +95,7 @@ public sealed class InstallationSetupBrowserShellTests
                 .Select(endpoint => endpoint.DisplayName ?? string.Empty)
                 .ToArray();
 
-        Assert.Equal(11, host.AdapterReport.EndpointPaths.Count);
+        Assert.Equal(13, host.AdapterReport.EndpointPaths.Count);
         Assert.Equal(
             new[]
             {
@@ -104,7 +104,7 @@ public sealed class InstallationSetupBrowserShellTests
                 InstallationSetupBrowserShell.ScriptPath
             },
             host.ShellReport.EndpointPaths);
-        Assert.Equal(14, endpoints.Count);
+        Assert.Equal(16, endpoints.Count);
         Assert.Contains(
             endpoints,
             name => name.Contains(

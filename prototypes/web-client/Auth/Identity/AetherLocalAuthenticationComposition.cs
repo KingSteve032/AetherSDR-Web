@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Threading.RateLimiting;
+using AetherSDR.Web.Setup;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -26,6 +27,22 @@ internal static class AetherLocalAuthenticationDefaults
 
 internal static class AetherLocalAuthenticationComposition
 {
+    internal static IServiceCollection
+        AddAetherFirstLocalAdministratorProvisioning(
+            this IServiceCollection services,
+            InstallationPaths paths)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(paths);
+
+        AetherLocalAuthenticationPolicy policy =
+            AetherAuthenticationConfiguration.CreateSetupLocalPolicy();
+        services.AddAetherIdentityPersistence(paths);
+        AddCredentialCore(services, policy);
+        AddFirstAdministratorProvisioner(services);
+        return services;
+    }
+
     internal static IServiceCollection AddAetherLocalAuthenticationFoundation(
         this IServiceCollection services,
         AetherLocalAuthenticationPolicy policy)
@@ -33,6 +50,20 @@ internal static class AetherLocalAuthenticationComposition
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(policy);
 
+        AddCredentialCore(services, policy);
+        services.AddSingleton(
+            AetherLocalPasswordTimingDefense.Create(policy));
+        services.AddSingleton<AetherLocalMfaChallengeStore>();
+        services.AddScoped<AetherLocalPasswordAuthenticationService>();
+        services.AddScoped<AetherLocalMfaAuthenticationService>();
+        AddFirstAdministratorProvisioner(services);
+        return services;
+    }
+
+    private static void AddCredentialCore(
+        IServiceCollection services,
+        AetherLocalAuthenticationPolicy policy)
+    {
         services.AddSingleton(policy);
         services.Configure<PasswordHasherOptions>(options =>
         {
@@ -44,15 +75,20 @@ internal static class AetherLocalAuthenticationComposition
         services.AddScoped<
             IPasswordHasher<AetherIdentityUser>,
             PasswordHasher<AetherIdentityUser>>();
-        services.AddSingleton(
-            AetherLocalPasswordTimingDefense.Create(policy));
-        services.AddSingleton<AetherLocalMfaChallengeStore>();
         services.AddSingleton<AetherLocalMfaCredentialProtector>();
+    }
+
+    private static void AddFirstAdministratorProvisioner(
+        IServiceCollection services)
+    {
         services.AddSingleton<AetherFirstLocalAdministratorProvisioningLock>();
-        services.AddScoped<AetherLocalPasswordAuthenticationService>();
-        services.AddScoped<AetherLocalMfaAuthenticationService>();
         services.AddScoped<AetherFirstLocalAdministratorProvisioningService>();
-        return services;
+        services.AddScoped<IInstallationFirstLocalAdministratorProvisioner>(
+            provider => provider.GetRequiredService<
+                AetherFirstLocalAdministratorProvisioningService>());
+        services.AddSingleton<
+            IInstallationFirstLocalAdministratorProvisioningExecutor,
+            AetherFirstLocalAdministratorProvisioningExecutor>();
     }
 }
 

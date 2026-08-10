@@ -5,84 +5,80 @@ using System.Text.Json;
 using AetherSDR.Web.Setup;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AetherSDR.Web.Auth.Identity;
-
-internal sealed class AetherFirstLocalAdministratorEnrollment
-{
-    internal AetherFirstLocalAdministratorEnrollment(
-        string userName,
-        string displayName,
-        string? email,
-        string password,
-        string correlationId)
-    {
-        UserName = userName;
-        DisplayName = displayName;
-        Email = email;
-        Password = password;
-        CorrelationId = correlationId;
-    }
-
-    internal string UserName { get; }
-
-    internal string DisplayName { get; }
-
-    internal string? Email { get; }
-
-    internal string Password { get; }
-
-    internal string CorrelationId { get; }
-
-    public override string ToString() =>
-        $"{nameof(AetherFirstLocalAdministratorEnrollment)} " +
-        $"{{ UserName = [redacted], DisplayName = [redacted], " +
-        $"Email = [redacted], Password = [redacted], " +
-        $"CorrelationId = {CorrelationId} }}";
-}
-
-internal sealed class AetherFirstLocalAdministratorEnrollmentIssue
-{
-    internal AetherFirstLocalAdministratorEnrollmentIssue(
-        Guid userId,
-        DateTimeOffset accountCreatedAtUtc,
-        string sharedSecretBase32,
-        IReadOnlyList<string> recoveryCodes,
-        bool rotated)
-    {
-        UserId = userId;
-        AccountCreatedAtUtc = accountCreatedAtUtc;
-        SharedSecretBase32 = sharedSecretBase32;
-        RecoveryCodes = recoveryCodes;
-        Rotated = rotated;
-    }
-
-    internal Guid UserId { get; }
-
-    internal DateTimeOffset AccountCreatedAtUtc { get; }
-
-    internal string SharedSecretBase32 { get; }
-
-    internal IReadOnlyList<string> RecoveryCodes { get; }
-
-    internal bool Rotated { get; }
-
-    public override string ToString() =>
-        $"{nameof(AetherFirstLocalAdministratorEnrollmentIssue)} " +
-        $"{{ UserId = {UserId:D}, AccountCreatedAtUtc = " +
-        $"{AccountCreatedAtUtc:O}, SharedSecretBase32 = [redacted], " +
-        $"RecoveryCodes = [redacted], Rotated = {Rotated} }}";
-}
-
-internal sealed record AetherFirstLocalAdministratorConfirmationResult(
-    bool Succeeded,
-    string Code,
-    Guid? UserId,
-    bool MutationAttempted);
 
 internal sealed class AetherFirstLocalAdministratorProvisioningLock
 {
     internal SemaphoreSlim Gate { get; } = new(1, 1);
+}
+
+internal sealed class AetherFirstLocalAdministratorProvisioningExecutor(
+    IServiceScopeFactory scopeFactory)
+    : IInstallationFirstLocalAdministratorProvisioningExecutor
+{
+    public async Task<InstallationFirstLocalAdministratorEnrollmentIssue>
+        BeginAsync(
+            InstallationFirstAdministratorVerificationRequest setup,
+            InstallationFirstLocalAdministratorEnrollment enrollment,
+            CancellationToken cancellationToken = default)
+    {
+        await using AsyncServiceScope scope =
+            scopeFactory.CreateAsyncScope();
+        IInstallationFirstLocalAdministratorProvisioner provisioner =
+            scope.ServiceProvider.GetRequiredService<
+                IInstallationFirstLocalAdministratorProvisioner>();
+        return await provisioner.BeginAsync(
+            setup,
+            enrollment,
+            cancellationToken);
+    }
+
+    public async Task<InstallationFirstLocalAdministratorCompletionResult>
+        ConfirmAndCompleteAsync(
+            InstallationFirstAdministratorHandoff handoff,
+            long expectedRevision,
+            InstallationFirstAdministratorVerificationRequest setup,
+            string? totpCode,
+            string correlationId,
+            CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(handoff);
+        await using AsyncServiceScope scope =
+            scopeFactory.CreateAsyncScope();
+        IInstallationFirstLocalAdministratorProvisioner provisioner =
+            scope.ServiceProvider.GetRequiredService<
+                IInstallationFirstLocalAdministratorProvisioner>();
+        InstallationFirstLocalAdministratorConfirmationResult confirmation =
+            await provisioner.ConfirmAsync(
+                setup,
+                totpCode,
+                correlationId,
+                cancellationToken);
+        if (!confirmation.Succeeded)
+        {
+            return new(confirmation, CompletedState: null);
+        }
+
+        InstallationSetupState completed =
+            await handoff.CompleteAsync(
+                expectedRevision,
+                provisioner,
+                CancellationToken.None);
+        return new(confirmation, completed);
+    }
+
+    public async Task<bool> HasIdentityAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await using AsyncServiceScope scope =
+            scopeFactory.CreateAsyncScope();
+        IInstallationFirstLocalAdministratorProvisioner provisioner =
+            scope.ServiceProvider.GetRequiredService<
+                IInstallationFirstLocalAdministratorProvisioner>();
+        return await provisioner.HasIdentityAsync(cancellationToken);
+    }
 }
 
 internal sealed class AetherFirstLocalAdministratorProvisioningService(
@@ -93,7 +89,7 @@ internal sealed class AetherFirstLocalAdministratorProvisioningService(
     AetherLocalAuthenticationPolicy policy,
     AetherFirstLocalAdministratorProvisioningLock provisioningLock,
     TimeProvider timeProvider)
-    : IInstallationFirstAdministratorVerifier
+    : IInstallationFirstLocalAdministratorProvisioner
 {
     private const string SetupLoginProvider = "Aether.Setup";
     private const string SetupBindingName = "FirstAdministratorBinding.v1";
@@ -101,10 +97,24 @@ internal sealed class AetherFirstLocalAdministratorProvisioningService(
         "identity.first-administrator.enrollment";
     private const int RecoveryCodeCount = 10;
 
-    internal async Task<AetherFirstLocalAdministratorEnrollmentIssue>
+    public async Task<bool> HasIdentityAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await provisioningLock.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            return await database.Users.AnyAsync(cancellationToken);
+        }
+        finally
+        {
+            provisioningLock.Gate.Release();
+        }
+    }
+
+    public async Task<InstallationFirstLocalAdministratorEnrollmentIssue>
         BeginAsync(
             InstallationFirstAdministratorVerificationRequest setup,
-            AetherFirstLocalAdministratorEnrollment enrollment,
+            InstallationFirstLocalAdministratorEnrollment enrollment,
             CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(setup);
@@ -246,7 +256,7 @@ internal sealed class AetherFirstLocalAdministratorProvisioningService(
         }
     }
 
-    internal async Task<AetherFirstLocalAdministratorConfirmationResult>
+    public async Task<InstallationFirstLocalAdministratorConfirmationResult>
         ConfirmAsync(
             InstallationFirstAdministratorVerificationRequest setup,
             string? totpCode,
@@ -620,7 +630,7 @@ internal sealed class AetherFirstLocalAdministratorProvisioningService(
                     token.Name == name,
                 cancellationToken);
 
-    private async Task<AetherFirstLocalAdministratorConfirmationResult>
+    private async Task<InstallationFirstLocalAdministratorConfirmationResult>
         RegisterConfirmationFailureAsync(
             AetherIdentityUser user,
             string correlationId,
@@ -667,7 +677,7 @@ internal sealed class AetherFirstLocalAdministratorProvisioningService(
         return RejectedConfirmation();
     }
 
-    private async Task<AetherFirstLocalAdministratorConfirmationResult>
+    private async Task<InstallationFirstLocalAdministratorConfirmationResult>
         RejectConfirmationAsync(
             Guid? subjectUserId,
             string correlationId,
@@ -736,7 +746,7 @@ internal sealed class AetherFirstLocalAdministratorProvisioningService(
     }
 
     private ValidatedEnrollment ValidateEnrollment(
-        AetherFirstLocalAdministratorEnrollment enrollment)
+        InstallationFirstLocalAdministratorEnrollment enrollment)
     {
         string userName = ValidateExactText(
             enrollment.UserName,
@@ -945,7 +955,7 @@ internal sealed class AetherFirstLocalAdministratorProvisioningService(
             "correlation identifier");
     }
 
-    private static AetherFirstLocalAdministratorConfirmationResult
+    private static InstallationFirstLocalAdministratorConfirmationResult
         RejectedConfirmation() =>
         new(
             Succeeded: false,

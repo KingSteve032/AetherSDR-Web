@@ -24,10 +24,10 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
     {
         await using ProvisioningFixture fixture =
             await ProvisioningFixture.CreateAsync();
-        AetherFirstLocalAdministratorEnrollment enrollment =
+        InstallationFirstLocalAdministratorEnrollment enrollment =
             CreateEnrollment();
 
-        AetherFirstLocalAdministratorEnrollmentIssue issue =
+        InstallationFirstLocalAdministratorEnrollmentIssue issue =
             await fixture.Service.BeginAsync(fixture.Setup, enrollment);
 
         AetherIdentityUser user =
@@ -123,16 +123,33 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
     }
 
     [Fact]
+    public async Task ExecutorUsesFreshScopesAndReportsDurableIdentityPresence()
+    {
+        await using ProvisioningFixture fixture =
+            await ProvisioningFixture.CreateAsync();
+
+        Assert.False(await fixture.Executor.HasIdentityAsync());
+
+        InstallationFirstLocalAdministratorEnrollmentIssue issue =
+            await fixture.Executor.BeginAsync(
+                fixture.Setup,
+                CreateEnrollment(correlationId: "executor-first-admin"));
+
+        Assert.NotEqual(Guid.Empty, issue.UserId);
+        Assert.True(await fixture.Executor.HasIdentityAsync());
+    }
+
+    [Fact]
     public async Task TotpConfirmationEnablesCanonicalAdminWithoutCreatingSession()
     {
         await using ProvisioningFixture fixture =
             await ProvisioningFixture.CreateAsync();
-        AetherFirstLocalAdministratorEnrollmentIssue issue =
+        InstallationFirstLocalAdministratorEnrollmentIssue issue =
             await fixture.Service.BeginAsync(
                 fixture.Setup,
                 CreateEnrollment());
 
-        AetherFirstLocalAdministratorConfirmationResult confirmed =
+        InstallationFirstLocalAdministratorConfirmationResult confirmed =
             await fixture.Service.ConfirmAsync(
                 fixture.Setup,
                 CurrentTotp(
@@ -178,7 +195,7 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
             [AetherRoles.Admin, AetherRoles.Observe],
             evidence.Roles.Order(StringComparer.Ordinal).ToArray());
 
-        AetherFirstLocalAdministratorConfirmationResult retry =
+        InstallationFirstLocalAdministratorConfirmationResult retry =
             await fixture.Service.ConfirmAsync(
                 fixture.Setup,
                 "not-a-code",
@@ -207,7 +224,7 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => fixture.Service.VerifyAsync(fixture.Setup));
-        AetherFirstLocalAdministratorConfirmationResult tampered =
+        InstallationFirstLocalAdministratorConfirmationResult tampered =
             await fixture.Service.ConfirmAsync(
                 fixture.Setup,
                 "not-a-code",
@@ -220,13 +237,13 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
     {
         await using ProvisioningFixture fixture =
             await ProvisioningFixture.CreateAsync();
-        AetherFirstLocalAdministratorEnrollmentIssue first =
+        InstallationFirstLocalAdministratorEnrollmentIssue first =
             await fixture.Service.BeginAsync(
                 fixture.Setup,
                 CreateEnrollment());
         fixture.Time.Advance(TimeSpan.FromMinutes(1));
 
-        AetherFirstLocalAdministratorEnrollmentIssue rotated =
+        InstallationFirstLocalAdministratorEnrollmentIssue rotated =
             await fixture.Service.BeginAsync(
                 fixture.Setup,
                 CreateEnrollment(
@@ -256,7 +273,7 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
                 user.PasswordHash,
                 RotatedPassword));
 
-        AetherFirstLocalAdministratorConfirmationResult oldRejected =
+        InstallationFirstLocalAdministratorConfirmationResult oldRejected =
             await fixture.Service.ConfirmAsync(
                 fixture.Setup,
                 CurrentTotp(
@@ -266,7 +283,7 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
         Assert.False(oldRejected.Succeeded);
         Assert.Null(oldRejected.UserId);
 
-        AetherFirstLocalAdministratorConfirmationResult confirmed =
+        InstallationFirstLocalAdministratorConfirmationResult confirmed =
             await fixture.Service.ConfirmAsync(
                 fixture.Setup,
                 CurrentTotp(
@@ -285,7 +302,7 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
     {
         await using ProvisioningFixture fixture =
             await ProvisioningFixture.CreateAsync();
-        AetherFirstLocalAdministratorEnrollmentIssue first =
+        InstallationFirstLocalAdministratorEnrollmentIssue first =
             await fixture.Service.BeginAsync(
                 fixture.Setup,
                 CreateEnrollment());
@@ -294,7 +311,7 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
             attempt < fixture.Policy.MaximumFailedAttempts;
             attempt++)
         {
-            AetherFirstLocalAdministratorConfirmationResult rejected =
+            InstallationFirstLocalAdministratorConfirmationResult rejected =
                 await fixture.Service.ConfirmAsync(
                     fixture.Setup,
                     "invalid",
@@ -314,7 +331,7 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
             fixture.Time.GetUtcNow().Add(fixture.Policy.LockoutDuration),
             locked.LockoutEnd);
 
-        AetherFirstLocalAdministratorConfirmationResult whileLocked =
+        InstallationFirstLocalAdministratorConfirmationResult whileLocked =
             await fixture.Service.ConfirmAsync(
                 fixture.Setup,
                 CurrentTotp(
@@ -325,7 +342,7 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
         Assert.False(
             (await fixture.Database.Users.SingleAsync()).Enabled);
 
-        AetherFirstLocalAdministratorEnrollmentIssue rotated =
+        InstallationFirstLocalAdministratorEnrollmentIssue rotated =
             await fixture.Service.BeginAsync(
                 fixture.Setup,
                 CreateEnrollment(
@@ -336,7 +353,7 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
         Assert.Null(reset.LockoutEnd);
         Assert.Equal(0, reset.AccessFailedCount);
 
-        AetherFirstLocalAdministratorConfirmationResult confirmed =
+        InstallationFirstLocalAdministratorConfirmationResult confirmed =
             await fixture.Service.ConfirmAsync(
                 fixture.Setup,
                 CurrentTotp(
@@ -351,7 +368,7 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
     {
         await using ProvisioningFixture fixture =
             await ProvisioningFixture.CreateAsync();
-        AetherFirstLocalAdministratorEnrollmentIssue issue =
+        InstallationFirstLocalAdministratorEnrollmentIssue issue =
             await fixture.Service.BeginAsync(
                 fixture.Setup,
                 CreateEnrollment());
@@ -361,7 +378,7 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
                 SetupRevision = fixture.Setup.SetupRevision + 1
             };
 
-        AetherFirstLocalAdministratorConfirmationResult rejected =
+        InstallationFirstLocalAdministratorConfirmationResult rejected =
             await fixture.Service.ConfirmAsync(
                 different,
                 CurrentTotp(
@@ -380,7 +397,7 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
                     password: RotatedPassword,
                     correlationId: "wrong-setup-begin")));
 
-        AetherFirstLocalAdministratorConfirmationResult confirmed =
+        InstallationFirstLocalAdministratorConfirmationResult confirmed =
             await fixture.Service.ConfirmAsync(
                 fixture.Setup,
                 CurrentTotp(
@@ -416,7 +433,7 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
             await fixture.Database.AuthenticationSessions.ToArrayAsync());
     }
 
-    private static AetherFirstLocalAdministratorEnrollment CreateEnrollment(
+    private static InstallationFirstLocalAdministratorEnrollment CreateEnrollment(
         string password = ValidPassword,
         string correlationId = "enrollment-001") =>
         new(
@@ -496,6 +513,7 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
             AsyncServiceScope scope,
             AetherIdentityDbContext database,
             AetherFirstLocalAdministratorProvisioningService service,
+            IInstallationFirstLocalAdministratorProvisioningExecutor executor,
             IPasswordHasher<AetherIdentityUser> passwordHasher,
             AetherLocalAuthenticationPolicy policy,
             ManualTimeProvider time)
@@ -505,6 +523,7 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
             this.scope = scope;
             Database = database;
             Service = service;
+            Executor = executor;
             PasswordHasher = passwordHasher;
             Policy = policy;
             Time = time;
@@ -519,6 +538,11 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
         internal AetherIdentityDbContext Database { get; }
 
         internal AetherFirstLocalAdministratorProvisioningService Service
+        {
+            get;
+        }
+
+        internal IInstallationFirstLocalAdministratorProvisioningExecutor Executor
         {
             get;
         }
@@ -582,6 +606,8 @@ public sealed class AetherFirstLocalAdministratorProvisioningServiceTests
                     scoped.GetRequiredService<AetherIdentityDbContext>(),
                     scoped.GetRequiredService<
                         AetherFirstLocalAdministratorProvisioningService>(),
+                    provider.GetRequiredService<
+                        IInstallationFirstLocalAdministratorProvisioningExecutor>(),
                     scoped.GetRequiredService<
                         IPasswordHasher<AetherIdentityUser>>(),
                     topology.LocalPolicy,

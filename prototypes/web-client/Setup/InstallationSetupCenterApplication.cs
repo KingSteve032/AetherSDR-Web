@@ -141,6 +141,16 @@ public sealed record InstallationSetupCenterMutationResult(
     InstallationSetupHttpCsrfIssue Csrf,
     InstallationSetupCenterMutationKind MutationKind);
 
+public sealed record InstallationSetupCenterAdministratorEnrollmentResult(
+    InstallationSetupStatusReport Status,
+    InstallationSetupClaimSessionContext Session,
+    InstallationFirstLocalAdministratorEnrollmentIssue Enrollment);
+
+public sealed record InstallationSetupCenterAdministratorConfirmationResult(
+    InstallationSetupStatusReport Status,
+    bool Completed,
+    InstallationFirstLocalAdministratorConfirmationResult Confirmation);
+
 public sealed class InstallationSetupCenterSecurityException
     : UnauthorizedAccessException
 {
@@ -165,15 +175,21 @@ public sealed class InstallationSetupCenterApplication : IDisposable
     private readonly InstallationSetupPreflight m_preflight;
     private readonly InstallationSetupClaimSessionService m_sessions;
     private readonly InstallationSetupHttpSecurityPolicy m_security;
+    private readonly IInstallationFirstLocalAdministratorProvisioningExecutor?
+        m_administrators;
+    private readonly InstallationFirstAdministratorHandoff? m_handoff;
+    private readonly SemaphoreSlim m_operationGate = new(1, 1);
     private bool m_disposed;
 
     public InstallationSetupCenterApplication(
         InstallationSetupStore store,
         InstallationSetupHttpSecurityPolicy security,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IInstallationFirstLocalAdministratorProvisioningExecutor? administrators = null)
     {
         m_store = store ?? throw new ArgumentNullException(nameof(store));
         m_security = security ?? throw new ArgumentNullException(nameof(security));
+        m_administrators = administrators;
         TimeProvider time = timeProvider ?? TimeProvider.System;
         InstallationBootstrapTokenService bootstrapTokens = new(store, time);
         m_sessions = new InstallationSetupClaimSessionService(
@@ -182,6 +198,9 @@ public sealed class InstallationSetupCenterApplication : IDisposable
             time);
         m_workflow = new InstallationSetupWorkflow(store);
         m_preflight = new InstallationSetupPreflight(store, time);
+        m_handoff = administrators is null
+            ? null
+            : new InstallationFirstAdministratorHandoff(store, time);
     }
 
     public InstallationSetupHttpSecurityContract SecurityContract =>
@@ -281,6 +300,132 @@ public sealed class InstallationSetupCenterApplication : IDisposable
             preflight);
     }
 
+    public async Task<InstallationSetupCenterAdministratorEnrollmentResult>
+        BeginAdministratorEnrollmentAsync(
+            InstallationSetupHttpRequest request,
+            string sessionToken,
+            long expectedRevision,
+            InstallationFirstLocalAdministratorEnrollment enrollment,
+            CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(enrollment);
+        RequireSecurity(
+            request,
+            InstallationSetupHttpOperation.SessionMutation);
+        IInstallationFirstLocalAdministratorProvisioningExecutor administrators =
+            RequireAdministratorProvisioner();
+
+        await m_operationGate.WaitAsync(cancellationToken);
+        try
+        {
+            InstallationSetupClaimSessionContext session =
+                await m_sessions.ValidateAsync(
+                    sessionToken,
+                    expectedRevision,
+                    cancellationToken);
+            InstallationSetupState state =
+                await LoadSetupOnlyStateAsync(cancellationToken);
+            RequireSessionContextMatchesState(session, state);
+            RequireReadyForAdministrator(state);
+
+            InstallationFirstAdministratorVerificationRequest setup =
+                CreateAdministratorVerificationRequest(state);
+            InstallationFirstLocalAdministratorEnrollmentIssue issue =
+                await administrators.BeginAsync(
+                    setup,
+                    enrollment,
+                    cancellationToken);
+
+            InstallationSetupState unchanged =
+                await LoadSetupOnlyStateAsync(cancellationToken);
+            if (unchanged != state)
+            {
+                throw new InstallationSetupConcurrencyException(
+                    expectedRevision,
+                    unchanged.Revision);
+            }
+            RequireSessionContextMatchesState(session, unchanged);
+            return new(
+                InstallationSetupStatusReport.From(unchanged),
+                session,
+                issue);
+        }
+        finally
+        {
+            m_operationGate.Release();
+        }
+    }
+
+    public async Task<InstallationSetupCenterAdministratorConfirmationResult>
+        ConfirmAdministratorAsync(
+            InstallationSetupHttpRequest request,
+            string sessionToken,
+            long expectedRevision,
+            string? totpCode,
+            string correlationId,
+            CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        RequireSecurity(
+            request,
+            InstallationSetupHttpOperation.SessionMutation);
+        IInstallationFirstLocalAdministratorProvisioningExecutor administrators =
+            RequireAdministratorProvisioner();
+        InstallationFirstAdministratorHandoff handoff =
+            m_handoff ??
+            throw new InvalidOperationException(
+                "First-administrator handoff is unavailable.");
+
+        await m_operationGate.WaitAsync(cancellationToken);
+        try
+        {
+            InstallationSetupClaimSessionContext session =
+                await m_sessions.ValidateAsync(
+                    sessionToken,
+                    expectedRevision,
+                    cancellationToken);
+            InstallationSetupState state =
+                await LoadSetupOnlyStateAsync(cancellationToken);
+            RequireSessionContextMatchesState(session, state);
+            RequireReadyForAdministrator(state);
+
+            InstallationFirstAdministratorVerificationRequest setup =
+                CreateAdministratorVerificationRequest(state);
+            InstallationFirstLocalAdministratorCompletionResult completion =
+                await administrators.ConfirmAndCompleteAsync(
+                    handoff,
+                    expectedRevision,
+                    setup,
+                    totpCode,
+                    correlationId,
+                    cancellationToken);
+            if (!completion.Completed)
+            {
+                return new(
+                    InstallationSetupStatusReport.From(state),
+                    Completed: false,
+                    completion.Confirmation);
+            }
+
+            InstallationSetupState completed =
+                completion.CompletedState ??
+                throw new InvalidOperationException(
+                    "First-administrator completion returned no setup state.");
+            await m_sessions.RevokeAsync(
+                sessionToken,
+                CancellationToken.None);
+            return new(
+                InstallationSetupStatusReport.From(completed),
+                Completed: true,
+                completion.Confirmation);
+        }
+        finally
+        {
+            m_operationGate.Release();
+        }
+    }
+
     public async Task<InstallationSetupCenterMutationResult> MutateAsync(
         InstallationSetupHttpRequest request,
         string sessionToken,
@@ -297,37 +442,54 @@ public sealed class InstallationSetupCenterApplication : IDisposable
         }
         ValidateMutationTarget(mutation);
 
-        InstallationSetupClaimSessionContext context =
-            await m_sessions.ValidateAsync(
-                sessionToken,
-                mutation.ExpectedRevision,
-                cancellationToken);
-        InstallationSetupState before =
-            await LoadSetupOnlyStateAsync(cancellationToken);
-        RequireSessionContextMatchesState(context, before);
-
-        InstallationSetupState updated = await ApplyMutationAsync(
-            mutation,
-            cancellationToken);
-        RequireSetupOnlyState(updated);
-        if (updated.Revision != mutation.ExpectedRevision + 1)
+        await m_operationGate.WaitAsync(cancellationToken);
+        try
         {
-            throw new InvalidOperationException(
-                "A setup-center mutation must advance exactly one setup revision.");
-        }
+            InstallationSetupClaimSessionContext context =
+                await m_sessions.ValidateAsync(
+                    sessionToken,
+                    mutation.ExpectedRevision,
+                    cancellationToken);
+            InstallationSetupState before =
+                await LoadSetupOnlyStateAsync(cancellationToken);
+            RequireSessionContextMatchesState(context, before);
+            if (before.LastCompletedStep >=
+                    InstallationSetupStep.TransmitSupport &&
+                m_administrators is not null &&
+                await m_administrators.HasIdentityAsync(cancellationToken))
+            {
+                throw new InvalidOperationException(
+                    "Setup choices are immutable after first-administrator " +
+                    "enrollment begins.");
+            }
 
-        InstallationSetupClaimSessionIssue rotated =
-            await m_sessions.AdvanceAsync(
-                sessionToken,
-                mutation.ExpectedRevision,
-                updated.Revision,
-                CancellationToken.None);
-        RequireSessionIssueMatchesState(rotated, updated);
-        return new InstallationSetupCenterMutationResult(
-            InstallationSetupStatusReport.From(updated),
-            rotated,
-            InstallationSetupHttpSecurityPolicy.IssueCsrfToken(),
-            mutation.Kind);
+            InstallationSetupState updated = await ApplyMutationAsync(
+                mutation,
+                cancellationToken);
+            RequireSetupOnlyState(updated);
+            if (updated.Revision != mutation.ExpectedRevision + 1)
+            {
+                throw new InvalidOperationException(
+                    "A setup-center mutation must advance exactly one setup revision.");
+            }
+
+            InstallationSetupClaimSessionIssue rotated =
+                await m_sessions.AdvanceAsync(
+                    sessionToken,
+                    mutation.ExpectedRevision,
+                    updated.Revision,
+                    CancellationToken.None);
+            RequireSessionIssueMatchesState(rotated, updated);
+            return new InstallationSetupCenterMutationResult(
+                InstallationSetupStatusReport.From(updated),
+                rotated,
+                InstallationSetupHttpSecurityPolicy.IssueCsrfToken(),
+                mutation.Kind);
+        }
+        finally
+        {
+            m_operationGate.Release();
+        }
     }
 
     public async Task RevokeAsync(
@@ -357,6 +519,7 @@ public sealed class InstallationSetupCenterApplication : IDisposable
         }
         m_disposed = true;
         m_sessions.Dispose();
+        m_operationGate.Dispose();
     }
 
     private async Task<InstallationSetupState> ApplyMutationAsync(
@@ -397,6 +560,42 @@ public sealed class InstallationSetupCenterApplication : IDisposable
             _ => throw new InvalidOperationException(
                 "An unsupported setup-center mutation was received.")
         };
+
+    private IInstallationFirstLocalAdministratorProvisioningExecutor
+        RequireAdministratorProvisioner() =>
+        m_administrators ??
+        throw new InvalidOperationException(
+            "First-local-administrator provisioning is unavailable.");
+
+    private static void RequireReadyForAdministrator(
+        InstallationSetupState state)
+    {
+        if (state.Lock.Mode != InstallationSetupLockMode.Claimed ||
+            state.LastCompletedStep < InstallationSetupStep.TransmitSupport)
+        {
+            throw new InvalidOperationException(
+                "First-administrator enrollment requires a claimed setup " +
+                "with every installation choice completed.");
+        }
+        _ = CreateAdministratorVerificationRequest(state);
+    }
+
+    private static InstallationFirstAdministratorVerificationRequest
+        CreateAdministratorVerificationRequest(
+            InstallationSetupState state)
+    {
+        InstallationTopologyKind topology = state.Topology ??
+            throw new InvalidOperationException(
+                "First-administrator enrollment requires a topology.");
+        CanonicalPublicUrl publicUrl =
+            CanonicalPublicUrl.Parse(state.CanonicalPublicUrl);
+        return new(
+            state.SchemaVersion,
+            state.Revision,
+            state.CreatedAt,
+            topology,
+            publicUrl.Value);
+    }
 
     private void RequireSecurity(
         InstallationSetupHttpRequest request,

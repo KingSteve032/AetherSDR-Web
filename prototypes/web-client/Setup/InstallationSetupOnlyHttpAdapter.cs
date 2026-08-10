@@ -44,6 +44,29 @@ public sealed record InstallationSetupHttpMutationResponse(
     InstallationSetupHttpSessionMetadata Session,
     InstallationSetupCenterMutationKind MutationKind);
 
+public sealed record InstallationSetupHttpAdministratorEnrollmentResponse(
+    InstallationSetupStatusReport Status,
+    InstallationSetupHttpSessionMetadata Session,
+    Guid UserId,
+    DateTimeOffset AccountCreatedAtUtc,
+    string SharedSecretBase32,
+    IReadOnlyList<string> RecoveryCodes,
+    bool Rotated)
+{
+    public override string ToString() =>
+        $"{nameof(InstallationSetupHttpAdministratorEnrollmentResponse)} " +
+        $"{{ StatusRevision = {Status.Revision}, UserId = {UserId:D}, " +
+        $"AccountCreatedAtUtc = {AccountCreatedAtUtc:O}, " +
+        "SharedSecretBase32 = [redacted], RecoveryCodes = [redacted], " +
+        $"Rotated = {Rotated} }}";
+}
+
+public sealed record InstallationSetupHttpAdministratorConfirmationResponse(
+    InstallationSetupStatusReport Status,
+    bool Completed,
+    string Code,
+    Guid? UserId);
+
 public sealed record InstallationSetupHttpErrorResponse(
     string Code,
     IReadOnlyList<InstallationSetupHttpRejectionCode> Rejections,
@@ -85,6 +108,28 @@ public sealed record InstallationSetupHttpTransmitSupportBody(
     bool InstallTransmitSupport,
     bool AcknowledgedInstallationDoesNotEnableTransmit);
 
+public sealed record InstallationSetupHttpAdministratorEnrollmentBody(
+    long ExpectedRevision,
+    string UserName,
+    string DisplayName,
+    string? Email,
+    string Password)
+{
+    public override string ToString() =>
+        $"{nameof(InstallationSetupHttpAdministratorEnrollmentBody)} " +
+        $"{{ ExpectedRevision = {ExpectedRevision}, UserName = [redacted], " +
+        "DisplayName = [redacted], Email = [redacted], Password = [redacted] }";
+}
+
+public sealed record InstallationSetupHttpAdministratorConfirmationBody(
+    long ExpectedRevision,
+    string TotpCode)
+{
+    public override string ToString() =>
+        $"{nameof(InstallationSetupHttpAdministratorConfirmationBody)} " +
+        $"{{ ExpectedRevision = {ExpectedRevision}, TotpCode = [redacted] }}";
+}
+
 public sealed record InstallationSetupHttpRevokeBody(long ExpectedRevision);
 
 public static class InstallationSetupOnlyHttpAdapter
@@ -100,11 +145,20 @@ public static class InstallationSetupOnlyHttpAdapter
     public const string UpdateChannelPath = "/setup/api/update-channel";
     public const string BackupPath = "/setup/api/backup";
     public const string TransmitSupportPath = "/setup/api/transmit-support";
+    public const string AdministratorEnrollmentPath =
+        "/setup/api/administrator/enroll";
+    public const string AdministratorConfirmationPath =
+        "/setup/api/administrator/confirm";
     public const string RevokePath = "/setup/api/revoke";
 
     private const int MaximumTextFieldLength = 4096;
     private const int MaximumBootstrapTokenLength = 256;
     private const int MaximumReleaseIdentityLength = 256;
+    private const int MaximumUserNameLength = 100;
+    private const int MaximumDisplayNameLength = 200;
+    private const int MaximumEmailLength = 320;
+    private const int MinimumSetupPasswordLength = 12;
+    private const int MaximumSetupPasswordLength = 256;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -132,6 +186,8 @@ public static class InstallationSetupOnlyHttpAdapter
         UpdateChannelPath,
         BackupPath,
         TransmitSupportPath,
+        AdministratorEnrollmentPath,
+        AdministratorConfirmationPath,
         RevokePath
     ];
 
@@ -210,6 +266,16 @@ public static class InstallationSetupOnlyHttpAdapter
             TransmitSupportPath,
             HandleTransmitSupportAsync,
             Policy(contract, TransmitSupportPath));
+        MapPost(
+            app,
+            AdministratorEnrollmentPath,
+            HandleAdministratorEnrollmentAsync,
+            Policy(contract, AdministratorEnrollmentPath));
+        MapPost(
+            app,
+            AdministratorConfirmationPath,
+            HandleAdministratorConfirmationAsync,
+            Policy(contract, AdministratorConfirmationPath));
         MapPost(app, RevokePath, HandleRevokeAsync, Policy(contract, RevokePath));
         app.UseEndpoints(_ => { });
 
@@ -246,7 +312,9 @@ public static class InstallationSetupOnlyHttpAdapter
             ClaimPath => 1,
             SessionPath or PreflightPath => 2,
             TopologyPath or PublicUrlPath or PathsPath or UpdateChannelPath or
-                BackupPath or TransmitSupportPath or RevokePath => 3,
+                BackupPath or TransmitSupportPath or
+                AdministratorEnrollmentPath or
+                AdministratorConfirmationPath or RevokePath => 3,
             _ => throw new InvalidOperationException(
                 $"No setup rate-limit policy is defined for '{path}'.")
         };
@@ -518,6 +586,120 @@ public static class InstallationSetupOnlyHttpAdapter
                     body.ExpectedRevision,
                     body.InstallTransmitSupport);
             });
+
+    private static async Task HandleAdministratorEnrollmentAsync(
+        HttpContext context)
+    {
+        IResult result = await ExecuteAsync(
+            context,
+            async () =>
+            {
+                InstallationSetupHttpRequest request =
+                    RequireSecurity(
+                        context,
+                        InstallationSetupHttpOperation.SessionMutation);
+                InstallationSetupHttpAdministratorEnrollmentBody body =
+                    await ReadJsonAsync<
+                        InstallationSetupHttpAdministratorEnrollmentBody>(
+                            context);
+                RequireRevision(body.ExpectedRevision);
+                string userName = RequireExactText(
+                    body.UserName,
+                    MaximumUserNameLength,
+                    "administrator user name");
+                string displayName = RequireExactText(
+                    body.DisplayName,
+                    MaximumDisplayNameLength,
+                    "administrator display name");
+                string? email = body.Email;
+                if (email is not null)
+                {
+                    email = RequireExactText(
+                        email,
+                        MaximumEmailLength,
+                        "administrator email");
+                    if (email.Length < 3)
+                    {
+                        throw InvalidInput();
+                    }
+                }
+                string password = RequirePassword(body.Password);
+                InstallationFirstLocalAdministratorEnrollment enrollment =
+                    new(
+                        userName,
+                        displayName,
+                        email,
+                        password,
+                        $"setup-administrator-enroll-{Guid.NewGuid():N}");
+                InstallationSetupCenterAdministratorEnrollmentResult enrolled =
+                    await Application(context)
+                        .BeginAdministratorEnrollmentAsync(
+                            request,
+                            RequireSessionToken(context.Request),
+                            body.ExpectedRevision,
+                            enrollment,
+                            context.RequestAborted);
+                InstallationFirstLocalAdministratorEnrollmentIssue issue =
+                    enrolled.Enrollment;
+                return Json(
+                    new InstallationSetupHttpAdministratorEnrollmentResponse(
+                        enrolled.Status,
+                        Metadata(enrolled.Session),
+                        issue.UserId,
+                        issue.AccountCreatedAtUtc,
+                        issue.SharedSecretBase32,
+                        issue.RecoveryCodes,
+                        issue.Rotated));
+            });
+        await result.ExecuteAsync(context);
+    }
+
+    private static async Task HandleAdministratorConfirmationAsync(
+        HttpContext context)
+    {
+        IResult result = await ExecuteAsync(
+            context,
+            async () =>
+            {
+                InstallationSetupHttpRequest request =
+                    RequireSecurity(
+                        context,
+                        InstallationSetupHttpOperation.SessionMutation);
+                InstallationSetupHttpAdministratorConfirmationBody body =
+                    await ReadJsonAsync<
+                        InstallationSetupHttpAdministratorConfirmationBody>(
+                            context);
+                RequireRevision(body.ExpectedRevision);
+                string totpCode = RequireTotpCode(body.TotpCode);
+                InstallationSetupCenterApplication application =
+                    Application(context);
+                InstallationSetupCenterAdministratorConfirmationResult
+                    confirmation =
+                    await application.ConfirmAdministratorAsync(
+                        request,
+                        RequireSessionToken(context.Request),
+                        body.ExpectedRevision,
+                        totpCode,
+                        $"setup-administrator-confirm-{Guid.NewGuid():N}",
+                        context.RequestAborted);
+                if (confirmation.Completed)
+                {
+                    DeleteCookies(
+                        context.Response,
+                        application.SecurityContract);
+                }
+                return Json(
+                    new InstallationSetupHttpAdministratorConfirmationResponse(
+                        confirmation.Status,
+                        confirmation.Completed,
+                        confirmation.Confirmation.Code,
+                        confirmation.Confirmation.UserId),
+                    confirmation.Completed
+                        ? StatusCodes.Status200OK
+                        : StatusCodes.Status401Unauthorized);
+            });
+        await result.ExecuteAsync(context);
+    }
 
     private static async Task HandleMutationAsync<TBody>(
         HttpContext context,
@@ -813,10 +995,34 @@ public static class InstallationSetupOnlyHttpAdapter
     {
         if (string.IsNullOrEmpty(value) ||
             value.Length > maximumLength ||
+            value.Any(char.IsControl) ||
             !string.Equals(value, value.Trim(), StringComparison.Ordinal))
         {
             throw new InstallationSetupHttpInputException(
                 $"Invalid {field} input.");
+        }
+        return value;
+    }
+
+    private static string RequirePassword(string? value)
+    {
+        if (value is null ||
+            value.Length is < MinimumSetupPasswordLength or
+                > MaximumSetupPasswordLength ||
+            value.All(char.IsWhiteSpace) ||
+            value.Any(char.IsControl))
+        {
+            throw InvalidInput();
+        }
+        return value;
+    }
+
+    private static string RequireTotpCode(string? value)
+    {
+        if (value is not { Length: 6 } ||
+            value.Any(character => character is < '0' or > '9'))
+        {
+            throw InvalidInput();
         }
         return value;
     }

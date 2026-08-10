@@ -110,6 +110,10 @@ internal static class AetherAuthenticationConfiguration
             localPolicy);
     }
 
+    internal static AetherLocalAuthenticationPolicy
+        CreateSetupLocalPolicy() =>
+        ValidateLocalPolicy(new LocalAuthenticationSettings());
+
     private static AetherLocalAuthenticationPolicy ValidateLocalPolicy(
         LocalAuthenticationSettings settings)
     {
