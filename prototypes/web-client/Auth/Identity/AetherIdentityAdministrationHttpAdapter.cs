@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 
@@ -279,11 +280,13 @@ internal static class AetherIdentityAdministrationHttpAdapter
 
     private static async Task<IResult> HandleExternalReauthenticationAsync(
         HttpContext context,
-        ClaimsPrincipal user)
+        ClaimsPrincipal user,
+        [FromServices] IAntiforgery antiforgery)
     {
         ApplyNoStore(context.Response);
         ExternalReauthenticationRequest? body =
-            await ReadJsonAsync<ExternalReauthenticationRequest>(context);
+            await ReadExternalNavigationRequestAsync<
+                ExternalReauthenticationRequest>(context, antiforgery);
         if (body is null ||
             body.ReturnUrl is { Length: > 2048 } ||
             !AetherAuthenticationSessionService.TryReadCanonicalIdentity(
@@ -323,11 +326,13 @@ internal static class AetherIdentityAdministrationHttpAdapter
             ClaimsPrincipal user,
             [FromServices]
             AetherExternalIdentityAdministrationService externalIdentities,
+            [FromServices] IAntiforgery antiforgery,
             Guid userId)
     {
         ApplyNoStore(context.Response);
         ExternalIdentityLinkRequest? body =
-            await ReadJsonAsync<ExternalIdentityLinkRequest>(context);
+            await ReadExternalNavigationRequestAsync<
+                ExternalIdentityLinkRequest>(context, antiforgery);
         if (body is null || body.ReturnUrl is { Length: > 2048 })
         {
             return InvalidRequest();
@@ -670,6 +675,45 @@ internal static class AetherIdentityAdministrationHttpAdapter
         {
             return AdministrationRejected();
         }
+    }
+
+    private static async Task<T?> ReadExternalNavigationRequestAsync<T>(
+        HttpContext context,
+        IAntiforgery antiforgery)
+        where T : class
+    {
+        if (!context.Request.HasFormContentType)
+        {
+            return await ReadJsonAsync<T>(context);
+        }
+        if (context.Request.ContentLength is null or <= 0 or
+            > MaximumRequestBodyBytes)
+        {
+            return null;
+        }
+
+        IFormCollection form = await context.Request.ReadFormAsync(
+            context.RequestAborted);
+        AntiforgeryTokenSet tokens = antiforgery.GetAndStoreTokens(context);
+        if (form.Count != 2 ||
+            !form.ContainsKey(tokens.FormFieldName) ||
+            !form.TryGetValue("ReturnUrl", out var returnUrls) ||
+            returnUrls.Count != 1)
+        {
+            return null;
+        }
+        string? returnUrl = returnUrls[0];
+        return typeof(T) == typeof(ExternalReauthenticationRequest)
+            ? (T)(object)new ExternalReauthenticationRequest
+            {
+                ReturnUrl = returnUrl
+            }
+            : typeof(T) == typeof(ExternalIdentityLinkRequest)
+                ? (T)(object)new ExternalIdentityLinkRequest
+                {
+                    ReturnUrl = returnUrl
+                }
+                : null;
     }
 
     private static async Task<T?> ReadJsonAsync<T>(HttpContext context)

@@ -77,6 +77,7 @@ internal static class AetherLocalAuthenticationHttpAdapter
                 ? null
                 : new
                 {
+                    id = provider.ProviderId,
                     kind = provider.Kind == AetherExternalProviderKind.MicrosoftEntraId
                         ? "microsoftEntraId"
                         : "openIdConnect",
