@@ -40,7 +40,9 @@ public enum InstallationInstallerActionKind
     ActivateSystemdUnit = 10,
     VerifyHealth = 11,
     TrustInternalCertificate = 12,
-    InitializeIdentityDatabase = 13
+    InitializeIdentityDatabase = 13,
+    ConfigureGatewayEnvironment = 14,
+    InstallAuthenticationClientSecret = 15
 }
 
 public sealed record InstallationInstallerSelection(
@@ -48,7 +50,11 @@ public sealed record InstallationInstallerSelection(
     InstallationReverseProxyMode ReverseProxyMode,
     string ReleaseIdentity,
     InstallationFirewallMode FirewallMode =
-        InstallationFirewallMode.GuidanceOnly);
+        InstallationFirewallMode.GuidanceOnly)
+{
+    public InstallationInstallerAuthenticationSelection Authentication
+    { get; init; } = InstallationInstallerAuthenticationSelection.Local;
+}
 
 public sealed record InstallationInstallerPlanAction(
     int Order,
@@ -66,6 +72,7 @@ public sealed record InstallationInstallerPlanReport(
     InstallationReverseProxyMode ReverseProxyMode,
     InstallationFirewallMode FirewallMode,
     string ReleaseIdentity,
+    InstallationInstallerAuthenticationSelection Authentication,
     bool InstallTransmitSupport,
     string PlanId,
     IReadOnlyList<string> ServiceUsers,
@@ -126,7 +133,7 @@ internal sealed class InstallationInstallerPlan
 
 public static class InstallationInstallerPlanComposer
 {
-    public const int CurrentPlanSchemaVersion = 6;
+    public const int CurrentPlanSchemaVersion = 7;
 
     public static InstallationInstallerPlanReport Compose(
         InstallationSetupState state,
@@ -159,8 +166,16 @@ public static class InstallationInstallerPlanComposer
             CanonicalPublicUrl.Parse(state.CanonicalPublicUrl).Value;
         string releaseIdentity =
             InstallationReleaseIdentity.Parse(selection.ReleaseIdentity);
+        InstallationInstallerAuthenticationSelection authentication =
+            InstallationInstallerGatewayConfigurationPlanComposer
+                .NormalizeAndValidate(selection.Authentication);
         InstallationInstallerSelection normalizedSelection =
-            selection with { ReleaseIdentity = releaseIdentity };
+            selection with
+            {
+                ReleaseIdentity = releaseIdentity,
+                Authentication = authentication
+            };
+        ValidateAuthenticationSelection(profile, authentication);
 
         string[] users = BuildUsers(profile);
         string[] directories = BuildDirectories(paths, profile);
@@ -221,6 +236,7 @@ public static class InstallationInstallerPlanComposer
                 report.ReleaseIdentity,
                 expected.ReleaseIdentity,
                 StringComparison.Ordinal) ||
+            report.Authentication != expected.Authentication ||
             report.InstallTransmitSupport != expected.InstallTransmitSupport ||
             !string.Equals(report.PlanId, expected.PlanId, StringComparison.Ordinal) ||
             !report.ServiceUsers.SequenceEqual(
@@ -254,6 +270,7 @@ public static class InstallationInstallerPlanComposer
             plan.Selection.ReverseProxyMode,
             plan.Selection.FirewallMode,
             plan.Selection.ReleaseIdentity,
+            plan.Selection.Authentication,
             plan.State.InstallTransmitSupport,
             plan.PlanId,
             plan.ServiceUsers,
@@ -275,6 +292,28 @@ public static class InstallationInstallerPlanComposer
                 "The installer selection contains an unsupported value.");
         }
         _ = InstallationReleaseIdentity.Parse(selection.ReleaseIdentity);
+        _ = InstallationInstallerGatewayConfigurationPlanComposer
+            .NormalizeAndValidate(selection.Authentication);
+    }
+
+    private static void ValidateAuthenticationSelection(
+        InstallationTopologyProfile profile,
+        InstallationInstallerAuthenticationSelection authentication)
+    {
+        if (profile.GatewayRunsHere &&
+            authentication.Mode ==
+                InstallationInstallerAuthenticationMode.None)
+        {
+            throw new InvalidOperationException(
+                "A gateway installer plan requires an explicit production authentication mode.");
+        }
+        if (!profile.GatewayRunsHere &&
+            authentication.Mode !=
+                InstallationInstallerAuthenticationMode.None)
+        {
+            throw new InvalidOperationException(
+                "A remote station node cannot configure gateway authentication.");
+        }
     }
 
     private static void ValidateProxySelection(
@@ -437,6 +476,20 @@ public static class InstallationInstallerPlanComposer
                 actions,
                 InstallationInstallerActionKind.InitializeIdentityDatabase,
                 paths.IdentityDatabasePath);
+            if (selection.Authentication.UsesExternalProvider)
+            {
+                AddAction(
+                    actions,
+                    InstallationInstallerActionKind
+                        .InstallAuthenticationClientSecret,
+                    InstallationInstallerGatewayConfigurationPlanComposer
+                        .ClientSecretTargetPath);
+            }
+            AddAction(
+                actions,
+                InstallationInstallerActionKind.ConfigureGatewayEnvironment,
+                InstallationInstallerGatewayConfigurationPlanComposer
+                    .EnvironmentTargetPath);
         }
 
         foreach (string service in services)
@@ -564,6 +617,10 @@ public static class InstallationInstallerPlanComposer
         AddValue(canonical, selection.ReverseProxyMode.ToString());
         AddValue(canonical, selection.FirewallMode.ToString());
         AddValue(canonical, selection.ReleaseIdentity);
+        AddValue(canonical, selection.Authentication.Mode.ToString());
+        AddValue(canonical, selection.Authentication.ProviderId);
+        AddValue(canonical, selection.Authentication.Authority);
+        AddValue(canonical, selection.Authentication.ClientId);
         AddValue(canonical, state.InstallTransmitSupport ? "1" : "0");
         foreach (string user in users)
         {

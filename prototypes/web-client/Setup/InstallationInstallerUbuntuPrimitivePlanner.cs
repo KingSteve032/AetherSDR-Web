@@ -14,7 +14,9 @@ public enum InstallationInstallerUbuntuPrimitiveKind
     ActivateSystemdUnit = 10,
     VerifyHealth = 11,
     TrustInternalCertificate = 12,
-    InitializeIdentityDatabase = 13
+    InitializeIdentityDatabase = 13,
+    ConfigureGatewayEnvironment = 14,
+    InstallAuthenticationClientSecret = 15
 }
 
 public sealed record InstallationInstallerUbuntuPrimitiveOperation(
@@ -101,6 +103,19 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
                     VerifyRelease(action, request),
                 InstallationInstallerActionKind.InitializeIdentityDatabase =>
                     InitializeIdentityDatabase(action),
+                InstallationInstallerActionKind.ConfigureGatewayEnvironment =>
+                    GatewayConfiguration(
+                        action,
+                        request,
+                        InstallationInstallerUbuntuPrimitiveKind
+                            .ConfigureGatewayEnvironment),
+                InstallationInstallerActionKind
+                    .InstallAuthenticationClientSecret =>
+                    GatewayConfiguration(
+                        action,
+                        request,
+                        InstallationInstallerUbuntuPrimitiveKind
+                            .InstallAuthenticationClientSecret),
                 InstallationInstallerActionKind.InstallSystemdUnit =>
                     InstallUnit(action, request),
                 InstallationInstallerActionKind.ConfigureReverseProxy =>
@@ -247,6 +262,33 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
         return Typed(
             action,
             InstallationInstallerUbuntuPrimitiveKind.InitializeIdentityDatabase);
+    }
+
+    private static InstallationInstallerUbuntuPrimitiveOperation
+        GatewayConfiguration(
+            InstallationInstallerPlanAction action,
+            InstallationInstallerUbuntuMutationRequest request,
+            InstallationInstallerUbuntuPrimitiveKind kind)
+    {
+        InstallationInstallerGatewayConfigurationPlan plan =
+            InstallationInstallerGatewayConfigurationPlanComposer.Compose(
+                request);
+        string expectedTarget = kind ==
+            InstallationInstallerUbuntuPrimitiveKind.ConfigureGatewayEnvironment
+                ? plan.EnvironmentTargetPath
+                : plan.RequiresClientSecret
+                    ? plan.ClientSecretTargetPath
+                    : throw new InvalidOperationException(
+                        "The installer plan contains an unnecessary authentication secret action.");
+        if (!string.Equals(
+                action.Target,
+                expectedTarget,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The installer plan contains a noncanonical gateway configuration target.");
+        }
+        return Typed(action, kind);
     }
 
     private static InstallationInstallerUbuntuPrimitiveOperation InstallUnit(

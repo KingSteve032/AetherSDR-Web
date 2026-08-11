@@ -47,6 +47,43 @@ public sealed class OidcClientSecretResolverTests : IDisposable
     }
 
     [Fact]
+    public void ResolveRejectsOversizedOrMultilineSecretFile()
+    {
+        string oversized = WriteSecretFile(new string('x', 4097));
+        Assert.Throws<InvalidOperationException>(
+            () => OidcClientSecretResolver.Resolve(
+                new AuthSettings { ClientSecretFile = oversized }));
+
+        File.Delete(oversized);
+        string multiline = WriteSecretFile("first\nsecond");
+        Assert.Throws<InvalidOperationException>(
+            () => OidcClientSecretResolver.Resolve(
+                new AuthSettings { ClientSecretFile = multiline }));
+    }
+
+    [Fact]
+    public void ResolveRejectsSecretFileSymlink()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(m_directory);
+        string target = Path.Combine(m_directory, "target");
+        File.WriteAllText(target, "secret");
+        File.SetUnixFileMode(
+            target,
+            UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        string link = Path.Combine(m_directory, "secret");
+        File.CreateSymbolicLink(link, target);
+
+        Assert.Throws<InvalidOperationException>(
+            () => OidcClientSecretResolver.Resolve(
+                new AuthSettings { ClientSecretFile = link }));
+    }
+
+    [Fact]
     public void ResolveRejectsMissingSecretFile()
     {
         Directory.CreateDirectory(m_directory);
@@ -59,7 +96,7 @@ public sealed class OidcClientSecretResolverTests : IDisposable
             InvalidOperationException>(
             () => OidcClientSecretResolver.Resolve(settings));
 
-        Assert.Contains("could not be read", exception.Message);
+        Assert.Contains("safe bounded regular file", exception.Message);
     }
 
     public void Dispose()

@@ -520,7 +520,11 @@ if (installationInstallerCommandLine.Command !=
     LocalInstallationInstallerUbuntuRuntime installerRuntime =
         new(installerMutationExecutor, installerRuntimeSettings);
     InstallationInstallerUbuntuHostTransaction installerHost =
-        new(installerRuntime, installerRelease);
+        new(
+            installerRuntime,
+            installerRelease,
+            installationInstallerCommandLine
+                .AuthenticationClientSecretSourceFile);
     using InstallationInstallerCoordinator installerCoordinator =
         new(
             installerSetupStore,

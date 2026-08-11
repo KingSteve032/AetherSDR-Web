@@ -34,6 +34,8 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
     private const string AptGetExecutable = "/usr/bin/apt-get";
     private const string SystemctlExecutable = "/usr/bin/systemctl";
     private const string RunUserExecutable = "/usr/sbin/runuser";
+    private const string InstallExecutable = "/usr/bin/install";
+    private const string StatExecutable = "/usr/bin/stat";
     private const string IdentityServiceUser = "aethersdr";
     private const string IdentityDatabasePath =
         "/var/lib/aethersdr/identity/aethersdr-identity.db";
@@ -71,7 +73,11 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
             InstallationInstallerUbuntuPrimitiveKind.WriteFirewallGuidance,
             InstallationInstallerUbuntuPrimitiveKind.ActivateInitialRelease,
             InstallationInstallerUbuntuPrimitiveKind.VerifyHealth,
-            InstallationInstallerUbuntuPrimitiveKind.InitializeIdentityDatabase
+            InstallationInstallerUbuntuPrimitiveKind.InitializeIdentityDatabase,
+            InstallationInstallerUbuntuPrimitiveKind
+                .ConfigureGatewayEnvironment,
+            InstallationInstallerUbuntuPrimitiveKind
+                .InstallAuthenticationClientSecret
         };
 
     private readonly InstallationInstallerUbuntuDirectProcessRunner m_runner;
@@ -130,6 +136,18 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
                 InspectProxyAsync(request, cancellationToken),
             InstallationInstallerUbuntuPrimitiveKind.InitializeIdentityDatabase =>
                 InspectIdentityDatabaseAsync(
+                    request,
+                    operation,
+                    cancellationToken),
+            InstallationInstallerUbuntuPrimitiveKind
+                .ConfigureGatewayEnvironment =>
+                InspectGatewayEnvironmentAsync(
+                    request,
+                    operation,
+                    cancellationToken),
+            InstallationInstallerUbuntuPrimitiveKind
+                .InstallAuthenticationClientSecret =>
+                InspectAuthenticationClientSecretAsync(
                     request,
                     operation,
                     cancellationToken),
@@ -210,6 +228,18 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
                 InstallationInstallerUbuntuPrimitiveKind
                     .InitializeIdentityDatabase =>
                     await InitializeIdentityDatabaseAsync(
+                        request,
+                        operation,
+                        cancellationToken),
+                InstallationInstallerUbuntuPrimitiveKind
+                    .ConfigureGatewayEnvironment =>
+                    await ConfigureGatewayEnvironmentAsync(
+                        request,
+                        operation,
+                        cancellationToken),
+                InstallationInstallerUbuntuPrimitiveKind
+                    .InstallAuthenticationClientSecret =>
+                    await InstallAuthenticationClientSecretAsync(
                         request,
                         operation,
                         cancellationToken),
@@ -690,6 +720,418 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
             : InstallationInstallerUbuntuStepResult.Unknown(
                 "ubuntu-firewall-postcondition-unknown",
                 "The firewall plan could not be reconciled after execution.");
+    }
+
+    private async Task<InstallationInstallerUbuntuPrimitiveInspection>
+        InspectGatewayEnvironmentAsync(
+            InstallationInstallerUbuntuMutationRequest request,
+            InstallationInstallerUbuntuPrimitiveOperation operation,
+            CancellationToken cancellationToken)
+    {
+        InstallationInstallerGatewayConfigurationPlan plan;
+        try
+        {
+            plan = InstallationInstallerGatewayConfigurationPlanComposer
+                .Compose(request);
+        }
+        catch
+        {
+            return Rejected(
+                "ubuntu-gateway-environment-plan-rejected",
+                "The reviewed gateway environment could not be composed safely.");
+        }
+        if (operation.Kind !=
+                InstallationInstallerUbuntuPrimitiveKind
+                    .ConfigureGatewayEnvironment ||
+            !string.Equals(
+                operation.Target,
+                plan.EnvironmentTargetPath,
+                StringComparison.Ordinal))
+        {
+            return Rejected(
+                "ubuntu-gateway-environment-target-rejected",
+                "The gateway environment target is not canonical.");
+        }
+
+        InstallationInstallerUbuntuPrimitiveInspection content =
+            await InspectManagedFileAsync(
+                plan.EnvironmentTargetPath,
+                plan.RenderedEnvironment,
+                plan.EnvironmentMarkerPath,
+                cancellationToken);
+        if (content.Outcome !=
+            InstallationInstallerUbuntuPrimitiveInspectionOutcome.Converged)
+        {
+            return content;
+        }
+        if (!HasOwnerOnlyMode(plan.EnvironmentTargetPath))
+        {
+            return Drift(
+                "ubuntu-gateway-environment-mode-drift",
+                "The installer-owned gateway environment is not owner-only.");
+        }
+        return await HasExactOwnershipAsync(
+                plan.EnvironmentTargetPath,
+                "root:root:600",
+                cancellationToken)
+            ? Converged()
+            : Rejected(
+                "ubuntu-gateway-environment-ownership-rejected",
+                "The installer-owned gateway environment is not root-owned.");
+    }
+
+    private async Task<InstallationInstallerUbuntuStepResult>
+        ConfigureGatewayEnvironmentAsync(
+            InstallationInstallerUbuntuMutationRequest request,
+            InstallationInstallerUbuntuPrimitiveOperation operation,
+            CancellationToken cancellationToken)
+    {
+        InstallationInstallerGatewayConfigurationPlan plan =
+            InstallationInstallerGatewayConfigurationPlanComposer.Compose(
+                request);
+        if (operation.Kind !=
+                InstallationInstallerUbuntuPrimitiveKind
+                    .ConfigureGatewayEnvironment ||
+            !string.Equals(
+                operation.Target,
+                plan.EnvironmentTargetPath,
+                StringComparison.Ordinal))
+        {
+            return InstallationInstallerUbuntuStepResult.Rejected(
+                "ubuntu-gateway-environment-target-rejected",
+                "The gateway environment target is not canonical.");
+        }
+
+        string staged = await StageManagedFileAsync(
+            plan.EnvironmentTargetPath,
+            plan.RenderedEnvironment,
+            plan.EnvironmentMarkerPath,
+            request.Repair,
+            cancellationToken,
+            publishedMode:
+                UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        PublishManagedFile(staged, plan.EnvironmentTargetPath);
+        await WriteMarkerAsync(
+            plan.EnvironmentMarkerPath,
+            Sha256(plan.RenderedEnvironment),
+            request.PlanId,
+            cancellationToken);
+
+        InstallationInstallerUbuntuPrimitiveInspection after =
+            await InspectGatewayEnvironmentAsync(
+                request,
+                operation,
+                cancellationToken);
+        return after.Outcome ==
+            InstallationInstallerUbuntuPrimitiveInspectionOutcome.Converged
+            ? InstallationInstallerUbuntuStepResult.Applied(
+                "ubuntu-gateway-environment-configured",
+                "The reviewed owner-only gateway runtime environment is installed.")
+            : InstallationInstallerUbuntuStepResult.Unknown(
+                "ubuntu-gateway-environment-postcondition-unknown",
+                "The gateway runtime environment postcondition could not be proven.");
+    }
+
+    private async Task<InstallationInstallerUbuntuPrimitiveInspection>
+        InspectAuthenticationClientSecretAsync(
+            InstallationInstallerUbuntuMutationRequest request,
+            InstallationInstallerUbuntuPrimitiveOperation operation,
+            CancellationToken cancellationToken)
+    {
+        InstallationInstallerGatewayConfigurationPlan plan;
+        try
+        {
+            plan = InstallationInstallerGatewayConfigurationPlanComposer
+                .Compose(request);
+        }
+        catch
+        {
+            return Rejected(
+                "ubuntu-authentication-secret-plan-rejected",
+                "The reviewed authentication secret target could not be composed safely.");
+        }
+        if (!plan.RequiresClientSecret ||
+            operation.Kind !=
+                InstallationInstallerUbuntuPrimitiveKind
+                    .InstallAuthenticationClientSecret ||
+            !string.Equals(
+                operation.Target,
+                plan.ClientSecretTargetPath,
+                StringComparison.Ordinal))
+        {
+            return Rejected(
+                "ubuntu-authentication-secret-target-rejected",
+                "The authentication client-secret target is not canonical.");
+        }
+
+        FileInfo target = new(plan.ClientSecretTargetPath);
+        target.Refresh();
+        if (!target.Exists)
+        {
+            return Missing();
+        }
+        if (!SafeOwnerOnlySecret(target))
+        {
+            return Rejected(
+                "ubuntu-authentication-secret-unsafe",
+                "The authentication client-secret target is not a safe owner-only regular file.");
+        }
+        if (!await HasExactOwnershipAsync(
+                plan.ClientSecretTargetPath,
+                "aethersdr:aethersdr:600",
+                cancellationToken))
+        {
+            return Rejected(
+                "ubuntu-authentication-secret-ownership-rejected",
+                "The authentication client-secret target is not owned only by the gateway service identity.");
+        }
+
+        string installed;
+        try
+        {
+            installed = await ReadBoundedClientSecretAsync(
+                plan.ClientSecretTargetPath,
+                cancellationToken);
+        }
+        catch
+        {
+            return Rejected(
+                "ubuntu-authentication-secret-content-rejected",
+                "The installed authentication client secret is empty or malformed.");
+        }
+
+        if (string.IsNullOrEmpty(
+                request.AuthenticationClientSecretSourcePath))
+        {
+            return Converged();
+        }
+
+        string source;
+        try
+        {
+            source = await ReadSourceClientSecretAsync(
+                request.AuthenticationClientSecretSourcePath,
+                cancellationToken);
+        }
+        catch
+        {
+            return Rejected(
+                "ubuntu-authentication-secret-source-rejected",
+                "The authentication client-secret source is not a safe owner-only bounded file.");
+        }
+
+        return CryptographicOperations.FixedTimeEquals(
+                SHA256.HashData(Encoding.UTF8.GetBytes(installed)),
+                SHA256.HashData(Encoding.UTF8.GetBytes(source)))
+            ? Converged()
+            : Drift(
+                "ubuntu-authentication-secret-drift",
+                "The installed authentication client secret differs from the supplied repair source.");
+    }
+
+    private async Task<InstallationInstallerUbuntuStepResult>
+        InstallAuthenticationClientSecretAsync(
+            InstallationInstallerUbuntuMutationRequest request,
+            InstallationInstallerUbuntuPrimitiveOperation operation,
+            CancellationToken cancellationToken)
+    {
+        InstallationInstallerGatewayConfigurationPlan plan =
+            InstallationInstallerGatewayConfigurationPlanComposer.Compose(
+                request);
+        if (!plan.RequiresClientSecret ||
+            operation.Kind !=
+                InstallationInstallerUbuntuPrimitiveKind
+                    .InstallAuthenticationClientSecret ||
+            !string.Equals(
+                operation.Target,
+                plan.ClientSecretTargetPath,
+                StringComparison.Ordinal) ||
+            string.IsNullOrEmpty(
+                request.AuthenticationClientSecretSourcePath))
+        {
+            return InstallationInstallerUbuntuStepResult.Rejected(
+                "ubuntu-authentication-secret-source-required",
+                "External authentication mutation requires one safe client-secret source.");
+        }
+
+        try
+        {
+            _ = await ReadSourceClientSecretAsync(
+                request.AuthenticationClientSecretSourcePath,
+                cancellationToken);
+        }
+        catch
+        {
+            return InstallationInstallerUbuntuStepResult.Rejected(
+                "ubuntu-authentication-secret-source-rejected",
+                "The authentication client-secret source is not a safe owner-only bounded file.");
+        }
+
+        string parent = Path.GetDirectoryName(plan.ClientSecretTargetPath) ??
+            throw new InvalidOperationException(
+                "The authentication secret target has no parent.");
+        string staged = Path.Combine(
+            parent,
+            ".auth-client-secret.installing");
+        if (File.Exists(staged) || Directory.Exists(staged))
+        {
+            return InstallationInstallerUbuntuStepResult.Unknown(
+                "ubuntu-authentication-secret-staging-reconciliation-required",
+                "A prior authentication secret staging path requires reconciliation.");
+        }
+
+        bool published = false;
+        try
+        {
+            InstallationInstallerUbuntuDirectProcessResult installed =
+                await RunAsync(
+                    InstallExecutable,
+                    [
+                        "-m",
+                        "0600",
+                        "-o",
+                        IdentityServiceUser,
+                        "-g",
+                        IdentityServiceUser,
+                        "--",
+                        request.AuthenticationClientSecretSourcePath,
+                        staged
+                    ],
+                    cancellationToken);
+            if (installed.ExitCode != 0 ||
+                !await HasExactOwnershipAsync(
+                    staged,
+                    "aethersdr:aethersdr:600",
+                    cancellationToken))
+            {
+                return InstallationInstallerUbuntuStepResult.Unknown(
+                    "ubuntu-authentication-secret-install-unknown",
+                    "The private authentication secret staging outcome requires reconciliation.");
+            }
+
+            FileInfo target = new(plan.ClientSecretTargetPath);
+            target.Refresh();
+            if (target.Exists && !SafeOwnerOnlySecret(target))
+            {
+                return InstallationInstallerUbuntuStepResult.Rejected(
+                    "ubuntu-authentication-secret-unsafe",
+                    "An unsafe authentication secret target was preserved.");
+            }
+            File.Move(
+                staged,
+                plan.ClientSecretTargetPath,
+                overwrite: request.Repair);
+            published = true;
+        }
+        finally
+        {
+            if (!published && File.Exists(staged))
+            {
+                File.Delete(staged);
+            }
+        }
+
+        InstallationInstallerUbuntuPrimitiveInspection after =
+            await InspectAuthenticationClientSecretAsync(
+                request,
+                operation,
+                cancellationToken);
+        return after.Outcome ==
+            InstallationInstallerUbuntuPrimitiveInspectionOutcome.Converged
+            ? InstallationInstallerUbuntuStepResult.Applied(
+                "ubuntu-authentication-secret-installed",
+                "The authentication client secret is installed in the owner-only gateway service store.")
+            : InstallationInstallerUbuntuStepResult.Unknown(
+                "ubuntu-authentication-secret-postcondition-unknown",
+                "The authentication client-secret postcondition could not be proven.");
+    }
+
+    private async Task<bool> HasExactOwnershipAsync(
+        string path,
+        string expected,
+        CancellationToken cancellationToken)
+    {
+        InstallationInstallerUbuntuDirectProcessResult result =
+            await RunAsync(
+                StatExecutable,
+                ["--format=%U:%G:%a", "--", path],
+                cancellationToken);
+        return result.ExitCode == 0 &&
+            string.IsNullOrEmpty(result.StandardError) &&
+            string.Equals(
+                result.StandardOutput.Trim(),
+                expected,
+                StringComparison.Ordinal);
+    }
+
+    private static async Task<string> ReadSourceClientSecretAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(path) ||
+            !Path.IsPathFullyQualified(path) ||
+            path.Any(char.IsControl))
+        {
+            throw new InvalidOperationException(
+                "The authentication client-secret source path is invalid.");
+        }
+        FileInfo source = new(Path.GetFullPath(path));
+        source.Refresh();
+        if (!SafeOwnerOnlySecret(source))
+        {
+            throw new InvalidOperationException(
+                "The authentication client-secret source is unsafe.");
+        }
+        return await ReadBoundedClientSecretAsync(
+            source.FullName,
+            cancellationToken);
+    }
+
+    private static async Task<string> ReadBoundedClientSecretAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        FileInfo file = new(path);
+        file.Refresh();
+        if (file.Length is < 1 or > 4096)
+        {
+            throw new InvalidOperationException(
+                "The authentication client secret has an invalid size.");
+        }
+        string value = (await File.ReadAllTextAsync(
+            path,
+            Encoding.UTF8,
+            cancellationToken)).Trim();
+        if (value.Length is < 1 or > 2048 ||
+            value.Any(character => character is '\r' or '\n' or '\0'))
+        {
+            throw new InvalidOperationException(
+                "The authentication client secret is empty or malformed.");
+        }
+        return value;
+    }
+
+    private static bool HasOwnerOnlyMode(string path) =>
+        OperatingSystem.IsLinux() &&
+        File.GetUnixFileMode(path) ==
+            (UnixFileMode.UserRead | UnixFileMode.UserWrite);
+
+    private static bool SafeOwnerOnlySecret(FileInfo file)
+    {
+        if (!OperatingSystem.IsLinux() || !SafeRegularFile(file))
+        {
+            return false;
+        }
+        UnixFileMode mode = File.GetUnixFileMode(file.FullName);
+        UnixFileMode forbidden =
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite |
+            UnixFileMode.GroupExecute |
+            UnixFileMode.OtherRead |
+            UnixFileMode.OtherWrite |
+            UnixFileMode.OtherExecute;
+        return (mode & forbidden) == 0 &&
+            (mode & UnixFileMode.UserRead) != 0;
     }
 
     private async Task<InstallationInstallerUbuntuPrimitiveInspection>
@@ -1475,7 +1917,12 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
         string? markerPath,
         bool repair,
         CancellationToken cancellationToken,
-        bool allowUnmanagedReplace = false)
+        bool allowUnmanagedReplace = false,
+        UnixFileMode publishedMode =
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.GroupRead |
+            UnixFileMode.OtherRead)
     {
         if (!OperatingSystem.IsLinux())
         {
@@ -1538,12 +1985,7 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
         byte[] bytes = Encoding.UTF8.GetBytes(content);
         await stream.WriteAsync(bytes, cancellationToken);
         await stream.FlushAsync(cancellationToken);
-        File.SetUnixFileMode(
-            staged,
-            UnixFileMode.UserRead |
-            UnixFileMode.UserWrite |
-            UnixFileMode.GroupRead |
-            UnixFileMode.OtherRead);
+        File.SetUnixFileMode(staged, publishedMode);
         return staged;
     }
 

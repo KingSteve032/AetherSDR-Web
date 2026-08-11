@@ -641,7 +641,11 @@ public sealed class LocalInstallationInstallerUbuntuMutationPrimitives :
             InstallationInstallerUbuntuPrimitiveKind.InstallSystemdUnit or
             InstallationInstallerUbuntuPrimitiveKind.ConfigureReverseProxy or
             InstallationInstallerUbuntuPrimitiveKind.TrustInternalCertificate or
-            InstallationInstallerUbuntuPrimitiveKind.WriteFirewallGuidance;
+            InstallationInstallerUbuntuPrimitiveKind.WriteFirewallGuidance or
+            InstallationInstallerUbuntuPrimitiveKind
+                .ConfigureGatewayEnvironment or
+            InstallationInstallerUbuntuPrimitiveKind
+                .InstallAuthenticationClientSecret;
 
     private static bool SafeExecutable(string executable)
     {

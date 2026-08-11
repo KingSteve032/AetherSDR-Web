@@ -464,7 +464,8 @@ at both coordinator and local Ubuntu runtime boundaries.
   --installation-architecture linux-x64 \
   --installation-reverse-proxy managed-caddy \
   --installation-firewall guidance \
-  --installation-release 2026.8.0
+  --installation-release 2026.8.0 \
+  --installation-authentication local
 ```
 
 Apply or repair additionally requires the exact printed plan ID, an immutable
@@ -481,7 +482,8 @@ InstallationInstallerUbuntu__MutationEnabled=true \
   --confirm-installation-plan <exact-64-character-plan-id> \
   --installation-bundle /srv/aethersdr/bundles/aethersdr-2026.8.0 \
   --installation-configuration-schema 1 \
-  --installation-protocol-version 2
+  --installation-protocol-version 2 \
+  --installation-authentication local
 ```
 
 The normal `ReleaseManifestTrust` configuration must also enable verification and
@@ -491,12 +493,24 @@ and TX-capability verification before any host write. Initial installation rejec
 manifests that require a migration or host restart because M8C does not reconstruct
 those update authorities.
 
-Managed Caddy activation expects the owner-only gateway runtime environment to
-allow the canonical public host plus `localhost` and `127.0.0.1`, and to configure
-`ReverseProxy__KnownProxies__0=127.0.0.1`. Caddy's active `/healthz` probe uses the
-loopback upstream identity; an incomplete allowlist fails the bounded public-health
-gate. Authentication credentials and other operator policy remain external to the
-installer and are never generated or overwritten.
+M8D schema-v7 plans add one exact production authentication selection. Gateway
+plans require `local`, `entra-id`, `oidc`, `combined-entra-id`, or
+`combined-oidc`; remote station nodes require `none`. The transaction installs
+an owner-only `/etc/aethersdr/environment` containing the exact runtime/setup
+binding, canonical public origin, loopback proxy trust, Simulation radio mode,
+disabled TX execution, and reviewed non-secret authentication settings. It always
+allows the canonical public host plus `localhost` and `127.0.0.1` because Caddy's
+active loopback `/healthz` probe uses that upstream identity.
+
+External or Combined plans additionally require provider ID, HTTPS authority, and
+client ID. Plan and validate never accept a client secret. Apply and repair require
+`--installation-auth-client-secret-file` naming an existing owner-only bounded
+regular file. Its contents never enter command arguments, setup state, the plan ID,
+JSON output, logs, markers, or installer evidence. The fixed transaction copies it
+only to `/var/lib/aethersdr/secrets/auth-client-secret` as mode `0600`, owned by
+the `aethersdr` service identity; runtime configuration contains only that
+canonical target path. Repair replaces the environment or secret only after exact
+installer ownership is proven.
 
 The Ubuntu transaction uses only fixed absolute executables and argument shapes with
 an empty child environment. It has no shell, PATH lookup, command string, arbitrary
@@ -2343,7 +2357,23 @@ ReverseProxy__Enabled=true
 ReverseProxy__KnownProxies__0=<exact-proxy-LAN-IP>
 ```
 
-Use `Auth__Mode=OpenIdConnect` with the provider's HTTPS issuer authority for
+The guided standalone equivalent is reviewed without the secret:
+
+```bash
+./AetherSDR.Web --installation-installer-plan \
+  --installation-architecture linux-x64 \
+  --installation-reverse-proxy managed-caddy \
+  --installation-firewall guidance \
+  --installation-release 2026.8.0 \
+  --installation-authentication combined-entra-id \
+  --installation-auth-provider-id entra-primary \
+  --installation-auth-authority https://login.microsoftonline.com/<tenant-id>/v2.0 \
+  --installation-auth-client-id <application-client-id>
+```
+
+The confirmed apply or repair repeats those non-secret options and adds only
+`--installation-auth-client-secret-file /srv/private/entra-client-secret`.
+Use `oidc` or `combined-oidc` with the provider's HTTPS issuer authority for
 a generic provider, including AD FS configured for OIDC. `Auth__ProviderId`
 is a stable lowercase identifier and must not change after identities are
 linked. The production runtime refuses to create a missing identity database
@@ -2359,10 +2389,13 @@ sessions. Unlinking is rejected when it would remove the account's final sign-in
 method that is actually enabled by the configured authentication mode.
 
 A new external-only deployment is bootstrapped without database edits by first
-using `Combined` mode and the protected local administrator created during
-setup, linking that administrator's external identity, and only then switching
-to `EntraId` or `OpenIdConnect` mode. Do not hand-edit the SQLite database or
-treat email, display name, groups, or external roles as link authority.
+using the corresponding `combined-*` installer mode and the protected local
+administrator created during setup, linking that administrator's external
+identity, and only then composing and confirming a new schema-v7 repair plan for
+`entra-id` or `oidc` with the same stable provider identity. The repair rotates
+only installer-owned runtime configuration and requires the owner-only secret
+source again. Do not hand-edit the SQLite database or treat email, display name,
+groups, or external roles as link authority.
 
 A successful external sign-in creates a durable, absolute-lifetime Aether
 session. Every cookie request revalidates the session, user status, authority

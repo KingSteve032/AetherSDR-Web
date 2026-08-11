@@ -16,6 +16,8 @@ public sealed class InstallationInstallerUbuntuMutationRequest
         bool repair,
         IReadOnlyList<InstallationInstallerPlanAction> actions,
         string? installerAssetRoot = null,
+        InstallationInstallerGatewayConfiguration? gatewayConfiguration = null,
+        string? authenticationClientSecretSourcePath = null,
         VerifiedReleaseStagingReport? verifiedStaging = null,
         VerifiedReleaseInstallationPlan? verifiedInstallationPlan = null)
     {
@@ -30,6 +32,11 @@ public sealed class InstallationInstallerUbuntuMutationRequest
             string.IsNullOrWhiteSpace(installerAssetRoot)
                 ? AppContext.BaseDirectory
                 : installerAssetRoot);
+        GatewayConfiguration = gatewayConfiguration;
+        AuthenticationClientSecretSourcePath =
+            string.IsNullOrWhiteSpace(authenticationClientSecretSourcePath)
+                ? string.Empty
+                : Path.GetFullPath(authenticationClientSecretSourcePath);
         VerifiedStaging = verifiedStaging;
         VerifiedInstallationPlan = verifiedInstallationPlan;
         m_actions = Array.AsReadOnly(actions.ToArray());
@@ -43,6 +50,12 @@ public sealed class InstallationInstallerUbuntuMutationRequest
     public string TargetReleasePath { get; }
     public bool Repair { get; }
     public string InstallerAssetRoot { get; }
+    internal InstallationInstallerGatewayConfiguration?
+        GatewayConfiguration
+    {
+        get;
+    }
+    internal string AuthenticationClientSecretSourcePath { get; }
     internal VerifiedReleaseStagingReport? VerifiedStaging { get; }
     internal VerifiedReleaseInstallationPlan? VerifiedInstallationPlan { get; }
     public IReadOnlyList<InstallationInstallerPlanAction> Actions => m_actions;
@@ -168,7 +181,8 @@ public sealed class InstallationInstallerVerifiedReleaseBinding
 
     internal InstallationInstallerUbuntuMutationRequest Bind(
         InstallationInstallerPlan exact,
-        bool repair)
+        bool repair,
+        string? authenticationClientSecretSourcePath = null)
     {
         VerifiedReleaseInstallationPlan release = m_plan;
         InstallationInstallerArchitecture architecture =
@@ -207,8 +221,27 @@ public sealed class InstallationInstallerVerifiedReleaseBinding
             repair,
             exact.Actions,
             installerAssetRoot: null,
+            gatewayConfiguration: CreateGatewayConfiguration(exact),
+            authenticationClientSecretSourcePath:
+                authenticationClientSecretSourcePath,
             verifiedStaging: m_stagingReport,
             verifiedInstallationPlan: m_plan);
+    }
+
+    internal static InstallationInstallerGatewayConfiguration?
+        CreateGatewayConfiguration(InstallationInstallerPlan exact)
+    {
+        InstallationTopologyProfile profile =
+            InstallationTopologyProfile.For(exact.Topology);
+        return profile.GatewayRunsHere
+            ? new(
+                exact.State.Revision,
+                exact.Topology,
+                exact.CanonicalPublicUrl,
+                exact.State.InstallTransmitSupport,
+                exact.Selection.ReverseProxyMode,
+                exact.Selection.Authentication)
+            : null;
     }
 }
 
@@ -217,13 +250,19 @@ public sealed class InstallationInstallerUbuntuHostTransaction :
 {
     private readonly IInstallationInstallerUbuntuRuntime m_runtime;
     private readonly InstallationInstallerVerifiedReleaseBinding? m_release;
+    private readonly string m_authenticationClientSecretSourcePath;
 
     public InstallationInstallerUbuntuHostTransaction(
         IInstallationInstallerUbuntuRuntime runtime,
-        InstallationInstallerVerifiedReleaseBinding? release = null)
+        InstallationInstallerVerifiedReleaseBinding? release = null,
+        string? authenticationClientSecretSourcePath = null)
     {
         m_runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         m_release = release;
+        m_authenticationClientSecretSourcePath =
+            string.IsNullOrWhiteSpace(authenticationClientSecretSourcePath)
+                ? string.Empty
+                : Path.GetFullPath(authenticationClientSecretSourcePath);
     }
 
     public async Task<InstallationInstallerHostInspectionResult> InspectAsync(
@@ -280,7 +319,10 @@ public sealed class InstallationInstallerUbuntuHostTransaction :
         }
 
         InstallationInstallerUbuntuMutationRequest request =
-            m_release.Bind(exact, repair);
+            m_release.Bind(
+                exact,
+                repair,
+                m_authenticationClientSecretSourcePath);
         return m_runtime.MutateAsync(request, cancellationToken);
     }
 
@@ -306,7 +348,10 @@ public sealed class InstallationInstallerUbuntuHostTransaction :
                 paths.ReleaseDirectory,
                 exact.Selection.ReleaseIdentity),
             repair: false,
-            exact.Actions);
+            exact.Actions,
+            gatewayConfiguration:
+                InstallationInstallerVerifiedReleaseBinding
+                    .CreateGatewayConfiguration(exact));
     }
 }
 

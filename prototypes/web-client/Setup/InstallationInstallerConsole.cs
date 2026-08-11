@@ -22,6 +22,8 @@ public sealed record InstallationInstallerConsoleCommandLine(
     string BundleDirectory,
     int? ConfigurationSchemaVersion,
     int? ProtocolVersion,
+    InstallationInstallerAuthenticationSelection? Authentication,
+    string AuthenticationClientSecretSourceFile,
     IReadOnlyList<string> ApplicationArguments);
 
 public static class InstallationInstallerConsoleCommandParser
@@ -40,6 +42,16 @@ public static class InstallationInstallerConsoleCommandParser
         "--installation-configuration-schema";
     public const string ProtocolVersionSwitch =
         "--installation-protocol-version";
+    public const string AuthenticationSwitch =
+        "--installation-authentication";
+    public const string AuthenticationProviderIdSwitch =
+        "--installation-auth-provider-id";
+    public const string AuthenticationAuthoritySwitch =
+        "--installation-auth-authority";
+    public const string AuthenticationClientIdSwitch =
+        "--installation-auth-client-id";
+    public const string AuthenticationClientSecretFileSwitch =
+        "--installation-auth-client-secret-file";
 
     public static InstallationInstallerConsoleCommandLine Parse(
         IReadOnlyList<string> arguments)
@@ -57,6 +69,11 @@ public static class InstallationInstallerConsoleCommandParser
         string bundleDirectory = string.Empty;
         int? configurationSchemaVersion = null;
         int? protocolVersion = null;
+        InstallationInstallerAuthenticationMode? authenticationMode = null;
+        string authenticationProviderId = string.Empty;
+        string authenticationAuthority = string.Empty;
+        string authenticationClientId = string.Empty;
+        string authenticationClientSecretSourceFile = string.Empty;
         List<string> applicationArguments = [];
 
         for (int index = 0; index < arguments.Count; index++)
@@ -119,6 +136,40 @@ public static class InstallationInstallerConsoleCommandParser
                         RequireValue(arguments, ref index, argument),
                         argument);
                     break;
+                case AuthenticationSwitch:
+                    RequireUnset(authenticationMode is not null, argument);
+                    authenticationMode = ParseAuthenticationMode(
+                        RequireValue(arguments, ref index, argument));
+                    break;
+                case AuthenticationProviderIdSwitch:
+                    RequireUnset(
+                        !string.IsNullOrEmpty(authenticationProviderId),
+                        argument);
+                    authenticationProviderId =
+                        RequireValue(arguments, ref index, argument);
+                    break;
+                case AuthenticationAuthoritySwitch:
+                    RequireUnset(
+                        !string.IsNullOrEmpty(authenticationAuthority),
+                        argument);
+                    authenticationAuthority =
+                        RequireValue(arguments, ref index, argument);
+                    break;
+                case AuthenticationClientIdSwitch:
+                    RequireUnset(
+                        !string.IsNullOrEmpty(authenticationClientId),
+                        argument);
+                    authenticationClientId =
+                        RequireValue(arguments, ref index, argument);
+                    break;
+                case AuthenticationClientSecretFileSwitch:
+                    RequireUnset(
+                        !string.IsNullOrEmpty(
+                            authenticationClientSecretSourceFile),
+                        argument);
+                    authenticationClientSecretSourceFile = Path.GetFullPath(
+                        RequireValue(arguments, ref index, argument));
+                    break;
                 default:
                     applicationArguments.Add(argument);
                     break;
@@ -134,7 +185,13 @@ public static class InstallationInstallerConsoleCommandParser
                 !string.IsNullOrEmpty(confirmedPlan) ||
                 !string.IsNullOrEmpty(bundleDirectory) ||
                 configurationSchemaVersion is not null ||
-                protocolVersion is not null)
+                protocolVersion is not null ||
+                authenticationMode is not null ||
+                !string.IsNullOrEmpty(authenticationProviderId) ||
+                !string.IsNullOrEmpty(authenticationAuthority) ||
+                !string.IsNullOrEmpty(authenticationClientId) ||
+                !string.IsNullOrEmpty(
+                    authenticationClientSecretSourceFile))
             {
                 throw new InvalidOperationException(
                     "Installer options require one installer command.");
@@ -142,11 +199,23 @@ public static class InstallationInstallerConsoleCommandParser
         }
         else if (architecture is null ||
                  proxy is null ||
-                 string.IsNullOrEmpty(release))
+                 string.IsNullOrEmpty(release) ||
+                 authenticationMode is null)
         {
             throw new InvalidOperationException(
-                "An installer command requires architecture, reverse-proxy mode, and release identity.");
+                "An installer command requires architecture, reverse-proxy mode, release identity, and authentication mode.");
         }
+
+        InstallationInstallerAuthenticationSelection? authentication =
+            authenticationMode is null
+                ? null
+                : InstallationInstallerGatewayConfigurationPlanComposer
+                    .NormalizeAndValidate(
+                        new(
+                            authenticationMode.Value,
+                            authenticationProviderId,
+                            authenticationAuthority,
+                            authenticationClientId));
 
         bool mutation =
             command is InstallationInstallerConsoleCommandKind.Apply or
@@ -164,10 +233,30 @@ public static class InstallationInstallerConsoleCommandParser
             (!string.IsNullOrEmpty(confirmedPlan) ||
              !string.IsNullOrEmpty(bundleDirectory) ||
              configurationSchemaVersion is not null ||
-             protocolVersion is not null))
+             protocolVersion is not null ||
+             !string.IsNullOrEmpty(
+                 authenticationClientSecretSourceFile)))
         {
             throw new InvalidOperationException(
-                "Mutation confirmation and release payload options are valid only for apply or repair.");
+                "Mutation confirmation, release payload, and authentication secret options are valid only for apply or repair.");
+        }
+        if (authentication is not null)
+        {
+            if (authentication.UsesExternalProvider &&
+                mutation &&
+                string.IsNullOrEmpty(
+                    authenticationClientSecretSourceFile))
+            {
+                throw new InvalidOperationException(
+                    "External authentication mutation requires one owner-protected client-secret source file.");
+            }
+            if (!authentication.UsesExternalProvider &&
+                !string.IsNullOrEmpty(
+                    authenticationClientSecretSourceFile))
+            {
+                throw new InvalidOperationException(
+                    "A client-secret source file is valid only with external authentication.");
+            }
         }
 
         return new(
@@ -180,6 +269,8 @@ public static class InstallationInstallerConsoleCommandParser
             bundleDirectory,
             configurationSchemaVersion,
             protocolVersion,
+            authentication,
+            authenticationClientSecretSourceFile,
             [.. applicationArguments]);
     }
 
@@ -240,6 +331,26 @@ public static class InstallationInstallerConsoleCommandParser
                 InstallationReverseProxyMode.LanInternalCertificate,
             _ => throw new InvalidOperationException(
                 $"Unsupported installer reverse-proxy mode '{value}'.")
+        };
+
+    private static InstallationInstallerAuthenticationMode
+        ParseAuthenticationMode(string value) =>
+        value.ToLowerInvariant() switch
+        {
+            "none" => InstallationInstallerAuthenticationMode.None,
+            "local" => InstallationInstallerAuthenticationMode.Local,
+            "entra-id" =>
+                InstallationInstallerAuthenticationMode.MicrosoftEntraId,
+            "oidc" =>
+                InstallationInstallerAuthenticationMode.OpenIdConnect,
+            "combined-entra-id" =>
+                InstallationInstallerAuthenticationMode
+                    .CombinedMicrosoftEntraId,
+            "combined-oidc" =>
+                InstallationInstallerAuthenticationMode
+                    .CombinedOpenIdConnect,
+            _ => throw new InvalidOperationException(
+                $"Unsupported installer authentication mode '{value}'.")
         };
 
     private static InstallationFirewallMode ParseFirewall(string value) =>
@@ -322,7 +433,12 @@ public sealed class InstallationInstallerConsole
                         throw new InvalidOperationException(
                             "Installer reverse-proxy mode is required."),
                     commandLine.ReleaseIdentity,
-                    commandLine.FirewallMode),
+                    commandLine.FirewallMode)
+                {
+                    Authentication = commandLine.Authentication ??
+                        throw new InvalidOperationException(
+                            "Installer authentication mode is required.")
+                },
                 cancellationToken);
 
         if (commandLine.Command is
