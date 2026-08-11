@@ -111,6 +111,29 @@ internal sealed record AetherLocalAccountMutationResult(
     int RevokedSessionCount,
     bool MutationAttempted);
 
+internal sealed record AetherIdentityAccountSummary(
+    Guid UserId,
+    string UserName,
+    string DisplayName,
+    string? Email,
+    bool Enabled,
+    bool TwoFactorEnabled,
+    bool HasLocalPassword,
+    long AuthorityVersion,
+    IReadOnlyList<string> Roles,
+    IReadOnlyList<string> ExternalProviderIds);
+
+internal sealed record AetherIdentityAccountPage(
+    int Offset,
+    int Limit,
+    int TotalCount,
+    IReadOnlyList<AetherIdentityAccountSummary> Accounts);
+
+internal sealed class AetherAdministratorReauthenticationRequiredException()
+    : InvalidOperationException(
+        "Current canonical administrator authority with fresh durable " +
+        "reauthentication is required.");
+
 internal sealed class AetherLocalAccountAdministrationService(
     AetherIdentityDbContext database,
     IPasswordHasher<AetherIdentityUser> passwordHasher,
@@ -123,6 +146,100 @@ internal sealed class AetherLocalAccountAdministrationService(
     private const string AdministrationLoginProvider = "Aether.Administration";
     private const string PendingEnrollmentName = "PendingLocalEnrollment.v1";
     private const int RecoveryCodeCount = 10;
+    private const int MaximumAccountPageSize = 200;
+
+    internal async Task<AetherIdentityAccountPage> ListAsync(
+        ClaimsPrincipal administrator,
+        int offset,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(administrator);
+        if (offset < 0 || limit is < 1 or > MaximumAccountPageSize)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(limit),
+                "Identity account pages require a non-negative offset and " +
+                $"a limit between 1 and {MaximumAccountPageSize}.");
+        }
+        DateTimeOffset now = timeProvider.GetUtcNow();
+
+        await administrationLock.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var transaction =
+                await database.Database.BeginTransactionAsync(
+                    IsolationLevel.Serializable,
+                    cancellationToken);
+            _ = await RequireFreshAdministratorAsync(
+                administrator,
+                now,
+                cancellationToken);
+            int totalCount = await database.Users.CountAsync(cancellationToken);
+            AetherIdentityUser[] users = await database.Users
+                .OrderBy(user => user.NormalizedUserName)
+                .ThenBy(user => user.Id)
+                .Skip(offset)
+                .Take(limit)
+                .ToArrayAsync(cancellationToken);
+            Guid[] userIds = users.Select(user => user.Id).ToArray();
+            IdentityUserRole<Guid>[] assignments = await database
+                .Set<IdentityUserRole<Guid>>()
+                .Where(assignment => userIds.Contains(assignment.UserId))
+                .ToArrayAsync(cancellationToken);
+            Dictionary<Guid, string> roleNames = await database.Roles
+                .Where(role => role.Name != null)
+                .ToDictionaryAsync(
+                    role => role.Id,
+                    role => role.Name!,
+                    cancellationToken);
+            AetherExternalIdentity[] externalIdentities =
+                await database.ExternalIdentities
+                    .Where(identity => userIds.Contains(identity.UserId))
+                    .ToArrayAsync(cancellationToken);
+            List<AetherIdentityAccountSummary> accounts =
+                new(users.Length);
+            foreach (AetherIdentityUser user in users)
+            {
+                string[] roles = assignments
+                    .Where(assignment => assignment.UserId == user.Id)
+                    .Select(assignment => roleNames.GetValueOrDefault(
+                        assignment.RoleId))
+                    .Where(role => role is not null)
+                    .Select(role => role!)
+                    .Order(StringComparer.Ordinal)
+                    .ToArray();
+                string[] providerIds = externalIdentities
+                    .Where(identity => identity.UserId == user.Id)
+                    .Select(identity => identity.ProviderId)
+                    .Distinct(StringComparer.Ordinal)
+                    .Order(StringComparer.Ordinal)
+                    .ToArray();
+                accounts.Add(
+                    new(
+                        user.Id,
+                        user.UserName ?? string.Empty,
+                        user.DisplayName,
+                        user.Email,
+                        user.Enabled,
+                        user.TwoFactorEnabled,
+                        !string.IsNullOrWhiteSpace(user.PasswordHash),
+                        user.AuthorityVersion,
+                        roles,
+                        providerIds));
+            }
+            await transaction.CommitAsync(cancellationToken);
+            return new(
+                offset,
+                limit,
+                totalCount,
+                accounts.AsReadOnly());
+        }
+        finally
+        {
+            administrationLock.Gate.Release();
+        }
+    }
 
     internal async Task<AetherLocalAccountEnrollmentIssue> BeginEnrollmentAsync(
         ClaimsPrincipal administrator,
@@ -890,9 +1007,7 @@ internal sealed class AetherLocalAccountAdministrationService(
     }
 
     private static InvalidOperationException FreshAdministratorRequired() =>
-        new(
-            "Current canonical administrator authority with fresh durable " +
-            "reauthentication is required.");
+        new AetherAdministratorReauthenticationRequiredException();
 
     private sealed record ValidatedEnrollment(
         string UserName,

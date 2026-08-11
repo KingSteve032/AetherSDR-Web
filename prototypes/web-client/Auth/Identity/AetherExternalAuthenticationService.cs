@@ -16,6 +16,7 @@ internal sealed record AetherExternalAuthenticationResult(
 
 internal sealed class AetherExternalAuthenticationService(
     AetherIdentityDbContext database,
+    AetherLocalAuthenticationPolicy policy,
     TimeProvider timeProvider)
 {
     private const string AuditAction = "authentication.external";
@@ -25,6 +26,7 @@ internal sealed class AetherExternalAuthenticationService(
         ClaimsPrincipal externalPrincipal,
         string correlationId,
         TimeSpan absoluteSessionLifetime,
+        bool requireFreshAuthentication = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(provider);
@@ -88,9 +90,8 @@ internal sealed class AetherExternalAuthenticationService(
         }
 
         DateTimeOffset now = timeProvider.GetUtcNow();
-        DateTimeOffset reauthenticatedAt =
-            evidence.AuthenticatedAtUtc ?? now;
-        if (reauthenticatedAt > now)
+        if (evidence.AuthenticatedAtUtc is DateTimeOffset authenticatedAt &&
+            authenticatedAt > now)
         {
             return await RejectAsync(
                 provider.ProviderId,
@@ -100,6 +101,24 @@ internal sealed class AetherExternalAuthenticationService(
                 "external-authentication-time-invalid",
                 cancellationToken);
         }
+        if (requireFreshAuthentication &&
+            (evidence.AuthenticatedAtUtc is not DateTimeOffset freshAt ||
+             now - freshAt >
+                 policy.AdministratorReauthenticationLifetime))
+        {
+            return await RejectAsync(
+                provider.ProviderId,
+                subjectBinding,
+                link.UserId,
+                correlationId,
+                "external-reauthentication-not-fresh",
+                cancellationToken);
+        }
+        DateTimeOffset reauthenticatedAt =
+            evidence.AuthenticatedAtUtc ?? now;
+        string authenticationCode = requireFreshAuthentication
+            ? "external-identity-reauthenticated"
+            : "external-identity-authenticated";
 
         string[] roles = await (
             from userRole in database.Set<IdentityUserRole<Guid>>()
@@ -138,7 +157,7 @@ internal sealed class AetherExternalAuthenticationService(
                 correlationId,
                 AetherIdentityAuditOutcome.Succeeded,
                 now,
-                "external-identity-authenticated",
+                authenticationCode,
                 provider.ProviderId,
                 subjectBinding,
                 session.Id));
@@ -146,7 +165,7 @@ internal sealed class AetherExternalAuthenticationService(
 
         return new(
             Succeeded: true,
-            Code: "external-identity-authenticated",
+            Code: authenticationCode,
             principal,
             session.Id,
             session.AbsoluteExpiresAtUtc);

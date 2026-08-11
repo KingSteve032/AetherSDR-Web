@@ -5,6 +5,9 @@ import test from "node:test";
 const adapter = await readFile(
   new URL("../Auth/Identity/AetherLocalAuthenticationHttpAdapter.cs", import.meta.url),
   "utf8");
+const administrationAdapter = await readFile(
+  new URL("../Auth/Identity/AetherIdentityAdministrationHttpAdapter.cs", import.meta.url),
+  "utf8");
 const composition = await readFile(
   new URL("../Auth/AetherAuthenticationComposition.cs", import.meta.url),
   "utf8");
@@ -28,6 +31,33 @@ test("local credential endpoints are bounded antiforgery and rate-limit boundari
     /MapPost\(MfaPath[\s\S]{0,300}RequireRateLimiting[\s\S]{0,300}RequireAetherAntiforgery/);
   assert.match(adapter, /local-authentication-rejected/);
   assert.doesNotMatch(adapter, /Results\.Redirect\(body\./);
+});
+
+test("identity administration endpoints retain strict request and reauthentication boundaries", () => {
+  assert.match(administrationAdapter, /MaximumRequestBodyBytes = 8192/);
+  assert.match(
+    administrationAdapter,
+    /UnmappedMemberHandling = JsonUnmappedMemberHandling\.Disallow/);
+  assert.match(administrationAdapter, /RejectDuplicateProperties\(payload\)/);
+  assert.match(
+    administrationAdapter,
+    /CryptographicOperations\.ZeroMemory\(payload\)/);
+  assert.match(
+    administrationAdapter,
+    /LocalPasswordReauthenticationRequest[\s\S]{0,120}Password/);
+  assert.doesNotMatch(
+    administrationAdapter,
+    /LocalPasswordReauthenticationRequest[\s\S]{0,120}UserName/);
+  assert.equal(
+    administrationAdapter.match(/\.RequireAetherAntiforgery\(\)/g)?.length,
+    7);
+  assert.match(
+    administrationAdapter,
+    /ExternalReauthenticationPath[\s\S]{0,500}RequireAetherAntiforgery/);
+  assert.match(
+    administrationAdapter,
+    /RedirectUri = LocalReturnUrl\.Normalize\(body\.ReturnUrl\)/);
+  assert.doesNotMatch(administrationAdapter, /Results\.Redirect\(body\./);
 });
 
 test("local and combined modes retain the hardened canonical cookie", () => {

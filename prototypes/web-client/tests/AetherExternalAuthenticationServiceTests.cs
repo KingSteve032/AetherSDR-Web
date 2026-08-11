@@ -75,6 +75,47 @@ public sealed class AetherExternalAuthenticationServiceTests
     }
 
     [Fact]
+    public async Task FreshReauthenticationRequiresBoundedExternalAuthTime()
+    {
+        await using ExternalAuthenticationFixture fixture =
+            await ExternalAuthenticationFixture.CreateAsync();
+        _ = await fixture.SeedLinkedUserAsync(
+            "fresh-subject",
+            enabled: true,
+            [AetherRoles.Admin, AetherRoles.Observe]);
+
+        AetherExternalAuthenticationResult fresh =
+            await fixture.Service.AuthenticateAsync(
+                fixture.Provider,
+                fixture.ExternalPrincipal(
+                    "fresh-subject",
+                    "fresh@example.test",
+                    [],
+                    authenticationAgeMinutes: 2),
+                "correlation-fresh",
+                TimeSpan.FromHours(8),
+                requireFreshAuthentication: true);
+        AetherExternalAuthenticationResult stale =
+            await fixture.Service.AuthenticateAsync(
+                fixture.Provider,
+                fixture.ExternalPrincipal(
+                    "fresh-subject",
+                    "fresh@example.test",
+                    [],
+                    authenticationAgeMinutes: 6),
+                "correlation-stale",
+                TimeSpan.FromHours(8),
+                requireFreshAuthentication: true);
+
+        Assert.True(fresh.Succeeded);
+        Assert.Equal("external-identity-reauthenticated", fresh.Code);
+        Assert.False(stale.Succeeded);
+        Assert.Equal("external-reauthentication-not-fresh", stale.Code);
+        Assert.Single(await fixture.Database.AuthenticationSessions
+            .ToArrayAsync());
+    }
+
+    [Fact]
     public async Task SharedEmailNeverLinksASecondExternalSubject()
     {
         await using ExternalAuthenticationFixture fixture =
@@ -191,7 +232,10 @@ public sealed class AetherExternalAuthenticationServiceTests
             this.scope = scope;
             Database = database;
             Time = time;
-            Service = new(database, time);
+            Service = new(
+                database,
+                AetherAuthenticationConfiguration.CreateSetupLocalPolicy(),
+                time);
         }
 
         internal DateTimeOffset Now { get; } = DateTimeOffset.Parse(
@@ -259,7 +303,8 @@ public sealed class AetherExternalAuthenticationServiceTests
         internal ClaimsPrincipal ExternalPrincipal(
             string subject,
             string email,
-            string[] externalRoles)
+            string[] externalRoles,
+            int authenticationAgeMinutes = 2)
         {
             List<Claim> claims =
             [
@@ -270,7 +315,7 @@ public sealed class AetherExternalAuthenticationServiceTests
                 new("preferred_username", email),
                 new(
                     "auth_time",
-                    Now.AddMinutes(-2)
+                    Now.AddMinutes(-authenticationAgeMinutes)
                         .ToUnixTimeSeconds()
                         .ToString(
                             System.Globalization.CultureInfo.InvariantCulture))

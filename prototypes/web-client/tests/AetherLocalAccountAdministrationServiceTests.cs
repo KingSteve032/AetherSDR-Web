@@ -74,6 +74,18 @@ public sealed class AetherLocalAccountAdministrationServiceTests
         Assert.True(enabled.Enabled);
         Assert.True(enabled.TwoFactorEnabled);
         Assert.Null(enabled.DisabledAtUtc);
+        AetherIdentityAccountPage page = await fixture.Service.ListAsync(
+            fixture.AdministratorPrincipal,
+            offset: 0,
+            limit: 50);
+        AetherIdentityAccountSummary listed = Assert.Single(
+            page.Accounts,
+            account => account.UserId == issue.UserId);
+        Assert.Equal("new-operator", listed.UserName);
+        Assert.True(listed.HasLocalPassword);
+        Assert.Equal(
+            [AetherRoles.Control, AetherRoles.Observe],
+            listed.Roles);
         Assert.Equal(
             2,
             await fixture.Database.IdentityAuditRecords.CountAsync());
@@ -102,7 +114,8 @@ public sealed class AetherLocalAccountAdministrationServiceTests
             fixture.Policy.AdministratorReauthenticationLifetime +
             TimeSpan.FromSeconds(1));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        await Assert.ThrowsAsync<
+            AetherAdministratorReauthenticationRequiredException>(
             () => fixture.Service.BeginEnrollmentAsync(
                 fixture.AdministratorPrincipal,
                 CreateEnrollment()));
@@ -116,13 +129,58 @@ public sealed class AetherLocalAccountAdministrationServiceTests
             [AetherRoles.Observe],
             fixture.Time.GetUtcNow());
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        await Assert.ThrowsAsync<
+            AetherAdministratorReauthenticationRequiredException>(
             () => fixture.Service.BeginEnrollmentAsync(
                 withoutAdmin,
                 CreateEnrollment()));
 
         Assert.Single(await fixture.Database.Users.ToArrayAsync());
         Assert.Empty(await fixture.Database.IdentityAuditRecords.ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task LocalAdministratorReauthenticationCreatesSameUserFreshSession()
+    {
+        await using AdministrationFixture fixture =
+            await AdministrationFixture.CreateAsync();
+        fixture.Time.Advance(
+            fixture.Policy.AdministratorReauthenticationLifetime +
+            TimeSpan.FromSeconds(1));
+
+        AetherLocalAdministratorReauthenticationChallenge challenge =
+            await fixture.Reauthentication.BeginAsync(
+                fixture.AdministratorPrincipal,
+                InitialPassword,
+                "admin-reauth-password");
+        AetherAdministratorReauthenticationResult completed =
+            await fixture.Reauthentication.CompleteAsync(
+                fixture.AdministratorPrincipal,
+                challenge.ChallengeToken,
+                fixture.AdministratorRecoveryCode,
+                "admin-reauth-mfa");
+
+        Assert.True(challenge.ReadyForSecondFactor);
+        Assert.True(completed.Succeeded);
+        Assert.NotNull(completed.Principal);
+        Assert.Equal(
+            fixture.Administrator.Id.ToString("D"),
+            completed.Principal.FindFirstValue(
+                System.Security.Claims.ClaimTypes.NameIdentifier));
+        AetherAuthenticationSession fresh =
+            await fixture.Database.AuthenticationSessions.SingleAsync(
+                session => session.Id == completed.SessionId);
+        Assert.Equal(fixture.Time.GetUtcNow(), fresh.ReauthenticatedAtUtc);
+        Assert.Equal(
+            "authentication.administrator.reauthenticated",
+            (await fixture.Database.IdentityAuditRecords.SingleAsync(
+                audit =>
+                    audit.Action ==
+                    "authentication.administrator.reauthenticated")).Action);
+        _ = await fixture.Service.ListAsync(
+            completed.Principal,
+            offset: 0,
+            limit: 50);
     }
 
     [Fact]
@@ -291,29 +349,38 @@ public sealed class AetherLocalAccountAdministrationServiceTests
             AsyncServiceScope scope,
             AetherIdentityDbContext database,
             AetherLocalAccountAdministrationService service,
+            AetherLocalAdministratorReauthenticationService reauthentication,
             IPasswordHasher<AetherIdentityUser> passwordHasher,
             AetherLocalAuthenticationPolicy policy,
             ManualTimeProvider time,
             AetherIdentityUser administrator,
             AetherAuthenticationSession administratorSession,
-            ClaimsPrincipal administratorPrincipal)
+            ClaimsPrincipal administratorPrincipal,
+            string administratorRecoveryCode)
         {
             this.temporary = temporary;
             this.provider = provider;
             this.scope = scope;
             Database = database;
             Service = service;
+            Reauthentication = reauthentication;
             PasswordHasher = passwordHasher;
             Policy = policy;
             Time = time;
             Administrator = administrator;
             AdministratorSession = administratorSession;
             AdministratorPrincipal = administratorPrincipal;
+            AdministratorRecoveryCode = administratorRecoveryCode;
         }
 
         internal AetherIdentityDbContext Database { get; }
 
         internal AetherLocalAccountAdministrationService Service { get; }
+
+        internal AetherLocalAdministratorReauthenticationService Reauthentication
+        {
+            get;
+        }
 
         internal IPasswordHasher<AetherIdentityUser> PasswordHasher { get; }
 
@@ -326,6 +393,8 @@ public sealed class AetherLocalAccountAdministrationServiceTests
         internal AetherAuthenticationSession AdministratorSession { get; }
 
         internal ClaimsPrincipal AdministratorPrincipal { get; }
+
+        internal string AdministratorRecoveryCode { get; }
 
         internal static async Task<AdministrationFixture> CreateAsync()
         {
@@ -363,14 +432,22 @@ public sealed class AetherLocalAccountAdministrationServiceTests
                 services.AddSingleton<TimeProvider>(time);
                 services.AddSingleton<IDataProtectionProvider>(
                     new EphemeralDataProtectionProvider());
+                services.AddSingleton(topology);
                 services.AddAetherLocalAuthenticationFoundation(
                     topology.LocalPolicy);
+                services.AddScoped<AetherAuthenticationSessionService>();
                 ServiceProvider provider = services.BuildServiceProvider();
                 AsyncServiceScope scope = provider.CreateAsyncScope();
                 IServiceProvider scoped = scope.ServiceProvider;
                 AetherIdentityDbContext database =
                     scoped.GetRequiredService<AetherIdentityDbContext>();
 
+                IPasswordHasher<AetherIdentityUser> passwordHasher =
+                    scoped.GetRequiredService<
+                        IPasswordHasher<AetherIdentityUser>>();
+                AetherLocalMfaCredentialProtector credentialProtector =
+                    scoped.GetRequiredService<
+                        AetherLocalMfaCredentialProtector>();
                 AetherIdentityUser administrator = new()
                 {
                     Id = Guid.NewGuid(),
@@ -385,6 +462,14 @@ public sealed class AetherLocalAccountAdministrationServiceTests
                     SecurityStamp = Guid.NewGuid().ToString("N"),
                     ConcurrencyStamp = Guid.NewGuid().ToString("N")
                 };
+                administrator.PasswordHash = passwordHasher.HashPassword(
+                    administrator,
+                    InitialPassword);
+                AetherLocalRecoveryCredential administratorRecovery =
+                    AetherLocalMfaCredentialProtector
+                        .GenerateRecoveryCredential(administrator.Id);
+                database.Set<IdentityUserToken<Guid>>().Add(
+                    administratorRecovery.Token);
                 Guid adminRoleId = await database.Roles
                     .Where(role => role.Name == AetherRoles.Admin)
                     .Select(role => role.Id)
@@ -434,12 +519,14 @@ public sealed class AetherLocalAccountAdministrationServiceTests
                     scoped.GetRequiredService<
                         AetherLocalAccountAdministrationService>(),
                     scoped.GetRequiredService<
-                        IPasswordHasher<AetherIdentityUser>>(),
+                        AetherLocalAdministratorReauthenticationService>(),
+                    passwordHasher,
                     topology.LocalPolicy,
                     time,
                     administrator,
                     administratorSession,
-                    principal);
+                    principal,
+                    administratorRecovery.Code);
             }
             catch
             {

@@ -1083,6 +1083,14 @@ builder.Services.AddRateLimiter(options =>
                 .CreateRateLimiterOptions(
                     authenticationTopology.LocalPolicy)));
     options.AddPolicy(
+        AetherIdentityAdministrationDefaults.RateLimitPolicy,
+        context => RateLimitPartition.GetFixedWindowLimiter(
+            RequestRateLimitPartitionKey.ForAuthenticatedUserOrAddress(
+                context),
+            _ => AetherLocalAuthenticationDefaults
+                .CreateRateLimiterOptions(
+                    authenticationTopology.LocalPolicy)));
+    options.AddPolicy(
         "websocket",
         context => RateLimitPartition.GetFixedWindowLimiter(
             RequestRateLimitPartitionKey.ForAuthenticatedUserOrAddress(context),
@@ -1293,6 +1301,9 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 _ = AetherLocalAuthenticationHttpAdapter.Map(
+    app,
+    authenticationTopology);
+_ = AetherIdentityAdministrationHttpAdapter.Map(
     app,
     authenticationTopology);
 _ = ReleaseUpdateHttpAdapter.Map(app);

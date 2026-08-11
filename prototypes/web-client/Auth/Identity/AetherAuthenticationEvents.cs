@@ -38,9 +38,16 @@ internal sealed class AetherCookieAuthenticationEvents(
 
 internal sealed class AetherOpenIdConnectEvents(
     AetherExternalAuthenticationService externalAuthentication,
+    AetherAuthenticationSessionService sessions,
     AetherAuthenticationTopology topology)
     : OpenIdConnectEvents
 {
+    internal const string FreshAuthenticationItem =
+        ".aether.external-reauthentication";
+    internal const string ExpectedUserIdItem =
+        ".aether.external-reauthentication-user";
+    internal const string RequiredValue = "required";
+
     public override async Task TokenValidated(
         TokenValidatedContext context)
     {
@@ -62,12 +69,35 @@ internal sealed class AetherOpenIdConnectEvents(
             return;
         }
 
+        bool requireFreshAuthentication = properties.Items.TryGetValue(
+                FreshAuthenticationItem,
+                out string? freshValue) &&
+            string.Equals(
+                freshValue,
+                RequiredValue,
+                StringComparison.Ordinal);
+        Guid expectedUserId = Guid.Empty;
+        if (requireFreshAuthentication &&
+            (!properties.Items.TryGetValue(
+                 ExpectedUserIdItem,
+                 out string? expectedUserIdValue) ||
+             !Guid.TryParseExact(
+                 expectedUserIdValue,
+                 "D",
+                 out expectedUserId) ||
+             expectedUserId == Guid.Empty))
+        {
+            context.Fail("External reauthentication binding was invalid.");
+            return;
+        }
+
         AetherExternalAuthenticationResult result =
             await externalAuthentication.AuthenticateAsync(
                 provider,
                 externalPrincipal,
                 context.HttpContext.TraceIdentifier,
                 topology.SessionAbsoluteLifetime,
+                requireFreshAuthentication,
                 context.HttpContext.RequestAborted);
         if (!result.Succeeded ||
             result.Principal is null ||
@@ -75,6 +105,23 @@ internal sealed class AetherOpenIdConnectEvents(
         {
             context.Fail(
                 "The external identity is not linked to an enabled Aether account.");
+            return;
+        }
+
+        if (requireFreshAuthentication &&
+            (!AetherAuthenticationSessionService.TryReadCanonicalIdentity(
+                 result.Principal,
+                 out Guid reauthenticatedUserId,
+                 out _,
+                 out _) ||
+             reauthenticatedUserId != expectedUserId))
+        {
+            _ = await sessions.RevokeAsync(
+                result.Principal,
+                "external-reauthentication-binding-rejected",
+                context.HttpContext.RequestAborted);
+            context.Fail(
+                "External reauthentication did not match the current account.");
             return;
         }
 
