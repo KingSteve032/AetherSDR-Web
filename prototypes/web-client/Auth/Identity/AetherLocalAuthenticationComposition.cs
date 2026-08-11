@@ -57,8 +57,9 @@ internal static class AetherLocalAuthenticationComposition
         services.AddScoped<AetherLocalPasswordAuthenticationService>();
         services.AddScoped<AetherLocalMfaAuthenticationService>();
         services.AddScoped<AetherLocalAdministratorReauthenticationService>();
-        services.AddSingleton<AetherLocalAccountAdministrationLock>();
+        services.AddSingleton<AetherIdentityAdministrationLock>();
         services.AddScoped<AetherLocalAccountAdministrationService>();
+        services.AddScoped<AetherExternalIdentityAdministrationService>();
         AddFirstAdministratorProvisioner(services);
         return services;
     }

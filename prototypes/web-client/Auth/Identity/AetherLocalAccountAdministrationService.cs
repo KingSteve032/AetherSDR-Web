@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AetherSDR.Web.Auth.Identity;
 
-internal sealed class AetherLocalAccountAdministrationLock
+internal sealed class AetherIdentityAdministrationLock
 {
     internal SemaphoreSlim Gate { get; } = new(1, 1);
 }
@@ -140,7 +140,7 @@ internal sealed class AetherLocalAccountAdministrationService(
     ILookupNormalizer normalizer,
     AetherLocalMfaCredentialProtector credentialProtector,
     AetherLocalAuthenticationPolicy policy,
-    AetherLocalAccountAdministrationLock administrationLock,
+    AetherIdentityAdministrationLock administrationLock,
     TimeProvider timeProvider)
 {
     private const string AdministrationLoginProvider = "Aether.Administration";
@@ -600,7 +600,7 @@ internal sealed class AetherLocalAccountAdministrationService(
                 await transaction.CommitAsync(cancellationToken);
                 return new(
                     Succeeded: true,
-                    Code: "local-account-roles-converged",
+                    Code: "identity-account-roles-converged",
                     userId,
                     user.AuthorityVersion,
                     RevokedSessionCount: 0,
@@ -635,13 +635,13 @@ internal sealed class AetherLocalAccountAdministrationService(
             AddAudit(
                 actorUserId,
                 userId,
-                "identity.local-account.roles-replaced",
+                "identity.account.roles-replaced",
                 correlationId,
                 AetherIdentityAuditOutcome.Succeeded,
                 now,
                 new
                 {
-                    code = "local-account-roles-replaced",
+                    code = "identity-account-roles-replaced",
                     userId,
                     roles = validatedRoles,
                     authorityVersion = user.AuthorityVersion,
@@ -651,7 +651,7 @@ internal sealed class AetherLocalAccountAdministrationService(
             await transaction.CommitAsync(cancellationToken);
             return new(
                 Succeeded: true,
-                Code: "local-account-roles-replaced",
+                Code: "identity-account-roles-replaced",
                 userId,
                 user.AuthorityVersion,
                 revokedSessionCount,
@@ -910,7 +910,7 @@ internal sealed class AetherLocalAccountAdministrationService(
                 !AetherRoles.All.Contains(role, StringComparer.Ordinal)))
         {
             throw new InvalidOperationException(
-                "Local account roles must be a non-empty exact subset of " +
+                "Identity account roles must be a non-empty exact subset of " +
                 "the canonical roles.");
         }
         return AetherRoles.All

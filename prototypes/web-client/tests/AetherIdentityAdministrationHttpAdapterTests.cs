@@ -91,7 +91,43 @@ public sealed class AetherIdentityAdministrationHttpAdapterTests
             AetherIdentityAdministrationHttpAdapter
                 .ExternalReauthenticationPath,
             combinedHost.Report.EndpointPaths);
-        Assert.Equal(8, combinedHost.Endpoints().Length);
+        Assert.Contains(
+            AetherIdentityAdministrationHttpAdapter.ExternalIdentityLinkPath,
+            combinedHost.Report.EndpointPaths);
+        Assert.Contains(
+            AetherIdentityAdministrationHttpAdapter
+                .ExternalIdentityProviderPath,
+            combinedHost.Report.EndpointPaths);
+        Assert.Equal(10, combinedHost.Endpoints().Length);
+    }
+
+    [Fact]
+    public async Task ExternalOnlyMapsRoleAndProviderAdministrationWithoutLocalCredentials()
+    {
+        await using AdapterApplication host =
+            await AdapterApplication.CreateAsync(ExternalTopology());
+
+        Assert.Equal(
+            [
+                AetherIdentityAdministrationHttpAdapter.AccountsPath,
+                AetherIdentityAdministrationHttpAdapter
+                    .ExternalIdentityLinkPath,
+                AetherIdentityAdministrationHttpAdapter
+                    .ExternalIdentityProviderPath,
+                AetherIdentityAdministrationHttpAdapter.AccountsPath +
+                    "/{userId:guid}/roles",
+                AetherIdentityAdministrationHttpAdapter
+                    .ExternalReauthenticationPath
+            ],
+            host.Report.EndpointPaths.Order(StringComparer.Ordinal));
+        Assert.DoesNotContain(
+            AetherIdentityAdministrationHttpAdapter
+                .LocalPasswordReauthenticationPath,
+            host.Report.EndpointPaths);
+        Assert.DoesNotContain(
+            AetherIdentityAdministrationHttpAdapter
+                .LocalMfaReauthenticationPath,
+            host.Report.EndpointPaths);
     }
 
     [Fact]
@@ -146,6 +182,18 @@ public sealed class AetherIdentityAdministrationHttpAdapterTests
     private static AetherAuthenticationTopology LocalTopology() =>
         AetherAuthenticationConfiguration.Validate(
             new AuthSettings { Mode = "Local" },
+            isDevelopmentEnvironment: false);
+
+    private static AetherAuthenticationTopology ExternalTopology() =>
+        AetherAuthenticationConfiguration.Validate(
+            new AuthSettings
+            {
+                Mode = "OpenIdConnect",
+                ProviderId = "club-oidc",
+                Authority = "https://identity.example/tenant",
+                ClientId = "aethersdr-web",
+                ClientSecret = "test-secret"
+            },
             isDevelopmentEnvironment: false);
 
     private static AetherAuthenticationTopology CombinedTopology() =>

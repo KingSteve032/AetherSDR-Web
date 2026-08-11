@@ -8,6 +8,9 @@ const adapter = await readFile(
 const administrationAdapter = await readFile(
   new URL("../Auth/Identity/AetherIdentityAdministrationHttpAdapter.cs", import.meta.url),
   "utf8");
+const authenticationEvents = await readFile(
+  new URL("../Auth/Identity/AetherAuthenticationEvents.cs", import.meta.url),
+  "utf8");
 const composition = await readFile(
   new URL("../Auth/AetherAuthenticationComposition.cs", import.meta.url),
   "utf8");
@@ -50,13 +53,25 @@ test("identity administration endpoints retain strict request and reauthenticati
     /LocalPasswordReauthenticationRequest[\s\S]{0,120}UserName/);
   assert.equal(
     administrationAdapter.match(/\.RequireAetherAntiforgery\(\)/g)?.length,
-    7);
+    9);
   assert.match(
     administrationAdapter,
     /ExternalReauthenticationPath[\s\S]{0,500}RequireAetherAntiforgery/);
   assert.match(
     administrationAdapter,
     /RedirectUri = LocalReturnUrl\.Normalize\(body\.ReturnUrl\)/);
+  const linkRequest = administrationAdapter.match(
+    /private sealed class ExternalIdentityLinkRequest[\s\S]*?\n    \}/)?.[0] ?? "";
+  assert.match(linkRequest, /ReturnUrl/);
+  assert.doesNotMatch(linkRequest, /Issuer|Subject|ProviderId/);
+  assert.match(
+    authenticationEvents,
+    /AuthenticateAsync\([\s\S]{0,100}CookieAuthenticationDefaults\.AuthenticationScheme/);
+  assert.match(authenticationEvents, /externalIdentities\.LinkAsync\(/);
+  assert.match(authenticationEvents, /context\.HandleResponse\(\)/);
+  assert.ok(
+    authenticationEvents.indexOf("CompleteExternalIdentityLinkAsync") <
+      authenticationEvents.indexOf("externalAuthentication.AuthenticateAsync"));
   assert.doesNotMatch(administrationAdapter, /Results\.Redirect\(body\./);
 });
 

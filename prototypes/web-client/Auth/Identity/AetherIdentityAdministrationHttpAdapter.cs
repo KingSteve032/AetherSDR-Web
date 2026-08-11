@@ -29,6 +29,10 @@ internal static class AetherIdentityAdministrationHttpAdapter
         "/api/admin/identity/reauthenticate/local/mfa";
     internal const string ExternalReauthenticationPath =
         "/api/admin/identity/reauthenticate/external";
+    internal const string ExternalIdentityLinkPath =
+        AccountsPath + "/{userId:guid}/external-identities/link";
+    internal const string ExternalIdentityProviderPath =
+        AccountsPath + "/{userId:guid}/external-identities/{providerId}";
     internal const int MaximumRequestBodyBytes = 8192;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -96,26 +100,43 @@ internal static class AetherIdentityAdministrationHttpAdapter
                 .RequireRateLimiting(
                     AetherIdentityAdministrationDefaults.RateLimitPolicy)
                 .RequireAetherAntiforgery();
-            app.MapPut(
-                    AccountsPath + "/{userId:guid}/roles",
-                    HandleReplaceRolesAsync)
-                .RequireAuthorization(AetherPolicies.Admin)
-                .RequireRateLimiting(
-                    AetherIdentityAdministrationDefaults.RateLimitPolicy)
-                .RequireAetherAntiforgery();
             paths.Add(
                 AccountsPath +
                 "/{userId:guid}/enrollment-confirmation");
             paths.Add(AccountsPath + "/{userId:guid}/password-reset");
-            paths.Add(AccountsPath + "/{userId:guid}/roles");
         }
+
+        paths.Add(AccountsPath + "/{userId:guid}/roles");
+        app.MapPut(
+                AccountsPath + "/{userId:guid}/roles",
+                HandleReplaceRolesAsync)
+            .RequireAuthorization(AetherPolicies.Admin)
+            .RequireRateLimiting(
+                AetherIdentityAdministrationDefaults.RateLimitPolicy)
+            .RequireAetherAntiforgery();
 
         if (topology.ExternalProvider is not null)
         {
             paths.Add(ExternalReauthenticationPath);
+            paths.Add(ExternalIdentityLinkPath);
+            paths.Add(ExternalIdentityProviderPath);
             app.MapPost(
                     ExternalReauthenticationPath,
                     HandleExternalReauthenticationAsync)
+                .RequireAuthorization(AetherPolicies.Admin)
+                .RequireRateLimiting(
+                    AetherIdentityAdministrationDefaults.RateLimitPolicy)
+                .RequireAetherAntiforgery();
+            app.MapPost(
+                    ExternalIdentityLinkPath,
+                    HandleAuthorizeExternalIdentityLinkAsync)
+                .RequireAuthorization(AetherPolicies.Admin)
+                .RequireRateLimiting(
+                    AetherIdentityAdministrationDefaults.RateLimitPolicy)
+                .RequireAetherAntiforgery();
+            app.MapDelete(
+                    ExternalIdentityProviderPath,
+                    HandleUnlinkExternalIdentityAsync)
                 .RequireAuthorization(AetherPolicies.Admin)
                 .RequireRateLimiting(
                     AetherIdentityAdministrationDefaults.RateLimitPolicy)
@@ -266,6 +287,100 @@ internal static class AetherIdentityAdministrationHttpAdapter
         return Results.Challenge(
             properties,
             [OpenIdConnectDefaults.AuthenticationScheme]);
+    }
+
+    private static async Task<IResult>
+        HandleAuthorizeExternalIdentityLinkAsync(
+            HttpContext context,
+            ClaimsPrincipal user,
+            [FromServices]
+            AetherExternalIdentityAdministrationService externalIdentities,
+            Guid userId)
+    {
+        ApplyNoStore(context.Response);
+        ExternalIdentityLinkRequest? body =
+            await ReadJsonAsync<ExternalIdentityLinkRequest>(context);
+        if (body is null || body.ReturnUrl is { Length: > 2048 })
+        {
+            return InvalidRequest();
+        }
+
+        try
+        {
+            AetherExternalIdentityLinkAuthorization authorization =
+                await externalIdentities.AuthorizeLinkAsync(
+                    user,
+                    userId,
+                    context.RequestAborted);
+            AuthenticationProperties properties = new()
+            {
+                RedirectUri = LocalReturnUrl.Normalize(body.ReturnUrl)
+            };
+            properties.Items[
+                AetherOpenIdConnectEvents.ExternalIdentityLinkItem] =
+                AetherOpenIdConnectEvents.RequiredValue;
+            properties.Items[
+                AetherOpenIdConnectEvents.LinkActorUserIdItem] =
+                authorization.ActorUserId.ToString("D");
+            properties.Items[
+                AetherOpenIdConnectEvents.LinkActorSessionIdItem] =
+                authorization.ActorSessionId.ToString("D");
+            properties.Items[
+                AetherOpenIdConnectEvents.LinkTargetUserIdItem] =
+                authorization.TargetUserId.ToString("D");
+            properties.Items[
+                AetherOpenIdConnectEvents.LinkProviderIdItem] =
+                authorization.ProviderId;
+            properties.SetParameter(
+                OpenIdConnectParameterNames.Prompt,
+                "login");
+            properties.SetParameter(
+                OpenIdConnectParameterNames.MaxAge,
+                "0");
+            return Results.Challenge(
+                properties,
+                [OpenIdConnectDefaults.AuthenticationScheme]);
+        }
+        catch (AetherAdministratorReauthenticationRequiredException)
+        {
+            return ReauthenticationRequired();
+        }
+        catch (InvalidOperationException)
+        {
+            return AdministrationRejected();
+        }
+    }
+
+    private static async Task<IResult> HandleUnlinkExternalIdentityAsync(
+        HttpContext context,
+        ClaimsPrincipal user,
+        [FromServices]
+        AetherExternalIdentityAdministrationService externalIdentities,
+        Guid userId,
+        string providerId)
+    {
+        ApplyNoStore(context.Response);
+        try
+        {
+            AetherExternalIdentityMutationResult result =
+                await externalIdentities.UnlinkAsync(
+                    user,
+                    userId,
+                    providerId,
+                    CorrelationId("external-identity-unlink"),
+                    context.RequestAborted);
+            return result.Succeeded
+                ? Json(result)
+                : AdministrationRejected(result.Code);
+        }
+        catch (AetherAdministratorReauthenticationRequiredException)
+        {
+            return ReauthenticationRequired();
+        }
+        catch (InvalidOperationException)
+        {
+            return AdministrationRejected();
+        }
     }
 
     private static async Task<IResult> HandleBeginEnrollmentAsync(
@@ -558,8 +673,11 @@ internal static class AetherIdentityAdministrationHttpAdapter
             statusCode: StatusCodes.Status403Forbidden);
 
     private static IResult AdministrationRejected() =>
+        AdministrationRejected("identity-administration-rejected");
+
+    private static IResult AdministrationRejected(string code) =>
         Results.Json(
-            new { code = "identity-administration-rejected" },
+            new { code },
             statusCode: StatusCodes.Status409Conflict);
 
     private static void ApplyNoStore(HttpResponse response)
@@ -582,6 +700,11 @@ internal static class AetherIdentityAdministrationHttpAdapter
     }
 
     private sealed class ExternalReauthenticationRequest
+    {
+        public string? ReturnUrl { get; init; }
+    }
+
+    private sealed class ExternalIdentityLinkRequest
     {
         public string? ReturnUrl { get; init; }
     }

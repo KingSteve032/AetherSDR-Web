@@ -2350,10 +2350,19 @@ linked. The production runtime refuses to create a missing identity database
 or run against an unconverged schema.
 
 External sign-in fails closed until an administrator has explicitly linked the
-exact external subject to an enabled internal user. The administrator
-provisioning workflow is a later M8D slice; do not hand-edit the SQLite
-database. `Local` and `Combined` modes also remain startup-disabled until
-the local password and MFA flow is implemented.
+exact external subject to an enabled internal user. The M8D identity
+administration boundary starts that operation from a freshly reauthenticated
+canonical administrator session, accepts no issuer or subject in the request,
+and obtains the exact binding only from the validated OIDC callback. Linking or
+unlinking rotates the target account's authority and revokes its active
+sessions. Unlinking is rejected when it would remove the account's final sign-in
+method that is actually enabled by the configured authentication mode.
+
+A new external-only deployment is bootstrapped without database edits by first
+using `Combined` mode and the protected local administrator created during
+setup, linking that administrator's external identity, and only then switching
+to `EntraId` or `OpenIdConnect` mode. Do not hand-edit the SQLite database or
+treat email, display name, groups, or external roles as link authority.
 
 A successful external sign-in creates a durable, absolute-lifetime Aether
 session. Every cookie request revalidates the session, user status, authority
