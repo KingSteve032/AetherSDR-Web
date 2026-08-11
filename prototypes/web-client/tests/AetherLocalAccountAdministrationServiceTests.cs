@@ -1,0 +1,554 @@
+using System.Buffers.Binary;
+using System.Globalization;
+using System.Security.Claims;
+using System.Security.Cryptography;
+using AetherSDR.Web.Auth;
+using AetherSDR.Web.Auth.Identity;
+using AetherSDR.Web.Setup;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace AetherSDR.Web.Tests;
+
+public sealed class AetherLocalAccountAdministrationServiceTests
+{
+    private const string InitialPassword =
+        "Correct-Horse-Battery-Staple-42";
+    private const string ResetPassword =
+        "Reset-Correct-Horse-Battery-Staple-84";
+
+    [Fact]
+    public async Task EnrollmentRemainsDisabledUntilAdminConfirmedTotp()
+    {
+        await using AdministrationFixture fixture =
+            await AdministrationFixture.CreateAsync();
+        AetherLocalAccountEnrollmentRequest request = CreateEnrollment();
+
+        AetherLocalAccountEnrollmentIssue issue =
+            await fixture.Service.BeginEnrollmentAsync(
+                fixture.AdministratorPrincipal,
+                request);
+
+        AetherIdentityUser pending = await fixture.Database.Users.SingleAsync(
+            user => user.Id == issue.UserId);
+        Assert.False(pending.Enabled);
+        Assert.False(pending.TwoFactorEnabled);
+        Assert.NotNull(pending.DisabledAtUtc);
+        Assert.Equal(1, pending.AuthorityVersion);
+        Assert.NotEqual(InitialPassword, pending.PasswordHash);
+        Assert.Equal(
+            PasswordVerificationResult.Success,
+            fixture.PasswordHasher.VerifyHashedPassword(
+                pending,
+                Assert.IsType<string>(pending.PasswordHash),
+                InitialPassword));
+        Assert.Equal(
+            [AetherRoles.Control, AetherRoles.Observe],
+            await fixture.ReadRolesAsync(issue.UserId));
+        Assert.Equal(10, issue.RecoveryCodes.Count);
+
+        string requestText = request.ToString();
+        string issueText = issue.ToString();
+        Assert.DoesNotContain(InitialPassword, requestText);
+        Assert.DoesNotContain("new-operator", requestText);
+        Assert.DoesNotContain(issue.SharedSecretBase32, issueText);
+        foreach (string recoveryCode in issue.RecoveryCodes)
+        {
+            Assert.DoesNotContain(recoveryCode, issueText);
+        }
+
+        AetherLocalAccountMutationResult confirmation =
+            await fixture.Service.ConfirmEnrollmentAsync(
+                fixture.AdministratorPrincipal,
+                issue.UserId,
+                issue.EnrollmentId,
+                CurrentTotp(issue.SharedSecretBase32, fixture.Time.GetUtcNow()),
+                "confirm-local-account");
+
+        Assert.True(confirmation.Succeeded);
+        Assert.True(confirmation.MutationAttempted);
+        AetherIdentityUser enabled = await fixture.Database.Users.SingleAsync(
+            user => user.Id == issue.UserId);
+        Assert.True(enabled.Enabled);
+        Assert.True(enabled.TwoFactorEnabled);
+        Assert.Null(enabled.DisabledAtUtc);
+        Assert.Equal(
+            2,
+            await fixture.Database.IdentityAuditRecords.CountAsync());
+        Assert.DoesNotContain(
+            InitialPassword,
+            string.Join(
+                "\n",
+                await fixture.Database.IdentityAuditRecords
+                    .Select(audit => audit.DetailJson)
+                    .ToArrayAsync()));
+        Assert.DoesNotContain(
+            issue.SharedSecretBase32,
+            string.Join(
+                "\n",
+                await fixture.Database.IdentityAuditRecords
+                    .Select(audit => audit.DetailJson)
+                    .ToArrayAsync()));
+    }
+
+    [Fact]
+    public async Task StaleOrNonAdministratorSessionCannotCreateAccount()
+    {
+        await using AdministrationFixture fixture =
+            await AdministrationFixture.CreateAsync();
+        fixture.Time.Advance(
+            fixture.Policy.AdministratorReauthenticationLifetime +
+            TimeSpan.FromSeconds(1));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => fixture.Service.BeginEnrollmentAsync(
+                fixture.AdministratorPrincipal,
+                CreateEnrollment()));
+
+        fixture.Time.Rewind(
+            fixture.Policy.AdministratorReauthenticationLifetime +
+            TimeSpan.FromSeconds(1));
+        ClaimsPrincipal withoutAdmin = AetherCanonicalPrincipalFactory.Create(
+            fixture.Administrator,
+            fixture.AdministratorSession,
+            [AetherRoles.Observe],
+            fixture.Time.GetUtcNow());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => fixture.Service.BeginEnrollmentAsync(
+                withoutAdmin,
+                CreateEnrollment()));
+
+        Assert.Single(await fixture.Database.Users.ToArrayAsync());
+        Assert.Empty(await fixture.Database.IdentityAuditRecords.ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task AdministratorPasswordResetRotatesAuthorityAndRevokesSessions()
+    {
+        await using AdministrationFixture fixture =
+            await AdministrationFixture.CreateAsync();
+        AetherLocalAccountEnrollmentIssue issue =
+            await fixture.CreateConfirmedOperatorAsync();
+        AetherAuthenticationSession first =
+            await fixture.AddOperatorSessionAsync(issue.UserId);
+        AetherAuthenticationSession second =
+            await fixture.AddOperatorSessionAsync(issue.UserId);
+
+        AetherLocalAccountPasswordResetRequest request = new(
+            issue.UserId,
+            ResetPassword,
+            "admin-password-reset");
+        AetherLocalAccountMutationResult result =
+            await fixture.Service.ResetPasswordAsync(
+                fixture.AdministratorPrincipal,
+                request);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(2, result.AuthorityVersion);
+        Assert.Equal(2, result.RevokedSessionCount);
+        AetherIdentityUser user = await fixture.Database.Users.SingleAsync(
+            candidate => candidate.Id == issue.UserId);
+        Assert.Equal(
+            PasswordVerificationResult.Success,
+            fixture.PasswordHasher.VerifyHashedPassword(
+                user,
+                Assert.IsType<string>(user.PasswordHash),
+                ResetPassword));
+        Assert.Equal(fixture.Time.GetUtcNow(), first.RevokedAtUtc);
+        Assert.Equal(fixture.Time.GetUtcNow(), second.RevokedAtUtc);
+        Assert.Equal(
+            "administrator-password-reset",
+            first.RevocationReason);
+        string auditJson = (await fixture.Database.IdentityAuditRecords
+            .SingleAsync(
+                audit =>
+                    audit.Action ==
+                    "identity.local-account.password-reset"))
+            .DetailJson;
+        Assert.DoesNotContain(InitialPassword, auditJson);
+        Assert.DoesNotContain(ResetPassword, auditJson);
+        Assert.DoesNotContain(ResetPassword, request.ToString());
+    }
+
+    [Fact]
+    public async Task RoleChangesRevokeAuthorityAndPreserveFinalAdministrator()
+    {
+        await using AdministrationFixture fixture =
+            await AdministrationFixture.CreateAsync();
+        AetherLocalAccountEnrollmentIssue issue =
+            await fixture.CreateConfirmedOperatorAsync();
+        AetherAuthenticationSession operatorSession =
+            await fixture.AddOperatorSessionAsync(issue.UserId);
+
+        AetherLocalAccountMutationResult changed =
+            await fixture.Service.ReplaceRolesAsync(
+                fixture.AdministratorPrincipal,
+                issue.UserId,
+                [AetherRoles.Observe, AetherRoles.Transmit],
+                "replace-operator-roles");
+
+        Assert.True(changed.Succeeded);
+        Assert.True(changed.MutationAttempted);
+        Assert.Equal(2, changed.AuthorityVersion);
+        Assert.Equal(1, changed.RevokedSessionCount);
+        Assert.Equal(
+            [AetherRoles.Observe, AetherRoles.Transmit],
+            await fixture.ReadRolesAsync(issue.UserId));
+        Assert.Equal(fixture.Time.GetUtcNow(), operatorSession.RevokedAtUtc);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => fixture.Service.ReplaceRolesAsync(
+                fixture.AdministratorPrincipal,
+                fixture.Administrator.Id,
+                [AetherRoles.Observe],
+                "remove-final-administrator"));
+
+        Assert.Equal(
+            [AetherRoles.Admin, AetherRoles.Observe],
+            await fixture.ReadRolesAsync(fixture.Administrator.Id));
+        Assert.Null(fixture.AdministratorSession.RevokedAtUtc);
+    }
+
+    private static AetherLocalAccountEnrollmentRequest CreateEnrollment() =>
+        new(
+            "new-operator",
+            "New Operator",
+            "new-operator@example.test",
+            InitialPassword,
+            [AetherRoles.Observe, AetherRoles.Control],
+            "begin-local-account");
+
+    private static string CurrentTotp(
+        string sharedSecretBase32,
+        DateTimeOffset now)
+    {
+        byte[] secret = DecodeBase32(sharedSecretBase32);
+        byte[] movingFactor = new byte[sizeof(long)];
+        byte[] hash = [];
+        try
+        {
+            BinaryPrimitives.WriteInt64BigEndian(
+                movingFactor,
+                now.ToUnixTimeSeconds() / 30);
+            using HMACSHA1 hmac = new(secret);
+            hash = hmac.ComputeHash(movingFactor);
+            int offset = hash[^1] & 0x0f;
+            int binary =
+                ((hash[offset] & 0x7f) << 24) |
+                ((hash[offset + 1] & 0xff) << 16) |
+                ((hash[offset + 2] & 0xff) << 8) |
+                (hash[offset + 3] & 0xff);
+            return (binary % 1_000_000).ToString(
+                "D6",
+                CultureInfo.InvariantCulture);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(secret);
+            CryptographicOperations.ZeroMemory(movingFactor);
+            CryptographicOperations.ZeroMemory(hash);
+        }
+    }
+
+    private static byte[] DecodeBase32(string value)
+    {
+        const string Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+        List<byte> bytes = [];
+        int buffer = 0;
+        int bits = 0;
+        foreach (char character in value)
+        {
+            int digit = Alphabet.IndexOf(character);
+            if (digit < 0)
+            {
+                throw new InvalidOperationException(
+                    "The enrollment secret is not canonical Base32.");
+            }
+            buffer = (buffer << 5) | digit;
+            bits += 5;
+            if (bits >= 8)
+            {
+                bits -= 8;
+                bytes.Add((byte)(buffer >> bits));
+                buffer &= (1 << bits) - 1;
+            }
+        }
+        return bytes.ToArray();
+    }
+
+    private sealed class AdministrationFixture : IAsyncDisposable
+    {
+        private readonly TemporaryDirectory temporary;
+        private readonly ServiceProvider provider;
+        private readonly AsyncServiceScope scope;
+
+        private AdministrationFixture(
+            TemporaryDirectory temporary,
+            ServiceProvider provider,
+            AsyncServiceScope scope,
+            AetherIdentityDbContext database,
+            AetherLocalAccountAdministrationService service,
+            IPasswordHasher<AetherIdentityUser> passwordHasher,
+            AetherLocalAuthenticationPolicy policy,
+            ManualTimeProvider time,
+            AetherIdentityUser administrator,
+            AetherAuthenticationSession administratorSession,
+            ClaimsPrincipal administratorPrincipal)
+        {
+            this.temporary = temporary;
+            this.provider = provider;
+            this.scope = scope;
+            Database = database;
+            Service = service;
+            PasswordHasher = passwordHasher;
+            Policy = policy;
+            Time = time;
+            Administrator = administrator;
+            AdministratorSession = administratorSession;
+            AdministratorPrincipal = administratorPrincipal;
+        }
+
+        internal AetherIdentityDbContext Database { get; }
+
+        internal AetherLocalAccountAdministrationService Service { get; }
+
+        internal IPasswordHasher<AetherIdentityUser> PasswordHasher { get; }
+
+        internal AetherLocalAuthenticationPolicy Policy { get; }
+
+        internal ManualTimeProvider Time { get; }
+
+        internal AetherIdentityUser Administrator { get; }
+
+        internal AetherAuthenticationSession AdministratorSession { get; }
+
+        internal ClaimsPrincipal AdministratorPrincipal { get; }
+
+        internal static async Task<AdministrationFixture> CreateAsync()
+        {
+            TemporaryDirectory temporary = new();
+            try
+            {
+                InstallationPaths paths = InstallationPaths.Resolve(
+                    temporary.Path,
+                    InstallationPathLayout.Development);
+                AetherIdentityDatabaseReport plan =
+                    await AetherIdentityDatabaseMigration.PlanAsync(paths);
+                AetherIdentityDatabaseReport applied =
+                    await AetherIdentityDatabaseMigration.ApplyAsync(
+                        paths,
+                        plan.PlanId);
+                if (!string.Equals(
+                        applied.Outcome,
+                        "applied",
+                        StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        "The account administration test database failed.");
+                }
+
+                AetherAuthenticationTopology topology =
+                    AetherAuthenticationConfiguration.Validate(
+                        new AuthSettings { Mode = "Local" },
+                        isDevelopmentEnvironment: false);
+                ManualTimeProvider time = new(
+                    DateTimeOffset.Parse(
+                        "2026-08-10T15:00:00Z",
+                        CultureInfo.InvariantCulture));
+                ServiceCollection services = new();
+                services.AddAetherIdentityPersistence(paths);
+                services.AddSingleton<TimeProvider>(time);
+                services.AddSingleton<IDataProtectionProvider>(
+                    new EphemeralDataProtectionProvider());
+                services.AddAetherLocalAuthenticationFoundation(
+                    topology.LocalPolicy);
+                ServiceProvider provider = services.BuildServiceProvider();
+                AsyncServiceScope scope = provider.CreateAsyncScope();
+                IServiceProvider scoped = scope.ServiceProvider;
+                AetherIdentityDbContext database =
+                    scoped.GetRequiredService<AetherIdentityDbContext>();
+
+                AetherIdentityUser administrator = new()
+                {
+                    Id = Guid.NewGuid(),
+                    UserName = "administrator",
+                    NormalizedUserName = "ADMINISTRATOR",
+                    DisplayName = "Administrator",
+                    Enabled = true,
+                    AuthorityVersion = 3,
+                    TwoFactorEnabled = true,
+                    LockoutEnabled = true,
+                    EmailConfirmed = true,
+                    SecurityStamp = Guid.NewGuid().ToString("N"),
+                    ConcurrencyStamp = Guid.NewGuid().ToString("N")
+                };
+                Guid adminRoleId = await database.Roles
+                    .Where(role => role.Name == AetherRoles.Admin)
+                    .Select(role => role.Id)
+                    .SingleAsync();
+                Guid observeRoleId = await database.Roles
+                    .Where(role => role.Name == AetherRoles.Observe)
+                    .Select(role => role.Id)
+                    .SingleAsync();
+                database.Users.Add(administrator);
+                database.Set<IdentityUserRole<Guid>>().AddRange(
+                    new IdentityUserRole<Guid>
+                    {
+                        UserId = administrator.Id,
+                        RoleId = adminRoleId
+                    },
+                    new IdentityUserRole<Guid>
+                    {
+                        UserId = administrator.Id,
+                        RoleId = observeRoleId
+                    });
+                AetherAuthenticationSession administratorSession = new()
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = administrator.Id,
+                    User = administrator,
+                    AuthenticationMethod =
+                        AetherAuthenticationMethod.LocalPasswordWithTotp,
+                    AuthorityVersion = administrator.AuthorityVersion,
+                    CreatedAtUtc = time.GetUtcNow().AddMinutes(-1),
+                    LastSeenAtUtc = time.GetUtcNow(),
+                    AbsoluteExpiresAtUtc = time.GetUtcNow().AddHours(8),
+                    ReauthenticatedAtUtc = time.GetUtcNow()
+                };
+                database.AuthenticationSessions.Add(administratorSession);
+                await database.SaveChangesAsync();
+                ClaimsPrincipal principal =
+                    AetherCanonicalPrincipalFactory.Create(
+                        administrator,
+                        administratorSession,
+                        [AetherRoles.Admin, AetherRoles.Observe],
+                        time.GetUtcNow());
+                return new(
+                    temporary,
+                    provider,
+                    scope,
+                    database,
+                    scoped.GetRequiredService<
+                        AetherLocalAccountAdministrationService>(),
+                    scoped.GetRequiredService<
+                        IPasswordHasher<AetherIdentityUser>>(),
+                    topology.LocalPolicy,
+                    time,
+                    administrator,
+                    administratorSession,
+                    principal);
+            }
+            catch
+            {
+                temporary.Dispose();
+                throw;
+            }
+        }
+
+        internal async Task<AetherLocalAccountEnrollmentIssue>
+            CreateConfirmedOperatorAsync()
+        {
+            AetherLocalAccountEnrollmentIssue issue =
+                await Service.BeginEnrollmentAsync(
+                    AdministratorPrincipal,
+                    CreateEnrollment());
+            AetherLocalAccountMutationResult confirmation =
+                await Service.ConfirmEnrollmentAsync(
+                    AdministratorPrincipal,
+                    issue.UserId,
+                    issue.EnrollmentId,
+                    CurrentTotp(
+                        issue.SharedSecretBase32,
+                        Time.GetUtcNow()),
+                    "confirm-local-account");
+            Assert.True(confirmation.Succeeded);
+            return issue;
+        }
+
+        internal async Task<AetherAuthenticationSession> AddOperatorSessionAsync(
+            Guid userId)
+        {
+            AetherIdentityUser user = await Database.Users.SingleAsync(
+                candidate => candidate.Id == userId);
+            AetherAuthenticationSession session = new()
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                User = user,
+                AuthenticationMethod =
+                    AetherAuthenticationMethod.LocalPasswordWithTotp,
+                AuthorityVersion = user.AuthorityVersion,
+                CreatedAtUtc = Time.GetUtcNow().AddMinutes(-1),
+                LastSeenAtUtc = Time.GetUtcNow(),
+                AbsoluteExpiresAtUtc = Time.GetUtcNow().AddHours(8),
+                ReauthenticatedAtUtc = Time.GetUtcNow()
+            };
+            Database.AuthenticationSessions.Add(session);
+            await Database.SaveChangesAsync();
+            return session;
+        }
+
+        internal async Task<string[]> ReadRolesAsync(Guid userId) =>
+            await (
+                from assignment in Database.Set<IdentityUserRole<Guid>>()
+                join role in Database.Roles
+                    on assignment.RoleId equals role.Id
+                where assignment.UserId == userId && role.Name != null
+                orderby role.Name
+                select role.Name!)
+                .ToArrayAsync();
+
+        public async ValueTask DisposeAsync()
+        {
+            await scope.DisposeAsync();
+            await provider.DisposeAsync();
+            temporary.Dispose();
+        }
+    }
+
+    private sealed class ManualTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        private DateTimeOffset current = now;
+
+        public override DateTimeOffset GetUtcNow() => current;
+
+        internal void Advance(TimeSpan duration) =>
+            current = current.Add(duration);
+
+        internal void Rewind(TimeSpan duration) =>
+            current = current.Subtract(duration);
+    }
+
+    private sealed class TemporaryDirectory : IDisposable
+    {
+        internal TemporaryDirectory()
+        {
+            Path = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(),
+                $"aethersdr-account-admin-tests-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(Path);
+            if (!OperatingSystem.IsWindows())
+            {
+                File.SetUnixFileMode(
+                    Path,
+                    UnixFileMode.UserRead |
+                    UnixFileMode.UserWrite |
+                    UnixFileMode.UserExecute);
+            }
+        }
+
+        internal string Path { get; }
+
+        public void Dispose()
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            if (Directory.Exists(Path))
+            {
+                Directory.Delete(Path, recursive: true);
+            }
+        }
+    }
+}

@@ -32,7 +32,8 @@ internal sealed record AetherLocalAuthenticationPolicy(
     int RateLimitPermitCount,
     TimeSpan RateLimitWindow,
     TimeSpan MfaChallengeLifetime,
-    int MaximumOutstandingMfaChallenges);
+    int MaximumOutstandingMfaChallenges,
+    TimeSpan AdministratorReauthenticationLifetime);
 
 internal sealed record AetherAuthenticationTopology(
     AetherAuthenticationMode Mode,
@@ -157,6 +158,12 @@ internal static class AetherAuthenticationConfiguration
                 "Auth:Local MFA challenges must expire between 1 and 10 " +
                 "minutes and have a bounded capacity between 128 and 65536.");
         }
+        if (settings.AdministratorReauthenticationMinutes is < 1 or > 10)
+        {
+            throw new InvalidOperationException(
+                "Auth:Local:AdministratorReauthenticationMinutes must be " +
+                "between 1 and 10.");
+        }
 
         return new(
             settings.PasswordHashIterationCount,
@@ -167,7 +174,9 @@ internal static class AetherAuthenticationConfiguration
             settings.RateLimitPermitCount,
             TimeSpan.FromSeconds(settings.RateLimitWindowSeconds),
             TimeSpan.FromMinutes(settings.MfaChallengeLifetimeMinutes),
-            settings.MaximumOutstandingMfaChallenges);
+            settings.MaximumOutstandingMfaChallenges,
+            TimeSpan.FromMinutes(
+                settings.AdministratorReauthenticationMinutes));
     }
 
     private static TimeSpan ValidateSessionLifetime(

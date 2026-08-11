@@ -34,6 +34,7 @@ public sealed class LocalAuthenticationSettings
     public int RateLimitWindowSeconds { get; init; } = 60;
     public int MfaChallengeLifetimeMinutes { get; init; } = 5;
     public int MaximumOutstandingMfaChallenges { get; init; } = 4096;
+    public int AdministratorReauthenticationMinutes { get; init; } = 5;
 }
 
 public sealed class DevelopmentUserSettings

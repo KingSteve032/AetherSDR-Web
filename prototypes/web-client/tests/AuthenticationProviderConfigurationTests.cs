@@ -56,6 +56,9 @@ public sealed class AuthenticationProviderConfigurationTests
         Assert.Equal(
             4096,
             local.LocalPolicy.MaximumOutstandingMfaChallenges);
+        Assert.Equal(
+            TimeSpan.FromMinutes(5),
+            local.LocalPolicy.AdministratorReauthenticationLifetime);
         System.Threading.RateLimiting.FixedWindowRateLimiterOptions rateLimit =
             AetherLocalAuthenticationDefaults.CreateRateLimiterOptions(
                 local.LocalPolicy);
@@ -161,6 +164,17 @@ public sealed class AuthenticationProviderConfigurationTests
                     Local = new LocalAuthenticationSettings
                     {
                         MfaChallengeLifetimeMinutes = 11
+                    }
+                },
+                isDevelopmentEnvironment: false));
+        Assert.Throws<InvalidOperationException>(
+            () => AetherAuthenticationConfiguration.Validate(
+                new AuthSettings
+                {
+                    Mode = "Local",
+                    Local = new LocalAuthenticationSettings
+                    {
+                        AdministratorReauthenticationMinutes = 11
                     }
                 },
                 isDevelopmentEnvironment: false));

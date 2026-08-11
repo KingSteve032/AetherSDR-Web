@@ -173,7 +173,7 @@ internal sealed class AetherAuthenticationSessionService(
             MutationAttempted: true);
     }
 
-    private static bool TryReadCanonicalIdentity(
+    internal static bool TryReadCanonicalIdentity(
         ClaimsPrincipal principal,
         out Guid userId,
         out Guid sessionId,
