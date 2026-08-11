@@ -37,21 +37,21 @@ internal static class AetherAuthenticationComposition
             return;
         }
 
-        AetherExternalProviderDescriptor provider =
-            authenticationTopology.ExternalProvider ??
-            throw new InvalidOperationException(
-                "Production external authentication requires one provider.");
-        string clientSecret = OidcClientSecretResolver.Resolve(authSettings);
+        AetherExternalProviderDescriptor? provider =
+            authenticationTopology.ExternalProvider;
+        string challengeScheme =
+            authenticationTopology.LocalAccountsEnabled || provider is null
+                ? CookieAuthenticationDefaults.AuthenticationScheme
+                : OpenIdConnectDefaults.AuthenticationScheme;
 
-        builder.Services
+        AuthenticationBuilder authentication = builder.Services
             .AddAuthentication(options =>
             {
                 options.DefaultAuthenticateScheme =
                     CookieAuthenticationDefaults.AuthenticationScheme;
                 options.DefaultSignInScheme =
                     CookieAuthenticationDefaults.AuthenticationScheme;
-                options.DefaultChallengeScheme =
-                    OpenIdConnectDefaults.AuthenticationScheme;
+                options.DefaultChallengeScheme = challengeScheme;
             })
             .AddCookie(
                 CookieAuthenticationDefaults.AuthenticationScheme,
@@ -64,48 +64,57 @@ internal static class AetherAuthenticationComposition
                         CookieSecurePolicy.Always;
                     options.Cookie.SameSite = SameSiteMode.Lax;
                     options.Cookie.Path = "/";
+                    options.LoginPath = "/login";
+                    options.ReturnUrlParameter = "returnUrl";
                     options.AccessDeniedPath = "/access-denied";
                     options.ExpireTimeSpan =
                         authenticationTopology.SessionAbsoluteLifetime;
                     options.SlidingExpiration = false;
                     options.EventsType =
                         typeof(AetherCookieAuthenticationEvents);
-                })
-            .AddOpenIdConnect(
-                OpenIdConnectDefaults.AuthenticationScheme,
-                options =>
-                {
-                    options.Authority =
-                        provider.Authority.AbsoluteUri.TrimEnd('/');
-                    options.ClientId = provider.ClientId;
-                    options.ClientSecret = clientSecret;
-                    options.CallbackPath = provider.CallbackPath;
-                    options.SignedOutCallbackPath =
-                        provider.SignedOutCallbackPath;
-                    options.SignInScheme =
-                        CookieAuthenticationDefaults.AuthenticationScheme;
-                    options.ResponseType =
-                        OpenIdConnectResponseType.Code;
-                    options.UsePkce = true;
-                    options.SaveTokens = false;
-                    options.UseTokenLifetime = false;
-                    options.GetClaimsFromUserInfoEndpoint = false;
-                    options.MapInboundClaims = false;
-                    options.RequireHttpsMetadata = true;
-                    options.EventsType =
-                        typeof(AetherOpenIdConnectEvents);
-                    options.Scope.Clear();
-                    options.Scope.Add("openid");
-                    options.Scope.Add("profile");
-                    options.Scope.Add("email");
-                    options.TokenValidationParameters =
-                        new TokenValidationParameters
-                        {
-                            NameClaimType = "name",
-                            RoleClaimType =
-                                "aether:external-role-not-authority",
-                            ValidateIssuer = true
-                        };
                 });
+
+        if (provider is null)
+        {
+            return;
+        }
+
+        string clientSecret = OidcClientSecretResolver.Resolve(authSettings);
+        authentication.AddOpenIdConnect(
+            OpenIdConnectDefaults.AuthenticationScheme,
+            options =>
+            {
+                options.Authority =
+                    provider.Authority.AbsoluteUri.TrimEnd('/');
+                options.ClientId = provider.ClientId;
+                options.ClientSecret = clientSecret;
+                options.CallbackPath = provider.CallbackPath;
+                options.SignedOutCallbackPath =
+                    provider.SignedOutCallbackPath;
+                options.SignInScheme =
+                    CookieAuthenticationDefaults.AuthenticationScheme;
+                options.ResponseType =
+                    OpenIdConnectResponseType.Code;
+                options.UsePkce = true;
+                options.SaveTokens = false;
+                options.UseTokenLifetime = false;
+                options.GetClaimsFromUserInfoEndpoint = false;
+                options.MapInboundClaims = false;
+                options.RequireHttpsMetadata = true;
+                options.EventsType =
+                    typeof(AetherOpenIdConnectEvents);
+                options.Scope.Clear();
+                options.Scope.Add("openid");
+                options.Scope.Add("profile");
+                options.Scope.Add("email");
+                options.TokenValidationParameters =
+                    new TokenValidationParameters
+                    {
+                        NameClaimType = "name",
+                        RoleClaimType =
+                            "aether:external-role-not-authority",
+                        ValidateIssuer = true
+                    };
+            });
     }
 }

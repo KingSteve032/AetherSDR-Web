@@ -9,7 +9,8 @@
         content="Secure browser access to AetherSDR FlexRadio receivers.">
   <title>Sign in · AetherSDR Web</title>
   <link rel="icon" href="/assets/logo.png">
-  <link rel="stylesheet" href="/portal.css?v=portal-2">
+  <link rel="stylesheet" href="/portal.css?v=portal-3">
+  <script src="/login.js?v=local-auth-1" defer></script>
 </head>
 <body class="portal-body login-body">
   <main class="login-layout">
@@ -38,26 +39,83 @@
       <div>
         <p class="eyebrow">SECURE ACCESS</p>
         <h2>Welcome back</h2>
-        <p class="muted">
-          Sign in with the Microsoft Entra account assigned by your station
+        <p id="login-guidance" class="muted">
+          Loading the authentication methods configured by your station
           administrator.
         </p>
       </div>
-      <a class="primary-action"
-         href="/auth/login?returnUrl=%2Fradios">
-        <span class="microsoft-mark" aria-hidden="true">
-          <i></i><i></i><i></i><i></i>
-        </span>
-        Continue with Microsoft
-      </a>
+
+      <form id="local-login-form" class="login-form" hidden>
+        <label for="local-username">Username</label>
+        <input id="local-username"
+               name="username"
+               type="text"
+               maxlength="100"
+               autocomplete="username"
+               autocapitalize="none"
+               spellcheck="false"
+               required>
+        <label for="local-password">Password</label>
+        <input id="local-password"
+               name="password"
+               type="password"
+               maxlength="1024"
+               autocomplete="current-password"
+               required>
+        <button class="primary-action" type="submit">Continue</button>
+      </form>
+
+      <form id="local-mfa-form" class="login-form" hidden>
+        <div>
+          <h3>Verify it’s you</h3>
+          <p class="muted">
+            Enter a six-digit authenticator code or one unused recovery code.
+          </p>
+        </div>
+        <label for="local-verification-code">Verification code</label>
+        <input id="local-verification-code"
+               name="verificationCode"
+               type="text"
+               maxlength="64"
+               autocomplete="one-time-code"
+               autocapitalize="characters"
+               spellcheck="false"
+               required>
+        <button class="primary-action" type="submit">Sign in</button>
+        <button id="local-mfa-cancel"
+                class="secondary-action"
+                type="button">
+          Start again
+        </button>
+      </form>
+
+      <div id="provider-separator" class="login-separator" hidden>
+        <span>or</span>
+      </div>
+      <div id="external-login-section" hidden>
+        <a id="external-login" class="secondary-action provider-action" href="#">
+          <span class="provider-mark" aria-hidden="true">↗</span>
+          <span id="external-login-label">Continue with external provider</span>
+        </a>
+      </div>
+
+      <p id="login-status"
+         class="login-status"
+         role="alert"
+         aria-live="polite"></p>
+
       <div class="assurance-list" aria-label="Security details">
-        <div><span class="assurance-icon">✓</span><span>Entra protected</span></div>
+        <div><span class="assurance-icon">✓</span><span>Multi-factor protected</span></div>
         <div><span class="assurance-icon">✓</span><span>Private browser session</span></div>
         <div><span class="assurance-icon">✓</span><span>Transmit remains disabled</span></div>
       </div>
       <p class="fine-print">
-        AetherSDR Web does not collect your Microsoft password.
+        AetherSDR never asks the browser to store an MFA challenge as authority.
       </p>
+      <noscript>
+        JavaScript is required for local-account sign-in. An external provider,
+        when configured, remains available at <a href="/auth/login">sign in</a>.
+      </noscript>
     </section>
   </main>
 </body>

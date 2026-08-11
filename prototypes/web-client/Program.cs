@@ -647,12 +647,6 @@ AetherAuthenticationTopology authenticationTopology =
     AetherAuthenticationConfiguration.Validate(
         authSettings,
         builder.Environment.IsDevelopment());
-if (authenticationTopology.LocalAccountsEnabled)
-{
-    throw new InvalidOperationException(
-        "Local and Combined runtime authentication remain disabled until " +
-        "the production local login flow is installed.");
-}
 if (authenticationTopology.Mode != AetherAuthenticationMode.Development)
 {
     InstallationPaths identityRuntimePaths = resolveInstallationPaths();
@@ -860,6 +854,12 @@ string[] allowedOrigins =
 builder.Services.AddAntiforgery(options =>
 {
     options.HeaderName = AetherAntiforgery.HeaderName;
+    options.Cookie.Name = "__Host-AetherSdrWeb-Csrf";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.Path = "/";
 });
 builder.Services.AddSingleton(Options.Create(authSettings));
 builder.Services.AddSingleton(Options.Create(radioSettings));
@@ -1292,6 +1292,9 @@ app.Use(async (context, next) =>
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
+_ = AetherLocalAuthenticationHttpAdapter.Map(
+    app,
+    authenticationTopology);
 _ = ReleaseUpdateHttpAdapter.Map(app);
 app.UseRateLimiter();
 app.UseWebSockets(
@@ -4512,13 +4515,19 @@ app.MapGet(
 
 app.MapGet(
         "/auth/login",
-        (HttpContext context, string? returnUrl) =>
+        (string? returnUrl) =>
         {
             string safeReturnUrl = LocalReturnUrl.Normalize(returnUrl);
             if (authenticationTopology.Mode ==
                 AetherAuthenticationMode.Development)
             {
                 return Results.Redirect(safeReturnUrl);
+            }
+            if (authenticationTopology.ExternalProvider is null)
+            {
+                return Results.Redirect(
+                    "/login?returnUrl=" +
+                    Uri.EscapeDataString(safeReturnUrl));
             }
 
             AuthenticationProperties properties =
@@ -4564,12 +4573,18 @@ app.MapPost(
 
             AuthenticationProperties properties =
                 new() { RedirectUri = "/" };
-            return Results.SignOut(
-                properties,
-                [
-                    CookieAuthenticationDefaults.AuthenticationScheme,
-                    OpenIdConnectDefaults.AuthenticationScheme
-                ]);
+            string[] schemes =
+                user.HasClaim(
+                    claim =>
+                        claim.Type ==
+                        AetherIdentityClaimTypes.ProviderId)
+                    ?
+                    [
+                        CookieAuthenticationDefaults.AuthenticationScheme,
+                        OpenIdConnectDefaults.AuthenticationScheme
+                    ]
+                    : [CookieAuthenticationDefaults.AuthenticationScheme];
+            return Results.SignOut(properties, schemes);
         })
     .RequireAuthorization()
     .RequireAetherAntiforgery();
