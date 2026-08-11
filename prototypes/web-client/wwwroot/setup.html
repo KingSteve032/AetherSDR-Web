@@ -59,6 +59,7 @@
         <li data-step="backup"><span>6</span>Backup readiness</li>
         <li data-step="transmitSupport"><span>7</span>TX-support package</li>
         <li data-step="preflight"><span>8</span>Review preflight</li>
+        <li data-step="administrator"><span>9</span>Create administrator</li>
       </ol>
       <div class="safety-note">
         <strong>Transmit remains unavailable.</strong>
@@ -245,19 +246,141 @@
           </p>
           <button id="run-preflight" class="primary" type="button">Generate preflight</button>
           <div id="preflight-report" class="preflight" hidden></div>
+          <button id="continue-to-administrator"
+                  class="primary preflight-continue"
+                  type="button"
+                  hidden>
+            Continue to administrator creation
+          </button>
+        </section>
+
+        <section id="step-administrator" class="card setup-step" hidden>
+          <p class="eyebrow">STEP 9</p>
+          <h2>Create the first local administrator</h2>
+          <p>
+            No default credential is created. Choose a unique password, enroll
+            TOTP, and save the one-time recovery codes before setup can complete.
+          </p>
+          <form id="administrator-enrollment-form"
+                class="form-grid"
+                autocomplete="off">
+            <label>
+              User name
+              <input id="administrator-user-name"
+                     name="userName"
+                     maxlength="100"
+                     autocomplete="username"
+                     spellcheck="false"
+                     required>
+            </label>
+            <label>
+              Display name
+              <input id="administrator-display-name"
+                     name="displayName"
+                     maxlength="200"
+                     autocomplete="name"
+                     required>
+            </label>
+            <label class="full">
+              Email (optional)
+              <input id="administrator-email"
+                     name="email"
+                     type="email"
+                     maxlength="320"
+                     autocomplete="email">
+            </label>
+            <label>
+              Password
+              <input id="administrator-password"
+                     name="password"
+                     type="password"
+                     minlength="12"
+                     maxlength="256"
+                     autocomplete="new-password"
+                     required>
+            </label>
+            <label>
+              Confirm password
+              <input id="administrator-password-confirmation"
+                     name="passwordConfirmation"
+                     type="password"
+                     minlength="12"
+                     maxlength="256"
+                     autocomplete="new-password"
+                     required>
+            </label>
+            <button class="primary full" type="submit">
+              Create administrator and enroll TOTP
+            </button>
+          </form>
+
+          <section id="administrator-mfa-panel"
+                   class="credential-panel"
+                   hidden>
+            <p class="eyebrow">ONE-TIME MFA ENROLLMENT</p>
+            <h3>Save recovery codes and add the TOTP secret</h3>
+            <p>
+              These values are held only in this page memory. They cannot be
+              shown again after setup completes.
+            </p>
+            <label>
+              Authenticator setup key
+              <output id="administrator-totp-secret"
+                      class="secret-value"
+                      aria-label="Authenticator setup key"></output>
+            </label>
+            <label>
+              Authenticator URI
+              <output id="administrator-totp-uri"
+                      class="secret-value secret-uri"
+                      aria-label="Authenticator URI"></output>
+            </label>
+            <div>
+              <strong>One-time recovery codes</strong>
+              <ol id="administrator-recovery-codes"
+                  class="recovery-codes"
+                  aria-label="One-time recovery codes"></ol>
+            </div>
+            <form id="administrator-confirmation-form"
+                  autocomplete="off">
+              <label>
+                Six-digit TOTP code
+                <input id="administrator-totp-code"
+                       name="totpCode"
+                       inputmode="numeric"
+                       pattern="[0-9]{6}"
+                       minlength="6"
+                       maxlength="6"
+                       autocomplete="one-time-code"
+                       required>
+              </label>
+              <label class="check-row warning-row">
+                <input id="administrator-recovery-confirmation"
+                       type="checkbox"
+                       required>
+                <span>
+                  I saved the recovery codes outside this browser and understand
+                  that setup completion removes this one-time display.
+                </span>
+              </label>
+              <button class="primary" type="submit">
+                Verify TOTP and complete setup
+              </button>
+            </form>
+          </section>
         </section>
 
         <section id="configured-panel" class="card success-card" hidden>
-          <p class="eyebrow">M8A CONFIGURATION READY</p>
-          <h2>The first-run choices are ready for installer review</h2>
+          <p class="eyebrow">SETUP COMPLETE</p>
+          <h2>The first administrator is active</h2>
           <p>
-            No account, package, service, proxy, firewall, radio, watchdog, or TX
-            change has been made. Production administrator creation and installer
-            activation remain separate reviewed stages.
+            Setup authority and its browser cookies have been revoked. Normal
+            authentication becomes available on the next production start;
+            radio, watchdog, and transmit authority remain unchanged.
           </p>
         </section>
 
-        <div class="session-actions">
+        <div id="session-actions" class="session-actions">
           <button id="revoke-session" class="quiet" type="button">End browser setup session</button>
         </div>
       </section>
