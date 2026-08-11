@@ -26,12 +26,15 @@ public sealed class AetherIdentityAdministrationHttpAdapterTests
             [
                 AetherIdentityAdministrationHttpAdapter.AccountsPath,
                 AetherIdentityAdministrationHttpAdapter.EnrollmentsPath,
+                AetherIdentityAdministrationHttpAdapter.AccountEnabledPath,
                 AetherIdentityAdministrationHttpAdapter.AccountsPath +
                     "/{userId:guid}/enrollment-confirmation",
                 AetherIdentityAdministrationHttpAdapter.AccountsPath +
                     "/{userId:guid}/password-reset",
                 AetherIdentityAdministrationHttpAdapter.AccountsPath +
                     "/{userId:guid}/roles",
+                AetherIdentityAdministrationHttpAdapter
+                    .AccountSessionRevocationPath,
                 AetherIdentityAdministrationHttpAdapter
                     .LocalMfaReauthenticationPath,
                 AetherIdentityAdministrationHttpAdapter
@@ -40,7 +43,7 @@ public sealed class AetherIdentityAdministrationHttpAdapterTests
             host.Report.EndpointPaths.Order(StringComparer.Ordinal));
 
         RouteEndpoint[] endpoints = host.Endpoints();
-        Assert.Equal(7, endpoints.Length);
+        Assert.Equal(9, endpoints.Length);
         foreach (RouteEndpoint endpoint in endpoints)
         {
             IAuthorizeData authorization = Assert.Single(
@@ -98,7 +101,11 @@ public sealed class AetherIdentityAdministrationHttpAdapterTests
             AetherIdentityAdministrationHttpAdapter
                 .ExternalIdentityProviderPath,
             combinedHost.Report.EndpointPaths);
-        Assert.Equal(10, combinedHost.Endpoints().Length);
+        Assert.Contains(
+            AetherIdentityAdministrationHttpAdapter
+                .ExternalAccountProvisioningPath,
+            combinedHost.Report.EndpointPaths);
+        Assert.Equal(13, combinedHost.Endpoints().Length);
     }
 
     [Fact]
@@ -111,11 +118,16 @@ public sealed class AetherIdentityAdministrationHttpAdapterTests
             [
                 AetherIdentityAdministrationHttpAdapter.AccountsPath,
                 AetherIdentityAdministrationHttpAdapter
+                    .ExternalAccountProvisioningPath,
+                AetherIdentityAdministrationHttpAdapter.AccountEnabledPath,
+                AetherIdentityAdministrationHttpAdapter
                     .ExternalIdentityLinkPath,
                 AetherIdentityAdministrationHttpAdapter
                     .ExternalIdentityProviderPath,
                 AetherIdentityAdministrationHttpAdapter.AccountsPath +
                     "/{userId:guid}/roles",
+                AetherIdentityAdministrationHttpAdapter
+                    .AccountSessionRevocationPath,
                 AetherIdentityAdministrationHttpAdapter
                     .ExternalReauthenticationPath
             ],

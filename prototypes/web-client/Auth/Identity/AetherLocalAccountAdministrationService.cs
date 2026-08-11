@@ -79,6 +79,39 @@ internal sealed class AetherLocalAccountEnrollmentIssue
         "SharedSecretBase32 = [redacted], RecoveryCodes = [redacted] }";
 }
 
+internal sealed class AetherIdentityAccountProvisioningRequest
+{
+    internal AetherIdentityAccountProvisioningRequest(
+        string userName,
+        string displayName,
+        string? email,
+        IReadOnlyCollection<string> roles,
+        string correlationId)
+    {
+        UserName = userName;
+        DisplayName = displayName;
+        Email = email;
+        Roles = roles;
+        CorrelationId = correlationId;
+    }
+
+    internal string UserName { get; }
+
+    internal string DisplayName { get; }
+
+    internal string? Email { get; }
+
+    internal IReadOnlyCollection<string> Roles { get; }
+
+    internal string CorrelationId { get; }
+
+    public override string ToString() =>
+        $"{nameof(AetherIdentityAccountProvisioningRequest)} " +
+        "{ UserName = [redacted], DisplayName = [redacted], " +
+        "Email = [redacted], Roles = [redacted], " +
+        $"CorrelationId = {CorrelationId} }}";
+}
+
 internal sealed class AetherLocalAccountPasswordResetRequest
 {
     internal AetherLocalAccountPasswordResetRequest(
@@ -103,7 +136,7 @@ internal sealed class AetherLocalAccountPasswordResetRequest
         $"CorrelationId = {CorrelationId} }}";
 }
 
-internal sealed record AetherLocalAccountMutationResult(
+internal sealed record AetherIdentityAccountMutationResult(
     bool Succeeded,
     string Code,
     Guid UserId,
@@ -140,6 +173,7 @@ internal sealed class AetherLocalAccountAdministrationService(
     ILookupNormalizer normalizer,
     AetherLocalMfaCredentialProtector credentialProtector,
     AetherLocalAuthenticationPolicy policy,
+    AetherAuthenticationTopology topology,
     AetherIdentityAdministrationLock administrationLock,
     TimeProvider timeProvider)
 {
@@ -234,6 +268,100 @@ internal sealed class AetherLocalAccountAdministrationService(
                 limit,
                 totalCount,
                 accounts.AsReadOnly());
+        }
+        finally
+        {
+            administrationLock.Gate.Release();
+        }
+    }
+
+    internal async Task<AetherIdentityAccountMutationResult>
+        ProvisionExternalAccountAsync(
+            ClaimsPrincipal administrator,
+            AetherIdentityAccountProvisioningRequest request,
+            CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(administrator);
+        ArgumentNullException.ThrowIfNull(request);
+        if (topology.ExternalProvider is null)
+        {
+            throw new InvalidOperationException(
+                "External account provisioning requires a configured provider.");
+        }
+        ValidatedIdentity identity = ValidateIdentity(
+            request.UserName,
+            request.DisplayName,
+            request.Email,
+            request.Roles,
+            request.CorrelationId);
+        DateTimeOffset now = timeProvider.GetUtcNow();
+
+        await administrationLock.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var transaction =
+                await database.Database.BeginTransactionAsync(
+                    IsolationLevel.Serializable,
+                    cancellationToken);
+            Guid actorUserId = await RequireFreshAdministratorAsync(
+                administrator,
+                now,
+                cancellationToken);
+            if (await database.Users.AnyAsync(
+                    candidate =>
+                        candidate.NormalizedUserName ==
+                            identity.NormalizedUserName,
+                    cancellationToken))
+            {
+                throw new InvalidOperationException(
+                    "The requested identity account already exists.");
+            }
+
+            Guid userId = Guid.NewGuid();
+            AetherIdentityUser user = new()
+            {
+                Id = userId,
+                UserName = identity.UserName,
+                NormalizedUserName = identity.NormalizedUserName,
+                DisplayName = identity.DisplayName,
+                Email = identity.Email,
+                NormalizedEmail = identity.NormalizedEmail,
+                PasswordHash = null,
+                Enabled = false,
+                DisabledAtUtc = now,
+                AuthorityVersion = 1,
+                TwoFactorEnabled = false,
+                LockoutEnabled = true,
+                EmailConfirmed = false,
+                AccessFailedCount = 0,
+                SecurityStamp = Guid.NewGuid().ToString("N"),
+                ConcurrencyStamp = Guid.NewGuid().ToString("N")
+            };
+            database.Users.Add(user);
+            await AddRolesAsync(userId, identity.Roles, cancellationToken);
+            AddAudit(
+                actorUserId,
+                userId,
+                "identity.external-account.provisioned",
+                request.CorrelationId,
+                AetherIdentityAuditOutcome.Succeeded,
+                now,
+                new
+                {
+                    code = "external-account-provisioned",
+                    userId,
+                    roles = identity.Roles,
+                    enabled = false
+                });
+            await database.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return new(
+                Succeeded: true,
+                Code: "external-account-provisioned",
+                userId,
+                user.AuthorityVersion,
+                RevokedSessionCount: 0,
+                MutationAttempted: true);
         }
         finally
         {
@@ -346,7 +474,7 @@ internal sealed class AetherLocalAccountAdministrationService(
         }
     }
 
-    internal async Task<AetherLocalAccountMutationResult>
+    internal async Task<AetherIdentityAccountMutationResult>
         ConfirmEnrollmentAsync(
             ClaimsPrincipal administrator,
             Guid userId,
@@ -494,7 +622,7 @@ internal sealed class AetherLocalAccountAdministrationService(
         }
     }
 
-    internal async Task<AetherLocalAccountMutationResult> ResetPasswordAsync(
+    internal async Task<AetherIdentityAccountMutationResult> ResetPasswordAsync(
         ClaimsPrincipal administrator,
         AetherLocalAccountPasswordResetRequest request,
         CancellationToken cancellationToken = default)
@@ -561,7 +689,7 @@ internal sealed class AetherLocalAccountAdministrationService(
         }
     }
 
-    internal async Task<AetherLocalAccountMutationResult> ReplaceRolesAsync(
+    internal async Task<AetherIdentityAccountMutationResult> ReplaceRolesAsync(
         ClaimsPrincipal administrator,
         Guid userId,
         IReadOnlyCollection<string> roles,
@@ -663,6 +791,176 @@ internal sealed class AetherLocalAccountAdministrationService(
         }
     }
 
+    internal async Task<AetherIdentityAccountMutationResult> SetEnabledAsync(
+        ClaimsPrincipal administrator,
+        Guid userId,
+        bool enabled,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(administrator);
+        ValidateIdentifier(userId, nameof(userId));
+        ValidateCorrelationId(correlationId);
+        DateTimeOffset now = timeProvider.GetUtcNow();
+
+        await administrationLock.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var transaction =
+                await database.Database.BeginTransactionAsync(
+                    IsolationLevel.Serializable,
+                    cancellationToken);
+            Guid actorUserId = await RequireFreshAdministratorAsync(
+                administrator,
+                now,
+                cancellationToken);
+            AetherIdentityUser user = await database.Users.SingleOrDefaultAsync(
+                    candidate => candidate.Id == userId,
+                    cancellationToken)
+                ?? throw new InvalidOperationException(
+                    "The target identity does not exist.");
+            if (user.Enabled == enabled)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return new(
+                    Succeeded: true,
+                    Code: enabled
+                        ? "identity-account-enabled-converged"
+                        : "identity-account-disabled-converged",
+                    userId,
+                    user.AuthorityVersion,
+                    RevokedSessionCount: 0,
+                    MutationAttempted: false);
+            }
+
+            string[] roles = await ReadRolesAsync(userId, cancellationToken);
+            if (!enabled &&
+                roles.Contains(AetherRoles.Admin, StringComparer.Ordinal) &&
+                await CountEnabledAdministratorsAsync(cancellationToken) <= 1)
+            {
+                throw new InvalidOperationException(
+                    "The final enabled administrator cannot be disabled.");
+            }
+            if (enabled &&
+                !await HasUsableSignInMethodAsync(user, cancellationToken))
+            {
+                throw new InvalidOperationException(
+                    "The identity cannot be enabled without a usable sign-in method.");
+            }
+
+            RotateAuthority(user);
+            user.Enabled = enabled;
+            user.DisabledAtUtc = enabled ? null : now;
+            if (enabled)
+            {
+                user.AccessFailedCount = 0;
+                user.LockoutEnd = null;
+            }
+            int revokedSessionCount = await RevokeActiveSessionsAsync(
+                userId,
+                now,
+                enabled
+                    ? "administrator-account-enabled"
+                    : "administrator-account-disabled",
+                cancellationToken);
+            string code = enabled
+                ? "identity-account-enabled"
+                : "identity-account-disabled";
+            AddAudit(
+                actorUserId,
+                userId,
+                enabled
+                    ? "identity.account.enabled"
+                    : "identity.account.disabled",
+                correlationId,
+                AetherIdentityAuditOutcome.Succeeded,
+                now,
+                new
+                {
+                    code,
+                    userId,
+                    authorityVersion = user.AuthorityVersion,
+                    revokedSessionCount
+                });
+            await database.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return new(
+                Succeeded: true,
+                Code: code,
+                userId,
+                user.AuthorityVersion,
+                revokedSessionCount,
+                MutationAttempted: true);
+        }
+        finally
+        {
+            administrationLock.Gate.Release();
+        }
+    }
+
+    internal async Task<AetherIdentityAccountMutationResult> RevokeSessionsAsync(
+        ClaimsPrincipal administrator,
+        Guid userId,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(administrator);
+        ValidateIdentifier(userId, nameof(userId));
+        ValidateCorrelationId(correlationId);
+        DateTimeOffset now = timeProvider.GetUtcNow();
+
+        await administrationLock.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var transaction =
+                await database.Database.BeginTransactionAsync(
+                    IsolationLevel.Serializable,
+                    cancellationToken);
+            Guid actorUserId = await RequireFreshAdministratorAsync(
+                administrator,
+                now,
+                cancellationToken);
+            AetherIdentityUser user = await database.Users.SingleOrDefaultAsync(
+                    candidate => candidate.Id == userId,
+                    cancellationToken)
+                ?? throw new InvalidOperationException(
+                    "The target identity does not exist.");
+            RotateAuthority(user);
+            int revokedSessionCount = await RevokeActiveSessionsAsync(
+                userId,
+                now,
+                "administrator-session-revocation",
+                cancellationToken);
+            AddAudit(
+                actorUserId,
+                userId,
+                "identity.account.sessions-revoked",
+                correlationId,
+                AetherIdentityAuditOutcome.Succeeded,
+                now,
+                new
+                {
+                    code = "identity-account-sessions-revoked",
+                    userId,
+                    authorityVersion = user.AuthorityVersion,
+                    revokedSessionCount
+                });
+            await database.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return new(
+                Succeeded: true,
+                Code: "identity-account-sessions-revoked",
+                userId,
+                user.AuthorityVersion,
+                revokedSessionCount,
+                MutationAttempted: true);
+        }
+        finally
+        {
+            administrationLock.Gate.Release();
+        }
+    }
+
     private async Task<Guid> RequireFreshAdministratorAsync(
         ClaimsPrincipal administrator,
         DateTimeOffset now,
@@ -717,6 +1015,82 @@ internal sealed class AetherLocalAccountAdministrationService(
             throw FreshAdministratorRequired();
         }
         return actorUserId;
+    }
+
+    private async Task<bool> HasUsableSignInMethodAsync(
+        AetherIdentityUser user,
+        CancellationToken cancellationToken)
+    {
+        if (topology.ExternalProvider is AetherExternalProviderDescriptor provider &&
+            await database.ExternalIdentities.AnyAsync(
+                identity =>
+                    identity.UserId == user.Id &&
+                    identity.ProviderId == provider.ProviderId,
+                cancellationToken))
+        {
+            return true;
+        }
+        if (!topology.LocalAccountsEnabled ||
+            string.IsNullOrWhiteSpace(user.PasswordHash) ||
+            !user.TwoFactorEnabled ||
+            !user.LockoutEnabled)
+        {
+            return false;
+        }
+
+        IdentityUserToken<Guid>[] tokens =
+            await database.Set<IdentityUserToken<Guid>>()
+                .Where(token =>
+                    token.UserId == user.Id &&
+                    token.LoginProvider ==
+                        AetherLocalMfaCredentialProtector.LoginProvider &&
+                    (token.Name ==
+                        AetherLocalMfaCredentialProtector.TotpSecretName ||
+                     token.Name.StartsWith(
+                         AetherLocalMfaCredentialProtector
+                             .RecoveryCodeNamePrefix)))
+                .ToArrayAsync(cancellationToken);
+        foreach (IdentityUserToken<Guid> token in tokens)
+        {
+            if (string.Equals(
+                    token.Name,
+                    AetherLocalMfaCredentialProtector.TotpSecretName,
+                    StringComparison.Ordinal) &&
+                credentialProtector.TryUnprotectTotpSecret(
+                    token,
+                    out byte[] secret))
+            {
+                CryptographicOperations.ZeroMemory(secret);
+                return true;
+            }
+            if (IsActiveRecoveryCredential(token))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool IsActiveRecoveryCredential(
+        IdentityUserToken<Guid> token)
+    {
+        const int bindingLength = 64;
+        string prefix =
+            AetherLocalMfaCredentialProtector.RecoveryCodeNamePrefix;
+        if (!token.Name.StartsWith(prefix, StringComparison.Ordinal) ||
+            token.Name.Length != prefix.Length + bindingLength ||
+            !string.Equals(token.Value, "active", StringComparison.Ordinal))
+        {
+            return false;
+        }
+        foreach (char character in token.Name.AsSpan(prefix.Length))
+        {
+            if (character is not (>= 'a' and <= 'f' or >= '0' and <= '9'))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     private async Task<AetherIdentityUser> RequireLocalUserAsync(
@@ -838,8 +1212,31 @@ internal sealed class AetherLocalAccountAdministrationService(
     private ValidatedEnrollment ValidateEnrollment(
         AetherLocalAccountEnrollmentRequest request)
     {
-        string userName = ValidateExactText(
+        ValidatedIdentity identity = ValidateIdentity(
             request.UserName,
+            request.DisplayName,
+            request.Email,
+            request.Roles,
+            request.CorrelationId);
+        ValidatePassword(request.Password);
+        return new(
+            identity.UserName,
+            identity.NormalizedUserName,
+            identity.DisplayName,
+            identity.Email,
+            identity.NormalizedEmail,
+            identity.Roles);
+    }
+
+    private ValidatedIdentity ValidateIdentity(
+        string? requestedUserName,
+        string? requestedDisplayName,
+        string? requestedEmail,
+        IReadOnlyCollection<string>? requestedRoles,
+        string correlationId)
+    {
+        string userName = ValidateExactText(
+            requestedUserName,
             1,
             100,
             "user name");
@@ -849,19 +1246,19 @@ internal sealed class AetherLocalAccountAdministrationService(
             normalizedUserName.Any(char.IsControl))
         {
             throw new InvalidOperationException(
-                "The local account user name cannot be normalized.");
+                "The identity account user name cannot be normalized.");
         }
         string displayName = ValidateExactText(
-            request.DisplayName,
+            requestedDisplayName,
             1,
             200,
             "display name");
         string? email = null;
         string? normalizedEmail = null;
-        if (request.Email is not null)
+        if (requestedEmail is not null)
         {
             email = ValidateExactText(
-                request.Email,
+                requestedEmail,
                 3,
                 320,
                 "email address");
@@ -871,12 +1268,11 @@ internal sealed class AetherLocalAccountAdministrationService(
                 normalizedEmail.Any(char.IsControl))
             {
                 throw new InvalidOperationException(
-                    "The local account email cannot be normalized.");
+                    "The identity account email cannot be normalized.");
             }
         }
-        ValidatePassword(request.Password);
-        string[] roles = ValidateRoles(request.Roles);
-        ValidateCorrelationId(request.CorrelationId);
+        string[] roles = ValidateRoles(requestedRoles);
+        ValidateCorrelationId(correlationId);
         return new(
             userName,
             normalizedUserName,
@@ -935,7 +1331,7 @@ internal sealed class AetherLocalAccountAdministrationService(
             candidate.Any(char.IsControl))
         {
             throw new InvalidOperationException(
-                $"The local account {field} is not a bounded exact value.");
+                $"The identity account {field} is not a bounded exact value.");
         }
         return candidate;
     }
@@ -1008,6 +1404,14 @@ internal sealed class AetherLocalAccountAdministrationService(
 
     private static InvalidOperationException FreshAdministratorRequired() =>
         new AetherAdministratorReauthenticationRequiredException();
+
+    private sealed record ValidatedIdentity(
+        string UserName,
+        string NormalizedUserName,
+        string DisplayName,
+        string? Email,
+        string? NormalizedEmail,
+        string[] Roles);
 
     private sealed record ValidatedEnrollment(
         string UserName,

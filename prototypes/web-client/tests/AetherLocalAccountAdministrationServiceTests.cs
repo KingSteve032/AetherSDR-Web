@@ -59,7 +59,7 @@ public sealed class AetherLocalAccountAdministrationServiceTests
             Assert.DoesNotContain(recoveryCode, issueText);
         }
 
-        AetherLocalAccountMutationResult confirmation =
+        AetherIdentityAccountMutationResult confirmation =
             await fixture.Service.ConfirmEnrollmentAsync(
                 fixture.AdministratorPrincipal,
                 issue.UserId,
@@ -199,7 +199,7 @@ public sealed class AetherLocalAccountAdministrationServiceTests
             issue.UserId,
             ResetPassword,
             "admin-password-reset");
-        AetherLocalAccountMutationResult result =
+        AetherIdentityAccountMutationResult result =
             await fixture.Service.ResetPasswordAsync(
                 fixture.AdministratorPrincipal,
                 request);
@@ -241,7 +241,7 @@ public sealed class AetherLocalAccountAdministrationServiceTests
         AetherAuthenticationSession operatorSession =
             await fixture.AddOperatorSessionAsync(issue.UserId);
 
-        AetherLocalAccountMutationResult changed =
+        AetherIdentityAccountMutationResult changed =
             await fixture.Service.ReplaceRolesAsync(
                 fixture.AdministratorPrincipal,
                 issue.UserId,
@@ -267,6 +267,113 @@ public sealed class AetherLocalAccountAdministrationServiceTests
         Assert.Equal(
             [AetherRoles.Admin, AetherRoles.Observe],
             await fixture.ReadRolesAsync(fixture.Administrator.Id));
+        Assert.Null(fixture.AdministratorSession.RevokedAtUtc);
+    }
+
+    [Fact]
+    public async Task ExternalProvisioningRequiresVerifiedMethodBeforeEnable()
+    {
+        await using AdministrationFixture fixture =
+            await AdministrationFixture.CreateAsync(combined: true);
+        AetherIdentityAccountProvisioningRequest request = new(
+            "external-operator",
+            "External Operator",
+            "external-operator@example.test",
+            [AetherRoles.Observe, AetherRoles.Control],
+            "provision-external-account");
+
+        AetherIdentityAccountMutationResult provisioned =
+            await fixture.Service.ProvisionExternalAccountAsync(
+                fixture.AdministratorPrincipal,
+                request);
+        AetherIdentityUser pending = await fixture.Database.Users.SingleAsync(
+            user => user.Id == provisioned.UserId);
+
+        Assert.True(provisioned.Succeeded);
+        Assert.False(pending.Enabled);
+        Assert.Null(pending.PasswordHash);
+        Assert.False(pending.TwoFactorEnabled);
+        Assert.DoesNotContain("external-operator", request.ToString());
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => fixture.Service.SetEnabledAsync(
+                fixture.AdministratorPrincipal,
+                pending.Id,
+                enabled: true,
+                "enable-without-provider"));
+
+        await fixture.AddExternalIdentityAsync(pending.Id);
+        AetherIdentityAccountMutationResult enabled =
+            await fixture.Service.SetEnabledAsync(
+                fixture.AdministratorPrincipal,
+                pending.Id,
+                enabled: true,
+                "enable-external-account");
+
+        Assert.True(enabled.Succeeded);
+        Assert.True(enabled.MutationAttempted);
+        Assert.Equal(2, enabled.AuthorityVersion);
+        Assert.True(pending.Enabled);
+        Assert.Equal(
+            [AetherRoles.Control, AetherRoles.Observe],
+            await fixture.ReadRolesAsync(pending.Id));
+        Assert.Equal(
+            "identity.external-account.provisioned",
+            (await fixture.Database.IdentityAuditRecords.SingleAsync(
+                audit => audit.CorrelationId ==
+                    "provision-external-account")).Action);
+    }
+
+    [Fact]
+    public async Task EnabledStateAndExplicitRevocationRotateAuthoritySafely()
+    {
+        await using AdministrationFixture fixture =
+            await AdministrationFixture.CreateAsync();
+        AetherLocalAccountEnrollmentIssue issue =
+            await fixture.CreateConfirmedOperatorAsync();
+        AetherAuthenticationSession first =
+            await fixture.AddOperatorSessionAsync(issue.UserId);
+
+        AetherIdentityAccountMutationResult disabled =
+            await fixture.Service.SetEnabledAsync(
+                fixture.AdministratorPrincipal,
+                issue.UserId,
+                enabled: false,
+                "disable-operator");
+        Assert.Equal(2, disabled.AuthorityVersion);
+        Assert.Equal(1, disabled.RevokedSessionCount);
+        Assert.False((await fixture.Database.Users.SingleAsync(
+            user => user.Id == issue.UserId)).Enabled);
+        Assert.Equal(
+            "administrator-account-disabled",
+            first.RevocationReason);
+
+        AetherIdentityAccountMutationResult enabled =
+            await fixture.Service.SetEnabledAsync(
+                fixture.AdministratorPrincipal,
+                issue.UserId,
+                enabled: true,
+                "enable-operator");
+        Assert.Equal(3, enabled.AuthorityVersion);
+        AetherAuthenticationSession second =
+            await fixture.AddOperatorSessionAsync(issue.UserId);
+        AetherIdentityAccountMutationResult revoked =
+            await fixture.Service.RevokeSessionsAsync(
+                fixture.AdministratorPrincipal,
+                issue.UserId,
+                "revoke-operator-sessions");
+        Assert.Equal(4, revoked.AuthorityVersion);
+        Assert.Equal(1, revoked.RevokedSessionCount);
+        Assert.Equal(
+            "administrator-session-revocation",
+            second.RevocationReason);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => fixture.Service.SetEnabledAsync(
+                fixture.AdministratorPrincipal,
+                fixture.Administrator.Id,
+                enabled: false,
+                "disable-final-administrator"));
+        Assert.True(fixture.Administrator.Enabled);
         Assert.Null(fixture.AdministratorSession.RevokedAtUtc);
     }
 
@@ -396,7 +503,8 @@ public sealed class AetherLocalAccountAdministrationServiceTests
 
         internal string AdministratorRecoveryCode { get; }
 
-        internal static async Task<AdministrationFixture> CreateAsync()
+        internal static async Task<AdministrationFixture> CreateAsync(
+            bool combined = false)
         {
             TemporaryDirectory temporary = new();
             try
@@ -421,7 +529,18 @@ public sealed class AetherLocalAccountAdministrationServiceTests
 
                 AetherAuthenticationTopology topology =
                     AetherAuthenticationConfiguration.Validate(
-                        new AuthSettings { Mode = "Local" },
+                        combined
+                            ? new AuthSettings
+                            {
+                                Mode = "Combined",
+                                ProviderId = "club-oidc",
+                                ProviderType = "OpenIdConnect",
+                                Authority =
+                                    "https://identity.example/tenant",
+                                ClientId = "aethersdr-web",
+                                ClientSecret = "test-secret"
+                            }
+                            : new AuthSettings { Mode = "Local" },
                         isDevelopmentEnvironment: false);
                 ManualTimeProvider time = new(
                     DateTimeOffset.Parse(
@@ -542,7 +661,7 @@ public sealed class AetherLocalAccountAdministrationServiceTests
                 await Service.BeginEnrollmentAsync(
                     AdministratorPrincipal,
                     CreateEnrollment());
-            AetherLocalAccountMutationResult confirmation =
+            AetherIdentityAccountMutationResult confirmation =
                 await Service.ConfirmEnrollmentAsync(
                     AdministratorPrincipal,
                     issue.UserId,
@@ -576,6 +695,24 @@ public sealed class AetherLocalAccountAdministrationServiceTests
             Database.AuthenticationSessions.Add(session);
             await Database.SaveChangesAsync();
             return session;
+        }
+
+        internal async Task AddExternalIdentityAsync(Guid userId)
+        {
+            AetherIdentityUser user = await Database.Users.SingleAsync(
+                candidate => candidate.Id == userId);
+            Database.ExternalIdentities.Add(
+                new()
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    User = user,
+                    ProviderId = "club-oidc",
+                    Issuer = "https://identity.example/tenant",
+                    Subject = $"subject-{userId:N}",
+                    LinkedAtUtc = Time.GetUtcNow()
+                });
+            await Database.SaveChangesAsync();
         }
 
         internal async Task<string[]> ReadRolesAsync(Guid userId) =>

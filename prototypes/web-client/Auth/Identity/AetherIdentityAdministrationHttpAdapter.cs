@@ -33,6 +33,12 @@ internal static class AetherIdentityAdministrationHttpAdapter
         AccountsPath + "/{userId:guid}/external-identities/link";
     internal const string ExternalIdentityProviderPath =
         AccountsPath + "/{userId:guid}/external-identities/{providerId}";
+    internal const string ExternalAccountProvisioningPath =
+        AccountsPath + "/external-provisioning";
+    internal const string AccountEnabledPath =
+        AccountsPath + "/{userId:guid}/enabled";
+    internal const string AccountSessionRevocationPath =
+        AccountsPath + "/{userId:guid}/sessions/revoke";
     internal const int MaximumRequestBodyBytes = 8192;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -107,9 +113,23 @@ internal static class AetherIdentityAdministrationHttpAdapter
         }
 
         paths.Add(AccountsPath + "/{userId:guid}/roles");
+        paths.Add(AccountEnabledPath);
+        paths.Add(AccountSessionRevocationPath);
         app.MapPut(
                 AccountsPath + "/{userId:guid}/roles",
                 HandleReplaceRolesAsync)
+            .RequireAuthorization(AetherPolicies.Admin)
+            .RequireRateLimiting(
+                AetherIdentityAdministrationDefaults.RateLimitPolicy)
+            .RequireAetherAntiforgery();
+        app.MapPut(AccountEnabledPath, HandleSetEnabledAsync)
+            .RequireAuthorization(AetherPolicies.Admin)
+            .RequireRateLimiting(
+                AetherIdentityAdministrationDefaults.RateLimitPolicy)
+            .RequireAetherAntiforgery();
+        app.MapPost(
+                AccountSessionRevocationPath,
+                HandleRevokeSessionsAsync)
             .RequireAuthorization(AetherPolicies.Admin)
             .RequireRateLimiting(
                 AetherIdentityAdministrationDefaults.RateLimitPolicy)
@@ -120,9 +140,17 @@ internal static class AetherIdentityAdministrationHttpAdapter
             paths.Add(ExternalReauthenticationPath);
             paths.Add(ExternalIdentityLinkPath);
             paths.Add(ExternalIdentityProviderPath);
+            paths.Add(ExternalAccountProvisioningPath);
             app.MapPost(
                     ExternalReauthenticationPath,
                     HandleExternalReauthenticationAsync)
+                .RequireAuthorization(AetherPolicies.Admin)
+                .RequireRateLimiting(
+                    AetherIdentityAdministrationDefaults.RateLimitPolicy)
+                .RequireAetherAntiforgery();
+            app.MapPost(
+                    ExternalAccountProvisioningPath,
+                    HandleProvisionExternalAccountAsync)
                 .RequireAuthorization(AetherPolicies.Admin)
                 .RequireRateLimiting(
                     AetherIdentityAdministrationDefaults.RateLimitPolicy)
@@ -383,6 +411,112 @@ internal static class AetherIdentityAdministrationHttpAdapter
         }
     }
 
+    private static async Task<IResult> HandleProvisionExternalAccountAsync(
+        HttpContext context,
+        ClaimsPrincipal user,
+        [FromServices] AetherLocalAccountAdministrationService accounts)
+    {
+        ApplyNoStore(context.Response);
+        ExternalAccountProvisioningRequest? body =
+            await ReadJsonAsync<ExternalAccountProvisioningRequest>(context);
+        if (body?.Roles is null)
+        {
+            return InvalidRequest();
+        }
+
+        try
+        {
+            AetherIdentityAccountMutationResult result =
+                await accounts.ProvisionExternalAccountAsync(
+                    user,
+                    new(
+                        body.UserName ?? string.Empty,
+                        body.DisplayName ?? string.Empty,
+                        body.Email,
+                        body.Roles,
+                        CorrelationId("external-account-provisioning")),
+                    context.RequestAborted);
+            return Json(result);
+        }
+        catch (AetherAdministratorReauthenticationRequiredException)
+        {
+            return ReauthenticationRequired();
+        }
+        catch (InvalidOperationException)
+        {
+            return AdministrationRejected();
+        }
+    }
+
+    private static async Task<IResult> HandleSetEnabledAsync(
+        HttpContext context,
+        ClaimsPrincipal user,
+        [FromServices] AetherLocalAccountAdministrationService accounts,
+        Guid userId)
+    {
+        ApplyNoStore(context.Response);
+        SetEnabledRequest? body =
+            await ReadJsonAsync<SetEnabledRequest>(context);
+        if (body?.Enabled is not bool enabled)
+        {
+            return InvalidRequest();
+        }
+
+        try
+        {
+            AetherIdentityAccountMutationResult result =
+                await accounts.SetEnabledAsync(
+                    user,
+                    userId,
+                    enabled,
+                    CorrelationId("account-enabled-state"),
+                    context.RequestAborted);
+            return Json(result);
+        }
+        catch (AetherAdministratorReauthenticationRequiredException)
+        {
+            return ReauthenticationRequired();
+        }
+        catch (InvalidOperationException)
+        {
+            return AdministrationRejected();
+        }
+    }
+
+    private static async Task<IResult> HandleRevokeSessionsAsync(
+        HttpContext context,
+        ClaimsPrincipal user,
+        [FromServices] AetherLocalAccountAdministrationService accounts,
+        Guid userId)
+    {
+        ApplyNoStore(context.Response);
+        RevokeSessionsRequest? body =
+            await ReadJsonAsync<RevokeSessionsRequest>(context);
+        if (body is null)
+        {
+            return InvalidRequest();
+        }
+
+        try
+        {
+            AetherIdentityAccountMutationResult result =
+                await accounts.RevokeSessionsAsync(
+                    user,
+                    userId,
+                    CorrelationId("account-session-revocation"),
+                    context.RequestAborted);
+            return Json(result);
+        }
+        catch (AetherAdministratorReauthenticationRequiredException)
+        {
+            return ReauthenticationRequired();
+        }
+        catch (InvalidOperationException)
+        {
+            return AdministrationRejected();
+        }
+    }
+
     private static async Task<IResult> HandleBeginEnrollmentAsync(
         HttpContext context,
         ClaimsPrincipal user,
@@ -445,7 +579,7 @@ internal static class AetherIdentityAdministrationHttpAdapter
 
         try
         {
-            AetherLocalAccountMutationResult result =
+            AetherIdentityAccountMutationResult result =
                 await accounts.ConfirmEnrollmentAsync(
                     user,
                     userId,
@@ -483,7 +617,7 @@ internal static class AetherIdentityAdministrationHttpAdapter
 
         try
         {
-            AetherLocalAccountMutationResult result =
+            AetherIdentityAccountMutationResult result =
                 await accounts.ResetPasswordAsync(
                     user,
                     new(
@@ -519,7 +653,7 @@ internal static class AetherIdentityAdministrationHttpAdapter
 
         try
         {
-            AetherLocalAccountMutationResult result =
+            AetherIdentityAccountMutationResult result =
                 await accounts.ReplaceRolesAsync(
                     user,
                     userId,
@@ -707,6 +841,26 @@ internal static class AetherIdentityAdministrationHttpAdapter
     private sealed class ExternalIdentityLinkRequest
     {
         public string? ReturnUrl { get; init; }
+    }
+
+    private sealed class ExternalAccountProvisioningRequest
+    {
+        public string? UserName { get; init; }
+
+        public string? DisplayName { get; init; }
+
+        public string? Email { get; init; }
+
+        public string[]? Roles { get; init; }
+    }
+
+    private sealed class SetEnabledRequest
+    {
+        public bool? Enabled { get; init; }
+    }
+
+    private sealed class RevokeSessionsRequest
+    {
     }
 
     private sealed class BeginEnrollmentRequest

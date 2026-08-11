@@ -53,13 +53,19 @@ test("identity administration endpoints retain strict request and reauthenticati
     /LocalPasswordReauthenticationRequest[\s\S]{0,120}UserName/);
   assert.equal(
     administrationAdapter.match(/\.RequireAetherAntiforgery\(\)/g)?.length,
-    9);
+    12);
   assert.match(
     administrationAdapter,
     /ExternalReauthenticationPath[\s\S]{0,500}RequireAetherAntiforgery/);
   assert.match(
     administrationAdapter,
     /RedirectUri = LocalReturnUrl\.Normalize\(body\.ReturnUrl\)/);
+  const externalProvisioningRequest = administrationAdapter.match(
+    /private sealed class ExternalAccountProvisioningRequest[\s\S]*?\n    \}/)?.[0] ?? "";
+  assert.match(externalProvisioningRequest, /UserName/);
+  assert.doesNotMatch(externalProvisioningRequest, /Password|Issuer|Subject/);
+  assert.match(administrationAdapter, /AccountEnabledPath/);
+  assert.match(administrationAdapter, /AccountSessionRevocationPath/);
   const linkRequest = administrationAdapter.match(
     /private sealed class ExternalIdentityLinkRequest[\s\S]*?\n    \}/)?.[0] ?? "";
   assert.match(linkRequest, /ReturnUrl/);
