@@ -213,11 +213,17 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
             action.Target,
             "/opt/aethersdr/releases",
             StringComparison.Ordinal);
+        bool multiServiceStateRoot = string.Equals(
+            action.Target,
+            "/var/lib/aethersdr",
+            StringComparison.Ordinal);
         string octalMode = secret
             ? "0700"
             : sharedReleaseRoot
                 ? "0755"
-                : "0750";
+                : multiServiceStateRoot
+                    ? "0751"
+                    : "0750";
         return Direct(
             action,
             InstallationInstallerUbuntuPrimitiveKind.EnsureDirectory,

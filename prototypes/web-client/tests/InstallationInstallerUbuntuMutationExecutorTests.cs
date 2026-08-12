@@ -334,6 +334,43 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
     }
 
     [Fact]
+    public void MultiServiceStateRootAllowsTraversalWithoutDirectoryListing()
+    {
+        InstallationInstallerUbuntuMutationRequest request = Request(
+        [
+            new(
+                1,
+                InstallationInstallerActionKind.EnsureServiceUser,
+                "aethersdr"),
+            new(
+                2,
+                InstallationInstallerActionKind.EnsureDirectory,
+                "/var/lib/aethersdr"),
+            new(
+                3,
+                InstallationInstallerActionKind.InstallVerifiedRelease,
+                "2026.8.0/linux-x64")
+        ]);
+
+        InstallationInstallerUbuntuPrimitiveOperation stateRoot =
+            InstallationInstallerUbuntuPrimitivePlanner.Compose(request)[1];
+
+        Assert.Equal(
+            [
+                "-d",
+                "-m",
+                "0751",
+                "-o",
+                "aethersdr",
+                "-g",
+                "aethersdr",
+                "--",
+                "/var/lib/aethersdr"
+            ],
+            stateRoot.Arguments);
+    }
+
+    [Fact]
     public void IdentityAndDataProtectionDirectoriesAreOwnerOnlyAndRoleOwned()
     {
         InstallationInstallerUbuntuMutationRequest request = Request(
