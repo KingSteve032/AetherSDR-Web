@@ -115,6 +115,72 @@ public sealed class InstallationInstallerCoordinatorTests
     }
 
     [Fact]
+    public async Task CompletedAdministratorSetupCanComposeInstallerPlan()
+    {
+        using TemporaryDirectory temporary = new();
+        InstallationSetupStore store = await CreateConfiguredStoreAsync(
+            temporary.Path,
+            InstallationTopologyKind.PersonalSingleStation,
+            installTransmitSupport: false);
+        InstallationSetupState configured = await store.LoadAsync();
+        DateTimeOffset completedAt = configured.UpdatedAt.AddSeconds(1);
+        InstallationSetupState completed = configured with
+        {
+            Revision = configured.Revision + 1,
+            UpdatedAt = completedAt,
+            LastCompletedStep = InstallationSetupStep.Administrator,
+            Lock = configured.Lock with
+            {
+                Mode = InstallationSetupLockMode.Complete,
+                CompletedAt = completedAt
+            }
+        };
+
+        InstallationInstallerPlanReport plan =
+            InstallationInstallerPlanComposer.Compose(
+                completed,
+                DefaultSelection());
+
+        Assert.Equal(completed.Revision, plan.SetupRevision);
+        Assert.Equal(InstallationSetupStep.Administrator, completed.LastCompletedStep);
+        Assert.Equal(InstallationSetupLockMode.Complete, completed.Lock.Mode);
+        Assert.Equal(41, plan.Actions.Count);
+    }
+
+    [Fact]
+    public async Task CompleteLockWithoutAdministratorStepIsRejected()
+    {
+        using TemporaryDirectory temporary = new();
+        InstallationSetupStore store = await CreateConfiguredStoreAsync(
+            temporary.Path,
+            InstallationTopologyKind.PersonalSingleStation,
+            installTransmitSupport: false);
+        InstallationSetupState configured = await store.LoadAsync();
+        DateTimeOffset completedAt = configured.UpdatedAt.AddSeconds(1);
+        InstallationSetupState malformed = configured with
+        {
+            Revision = configured.Revision + 1,
+            UpdatedAt = completedAt,
+            Lock = configured.Lock with
+            {
+                Mode = InstallationSetupLockMode.Complete,
+                CompletedAt = completedAt
+            }
+        };
+
+        InvalidOperationException exception =
+            Assert.Throws<InvalidOperationException>(
+                () => InstallationInstallerPlanComposer.Compose(
+                    malformed,
+                    DefaultSelection()));
+
+        Assert.Contains(
+            "administrator step",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ExternalAuthenticationIsExactAndSecretFreeInPlan()
     {
         using TemporaryDirectory temporary = new();

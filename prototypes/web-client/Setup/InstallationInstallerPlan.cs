@@ -145,7 +145,9 @@ public static class InstallationInstallerPlanComposer
         InstallationSetupStateValidator.Validate(state);
         ValidateSelection(selection);
 
-        if (state.Lock.Mode != InstallationSetupLockMode.Claimed ||
+        if (state.Lock.Mode is not (
+                InstallationSetupLockMode.Claimed or
+                InstallationSetupLockMode.Complete) ||
             state.LastCompletedStep < InstallationSetupStep.TransmitSupport)
         {
             throw new InvalidOperationException(
