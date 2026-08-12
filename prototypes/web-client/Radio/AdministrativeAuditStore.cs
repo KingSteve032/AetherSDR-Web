@@ -5,6 +5,7 @@ namespace AetherSDR.Web.Radio;
 public static class AdministrativeAuditActions
 {
     public const string UpdateRadioPolicy = "radio.policy.update";
+    public const string UpdateRadioIdentity = "radio.identity.update";
     public const string ForceDisconnectOperator =
         "radio.operator.force_disconnect";
     public const string CreateStationEnrollmentCode =

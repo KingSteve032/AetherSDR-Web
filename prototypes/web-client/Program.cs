@@ -1046,6 +1046,15 @@ string radioAccessPolicyPath =
         ".radio-access",
         "policies.json")
         : configuredRadioAccessPolicyPath;
+string? configuredRadioOnboardingPolicyPath =
+    builder.Configuration["RadioOnboarding:PolicyPath"];
+string radioOnboardingPolicyPath =
+    string.IsNullOrWhiteSpace(configuredRadioOnboardingPolicyPath)
+        ? Path.Combine(
+            Path.GetDirectoryName(Path.GetFullPath(radioAccessPolicyPath)) ??
+            builder.Environment.ContentRootPath,
+            "onboarding.json")
+        : configuredRadioOnboardingPolicyPath;
 string? configuredAdministrativeAuditPath =
     builder.Configuration["RadioAccess:AuditPath"];
 string administrativeAuditPath =
@@ -1078,6 +1087,12 @@ builder.Services.AddSingleton(
         radioAccessPolicyPath,
         services.GetRequiredService<
             ILogger<RadioAccessPolicyStore>>()));
+builder.Services.AddSingleton(
+    services => new RadioOnboardingPolicyStore(
+        radioOnboardingPolicyPath,
+        services.GetRequiredService<
+            ILogger<RadioOnboardingPolicyStore>>(),
+        services.GetRequiredService<TimeProvider>()));
 builder.Services.AddSingleton(
     services => new AdministrativeAuditStore(
         administrativeAuditPath,
@@ -5156,6 +5171,78 @@ app.MapGet(
                 events = audit.GetRecent(limit ?? 50)
             }))
     .RequireAuthorization(AetherPolicies.Admin);
+
+app.MapPost(
+        "/api/admin/radios/{radioId}/identity",
+        (
+            string radioId,
+            UpdateRadioOnboardingRequest request,
+            ClaimsPrincipal user,
+            RadioAdministrationService administration,
+            AdministrativeAuditStore audit) =>
+        {
+            (string administratorId, string administratorName) =
+                GetAdministrativeActor(user);
+            if (!RadioSessionRegistry.TryGetUserId(
+                    user,
+                    out administratorId))
+            {
+                audit.Record(
+                    administratorId,
+                    administratorName,
+                    AdministrativeAuditActions.UpdateRadioIdentity,
+                    radioId,
+                    null,
+                    AdministrativeAuditResults.Failed,
+                    "A stable administrator ID was not available.");
+                return Results.BadRequest(
+                    new { error = "A stable administrator ID is required." });
+            }
+
+            try
+            {
+                RadioOnboardingPolicySnapshot policy =
+                    administration.UpdateLabel(
+                        radioId,
+                        request,
+                        administratorId);
+                audit.Record(
+                    administratorId,
+                    administratorName,
+                    AdministrativeAuditActions.UpdateRadioIdentity,
+                    radioId,
+                    null,
+                    AdministrativeAuditResults.Succeeded,
+                    "The stable radio label was updated.");
+                return Results.Ok(policy);
+            }
+            catch (ArgumentException exception)
+            {
+                audit.Record(
+                    administratorId,
+                    administratorName,
+                    AdministrativeAuditActions.UpdateRadioIdentity,
+                    radioId,
+                    null,
+                    AdministrativeAuditResults.Failed,
+                    exception.Message);
+                return Results.BadRequest(new { error = exception.Message });
+            }
+            catch (KeyNotFoundException exception)
+            {
+                audit.Record(
+                    administratorId,
+                    administratorName,
+                    AdministrativeAuditActions.UpdateRadioIdentity,
+                    radioId,
+                    null,
+                    AdministrativeAuditResults.Failed,
+                    exception.Message);
+                return Results.NotFound(new { error = exception.Message });
+            }
+        })
+    .RequireAuthorization(AetherPolicies.Admin)
+    .RequireAetherAntiforgery();
 
 app.MapPost(
         "/api/admin/radios/{radioId}/policy",
