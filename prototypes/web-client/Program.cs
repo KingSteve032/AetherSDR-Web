@@ -702,6 +702,12 @@ RemoteStationSettings remoteStationSettings =
         .GetSection(RemoteStationSettings.SectionName)
         .Get<RemoteStationSettings>() ??
     new RemoteStationSettings();
+AetherRemoteBootstrapSettings aetherRemoteBootstrapSettings =
+    builder.Configuration
+        .GetSection(AetherRemoteBootstrapSettings.SectionName)
+        .Get<AetherRemoteBootstrapSettings>(options =>
+            options.ErrorOnUnknownConfiguration = true) ??
+    new AetherRemoteBootstrapSettings();
 IndependentTxWatchdogSettings independentTxWatchdogSettings =
     builder.Configuration
         .GetSection(IndependentTxWatchdogSettings.SectionName)
@@ -901,6 +907,8 @@ builder.Services.AddSingleton(
 builder.Services.AddSingleton(
     Options.Create(releaseActivationOperatorApprovalSettings));
 builder.Services.AddSingleton(Options.Create(releaseUpdateTransactionSettings));
+builder.Services.AddSingleton(Options.Create(aetherRemoteBootstrapSettings));
+builder.Services.AddSingleton(Options.Create(installationRuntimeSettings));
 builder.Services.AddSingleton(
     Options.Create(releaseActivationHostRestartSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandTrustSettings));
@@ -973,6 +981,7 @@ builder.Services.AddSingleton(
             statusPaths);
     });
 builder.Services.AddSingleton<ReleaseStatusConsole>();
+builder.Services.AddSingleton<AetherRemoteBootstrapService>();
 builder.Services.AddSingleton<OfflineReleaseInstallPreflightPlanner>();
 builder.Services.AddSingleton<OfflineReleaseInstallPreflightConsole>();
 builder.Services.AddSingleton<VerifiedReleaseInstallationPlanComposer>();
@@ -4554,6 +4563,114 @@ app.MapGet(
     .AllowAnonymous();
 
 app.MapGet(
+        AetherRemoteBootstrapService.WellKnownRoute,
+        async (
+            HttpContext context,
+            AetherRemoteBootstrapService bootstrap,
+            CancellationToken cancellationToken) =>
+        {
+            if (!bootstrap.Enabled)
+            {
+                return Results.NotFound();
+            }
+            try
+            {
+                AetherRemoteBootstrapDocument document =
+                    await bootstrap.GetDocumentAsync(cancellationToken);
+                context.Response.Headers.CacheControl = "no-store";
+                context.Response.Headers.Pragma = "no-cache";
+                return Results.Ok(document);
+            }
+            catch (Exception exception)
+                when (exception is InvalidOperationException or IOException or
+                      InvalidDataException or UnauthorizedAccessException or
+                      System.Security.SecurityException)
+            {
+                return Results.Json(
+                    new { error = "AetherRemote bootstrap is not ready." },
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        })
+    .AllowAnonymous();
+
+app.MapGet(
+        AetherRemoteBootstrapService.InstallerRoute,
+        (
+            HttpContext context,
+            AetherRemoteBootstrapService bootstrap) =>
+        {
+            if (!bootstrap.Enabled)
+            {
+                return Results.NotFound();
+            }
+            try
+            {
+                AetherRemoteBootstrapAsset installer =
+                    bootstrap.ResolveInstallerAsset();
+                context.Response.Headers.CacheControl = "no-store";
+                context.Response.Headers.Pragma = "no-cache";
+                return Results.File(
+                    installer.Path,
+                    installer.ContentType,
+                    installer.DownloadName);
+            }
+            catch (Exception exception)
+                when (exception is InvalidOperationException or IOException or
+                      InvalidDataException or UnauthorizedAccessException or
+                      System.Security.SecurityException)
+            {
+                return Results.NotFound();
+            }
+        })
+    .AllowAnonymous();
+
+app.MapGet(
+        "/aetherremote/releases/{releaseIdentity}/{architecture}/{asset}",
+        async (
+            string releaseIdentity,
+            string architecture,
+            string asset,
+            HttpContext context,
+            AetherRemoteBootstrapService bootstrap,
+            CancellationToken cancellationToken) =>
+        {
+            if (!bootstrap.Enabled)
+            {
+                return Results.NotFound();
+            }
+            try
+            {
+                AetherRemoteBootstrapAsset? releaseAsset =
+                    await bootstrap.ResolveReleaseAssetAsync(
+                        releaseIdentity,
+                        architecture,
+                        asset,
+                        cancellationToken);
+                if (releaseAsset is null)
+                {
+                    return Results.NotFound();
+                }
+                context.Response.Headers.CacheControl =
+                    "public, max-age=31536000, immutable";
+                return Results.File(
+                    releaseAsset.Path,
+                    releaseAsset.ContentType,
+                    releaseAsset.DownloadName,
+                    enableRangeProcessing: true);
+            }
+            catch (Exception exception)
+                when (exception is InvalidOperationException or IOException or
+                      InvalidDataException or UnauthorizedAccessException or
+                      System.Security.SecurityException)
+            {
+                return Results.Json(
+                    new { error = "The requested signed release is unavailable." },
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        })
+    .AllowAnonymous();
+
+app.MapGet(
         "/auth/login",
         (string? returnUrl) =>
         {
@@ -4946,6 +5063,187 @@ app.MapGet(
         (RemoteStationCatalogService remoteStations) =>
             Results.Ok(remoteStations.GetAdministrationSnapshot()))
     .RequireAuthorization(AetherPolicies.Admin);
+
+app.MapGet(
+        "/api/admin/stations/bootstrap",
+        async (
+            string? stationId,
+            AetherRemoteBootstrapService bootstrap,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                return Results.Ok(
+                    await bootstrap.GetAdminGuideAsync(
+                        stationId,
+                        cancellationToken));
+            }
+            catch (ArgumentException exception)
+            {
+                return Results.BadRequest(new { error = exception.Message });
+            }
+        })
+    .RequireAuthorization(AetherPolicies.Admin);
+
+app.MapPost(
+        "/api/admin/stations/{stationId}/release-update",
+        async (
+            string stationId,
+            ClaimsPrincipal user,
+            AetherAdministratorAuthorityService authority,
+            AetherRemoteBootstrapService bootstrap,
+            RemoteStationCatalogService remoteStations,
+            AdministrativeAuditStore audit,
+            CancellationToken cancellationToken) =>
+        {
+            (string administratorId, string administratorName) =
+                GetAdministrativeActor(user);
+            string stationTarget = $"station:{stationId}";
+            try
+            {
+                AetherAdministratorAuthorityEvidence evidence =
+                    await authority.RequireFreshAsync(user, cancellationToken);
+                administratorId = evidence.UserId.ToString("D");
+            }
+            catch (AetherAdministratorReauthenticationRequiredException)
+            {
+                audit.Record(
+                    administratorId,
+                    administratorName,
+                    AdministrativeAuditActions.UpdateStationRelease,
+                    stationTarget,
+                    null,
+                    AdministrativeAuditResults.Failed,
+                    "Fresh durable administrator reauthentication was required.");
+                return Results.Conflict(new
+                {
+                    code = "administrator-reauthentication-required",
+                    error = "Fresh administrator reauthentication is required."
+                });
+            }
+
+            try
+            {
+                RemoteStationManagementValidator.ValidateStationId(stationId);
+                AetherRemoteBootstrapDocument document =
+                    await bootstrap.GetDocumentAsync(cancellationToken);
+                RemoteStationAdministrationSnapshot snapshot =
+                    remoteStations.GetAdministrationSnapshot();
+                RemoteStationAdministrationEntry? station =
+                    snapshot.Stations.FirstOrDefault(candidate =>
+                        string.Equals(
+                            candidate.StationId,
+                            stationId,
+                            StringComparison.Ordinal));
+                if (station is null)
+                {
+                    return Results.NotFound(
+                        new { error = "That remote station is not connected." });
+                }
+                if (!station.Capabilities.Contains(
+                        "release-update-v1",
+                        StringComparer.Ordinal))
+                {
+                    return Results.Conflict(new
+                    {
+                        code = "station-release-update-unavailable",
+                        error = "That station has not granted signed release updates."
+                    });
+                }
+                if (string.Equals(
+                        station.ReleaseIdentity,
+                        document.ReleaseIdentity,
+                        StringComparison.Ordinal))
+                {
+                    return Results.Ok(new
+                    {
+                        stationId,
+                        releaseIdentity = document.ReleaseIdentity,
+                        succeeded = true,
+                        outcome = "already-current",
+                        activeReleaseIdentity = station.ReleaseIdentity,
+                        rolledBack = false
+                    });
+                }
+
+                RemoteReleaseUpdateResult result =
+                    await remoteStations.UpdateReleaseAsync(
+                        new RemoteReleaseUpdateRequest(
+                            stationId,
+                            document.ReleaseIdentity),
+                        cancellationToken);
+                audit.Record(
+                    administratorId,
+                    administratorName,
+                    AdministrativeAuditActions.UpdateStationRelease,
+                    stationTarget,
+                    document.ReleaseIdentity,
+                    result.Succeeded
+                        ? AdministrativeAuditResults.Succeeded
+                        : AdministrativeAuditResults.Failed,
+                    result.Succeeded
+                        ? $"Station release updated to {result.ActiveReleaseIdentity}."
+                        : result.RolledBack
+                            ? $"Station update failed and rolled back to {result.ActiveReleaseIdentity}."
+                            : $"Station update failed closed: {result.Outcome}.");
+                return result.Succeeded
+                    ? Results.Ok(result)
+                    : Results.Conflict(new
+                    {
+                        code = "station-release-update-failed",
+                        error = result.RolledBack
+                            ? "The station rejected the new release and rolled back safely."
+                            : "The station could not apply the requested signed release.",
+                        result
+                    });
+            }
+            catch (ArgumentException exception)
+            {
+                audit.Record(
+                    administratorId,
+                    administratorName,
+                    AdministrativeAuditActions.UpdateStationRelease,
+                    stationTarget,
+                    null,
+                    AdministrativeAuditResults.Failed,
+                    exception.Message);
+                return Results.BadRequest(new { error = exception.Message });
+            }
+            catch (RemoteStationManagementException exception)
+            {
+                audit.Record(
+                    administratorId,
+                    administratorName,
+                    AdministrativeAuditActions.UpdateStationRelease,
+                    stationTarget,
+                    null,
+                    AdministrativeAuditResults.Failed,
+                    exception.Message);
+                return RemoteStationManagementFailure(exception);
+            }
+            catch (Exception exception)
+                when (exception is InvalidOperationException or IOException or
+                      InvalidDataException or UnauthorizedAccessException or
+                      System.Security.SecurityException or HttpRequestException or
+                      JsonException)
+            {
+                const string message =
+                    "Signed station release update is temporarily unavailable.";
+                audit.Record(
+                    administratorId,
+                    administratorName,
+                    AdministrativeAuditActions.UpdateStationRelease,
+                    stationTarget,
+                    null,
+                    AdministrativeAuditResults.Failed,
+                    message);
+                return Results.Json(
+                    new { error = message },
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        })
+    .RequireAuthorization(AetherPolicies.Admin)
+    .RequireAetherAntiforgery();
 
 app.MapPost(
         "/api/admin/stations/enrollment-codes",

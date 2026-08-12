@@ -1,7 +1,8 @@
 [Unit]
 Description=AetherRemote station agent
-After=network-online.target aetherremote-station-engine.service
+After=network-online.target aetherremote-release-updater.service aetherremote-station-engine.service
 Wants=network-online.target aetherremote-station-engine.service
+Requires=aetherremote-release-updater.service
 
 [Service]
 Type=simple
@@ -24,6 +25,7 @@ ProtectKernelLogs=true
 ProtectKernelModules=true
 ProtectKernelTunables=true
 ProtectSystem=strict
+ReadWritePaths=/var/lib/aetherremote/release-staging
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 RestrictNamespaces=true
 RestrictRealtime=true

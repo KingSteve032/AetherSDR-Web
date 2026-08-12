@@ -12,6 +12,7 @@ public sealed class StationWebSocketEndpoint(
     StationRegistry registry,
     RemoteReceiveSessionBroker receiveSessions,
     RemoteReleaseServiceControlBroker releaseServiceControl,
+    RemoteReleaseUpdateBroker releaseUpdates,
     IHostApplicationLifetime applicationLifetime,
     ILogger<StationWebSocketEndpoint> logger)
 {
@@ -160,7 +161,9 @@ public sealed class StationWebSocketEndpoint(
             hello.InstanceId,
             hello.SoftwareVersion,
             remoteAddress,
-            authorizedCapabilities);
+            authorizedCapabilities,
+            hello.ReleaseIdentity,
+            hello.StationEngineVersion);
         logger.LogInformation(
             "Station {StationId} connected as {ConnectionId} from {RemoteAddress}",
             stationId,
@@ -191,6 +194,17 @@ public sealed class StationWebSocketEndpoint(
                         cancellationToken));
         using RemoteReleaseServiceControlBroker.StationControlLease control =
             releaseServiceControl.AttachStation(
+                stationId,
+                lease.ConnectionId,
+                authorizedCapabilities,
+                (message, cancellationToken) =>
+                    SendJsonAsync(
+                        socket,
+                        sendGate,
+                        message,
+                        cancellationToken));
+        using RemoteReleaseUpdateBroker.StationUpdateLease update =
+            releaseUpdates.AttachStation(
                 stationId,
                 lease.ConnectionId,
                 authorizedCapabilities,
@@ -350,6 +364,30 @@ public sealed class StationWebSocketEndpoint(
                                     "The release service-control result is invalid.");
                                 return false;
                             }
+                            return true;
+                        }
+                    case StationMessageTypes.ReleaseUpdateResult:
+                        {
+                            if (!releaseUpdates.TryHandleStationMessage(
+                                    lease.StationId,
+                                    lease.ConnectionId,
+                                    document.RootElement,
+                                    out BrokerReleaseUpdateAcknowledgementMessage?
+                                        acknowledgement) ||
+                                acknowledgement is null)
+                            {
+                                await RejectAsync(
+                                    socket,
+                                    sendGate,
+                                    "invalid_release_update",
+                                    "The release-update result is invalid.");
+                                return false;
+                            }
+                            await SendJsonAsync(
+                                socket,
+                                sendGate,
+                                acknowledgement,
+                                cancellationToken);
                             return true;
                         }
                     default:

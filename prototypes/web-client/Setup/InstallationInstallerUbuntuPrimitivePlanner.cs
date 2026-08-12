@@ -17,7 +17,8 @@ public enum InstallationInstallerUbuntuPrimitiveKind
     InitializeIdentityDatabase = 13,
     ConfigureGatewayEnvironment = 14,
     InstallAuthenticationClientSecret = 15,
-    AdoptSetupIdentityState = 16
+    AdoptSetupIdentityState = 16,
+    ConfigureAetherRemoteGateway = 17
 }
 
 public sealed record InstallationInstallerUbuntuPrimitiveOperation(
@@ -68,6 +69,7 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
             "/var/lib/aethersdr",
             "/var/lib/aethersdr/secrets",
             "/var/lib/aethersdr/secrets/data-protection",
+            "/var/lib/aethersdr/secrets/remote-stations",
             "/var/lib/aethersdr/identity",
             "/var/lib/aethersdr-installer",
             "/var/lib/aethersdr-installer/proxy",
@@ -119,6 +121,9 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
                         request,
                         InstallationInstallerUbuntuPrimitiveKind
                             .InstallAuthenticationClientSecret),
+                InstallationInstallerActionKind
+                    .ConfigureAetherRemoteGateway =>
+                    AetherRemoteGatewayConfiguration(action, request),
                 InstallationInstallerActionKind.InstallSystemdUnit =>
                     InstallUnit(action, request),
                 InstallationInstallerActionKind.ConfigureReverseProxy =>
@@ -325,6 +330,27 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
                 "The installer plan contains a noncanonical gateway configuration target.");
         }
         return Typed(action, kind);
+    }
+
+    private static InstallationInstallerUbuntuPrimitiveOperation
+        AetherRemoteGatewayConfiguration(
+            InstallationInstallerPlanAction action,
+            InstallationInstallerUbuntuMutationRequest request)
+    {
+        InstallationInstallerAetherRemoteGatewayConfigurationPlan plan =
+            InstallationInstallerAetherRemoteGatewayConfiguration.Compose(
+                request);
+        if (!string.Equals(
+                action.Target,
+                plan.BrokerEnvironmentTargetPath,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The installer plan contains a noncanonical AetherRemote gateway target.");
+        }
+        return Typed(
+            action,
+            InstallationInstallerUbuntuPrimitiveKind.ConfigureAetherRemoteGateway);
     }
 
     private static InstallationInstallerUbuntuPrimitiveOperation InstallUnit(

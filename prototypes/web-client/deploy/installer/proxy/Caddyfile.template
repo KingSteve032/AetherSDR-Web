@@ -11,9 +11,15 @@
 		X-Frame-Options "DENY"
 	}
 
-	reverse_proxy 127.0.0.1:5080 {
-		health_uri /healthz
-		health_interval 30s
-		health_timeout 5s
+	handle_path /aetherremote/broker/* {
+		reverse_proxy 127.0.0.1:5090
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:5080 {
+			health_uri /healthz
+			health_interval 30s
+			health_timeout 5s
+		}
 	}
 }

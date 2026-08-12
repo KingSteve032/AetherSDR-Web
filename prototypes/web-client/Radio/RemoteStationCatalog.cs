@@ -71,7 +71,9 @@ public sealed record RemoteStationAdministrationEntry(
     long? LastRecoveryMilliseconds,
     IReadOnlyList<string> Capabilities,
     IReadOnlyList<RemoteStationRadioAdministrationEntry> Radios,
-    IReadOnlyList<RemoteReceiveSessionAdministrationEntry> ReceiveSessions);
+    IReadOnlyList<RemoteReceiveSessionAdministrationEntry> ReceiveSessions,
+    string ReleaseIdentity = "",
+    string StationEngineVersion = "");
 
 public sealed record RemoteStationCredentialAdministrationEntry(
     string StationId,
@@ -126,6 +128,19 @@ public sealed record RemoteReleaseServiceControlResult(
     string UnitIdentity,
     bool Succeeded,
     string Outcome);
+
+public sealed record RemoteReleaseUpdateRequest(
+    string StationId,
+    string ReleaseIdentity);
+
+public sealed record RemoteReleaseUpdateResult(
+    string StationId,
+    string CorrelationId,
+    string ReleaseIdentity,
+    bool Succeeded,
+    string Outcome,
+    string ActiveReleaseIdentity,
+    bool RolledBack);
 
 public sealed class RemoteStationManagementException(
     HttpStatusCode statusCode,
@@ -389,6 +404,21 @@ public sealed class RemoteStationCatalogService(
                 cancellationToken);
     }
 
+    public async Task<RemoteReleaseUpdateResult> UpdateReleaseAsync(
+        RemoteReleaseUpdateRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        RemoteStationManagementValidator.ValidateReleaseUpdate(request);
+        return await PostAsync<
+            RemoteReleaseUpdateRequest,
+            RemoteReleaseUpdateResult>(
+                "api/release-updates",
+                request,
+                m_settings.AdministrationCredentialFile,
+                cancellationToken);
+    }
+
     public async Task<RemoteStationEnrollmentResult> RedeemEnrollmentAsync(
         RedeemRemoteStationEnrollmentRequest request,
         CancellationToken cancellationToken)
@@ -605,6 +635,46 @@ internal static partial class RemoteStationManagementValidator
             case RemoteReleaseServiceControlResult result:
                 ValidateReleaseServiceControlResult(result);
                 break;
+            case RemoteReleaseUpdateResult result:
+                ValidateReleaseUpdateResult(result);
+                break;
+        }
+    }
+
+    public static void ValidateReleaseUpdate(
+        RemoteReleaseUpdateRequest request)
+    {
+        if (!IsStationId(request.StationId) ||
+            !IsCanonicalReleaseIdentity(request.ReleaseIdentity))
+        {
+            throw new ArgumentException(
+                "The remote release-update request is invalid.",
+                nameof(request));
+        }
+    }
+
+    public static void ValidateReleaseUpdateResult(
+        RemoteReleaseUpdateResult result)
+    {
+        ValidateReleaseUpdate(
+            new RemoteReleaseUpdateRequest(
+                result.StationId,
+                result.ReleaseIdentity));
+        if (result.CorrelationId is not { Length: 32 } ||
+            !result.CorrelationId.All(character =>
+                character is >= '0' and <= '9' or >= 'a' and <= 'f') ||
+            !IsIdentifier(result.Outcome, 64) ||
+            !IsCanonicalReleaseIdentity(result.ActiveReleaseIdentity) ||
+            result.Succeeded &&
+                (!string.Equals(
+                    result.ActiveReleaseIdentity,
+                    result.ReleaseIdentity,
+                    StringComparison.Ordinal) ||
+                 result.RolledBack) ||
+            result.RolledBack && result.Succeeded)
+        {
+            throw new InvalidDataException(
+                "The remote release-update response is invalid.");
         }
     }
 
@@ -912,7 +982,9 @@ public static partial class RemoteStationCatalogParser
                     station.LastRecoveryMilliseconds,
                     station.Capabilities!.ToArray(),
                     administrationRadios,
-                    []));
+                    [],
+                    station.ReleaseIdentity ?? string.Empty,
+                    station.StationEngineVersion ?? string.Empty));
         }
         return new RemoteStationCatalogSnapshot(radios, stations);
     }
@@ -923,6 +995,7 @@ public static partial class RemoteStationCatalogParser
             !IsIdentifier(station.InstanceId, 64) ||
             station.State is not ("online" or "degraded" or "offline") ||
             !IsText(station.SoftwareVersion, 64) ||
+            !ValidReleaseMetadata(station) ||
             station.Radios is null ||
             station.Radios.Count > MaximumRadiosPerStation ||
             station.ConnectedAt < DateTimeOffset.UnixEpoch ||
@@ -941,6 +1014,19 @@ public static partial class RemoteStationCatalogParser
             throw new InvalidDataException(
                 "The remote station inventory contains an invalid station.");
         }
+    }
+
+    private static bool ValidReleaseMetadata(
+        RemoteStationInventory station)
+    {
+        bool releaseIdentityPresent =
+            !string.IsNullOrEmpty(station.ReleaseIdentity);
+        bool engineVersionPresent =
+            !string.IsNullOrEmpty(station.StationEngineVersion);
+        return releaseIdentityPresent == engineVersionPresent &&
+            (!releaseIdentityPresent ||
+             IsIdentifier(station.ReleaseIdentity, 96) &&
+             IsText(station.StationEngineVersion, 64));
     }
 
     private static bool ValidRecoveryTelemetry(
@@ -1023,7 +1109,9 @@ public static partial class RemoteStationCatalogParser
         DateTimeOffset? LastDisconnectedAt = null,
         string? LastDisconnectReason = null,
         DateTimeOffset? LastRecoveredAt = null,
-        long? LastRecoveryMilliseconds = null);
+        long? LastRecoveryMilliseconds = null,
+        string? ReleaseIdentity = "",
+        string? StationEngineVersion = "");
 
     private sealed record RemoteStationRadio(
         string? RadioId,

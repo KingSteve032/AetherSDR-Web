@@ -117,6 +117,9 @@ broker_project="${repo_root}/AetherRemote/src/AetherRemote.Broker/AetherRemote.B
 agent_project="${repo_root}/AetherRemote/src/AetherRemote.Agent/AetherRemote.Agent.csproj"
 updater_project="${repo_root}/AetherRemote/src/AetherRemote.Updater/AetherRemote.Updater.csproj"
 updater_unit="${repo_root}/AetherRemote/deploy/aetherremote-release-updater.service"
+agent_unit="${repo_root}/AetherRemote/deploy/aetherremote-agent.service"
+station_engine_unit="${repo_root}/AetherRemote/deploy/aetherremote-station-engine.service"
+enrollment_helper="${repo_root}/AetherRemote/deploy/enroll-station.sh"
 builder_project="${repo_root}/tools/release/AetherSDR.ReleaseBuilder/AetherSDR.ReleaseBuilder.csproj"
 builder_dll="${repo_root}/tools/release/AetherSDR.ReleaseBuilder/bin/Release/net10.0/AetherSDR.ReleaseBuilder.dll"
 
@@ -310,6 +313,12 @@ for runtime in linux-x64 linux-arm64; do
   cp -a -- "${updater_publish}/." "${agent_publish}/updater/"
   cp -- "${updater_unit}" \
     "${agent_publish}/aetherremote-release-updater.service"
+  cp -- "${agent_unit}" \
+    "${agent_publish}/aetherremote-agent.service"
+  cp -- "${station_engine_unit}" \
+    "${agent_publish}/aetherremote-station-engine.service"
+  cp -- "${enrollment_helper}" \
+    "${agent_publish}/enroll-station.sh"
 
   normalize_tree \
     "${web_publish}" \
@@ -319,7 +328,8 @@ for runtime in linux-x64 linux-arm64; do
   normalize_tree \
     "${agent_publish}" \
     AetherRemote.Agent \
-    updater/AetherRemote.Updater
+    updater/AetherRemote.Updater \
+    enroll-station.sh
   inspect_web_tree "${web_publish}" "${runtime}" "${runtime_root}"
 
   gateway_archive="${architecture_assets}/aethersdr-gateway-${runtime}.tar.gz"

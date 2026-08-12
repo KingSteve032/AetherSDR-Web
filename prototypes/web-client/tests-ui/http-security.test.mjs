@@ -30,6 +30,7 @@ test("every authenticated HTTP mutation requires shared antiforgery validation",
     ["Post", "/api/session/release"],
     ["Post", "/api/radio/low-bandwidth"],
     ["Post", "/api/admin/stations/enrollment-codes"],
+    ["Post", "/api/admin/stations/{stationId}/release-update"],
     ["Post", "/api/admin/stations/{stationId}/{action}"],
     ["Post", "/api/admin/radios/{radioId}/identity"],
     ["Post", "/api/admin/radios/{radioId}/transmit-policy"],
@@ -64,6 +65,34 @@ test("radio TX onboarding requires reauthentication and exact preflight", () => 
   assert.match(
     transition,
     /\.RequireAetherAntiforgery\(\)/);
+});
+
+test("station release update is Admin-only, reauthenticated, and server-selected", () => {
+  const update = routeBlock(
+    "Post",
+    "/api/admin/stations/{stationId}/release-update");
+  assert.match(update, /authority\.RequireFreshAsync/);
+  assert.match(update, /bootstrap\.GetDocumentAsync/);
+  assert.match(
+    update,
+    /new RemoteReleaseUpdateRequest\([\s\S]{0,120}stationId,[\s\S]{0,120}document\.ReleaseIdentity/);
+  assert.match(update, /release-update-v1/);
+  assert.match(update, /\.RequireAuthorization\(AetherPolicies\.Admin\)/);
+  assert.match(update, /\.RequireAetherAntiforgery\(\)/);
+  assert.doesNotMatch(update, /DownloadUrl|CommandLine|Executable|Shell/);
+});
+
+test("AetherRemote bootstrap is anonymous only for non-secret publication", () => {
+  assert.match(
+    program,
+    /AetherRemoteBootstrapService\.WellKnownRoute[\s\S]{0,1800}\.AllowAnonymous\(\)/);
+  assert.match(
+    program,
+    /AetherRemoteBootstrapService\.InstallerRoute[\s\S]{0,1400}\.AllowAnonymous\(\)/);
+  const adminBootstrap = routeBlock("Get", "/api/admin/stations/bootstrap");
+  assert.match(
+    adminBootstrap,
+    /\.RequireAuthorization\(AetherPolicies\.Admin\)/);
 });
 
 test("logout GET is confirmation-only and logout mutation is POST-only", () => {

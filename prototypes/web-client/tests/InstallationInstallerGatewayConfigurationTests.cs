@@ -51,6 +51,132 @@ public sealed class InstallationInstallerGatewayConfigurationTests
             "ClientSecret",
             plan.RenderedEnvironment,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "AetherRemoteBootstrap__Enabled=\"false\"",
+            plan.RenderedEnvironment,
+            StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(InstallationTopologyKind.RemoteStationGateway)]
+    [InlineData(InstallationTopologyKind.HybridGateway)]
+    public void RemoteAcceptingGatewayEnablesAetherRemoteBootstrap(
+        InstallationTopologyKind topology)
+    {
+        InstallationInstallerUbuntuMutationRequest request = Request(
+            InstallationInstallerAuthenticationSelection.Local,
+            clientSecretSourcePath: null,
+            topology);
+
+        InstallationInstallerGatewayConfigurationPlan plan =
+            InstallationInstallerGatewayConfigurationPlanComposer.Compose(
+                request);
+
+        Assert.Contains(
+            "AetherRemoteBootstrap__Enabled=\"true\"",
+            plan.RenderedEnvironment,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Radio__AllowTransmit=\"false\"",
+            plan.RenderedEnvironment,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Radio__BrowserTxLeaseEnabled=\"false\"",
+            plan.RenderedEnvironment,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RemoteStations__Enabled=\"true\"",
+            plan.RenderedEnvironment,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RemoteStations__BrokerUrl=\"http://127.0.0.1:5090\"",
+            plan.RenderedEnvironment,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RemoteStations__RuntimeCredentialFile=\"/var/lib/aethersdr/secrets/remote-stations/runtime-credential\"",
+            plan.RenderedEnvironment,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RemoteStations__AdministrationCredentialFile=\"/var/lib/aethersdr/secrets/remote-stations/administration-credential\"",
+            plan.RenderedEnvironment,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RemoteGatewayCredentialPlanContainsOnlyFixedPathsAndVerifiers()
+    {
+        InstallationInstallerUbuntuMutationRequest request = Request(
+            InstallationInstallerAuthenticationSelection.Local,
+            clientSecretSourcePath: null,
+            InstallationTopologyKind.HybridGateway);
+        InstallationInstallerAetherRemoteGatewayConfigurationPlan plan =
+            InstallationInstallerAetherRemoteGatewayConfiguration.Compose(
+                request);
+        string runtimeCredential = new('a', 64);
+        string administrationCredential = new('b', 64);
+
+        string environment =
+            InstallationInstallerAetherRemoteGatewayConfiguration
+                .RenderBrokerEnvironment(
+                    runtimeCredential,
+                    administrationCredential);
+
+        Assert.Equal(
+            "/etc/aethersdr/aetherremote/broker/environment",
+            plan.BrokerEnvironmentTargetPath);
+        Assert.Equal(
+            "/var/lib/aethersdr/secrets/remote-stations/runtime-credential",
+            plan.RuntimeCredentialPath);
+        Assert.Equal(
+            "/var/lib/aethersdr/secrets/remote-stations/administration-credential",
+            plan.AdministrationCredentialPath);
+        Assert.Contains(
+            "StationLink__Enabled=true",
+            environment,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ASPNETCORE_URLS=http://127.0.0.1:5090",
+            environment,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(runtimeCredential, environment, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            administrationCredential,
+            environment,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            2,
+            environment.Split('\n')
+                .Count(line => line.Contains("CredentialSha256=", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void RemoteGatewayCredentialActionHasNoSecretArguments()
+    {
+        InstallationInstallerUbuntuMutationRequest request = Request(
+            InstallationInstallerAuthenticationSelection.Local,
+            clientSecretSourcePath: null,
+            InstallationTopologyKind.RemoteStationGateway);
+
+        IReadOnlyList<InstallationInstallerUbuntuPrimitiveOperation> operations =
+            InstallationInstallerUbuntuPrimitivePlanner.Compose(request);
+
+        InstallationInstallerUbuntuPrimitiveOperation operation =
+            Assert.Single(
+                operations,
+                candidate =>
+                    candidate.Kind ==
+                        InstallationInstallerUbuntuPrimitiveKind
+                            .ConfigureAetherRemoteGateway);
+        Assert.Equal(
+            "/etc/aethersdr/aetherremote/broker/environment",
+            operation.Target);
+        Assert.Empty(operation.Arguments);
+        Assert.Contains(
+            request.Actions,
+            action =>
+                action.Kind ==
+                    InstallationInstallerActionKind
+                        .ConfigureAetherRemoteGateway);
     }
 
     [Fact]
@@ -175,11 +301,13 @@ public sealed class InstallationInstallerGatewayConfigurationTests
 
     private static InstallationInstallerUbuntuMutationRequest Request(
         InstallationInstallerAuthenticationSelection authentication,
-        string? clientSecretSourcePath)
+        string? clientSecretSourcePath,
+        InstallationTopologyKind topology =
+            InstallationTopologyKind.PersonalSingleStation)
     {
         InstallationInstallerGatewayConfiguration configuration = new(
             SetupRevision: 42,
-            InstallationTopologyKind.PersonalSingleStation,
+            topology,
             "https://radio.example.org",
             InstallTransmitSupport: false,
             InstallationReverseProxyMode.ManagedCaddy,
@@ -199,6 +327,15 @@ public sealed class InstallationInstallerGatewayConfigurationTests
                     .InstallAuthenticationClientSecret,
                 InstallationInstallerGatewayConfigurationPlanComposer
                     .ClientSecretTargetPath));
+        }
+        if (InstallationTopologyProfile.For(topology).AcceptsRemoteStations)
+        {
+            actions.Add(new(
+                actions.Count + 1,
+                InstallationInstallerActionKind
+                    .ConfigureAetherRemoteGateway,
+                InstallationInstallerAetherRemoteGatewayConfiguration
+                    .BrokerEnvironmentTargetPath));
         }
         actions.Add(new(
             actions.Count + 1,

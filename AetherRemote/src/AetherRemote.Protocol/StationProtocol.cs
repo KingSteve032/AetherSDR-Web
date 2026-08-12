@@ -44,6 +44,24 @@ public static class StationMessageTypes
         "broker.release.service-control";
     public const string ReleaseServiceControlResult =
         "station.release.service-control-result";
+    public const string ReleaseUpdate = "broker.release.update";
+    public const string ReleaseUpdateResult = "station.release.update-result";
+    public const string ReleaseUpdateAcknowledgement =
+        "broker.release.update-ack";
+}
+
+public static class StationLocalUpdaterMessageTypes
+{
+    public const string Request = "local.release.update";
+    public const string Result = "local.release.update-result";
+}
+
+public static class StationLocalUpdaterActions
+{
+    public const string Apply = "apply";
+    public const string Rollback = "rollback";
+    public const string Confirm = "confirm";
+    public const string Acknowledge = "acknowledge";
 }
 
 public static class StationCapabilities
@@ -51,9 +69,11 @@ public static class StationCapabilities
     public const string ReceiveProjectionV1 = "receive-projection-v1";
     public const string ReleaseServiceControlV1 =
         "release-service-control-v1";
+    public const string ReleaseUpdateV1 = "release-update-v1";
 
     public static bool IsKnown(string? capability) =>
-        capability is ReceiveProjectionV1 or ReleaseServiceControlV1;
+        capability is ReceiveProjectionV1 or ReleaseServiceControlV1 or
+            ReleaseUpdateV1;
 }
 
 public sealed record StationLinkTokenRequest(
@@ -71,7 +91,9 @@ public sealed record StationHelloMessage(
     string StationId,
     string InstanceId,
     string SoftwareVersion,
-    IReadOnlyList<string>? Capabilities = null);
+    IReadOnlyList<string>? Capabilities = null,
+    string ReleaseIdentity = "",
+    string StationEngineVersion = "");
 
 public sealed record StationInventoryMessage(
     string Type,
@@ -158,6 +180,44 @@ public sealed record StationReleaseServiceControlResultMessage(
     string UnitIdentity,
     bool Succeeded,
     string Outcome);
+
+public sealed record BrokerReleaseUpdateMessage(
+    string Type,
+    string CorrelationId,
+    string ReleaseIdentity);
+
+public sealed record StationReleaseUpdateResultMessage(
+    string Type,
+    string CorrelationId,
+    string ReleaseIdentity,
+    bool Succeeded,
+    string Outcome,
+    string ActiveReleaseIdentity,
+    bool RolledBack);
+
+public sealed record BrokerReleaseUpdateAcknowledgementMessage(
+    string Type,
+    string CorrelationId,
+    string ReleaseIdentity);
+
+public sealed record LocalStationReleaseUpdateRequest(
+    string Type,
+    string CorrelationId,
+    string ReleaseIdentity,
+    string Action);
+
+public sealed record LocalStationReleaseUpdateResult(
+    string Type,
+    string CorrelationId,
+    string ReleaseIdentity,
+    string Action,
+    bool Succeeded,
+    string Outcome,
+    string ActiveReleaseIdentity,
+    string PreviousReleaseIdentity,
+    bool RequiresAgentRestart,
+    string CompletedReleaseIdentity = "",
+    bool RolledBack = false);
 
 public sealed record StationRadioAdvertisement(
     string RadioId,
@@ -264,6 +324,24 @@ public static partial class StationProtocolValidator
             capabilities.Count)
         {
             return "A valid station capability list is required.";
+        }
+        bool releaseIdentityPresent =
+            !string.IsNullOrEmpty(message.ReleaseIdentity);
+        bool stationEngineVersionPresent =
+            !string.IsNullOrEmpty(message.StationEngineVersion);
+        if (releaseIdentityPresent != stationEngineVersionPresent ||
+            releaseIdentityPresent &&
+            (!IsIdentifier(message.ReleaseIdentity, 96) ||
+             !IsText(message.StationEngineVersion, 64)))
+        {
+            return "Station release identity and engine version metadata are invalid.";
+        }
+        if (capabilities.Contains(
+                StationCapabilities.ReleaseUpdateV1,
+                StringComparer.Ordinal) &&
+            !releaseIdentityPresent)
+        {
+            return "Release-update capability requires exact station release metadata.";
         }
         return null;
     }
@@ -518,6 +596,113 @@ public static partial class StationProtocolValidator
             !IsIdentifier(message.Outcome, 64))
         {
             return "The remote release service-control result is invalid.";
+        }
+        return null;
+    }
+
+    public static string? ValidateReleaseUpdate(
+        BrokerReleaseUpdateMessage? message)
+    {
+        if (message is null ||
+            !string.Equals(
+                message.Type,
+                StationMessageTypes.ReleaseUpdate,
+                StringComparison.Ordinal) ||
+            !IsSessionId(message.CorrelationId) ||
+            !IsReleaseIdentity(message.ReleaseIdentity))
+        {
+            return "The remote release-update request is invalid.";
+        }
+        return null;
+    }
+
+    public static string? ValidateReleaseUpdateResult(
+        StationReleaseUpdateResultMessage? message)
+    {
+        if (message is null ||
+            !string.Equals(
+                message.Type,
+                StationMessageTypes.ReleaseUpdateResult,
+                StringComparison.Ordinal) ||
+            ValidateReleaseUpdate(
+                new BrokerReleaseUpdateMessage(
+                    StationMessageTypes.ReleaseUpdate,
+                    message.CorrelationId,
+                    message.ReleaseIdentity)) is not null ||
+            !IsIdentifier(message.Outcome, 64) ||
+            !IsReleaseIdentity(message.ActiveReleaseIdentity) ||
+            message.Succeeded &&
+                (!string.Equals(
+                    message.ActiveReleaseIdentity,
+                    message.ReleaseIdentity,
+                    StringComparison.Ordinal) ||
+                 message.RolledBack) ||
+            message.RolledBack && message.Succeeded)
+        {
+            return "The remote release-update result is invalid.";
+        }
+        return null;
+    }
+
+    public static string? ValidateReleaseUpdateAcknowledgement(
+        BrokerReleaseUpdateAcknowledgementMessage? message)
+    {
+        if (message is null ||
+            !string.Equals(
+                message.Type,
+                StationMessageTypes.ReleaseUpdateAcknowledgement,
+                StringComparison.Ordinal) ||
+            !IsSessionId(message.CorrelationId) ||
+            !IsReleaseIdentity(message.ReleaseIdentity))
+        {
+            return "The remote release-update acknowledgement is invalid.";
+        }
+        return null;
+    }
+
+    public static string? ValidateLocalReleaseUpdateRequest(
+        LocalStationReleaseUpdateRequest? message)
+    {
+        if (message is null ||
+            !string.Equals(
+                message.Type,
+                StationLocalUpdaterMessageTypes.Request,
+                StringComparison.Ordinal) ||
+            !IsSessionId(message.CorrelationId) ||
+            !IsReleaseIdentity(message.ReleaseIdentity) ||
+            message.Action is not StationLocalUpdaterActions.Apply and
+                not StationLocalUpdaterActions.Rollback and
+                not StationLocalUpdaterActions.Confirm and
+                not StationLocalUpdaterActions.Acknowledge)
+        {
+            return "The local station release-update request is invalid.";
+        }
+        return null;
+    }
+
+    public static string? ValidateLocalReleaseUpdateResult(
+        LocalStationReleaseUpdateResult? message)
+    {
+        if (message is null ||
+            !string.Equals(
+                message.Type,
+                StationLocalUpdaterMessageTypes.Result,
+                StringComparison.Ordinal) ||
+            ValidateLocalReleaseUpdateRequest(
+                new LocalStationReleaseUpdateRequest(
+                    StationLocalUpdaterMessageTypes.Request,
+                    message.CorrelationId,
+                    message.ReleaseIdentity,
+                    message.Action)) is not null ||
+            !IsIdentifier(message.Outcome, 64) ||
+            !IsReleaseIdentity(message.ActiveReleaseIdentity) ||
+            !IsReleaseIdentity(message.PreviousReleaseIdentity) ||
+            (!string.IsNullOrEmpty(message.CompletedReleaseIdentity) &&
+             !IsReleaseIdentity(message.CompletedReleaseIdentity)) ||
+            (message.RolledBack &&
+             string.IsNullOrEmpty(message.CompletedReleaseIdentity)))
+        {
+            return "The local station release-update result is invalid.";
         }
         return null;
     }

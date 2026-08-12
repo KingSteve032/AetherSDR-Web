@@ -20,8 +20,8 @@ public interface IStationReleaseUpdaterClient
 public sealed class UnixSocketStationReleaseUpdaterClient :
     IStationReleaseUpdaterClient
 {
-    internal const string DirectoryName = "aetherremote-release-updater";
-    internal const string SocketFileName = "control.sock";
+    internal const string SocketPath =
+        "/run/aetherremote-release-updater/control.sock";
     internal const int MaximumMessageBytes = 16 * 1024;
 
     public async Task<StationReleaseServiceControlResultMessage> ExecuteAsync(
@@ -29,53 +29,18 @@ public sealed class UnixSocketStationReleaseUpdaterClient :
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        string runtimeRoot = GetRuntimeRoot();
-        string socketRoot = Path.GetFullPath(
-            Path.Combine(runtimeRoot, DirectoryName));
-        string socketPath = Path.GetFullPath(
-            Path.Combine(socketRoot, SocketFileName));
-        if (!string.Equals(
-                Path.GetDirectoryName(socketRoot),
-                runtimeRoot,
-                StringComparison.Ordinal) ||
-            !string.Equals(
-                Path.GetDirectoryName(socketPath),
-                socketRoot,
-                StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                "The AetherRemote updater socket escaped the user runtime directory.");
-        }
-
         using Socket socket = new(
             AddressFamily.Unix,
             SocketType.Stream,
             ProtocolType.Unspecified);
         await socket.ConnectAsync(
-            new UnixDomainSocketEndPoint(socketPath),
+            new UnixDomainSocketEndPoint(SocketPath),
             cancellationToken);
         await using NetworkStream stream = new(socket, ownsSocket: false);
         await WriteAsync(stream, request, cancellationToken);
         return await ReadAsync<StationReleaseServiceControlResultMessage>(
             stream,
             cancellationToken);
-    }
-
-    private static string GetRuntimeRoot()
-    {
-        string value =
-            Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR") ?? string.Empty;
-        const string prefix = "/run/user/";
-        if (!value.StartsWith(prefix, StringComparison.Ordinal) ||
-            value.Length <= prefix.Length ||
-            !value[prefix.Length..].All(character =>
-                character is >= '0' and <= '9') ||
-            !string.Equals(Path.GetFullPath(value), value, StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                "XDG_RUNTIME_DIR is unavailable or unsafe for the updater socket.");
-        }
-        return value;
     }
 
     private static async Task<T> ReadAsync<T>(

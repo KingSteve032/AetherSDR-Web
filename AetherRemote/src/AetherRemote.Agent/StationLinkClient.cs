@@ -14,16 +14,21 @@ public sealed class StationLinkClient(
     IStationRadioInventoryProvider inventory,
     StationReceiveSessionManager receiveSessions,
     StationReleaseServiceControlService releaseServiceControl,
+    StationReleaseUpdateService releaseUpdates,
+    IHostApplicationLifetime applicationLifetime,
     ILogger<StationLinkClient> logger)
     : BackgroundService
 {
     private static readonly UTF8Encoding StrictUtf8 =
         new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
     private readonly AgentSettings m_settings = settings.Value;
+    private StationReleaseUpdateResultMessage? m_startupReleaseUpdateResult;
 
     protected override async Task ExecuteAsync(
         CancellationToken stoppingToken)
     {
+        m_startupReleaseUpdateResult =
+            await releaseUpdates.ConfirmStartupAsync(stoppingToken);
         string credential = ReadCredentialFile(
             m_settings.CredentialFile);
         int consecutiveFailures = 0;
@@ -92,7 +97,9 @@ public sealed class StationLinkClient(
                 m_settings.StationId,
                 instanceId,
                 m_settings.SoftwareVersion,
-                linkToken.Capabilities),
+                linkToken.Capabilities,
+                m_settings.ReleaseIdentity,
+                m_settings.StationEngineVersion),
             cancellationToken);
 
         using CancellationTokenSource welcomeTimeout =
@@ -106,6 +113,14 @@ public sealed class StationLinkClient(
             "Station {StationId} connected to broker as {ConnectionId}",
             m_settings.StationId,
             welcome.ConnectionId);
+        if (m_startupReleaseUpdateResult is not null)
+        {
+            await SendJsonAsync(
+                socket,
+                sendGate,
+                m_startupReleaseUpdateResult,
+                cancellationToken);
+        }
 
         using IDisposable projectionSender =
             receiveSessions.AttachBrokerSender(
@@ -474,6 +489,68 @@ public sealed class StationLinkClient(
                     sendGate,
                     result,
                     cancellationToken);
+                continue;
+            }
+            if (type == StationMessageTypes.ReleaseUpdate)
+            {
+                BrokerReleaseUpdateMessage? request =
+                    document.RootElement
+                        .Deserialize<BrokerReleaseUpdateMessage>(
+                            StationProtocol.JsonOptions);
+                string? validation =
+                    StationProtocolValidator.ValidateReleaseUpdate(request);
+                if (validation is not null || request is null)
+                {
+                    throw new InvalidDataException(validation);
+                }
+                StationReleaseUpdateExecution execution =
+                    await releaseUpdates.ExecuteAsync(
+                        request,
+                        cancellationToken);
+                if (execution.RestartAgent)
+                {
+                    applicationLifetime.StopApplication();
+                    return;
+                }
+                await SendJsonAsync(
+                    socket,
+                    sendGate,
+                    execution.Result,
+                    cancellationToken);
+                continue;
+            }
+            if (type == StationMessageTypes.ReleaseUpdateAcknowledgement)
+            {
+                BrokerReleaseUpdateAcknowledgementMessage? acknowledgement =
+                    document.RootElement.Deserialize<
+                        BrokerReleaseUpdateAcknowledgementMessage>(
+                            StationProtocol.JsonOptions);
+                string? validation =
+                    StationProtocolValidator
+                        .ValidateReleaseUpdateAcknowledgement(
+                            acknowledgement);
+                if (validation is not null || acknowledgement is null)
+                {
+                    throw new InvalidDataException(validation);
+                }
+                StationReleaseUpdateResultMessage? completion =
+                    m_startupReleaseUpdateResult;
+                if (completion is not null &&
+                    string.Equals(
+                        completion.CorrelationId,
+                        acknowledgement.CorrelationId,
+                        StringComparison.Ordinal) &&
+                    string.Equals(
+                        completion.ReleaseIdentity,
+                        acknowledgement.ReleaseIdentity,
+                        StringComparison.Ordinal))
+                {
+                    await releaseUpdates.AcknowledgeStartupAsync(
+                        completion,
+                        acknowledgement,
+                        cancellationToken);
+                    m_startupReleaseUpdateResult = null;
+                }
                 continue;
             }
             if (type == StationMessageTypes.CloseReceiveSession)

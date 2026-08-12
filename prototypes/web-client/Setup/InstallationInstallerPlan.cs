@@ -43,7 +43,8 @@ public enum InstallationInstallerActionKind
     InitializeIdentityDatabase = 13,
     ConfigureGatewayEnvironment = 14,
     InstallAuthenticationClientSecret = 15,
-    AdoptSetupIdentityState = 16
+    AdoptSetupIdentityState = 16,
+    ConfigureAetherRemoteGateway = 17
 }
 
 public sealed record InstallationInstallerSelection(
@@ -389,6 +390,12 @@ public static class InstallationInstallerPlanComposer
         if (profile.GatewayRunsHere)
         {
             directories.Add(paths.IdentityStoreDirectory);
+            if (profile.AcceptsRemoteStations)
+            {
+                directories.Add(
+                    InstallationInstallerAetherRemoteGatewayConfiguration
+                        .CredentialDirectory);
+            }
         }
         if (profile.BrokerRunsHere ||
             profile.StationEngineRunsHere ||
@@ -502,6 +509,15 @@ public static class InstallationInstallerPlanComposer
                         .InstallAuthenticationClientSecret,
                     InstallationInstallerGatewayConfigurationPlanComposer
                         .ClientSecretTargetPath);
+            }
+            if (profile.AcceptsRemoteStations)
+            {
+                AddAction(
+                    actions,
+                    InstallationInstallerActionKind
+                        .ConfigureAetherRemoteGateway,
+                    InstallationInstallerAetherRemoteGatewayConfiguration
+                        .BrokerEnvironmentTargetPath);
             }
             AddAction(
                 actions,

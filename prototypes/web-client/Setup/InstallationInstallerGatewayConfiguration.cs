@@ -74,6 +74,8 @@ internal static class InstallationInstallerGatewayConfigurationPlanComposer
                 "The gateway runtime configuration binding is invalid.");
         }
 
+        InstallationTopologyProfile topology =
+            InstallationTopologyProfile.For(configuration.Topology);
         List<KeyValuePair<string, string>> values =
         [
             new("AllowedHosts",
@@ -97,8 +99,28 @@ internal static class InstallationInstallerGatewayConfigurationPlanComposer
             new("Radio__AllowTransmit", "false"),
             new("Radio__BrowserTxLeaseEnabled", "false"),
             new("StationTxProductionActivation__Enabled", "false"),
+            new("AetherRemoteBootstrap__Enabled",
+                topology.AcceptsRemoteStations ? "true" : "false"),
+            new("RemoteStations__Enabled",
+                topology.AcceptsRemoteStations ? "true" : "false"),
             new("Auth__Mode", RuntimeMode(authentication.Mode))
         ];
+
+        if (topology.AcceptsRemoteStations)
+        {
+            values.Add(new(
+                "RemoteStations__BrokerUrl",
+                "http://127.0.0.1:5090"));
+            values.Add(new(
+                "RemoteStations__RuntimeCredentialFile",
+                InstallationInstallerAetherRemoteGatewayConfiguration
+                    .RuntimeCredentialPath));
+            values.Add(new(
+                "RemoteStations__AdministrationCredentialFile",
+                InstallationInstallerAetherRemoteGatewayConfiguration
+                    .AdministrationCredentialPath));
+            values.Add(new("RemoteStations__RefreshSeconds", "3"));
+        }
 
         if (authentication.UsesExternalProvider)
         {

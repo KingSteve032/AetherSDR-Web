@@ -65,6 +65,10 @@
              Link="installer\proxy\%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\AetherRemote\deploy\install-from-gateway.sh"
+             Link="bootstrap\aetherremote-install.sh"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
