@@ -134,6 +134,103 @@ public sealed class RadioSessionRegistryTests
     }
 
     [Fact]
+    public async Task OnboardingPolicyGatesExistingSessionAndRevokesItsLease()
+    {
+        string directory = Path.Combine(
+            Path.GetTempPath(),
+            "aethersdr-web-tests",
+            Guid.NewGuid().ToString("N"));
+        RadioOnboardingPolicyStore onboarding = new(
+            Path.Combine(directory, "onboarding.json"),
+            NullLogger<RadioOnboardingPolicyStore>.Instance);
+        TxLeaseManager leases = new();
+        (RadioSessionRegistry registry, RadioSelectionManager catalog, _) =
+            CreateRegistry(
+                browserTxLeaseEnabled: true,
+                onboardingPolicies: onboarding,
+                txLeaseManager: leases);
+        await registry.StartAsync(CancellationToken.None);
+        try
+        {
+            ClaimsPrincipal user = CreateUser(
+                "operator-a",
+                "Aether.Transmit");
+            RadioSession session = await registry.GetDefaultAsync(
+                user,
+                BrowserA,
+                CancellationToken.None);
+            Assert.False(session.Coordinator.BrowserTxLeaseEnabled);
+
+            RadioSelectionOption selected =
+                Assert.Single(catalog.GetSnapshot().Radios);
+            RadioOnboardingIdentity identity =
+                RadioAdministrationService.ToOnboardingIdentity(selected);
+            _ = onboarding.UpdateLabel(
+                identity,
+                "Local Flex",
+                "administrator");
+            _ = onboarding.UpdateTransmitPolicy(
+                identity,
+                RadioTransmitPolicyStates.TxEligible,
+                "administrator",
+                new(
+                    ValidationOnly: true,
+                    identity.SourceRadioId,
+                    Ready: true,
+                    Reason: "preflight-ready",
+                    MissingPrerequisites: [],
+                    EvaluatedAt: DateTimeOffset.UtcNow));
+            RadioTransmitPolicyApplicationResult enabled =
+                await registry.ApplyTransmitPolicyAsync(
+                    identity.RadioId,
+                    transmitEligible: true);
+
+            Assert.False(session.Coordinator.BrowserTxLeaseEnabled);
+            Assert.Equal(0, enabled.UpdatedSessions);
+            Assert.True(await registry.TerminateOwnedSessionAsync(
+                session.SessionId,
+                user));
+            session = await registry.GetDefaultAsync(
+                user,
+                BrowserA,
+                CancellationToken.None);
+            Assert.True(session.Coordinator.BrowserTxLeaseEnabled);
+            Assert.True(leases.TryAcquire(
+                identity.RadioId,
+                session.SessionId,
+                BrowserA,
+                "operator-a",
+                "Operator A",
+                TimeSpan.FromSeconds(5),
+                out TxLease? acquired,
+                out string? error),
+                error);
+            Assert.NotNull(acquired);
+
+            _ = onboarding.UpdateTransmitPolicy(
+                identity,
+                RadioTransmitPolicyStates.TemporarilyDisabled,
+                "administrator");
+            RadioTransmitPolicyApplicationResult disabled =
+                await registry.ApplyTransmitPolicyAsync(
+                    identity.RadioId,
+                    transmitEligible: false);
+
+            Assert.False(session.Coordinator.BrowserTxLeaseEnabled);
+            Assert.Equal(1, disabled.RevokedLeases);
+            Assert.Null(leases.GetCurrent(identity.RadioId));
+        }
+        finally
+        {
+            await registry.StopAsync(CancellationToken.None);
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task SessionInheritsReadyTrustVerifierWithoutCommandCapability()
     {
         string directory = Path.Combine(
@@ -896,7 +993,9 @@ public sealed class RadioSessionRegistryTests
             bool browserTxLeaseEnabled = false,
             StationTxIndependentWatchdogRegistry? independentWatchdogs = null,
             StationTxCommandTrustRegistry? stationCommandTrust = null,
-            StationTxCommandEnvelopeCoordinator? stationCommandCoordinator = null)
+            StationTxCommandEnvelopeCoordinator? stationCommandCoordinator = null,
+            RadioOnboardingPolicyStore? onboardingPolicies = null,
+            TxLeaseManager? txLeaseManager = null)
     {
         IOptions<RadioSettings> options = Options.Create(
             new RadioSettings
@@ -919,14 +1018,15 @@ public sealed class RadioSessionRegistryTests
             catalog,
             policies,
             options,
-            new TxLeaseManager(),
+            txLeaseManager ?? new TxLeaseManager(),
             new RadioTxOccupancyRegistry(),
             NullLoggerFactory.Instance,
             NullLogger<RadioSessionRegistry>.Instance,
             remoteSettings: null,
             independentWatchdogs,
             stationCommandTrust,
-            stationCommandCoordinator);
+            stationCommandCoordinator,
+            onboardingPolicies: onboardingPolicies);
         return (registry, catalog, policies);
     }
 

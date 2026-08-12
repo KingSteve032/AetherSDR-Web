@@ -53,6 +53,10 @@ public sealed record InstallationPaths(
         Path.Combine(StateDirectory, "radio-access", "policies.json");
 
     [JsonIgnore]
+    public string RadioOnboardingPolicyPath =>
+        Path.Combine(StateDirectory, "radio-access", "onboarding.json");
+
+    [JsonIgnore]
     public string AdministrativeAuditPath =>
         Path.Combine(StateDirectory, "radio-access", "audit.json");
 

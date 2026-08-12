@@ -406,6 +406,32 @@ public sealed class TxLeaseManager(TimeProvider? timeProvider = null)
         return success;
     }
 
+    internal int ReleaseRadio(string radioId, string reason)
+    {
+        string normalizedRadioId = NormalizeRadioId(radioId);
+        if (normalizedRadioId.Length == 0 || !ValidReason(reason))
+        {
+            return 0;
+        }
+
+        TxLeaseChange? change = null;
+        lock (m_gate)
+        {
+            if (m_leases.Remove(
+                    normalizedRadioId,
+                    out TxLease? existing))
+            {
+                change = new TxLeaseChange(
+                    existing,
+                    Active: false,
+                    reason,
+                    m_timeProvider.GetUtcNow());
+            }
+        }
+        Publish(change);
+        return change is null ? 0 : 1;
+    }
+
     public int ReleaseSession(string sessionId, string reason)
     {
         if (!ValidIdentifier(sessionId, 128) || !ValidReason(reason))

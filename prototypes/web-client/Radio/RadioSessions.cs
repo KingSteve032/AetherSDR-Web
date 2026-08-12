@@ -15,6 +15,12 @@ public sealed record RadioSessionSummary(
     int ClientCount,
     DateTimeOffset LastActivity);
 
+public sealed record RadioTransmitPolicyApplicationResult(
+    string RadioId,
+    bool TransmitEligible,
+    int UpdatedSessions,
+    int RevokedLeases);
+
 public sealed class RadioSession : IAsyncDisposable
 {
     private readonly BackgroundService m_transport;
@@ -151,6 +157,13 @@ public sealed class RadioSession : IAsyncDisposable
         return Selection.SetLowBandwidth(enabled, panadapters);
     }
 
+    internal void SetTransmitPolicyEligible(bool eligible) =>
+        Coordinator.SetBrowserTxLeasePolicy(eligible);
+
+    internal Task FlushTxLifecycleAsync(
+        CancellationToken cancellationToken = default) =>
+        Coordinator.FlushTxLifecycleAsync(cancellationToken);
+
     public RadioSessionDiagnostics GetDiagnostics()
     {
         RadioSnapshot snapshot = Coordinator.Snapshot;
@@ -279,7 +292,8 @@ public sealed class RadioSessionRegistry(
     IOptions<StationTxEmergencyUnkeyTransportSettings>?
         stationTxEmergencyUnkeyTransportSettings = null,
     StationTxProductionActivationConfigurationDiagnostics?
-        stationTxProductionActivationConfiguration = null)
+        stationTxProductionActivationConfiguration = null,
+    RadioOnboardingPolicyStore? onboardingPolicies = null)
     : BackgroundService
 {
     // Mobile browsers suspend WebSockets as soon as the operator changes apps
@@ -426,6 +440,60 @@ public sealed class RadioSessionRegistry(
                 .ThenBy(session => session.CreatedAt)
                 .ToArray();
         }
+    }
+
+    public async Task<RadioTransmitPolicyApplicationResult>
+        ApplyTransmitPolicyAsync(
+            string radioId,
+            bool transmitEligible,
+            CancellationToken cancellationToken = default)
+    {
+        string normalizedRadioId = radioId?.Trim() ?? string.Empty;
+        if (normalizedRadioId.Length is 0 or > 128 ||
+            normalizedRadioId.Any(char.IsControl))
+        {
+            throw new ArgumentException(
+                "A valid radio identifier is required.",
+                nameof(radioId));
+        }
+
+        RadioSession[] affected;
+        lock (m_gate)
+        {
+            affected = m_sessionsById.Values
+                .Where(session => string.Equals(
+                    session.Endpoint.RadioId,
+                    normalizedRadioId,
+                    StringComparison.OrdinalIgnoreCase))
+                .Distinct()
+                .ToArray();
+            if (!transmitEligible)
+            {
+                foreach (RadioSession session in affected)
+                {
+                    session.SetTransmitPolicyEligible(eligible: false);
+                }
+            }
+        }
+
+        int revokedLeases = transmitEligible
+            ? 0
+            : txLeaseManager.ReleaseRadio(
+                normalizedRadioId,
+                "radio-transmit-policy-disabled");
+        if (!transmitEligible)
+        {
+            foreach (RadioSession session in affected)
+            {
+                await session.FlushTxLifecycleAsync(cancellationToken);
+            }
+        }
+
+        return new(
+            normalizedRadioId,
+            transmitEligible,
+            transmitEligible ? 0 : affected.Length,
+            revokedLeases);
     }
 
     public async Task<int> TerminateUserSessionsAsync(
@@ -777,6 +845,13 @@ public sealed class RadioSessionRegistry(
             remoteIntentRouter,
             txOccupancyRegistry,
             txLifecycle);
+        coordinator.SetBrowserTxLeasePolicy(
+            onboardingPolicies is null ||
+            string.Equals(
+                onboardingPolicies.GetPolicy(
+                    ToOnboardingIdentity(endpoint)).TransmitPolicyState,
+                RadioTransmitPolicyStates.TxEligible,
+                StringComparison.Ordinal));
         BackgroundService transport =
             isRemote
                 ? new RemoteRadioProjectionService(
@@ -895,6 +970,16 @@ public sealed class RadioSessionRegistry(
         sessionId is { Length: 32 } &&
         sessionId.All(character =>
             character is >= '0' and <= '9' or >= 'a' and <= 'f');
+
+    private static RadioOnboardingIdentity ToOnboardingIdentity(
+        SelectedRadioEndpoint endpoint) =>
+        RadioOnboardingPolicyStore.NormalizeIdentity(new(
+            endpoint.RadioId,
+            endpoint.Source,
+            endpoint.StationId,
+            string.IsNullOrWhiteSpace(endpoint.SourceRadioId)
+                ? endpoint.RadioId
+                : endpoint.SourceRadioId));
 
     private static RadioSettings CloneSettings(
         RadioSettings source,

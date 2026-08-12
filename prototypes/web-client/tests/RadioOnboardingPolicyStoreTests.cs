@@ -5,6 +5,12 @@ namespace AetherSDR.Web.Tests;
 
 public sealed class RadioOnboardingPolicyStoreTests
 {
+    private static readonly RadioOnboardingIdentity RemoteIdentity = new(
+        "remote:station-a:flex-6600",
+        "remote",
+        "station-a",
+        "flex-6600");
+
     [Fact]
     public void NewlyDiscoveredRadioDefaultsToUnmanagedReceiveOnly()
     {
@@ -12,25 +18,28 @@ public sealed class RadioOnboardingPolicyStoreTests
         RadioOnboardingPolicyStore store = CreateStore(directory);
 
         RadioOnboardingPolicySnapshot policy =
-            store.GetPolicy("remote:station-a:flex-6600");
+            store.GetPolicy(RemoteIdentity);
 
         Assert.Equal(
             RadioTransmitPolicyStates.ReceiveOnly,
             policy.TransmitPolicyState);
         Assert.False(policy.Onboarded);
+        Assert.Equal("remote", policy.Source);
+        Assert.Equal("station-a", policy.StationId);
+        Assert.Equal("flex-6600", policy.SourceRadioId);
         Assert.Null(policy.Label);
         Assert.Null(policy.UpdatedAt);
         Assert.False(File.Exists(directory.PolicyPath));
     }
 
     [Fact]
-    public void StableLabelIsTrimmedPersistedAndReloaded()
+    public void StableLabelAndSourceOwnershipPersistAndReload()
     {
         using TestDirectory directory = new();
         RadioOnboardingPolicyStore first = CreateStore(directory);
 
         RadioOnboardingPolicySnapshot updated = first.UpdateLabel(
-            "remote:station-a:flex-6600",
+            RemoteIdentity,
             "  Club Station  ",
             "administrator-1");
 
@@ -44,10 +53,15 @@ public sealed class RadioOnboardingPolicyStoreTests
 
         RadioOnboardingPolicyStore reloaded = CreateStore(directory);
         RadioOnboardingPolicySnapshot persisted =
-            reloaded.GetPolicy("REMOTE:STATION-A:FLEX-6600");
+            reloaded.GetPolicy(RemoteIdentity with
+            {
+                RadioId = "REMOTE:STATION-A:FLEX-6600"
+            });
 
         Assert.Equal("Club Station", persisted.Label);
         Assert.True(persisted.Onboarded);
+        Assert.Equal("station-a", persisted.StationId);
+        Assert.Equal("flex-6600", persisted.SourceRadioId);
         Assert.Equal(
             RadioTransmitPolicyStates.ReceiveOnly,
             persisted.TransmitPolicyState);
@@ -59,6 +73,34 @@ public sealed class RadioOnboardingPolicyStoreTests
         }
     }
 
+    [Fact]
+    public void ChangedPhysicalIdentityDoesNotInheritOnboardingOrTxPolicy()
+    {
+        using TestDirectory directory = new();
+        RadioOnboardingPolicyStore store = CreateStore(directory);
+        _ = store.UpdateLabel(
+            RemoteIdentity,
+            "Club Station",
+            "administrator");
+        _ = store.UpdateTransmitPolicy(
+            RemoteIdentity,
+            RadioTransmitPolicyStates.TxEligible,
+            "administrator",
+            ReadyPreflight());
+
+        RadioOnboardingPolicySnapshot replacement =
+            store.GetPolicy(RemoteIdentity with
+            {
+                SourceRadioId = "different-flex"
+            });
+
+        Assert.False(replacement.Onboarded);
+        Assert.Null(replacement.Label);
+        Assert.Equal(
+            RadioTransmitPolicyStates.ReceiveOnly,
+            replacement.TransmitPolicyState);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
@@ -68,12 +110,12 @@ public sealed class RadioOnboardingPolicyStoreTests
         RadioOnboardingPolicyStore store = CreateStore(directory);
 
         Assert.Throws<ArgumentException>(() => store.UpdateLabel(
-            "flex:1234",
+            RemoteIdentity,
             label,
             "administrator"));
 
         RadioOnboardingPolicySnapshot policy =
-            store.GetPolicy("flex:1234");
+            store.GetPolicy(RemoteIdentity);
         Assert.False(policy.Onboarded);
         Assert.Equal(
             RadioTransmitPolicyStates.ReceiveOnly,
@@ -95,18 +137,109 @@ public sealed class RadioOnboardingPolicyStoreTests
             NullLogger<RadioOnboardingPolicyStore>.Instance);
 
         Assert.ThrowsAny<IOException>(() => store.UpdateLabel(
-            "flex:1234",
+            RemoteIdentity,
             "Club Station",
             "administrator"));
 
         RadioOnboardingPolicySnapshot policy =
-            store.GetPolicy("flex:1234");
+            store.GetPolicy(RemoteIdentity);
         Assert.False(policy.Onboarded);
         Assert.Null(policy.Label);
         Assert.Equal(
             RadioTransmitPolicyStates.ReceiveOnly,
             policy.TransmitPolicyState);
     }
+
+    [Fact]
+    public void TxEligibilityRequiresOnboardingAndExactReadyPreflight()
+    {
+        using TestDirectory directory = new();
+        RadioOnboardingPolicyStore store = CreateStore(directory);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            store.UpdateTransmitPolicy(
+                RemoteIdentity,
+                RadioTransmitPolicyStates.TxEligible,
+                "administrator",
+                ReadyPreflight()));
+
+        _ = store.UpdateLabel(
+            RemoteIdentity,
+            "Club Station",
+            "administrator");
+        Assert.Throws<ArgumentException>(() => store.UpdateTransmitPolicy(
+            RemoteIdentity,
+            RadioTransmitPolicyStates.TxEligible,
+            "administrator",
+            ReadyPreflight() with { TargetRadioId = "different-flex" }));
+
+        RadioOnboardingPolicySnapshot updated =
+            store.UpdateTransmitPolicy(
+                RemoteIdentity,
+                RadioTransmitPolicyStates.TxEligible,
+                "administrator",
+                ReadyPreflight());
+
+        Assert.Equal(
+            RadioTransmitPolicyStates.TxEligible,
+            updated.TransmitPolicyState);
+        Assert.True(updated.TransmitPreflight?.Ready);
+        Assert.Empty(updated.TransmitPreflight!.MissingPrerequisites);
+    }
+
+    [Fact]
+    public void FailedPrerequisitesAreDurableAndDisablingClearsEvidence()
+    {
+        using TestDirectory directory = new();
+        RadioOnboardingPolicyStore store = CreateStore(directory);
+        _ = store.UpdateLabel(
+            RemoteIdentity,
+            "Club Station",
+            "administrator");
+        RadioTransmitPreflightSnapshot failure = ReadyPreflight() with
+        {
+            Ready = false,
+            Reason = "watchdog-radio-not-allowed",
+            MissingPrerequisites = ["watchdog-radio-not-allowed"]
+        };
+
+        RadioOnboardingPolicySnapshot failed =
+            store.UpdateTransmitPolicy(
+                RemoteIdentity,
+                RadioTransmitPolicyStates.PrerequisitesFailed,
+                "administrator",
+                failure);
+        Assert.Equal(
+            RadioTransmitPolicyStates.PrerequisitesFailed,
+            failed.TransmitPolicyState);
+        Assert.Equal(
+            "watchdog-radio-not-allowed",
+            failed.TransmitPreflight?.Reason);
+
+        RadioOnboardingPolicySnapshot disabled =
+            store.UpdateTransmitPolicy(
+                RemoteIdentity,
+                RadioTransmitPolicyStates.TemporarilyDisabled,
+                "administrator");
+        Assert.Equal(
+            RadioTransmitPolicyStates.TemporarilyDisabled,
+            disabled.TransmitPolicyState);
+        Assert.Null(disabled.TransmitPreflight);
+
+        RadioOnboardingPolicyStore reloaded = CreateStore(directory);
+        Assert.Equal(
+            RadioTransmitPolicyStates.TemporarilyDisabled,
+            reloaded.GetPolicy(RemoteIdentity).TransmitPolicyState);
+    }
+
+    private static RadioTransmitPreflightSnapshot ReadyPreflight() =>
+        new(
+            ValidationOnly: true,
+            TargetRadioId: RemoteIdentity.SourceRadioId,
+            Ready: true,
+            Reason: "preflight-ready",
+            MissingPrerequisites: [],
+            EvaluatedAt: DateTimeOffset.UtcNow);
 
     private static RadioOnboardingPolicyStore CreateStore(
         TestDirectory directory) =>

@@ -140,6 +140,37 @@ public sealed class AetherLocalAccountAdministrationServiceTests
     }
 
     [Fact]
+    public async Task SensitiveAuthorityRequiresCurrentDurableReauthentication()
+    {
+        await using AdministrationFixture fixture =
+            await AdministrationFixture.CreateAsync();
+
+        AetherAdministratorAuthorityEvidence current =
+            await fixture.Authority.RequireFreshAsync(
+                fixture.AdministratorPrincipal);
+        Assert.Equal(fixture.Administrator.Id, current.UserId);
+        Assert.Equal(fixture.AdministratorSession.Id, current.SessionId);
+
+        fixture.Time.Advance(
+            fixture.Policy.AdministratorReauthenticationLifetime +
+            TimeSpan.FromSeconds(1));
+        await Assert.ThrowsAsync<
+            AetherAdministratorReauthenticationRequiredException>(
+            () => fixture.Authority.RequireFreshAsync(
+                fixture.AdministratorPrincipal));
+
+        fixture.Time.Rewind(
+            fixture.Policy.AdministratorReauthenticationLifetime +
+            TimeSpan.FromSeconds(1));
+        fixture.Administrator.AuthorityVersion++;
+        await fixture.Database.SaveChangesAsync();
+        await Assert.ThrowsAsync<
+            AetherAdministratorReauthenticationRequiredException>(
+            () => fixture.Authority.RequireFreshAsync(
+                fixture.AdministratorPrincipal));
+    }
+
+    [Fact]
     public async Task LocalAdministratorReauthenticationCreatesSameUserFreshSession()
     {
         await using AdministrationFixture fixture =
@@ -457,6 +488,7 @@ public sealed class AetherLocalAccountAdministrationServiceTests
             AetherIdentityDbContext database,
             AetherLocalAccountAdministrationService service,
             AetherLocalAdministratorReauthenticationService reauthentication,
+            AetherAdministratorAuthorityService authority,
             IPasswordHasher<AetherIdentityUser> passwordHasher,
             AetherLocalAuthenticationPolicy policy,
             ManualTimeProvider time,
@@ -471,6 +503,7 @@ public sealed class AetherLocalAccountAdministrationServiceTests
             Database = database;
             Service = service;
             Reauthentication = reauthentication;
+            Authority = authority;
             PasswordHasher = passwordHasher;
             Policy = policy;
             Time = time;
@@ -488,6 +521,8 @@ public sealed class AetherLocalAccountAdministrationServiceTests
         {
             get;
         }
+
+        internal AetherAdministratorAuthorityService Authority { get; }
 
         internal IPasswordHasher<AetherIdentityUser> PasswordHasher { get; }
 
@@ -555,6 +590,7 @@ public sealed class AetherLocalAccountAdministrationServiceTests
                 services.AddAetherLocalAuthenticationFoundation(
                     topology.LocalPolicy);
                 services.AddScoped<AetherAuthenticationSessionService>();
+                services.AddScoped<AetherAdministratorAuthorityService>();
                 ServiceProvider provider = services.BuildServiceProvider();
                 AsyncServiceScope scope = provider.CreateAsyncScope();
                 IServiceProvider scoped = scope.ServiceProvider;
@@ -639,6 +675,8 @@ public sealed class AetherLocalAccountAdministrationServiceTests
                         AetherLocalAccountAdministrationService>(),
                     scoped.GetRequiredService<
                         AetherLocalAdministratorReauthenticationService>(),
+                    scoped.GetRequiredService<
+                        AetherAdministratorAuthorityService>(),
                     passwordHasher,
                     topology.LocalPolicy,
                     time,

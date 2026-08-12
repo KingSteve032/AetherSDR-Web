@@ -407,12 +407,29 @@ public sealed class RadioAdministrationService(
         string administratorId)
     {
         ArgumentNullException.ThrowIfNull(request);
-        EnsureKnownRadio(radioId);
+        RadioOnboardingIdentity identity = GetOnboardingIdentity(radioId);
         return onboarding.UpdateLabel(
-            radioId,
+            identity,
             request.Label,
             administratorId);
     }
+
+    public RadioOnboardingIdentity GetOnboardingIdentity(string radioId)
+    {
+        RadioSelectionOption radio = GetKnownRadio(radioId);
+        return ToOnboardingIdentity(radio);
+    }
+
+    public RadioOnboardingPolicySnapshot UpdateTransmitPolicy(
+        RadioOnboardingIdentity identity,
+        string state,
+        string administratorId,
+        RadioTransmitPreflightSnapshot? preflight = null) =>
+        onboarding.UpdateTransmitPolicy(
+            identity,
+            state,
+            administratorId,
+            preflight);
 
     public async Task<ForceDisconnectResult> ForceDisconnectAsync(
         string radioId,
@@ -485,7 +502,7 @@ public sealed class RadioAdministrationService(
             .ToArray();
 
         RadioOnboardingPolicySnapshot onboardingPolicy =
-            onboarding.GetPolicy(radio.RadioId);
+            onboarding.GetPolicy(ToOnboardingIdentity(radio));
         return new AdminRadioSnapshot(
             radio.RadioId,
             onboardingPolicy.Label ?? radio.Label,
@@ -598,17 +615,32 @@ public sealed class RadioAdministrationService(
         (string.IsNullOrWhiteSpace(client.Station) ? 0 : 1) +
         (string.IsNullOrWhiteSpace(client.Source) ? 0 : 1);
 
-    private void EnsureKnownRadio(string radioId)
+    private void EnsureKnownRadio(string radioId) =>
+        _ = GetKnownRadio(radioId);
+
+    private RadioSelectionOption GetKnownRadio(string radioId)
     {
-        bool known = radioCatalog.GetSnapshot().Radios.Any(radio =>
-            string.Equals(
-                radio.RadioId,
-                radioId?.Trim(),
-                StringComparison.OrdinalIgnoreCase));
-        if (!known)
-        {
+        RadioSelectionOption? known =
+            radioCatalog.GetSnapshot().Radios.FirstOrDefault(radio =>
+                string.Equals(
+                    radio.RadioId,
+                    radioId?.Trim(),
+                    StringComparison.OrdinalIgnoreCase));
+        return known ??
             throw new KeyNotFoundException(
                 "That radio is not in the server inventory.");
-        }
+    }
+
+    internal static RadioOnboardingIdentity ToOnboardingIdentity(
+        RadioSelectionOption radio)
+    {
+        ArgumentNullException.ThrowIfNull(radio);
+        return RadioOnboardingPolicyStore.NormalizeIdentity(new(
+            radio.RadioId,
+            radio.Source,
+            radio.StationId,
+            string.IsNullOrWhiteSpace(radio.SourceRadioId)
+                ? radio.RadioId
+                : radio.SourceRadioId));
     }
 }

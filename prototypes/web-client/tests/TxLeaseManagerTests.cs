@@ -49,6 +49,46 @@ public sealed class TxLeaseManagerTests
     }
 
     [Fact]
+    public void RadioPolicyRevocationReleasesOnlyTheExactRadio()
+    {
+        TxLeaseManager manager = new();
+        List<TxLeaseChange> changes = [];
+        manager.Changed += changes.Add;
+        Assert.True(Acquire(
+            manager,
+            "radio-a",
+            "session-a",
+            "client-a",
+            out _));
+        Assert.True(Acquire(
+            manager,
+            "radio-b",
+            "session-b",
+            "client-b",
+            out TxLease? other));
+
+        Assert.Equal(
+            1,
+            manager.ReleaseRadio(
+                "radio-a",
+                "radio-transmit-policy-disabled"));
+
+        Assert.Null(manager.GetCurrent("radio-a"));
+        Assert.Equal(other?.LeaseId, manager.GetCurrent("radio-b")?.LeaseId);
+        TxLeaseChange released = Assert.Single(
+            changes,
+            change =>
+                !change.Active &&
+                string.Equals(
+                    change.Lease.RadioId,
+                    "RADIO-A",
+                    StringComparison.Ordinal));
+        Assert.Equal(
+            "radio-transmit-policy-disabled",
+            released.Reason);
+    }
+
+    [Fact]
     public void RenewalRequiresOpaqueLeaseIdAndExactOwner()
     {
         ManualTimeProvider time = new(

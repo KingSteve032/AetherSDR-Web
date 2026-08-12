@@ -20,21 +20,42 @@ public static class RadioTransmitPolicyStates
     }
 }
 
+public sealed record RadioOnboardingIdentity(
+    string RadioId,
+    string Source,
+    string StationId,
+    string SourceRadioId);
+
+public sealed record RadioTransmitPreflightSnapshot(
+    bool ValidationOnly,
+    string TargetRadioId,
+    bool Ready,
+    string Reason,
+    IReadOnlyList<string> MissingPrerequisites,
+    DateTimeOffset EvaluatedAt);
+
 public sealed record RadioOnboardingPolicySnapshot(
     string RadioId,
+    string Source,
+    string StationId,
+    string SourceRadioId,
     string? Label,
     string TransmitPolicyState,
     bool Onboarded,
+    RadioTransmitPreflightSnapshot? TransmitPreflight,
     DateTimeOffset? UpdatedAt,
     string? UpdatedBy);
 
 public sealed record UpdateRadioOnboardingRequest(string Label);
 
+public sealed record UpdateRadioTransmitPolicyRequest(string State);
+
 public sealed class RadioOnboardingPolicyStore
 {
-    private const int FileVersion = 1;
+    private const int FileVersion = 2;
     private const long MaximumFileBytes = 1024 * 1024;
     private const int MaximumPolicies = 1024;
+    private const int MaximumMissingPrerequisites = 64;
     private readonly object m_gate = new();
     private readonly string m_policyPath;
     private readonly TimeProvider m_timeProvider;
@@ -54,31 +75,27 @@ public sealed class RadioOnboardingPolicyStore
         Load();
     }
 
-    public RadioOnboardingPolicySnapshot GetPolicy(string radioId)
+    public RadioOnboardingPolicySnapshot GetPolicy(
+        RadioOnboardingIdentity identity)
     {
-        string normalizedRadioId = ValidateIdentifier(
-            radioId,
-            nameof(radioId),
-            128);
+        RadioOnboardingIdentity normalized = NormalizeIdentity(identity);
         lock (m_gate)
         {
             return m_policies.TryGetValue(
-                normalizedRadioId,
-                out RadioOnboardingPolicySnapshot? policy)
+                    normalized.RadioId,
+                    out RadioOnboardingPolicySnapshot? policy) &&
+                IdentityMatches(policy, normalized)
                 ? policy
-                : DefaultPolicy(normalizedRadioId);
+                : DefaultPolicy(normalized);
         }
     }
 
     public RadioOnboardingPolicySnapshot UpdateLabel(
-        string radioId,
+        RadioOnboardingIdentity identity,
         string? label,
         string updatedBy)
     {
-        string normalizedRadioId = ValidateIdentifier(
-            radioId,
-            nameof(radioId),
-            128);
+        RadioOnboardingIdentity normalized = NormalizeIdentity(identity);
         string normalizedLabel = ValidateIdentifier(
             label,
             nameof(label),
@@ -91,10 +108,14 @@ public sealed class RadioOnboardingPolicyStore
         lock (m_gate)
         {
             bool hadPreviousPolicy = m_policies.TryGetValue(
-                normalizedRadioId,
+                normalized.RadioId,
                 out RadioOnboardingPolicySnapshot? previousPolicy);
+            EnsureCapacity(hadPreviousPolicy);
             RadioOnboardingPolicySnapshot current =
-                previousPolicy ?? DefaultPolicy(normalizedRadioId);
+                hadPreviousPolicy &&
+                IdentityMatches(previousPolicy!, normalized)
+                    ? previousPolicy!
+                    : DefaultPolicy(normalized);
             RadioOnboardingPolicySnapshot replacement = current with
             {
                 Label = normalizedLabel,
@@ -102,29 +123,139 @@ public sealed class RadioOnboardingPolicyStore
                 UpdatedAt = m_timeProvider.GetUtcNow(),
                 UpdatedBy = normalizedUpdatedBy
             };
-            m_policies[normalizedRadioId] = replacement;
-            try
-            {
-                Persist();
-            }
-            catch
-            {
-                if (hadPreviousPolicy)
-                {
-                    m_policies[normalizedRadioId] = previousPolicy!;
-                }
-                else
-                {
-                    m_policies.Remove(normalizedRadioId);
-                }
-                throw;
-            }
-
+            ReplaceAndPersist(
+                normalized.RadioId,
+                replacement,
+                hadPreviousPolicy,
+                previousPolicy);
             m_logger.LogInformation(
                 "Radio onboarding label updated for {RadioId}",
-                normalizedRadioId);
+                normalized.RadioId);
             return replacement;
         }
+    }
+
+    public RadioOnboardingPolicySnapshot UpdateTransmitPolicy(
+        RadioOnboardingIdentity identity,
+        string? state,
+        string updatedBy,
+        RadioTransmitPreflightSnapshot? preflight = null)
+    {
+        RadioOnboardingIdentity normalized = NormalizeIdentity(identity);
+        string normalizedUpdatedBy = ValidateIdentifier(
+            updatedBy,
+            nameof(updatedBy),
+            256);
+        if (!RadioTransmitPolicyStates.TryNormalize(
+                state,
+                out string normalizedState))
+        {
+            throw new ArgumentException(
+                "A valid transmit policy state is required.",
+                nameof(state));
+        }
+
+        lock (m_gate)
+        {
+            if (!m_policies.TryGetValue(
+                    normalized.RadioId,
+                    out RadioOnboardingPolicySnapshot? current) ||
+                !IdentityMatches(current, normalized) ||
+                !current.Onboarded ||
+                string.IsNullOrWhiteSpace(current.Label))
+            {
+                throw new InvalidOperationException(
+                    "The exact radio identity must be labeled and onboarded " +
+                    "before its transmit policy can change.");
+            }
+
+            RadioTransmitPreflightSnapshot? validatedPreflight =
+                ValidateTransition(
+                    normalized,
+                    normalizedState,
+                    preflight);
+            RadioOnboardingPolicySnapshot replacement = current with
+            {
+                TransmitPolicyState = normalizedState,
+                TransmitPreflight = validatedPreflight,
+                UpdatedAt = m_timeProvider.GetUtcNow(),
+                UpdatedBy = normalizedUpdatedBy
+            };
+            ReplaceAndPersist(
+                normalized.RadioId,
+                replacement,
+                hadPreviousPolicy: true,
+                current);
+            m_logger.LogWarning(
+                "Radio transmit policy changed for {RadioId} to {State}",
+                normalized.RadioId,
+                normalizedState);
+            return replacement;
+        }
+    }
+
+    private RadioTransmitPreflightSnapshot? ValidateTransition(
+        RadioOnboardingIdentity identity,
+        string state,
+        RadioTransmitPreflightSnapshot? preflight)
+    {
+        if (state is RadioTransmitPolicyStates.ReceiveOnly or
+            RadioTransmitPolicyStates.TemporarilyDisabled)
+        {
+            if (preflight is not null)
+            {
+                throw new ArgumentException(
+                    "A transmit preflight is not accepted for a disabling policy.",
+                    nameof(preflight));
+            }
+            return null;
+        }
+
+        if (preflight is null ||
+            !preflight.ValidationOnly ||
+            preflight.EvaluatedAt == default ||
+            preflight.EvaluatedAt > m_timeProvider.GetUtcNow() ||
+            !string.Equals(
+                preflight.TargetRadioId.Trim(),
+                identity.SourceRadioId,
+                StringComparison.OrdinalIgnoreCase) ||
+            preflight.MissingPrerequisites is null ||
+            preflight.MissingPrerequisites.Count >
+                MaximumMissingPrerequisites)
+        {
+            throw new ArgumentException(
+                "Current validation-only evidence for the exact source radio " +
+                "is required.",
+                nameof(preflight));
+        }
+
+        string reason = ValidateIdentifier(
+            preflight.Reason,
+            nameof(preflight.Reason),
+            128);
+        string[] missing = preflight.MissingPrerequisites
+            .Select(value => ValidateIdentifier(
+                value,
+                "missingPrerequisite",
+                128))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (state == RadioTransmitPolicyStates.TxEligible &&
+            (!preflight.Ready || missing.Length != 0) ||
+            state == RadioTransmitPolicyStates.PrerequisitesFailed &&
+            (preflight.Ready || missing.Length == 0))
+        {
+            throw new ArgumentException(
+                "The transmit policy state does not match its preflight evidence.",
+                nameof(preflight));
+        }
+
+        return preflight with
+        {
+            TargetRadioId = identity.SourceRadioId,
+            Reason = reason,
+            MissingPrerequisites = missing
+        };
     }
 
     private void Load()
@@ -153,6 +284,7 @@ public sealed class RadioOnboardingPolicyStore
                 JsonOptions());
         if (file is null ||
             file.Version != FileVersion ||
+            file.Policies is null ||
             file.Policies.Count > MaximumPolicies)
         {
             throw new InvalidDataException(
@@ -161,42 +293,108 @@ public sealed class RadioOnboardingPolicyStore
 
         foreach (RadioOnboardingPolicySnapshot policy in file.Policies)
         {
-            string radioId = ValidateLoadedIdentifier(
-                policy.RadioId,
-                nameof(policy.RadioId),
-                128);
-            string? label = string.IsNullOrWhiteSpace(policy.Label)
-                ? null
-                : ValidateLoadedIdentifier(
-                    policy.Label,
-                    nameof(policy.Label),
-                    64);
-            if (!RadioTransmitPolicyStates.TryNormalize(
+            RadioOnboardingIdentity identity;
+            try
+            {
+                identity = NormalizeIdentity(new(
+                    policy.RadioId,
+                    policy.Source,
+                    policy.StationId,
+                    policy.SourceRadioId));
+            }
+            catch (ArgumentException exception)
+            {
+                throw new InvalidDataException(
+                    "The radio onboarding policy file contains an invalid " +
+                    "radio identity.",
+                    exception);
+            }
+
+            string label = ValidateLoadedIdentifier(
+                policy.Label,
+                nameof(policy.Label),
+                64);
+            string updatedBy = ValidateLoadedIdentifier(
+                policy.UpdatedBy,
+                nameof(policy.UpdatedBy),
+                256);
+            if (!policy.Onboarded ||
+                policy.UpdatedAt is not DateTimeOffset updatedAt ||
+                updatedAt == default ||
+                updatedAt > m_timeProvider.GetUtcNow() ||
+                !RadioTransmitPolicyStates.TryNormalize(
                     policy.TransmitPolicyState,
                     out string normalizedState))
             {
                 throw new InvalidDataException(
-                    $"Radio '{radioId}' has an invalid transmit policy state.");
+                    $"Radio '{identity.RadioId}' has invalid onboarding state.");
             }
 
-            string? updatedBy = string.IsNullOrWhiteSpace(policy.UpdatedBy)
-                ? null
-                : ValidateLoadedIdentifier(
-                    policy.UpdatedBy,
-                    nameof(policy.UpdatedBy),
-                    256);
+            RadioTransmitPreflightSnapshot? preflight;
+            try
+            {
+                preflight = ValidateTransition(
+                    identity,
+                    normalizedState,
+                    policy.TransmitPreflight);
+            }
+            catch (ArgumentException exception)
+            {
+                throw new InvalidDataException(
+                    $"Radio '{identity.RadioId}' has invalid preflight evidence.",
+                    exception);
+            }
+
             RadioOnboardingPolicySnapshot normalized = policy with
             {
-                RadioId = radioId,
+                RadioId = identity.RadioId,
+                Source = identity.Source,
+                StationId = identity.StationId,
+                SourceRadioId = identity.SourceRadioId,
                 Label = label,
                 TransmitPolicyState = normalizedState,
+                TransmitPreflight = preflight,
                 UpdatedBy = updatedBy
             };
-            if (!m_policies.TryAdd(radioId, normalized))
+            if (!m_policies.TryAdd(identity.RadioId, normalized))
             {
                 throw new InvalidDataException(
                     "The radio onboarding policy file contains duplicate radios.");
             }
+        }
+    }
+
+    private void ReplaceAndPersist(
+        string radioId,
+        RadioOnboardingPolicySnapshot replacement,
+        bool hadPreviousPolicy,
+        RadioOnboardingPolicySnapshot? previousPolicy)
+    {
+        m_policies[radioId] = replacement;
+        try
+        {
+            Persist();
+        }
+        catch
+        {
+            if (hadPreviousPolicy)
+            {
+                m_policies[radioId] = previousPolicy!;
+            }
+            else
+            {
+                m_policies.Remove(radioId);
+            }
+            throw;
+        }
+    }
+
+    private void EnsureCapacity(bool replacingExisting)
+    {
+        if (!replacingExisting && m_policies.Count >= MaximumPolicies)
+        {
+            throw new InvalidOperationException(
+                "The radio onboarding policy inventory is full.");
         }
     }
 
@@ -249,12 +447,75 @@ public sealed class RadioOnboardingPolicyStore
         }
     }
 
-    private static RadioOnboardingPolicySnapshot DefaultPolicy(string radioId) =>
+    internal static RadioOnboardingIdentity NormalizeIdentity(
+        RadioOnboardingIdentity identity)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        string radioId = ValidateIdentifier(
+            identity.RadioId,
+            nameof(identity.RadioId),
+            128);
+        string source = ValidateIdentifier(
+                identity.Source,
+                nameof(identity.Source),
+                16)
+            .ToLowerInvariant();
+        if (source is not ("local" or "remote"))
+        {
+            throw new ArgumentException(
+                "Radio source must be local or remote.",
+                nameof(identity));
+        }
+
+        string stationId = identity.StationId?.Trim() ?? string.Empty;
+        if (stationId.Length > 128 ||
+            stationId.Any(char.IsControl) ||
+            source == "remote" && stationId.Length == 0 ||
+            source == "local" && stationId.Length != 0)
+        {
+            throw new ArgumentException(
+                "The station owner does not match the radio source.",
+                nameof(identity));
+        }
+
+        string sourceRadioId = ValidateIdentifier(
+            identity.SourceRadioId,
+            nameof(identity.SourceRadioId),
+            128);
+        return new(radioId, source, stationId, sourceRadioId);
+    }
+
+    private static bool IdentityMatches(
+        RadioOnboardingPolicySnapshot policy,
+        RadioOnboardingIdentity identity) =>
+        string.Equals(
+            policy.RadioId,
+            identity.RadioId,
+            StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(
+            policy.Source,
+            identity.Source,
+            StringComparison.Ordinal) &&
+        string.Equals(
+            policy.StationId,
+            identity.StationId,
+            StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(
+            policy.SourceRadioId,
+            identity.SourceRadioId,
+            StringComparison.OrdinalIgnoreCase);
+
+    private static RadioOnboardingPolicySnapshot DefaultPolicy(
+        RadioOnboardingIdentity identity) =>
         new(
-            radioId,
+            identity.RadioId,
+            identity.Source,
+            identity.StationId,
+            identity.SourceRadioId,
             null,
             RadioTransmitPolicyStates.ReceiveOnly,
             Onboarded: false,
+            TransmitPreflight: null,
             UpdatedAt: null,
             UpdatedBy: null);
 
