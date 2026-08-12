@@ -63,6 +63,10 @@ const elements = {
   releaseResult: document.querySelector("#admin-release-result"),
   releaseActivate: document.querySelector("#admin-release-activate"),
   releaseRollback: document.querySelector("#admin-release-rollback"),
+  operationsStatus: document.querySelector("#admin-operations-status"),
+  operationsList: document.querySelector("#admin-operations-list"),
+  operationsRun: document.querySelector("#admin-operations-run"),
+  diagnosticsDownload: document.querySelector("#admin-diagnostics-download"),
   auditCount: document.querySelector("#admin-audit-count"),
   auditList: document.querySelector("#admin-audit-list")
 };
@@ -81,6 +85,7 @@ const state = {
   enrollmentBootstrap: null,
   stationBootstrap: null,
   releaseTransaction: null,
+  operations: null,
   auditEvents: [],
   refreshing: false,
   sessionDiagnosticExpansion: new Map()
@@ -101,6 +106,10 @@ async function initialize() {
   elements.releaseForm.addEventListener("submit", prepareReleaseUpdate);
   elements.releaseActivate.addEventListener("click", activateReleaseUpdate);
   elements.releaseRollback.addEventListener("click", rollbackReleaseUpdate);
+  elements.operationsRun.addEventListener("click", runOperationsChecks);
+  elements.diagnosticsDownload.addEventListener(
+    "click",
+    downloadDiagnosticBundle);
   await refreshInventory();
   window.setInterval(refreshInventory, 5000);
 }
@@ -117,23 +126,27 @@ async function refreshInventory(announce = false) {
       stations,
       bootstrap,
       audit,
-      releaseTransaction
+      releaseTransaction,
+      operations
     ] = await Promise.all([
       getJson("/api/admin/radios"),
       getJson("/api/admin/stations"),
       getJson("/api/admin/stations/bootstrap"),
       getJson("/api/admin/audit?limit=50"),
-      getJson("/api/admin/releases/transaction")
+      getJson("/api/admin/releases/transaction"),
+      getJson("/api/admin/diagnostics/operations")
     ]);
     state.radios = Array.isArray(result.radios) ? result.radios : [];
     state.stationAdministration = stations || state.stationAdministration;
     state.stationBootstrap = bootstrap || null;
     state.auditEvents = Array.isArray(audit.events) ? audit.events : [];
     state.releaseTransaction = releaseTransaction || null;
+    state.operations = operations || null;
     renderCredentialSecurity();
     renderReleaseTransaction();
     renderStations();
     renderInventory();
+    renderOperations();
     renderAudit();
     const operatorCount = state.radios.reduce(
       (sum, radio) => sum + (radio.operators?.length || 0),
@@ -415,6 +428,101 @@ function formatEnrollmentExpiry(value) {
       hour: "numeric",
       minute: "2-digit"
     });
+}
+
+async function runOperationsChecks() {
+  elements.operationsRun.disabled = true;
+  try {
+    state.operations = await postJson(
+      "/api/admin/diagnostics/operations/run");
+    renderOperations();
+    showNotice("Operational connectivity checks completed.");
+  } catch (error) {
+    showNotice(error.message || "Operational checks failed.", true);
+  } finally {
+    elements.operationsRun.disabled = false;
+  }
+}
+
+async function downloadDiagnosticBundle() {
+  elements.diagnosticsDownload.disabled = true;
+  try {
+    const response = await fetch("/api/admin/diagnostics/bundle", {
+      credentials: "same-origin",
+      headers: { Accept: "application/zip" }
+    });
+    if (response.status === 401) {
+      window.location.assign(
+        `/auth/login?returnUrl=${encodeURIComponent("/admin")}`);
+      throw new Error("Sign-in is required.");
+    }
+    if (response.status === 403) {
+      window.location.assign("/access-denied");
+      throw new Error("Administrator access is required.");
+    }
+    if (!response.ok) {
+      throw new Error(`Diagnostic bundle failed (${response.status}).`);
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const match = /filename\*?=(?:UTF-8''|\")?([^\";]+)/i.exec(disposition);
+    const fileName = match
+      ? decodeURIComponent(match[1].replace(/\"$/u, ""))
+      : "aethersdr-diagnostics.zip";
+    const url = URL.createObjectURL(blob);
+    try {
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = fileName;
+      anchor.click();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    showNotice("Redacted diagnostic bundle prepared.");
+  } catch (error) {
+    showNotice(error.message || "Diagnostic bundle failed.", true);
+  } finally {
+    elements.diagnosticsDownload.disabled = false;
+  }
+}
+
+function renderOperations() {
+  elements.operationsList.replaceChildren();
+  const snapshot = state.operations || {};
+  const checks = Array.isArray(snapshot.checks) ? snapshot.checks : [];
+  const alerts = Array.isArray(snapshot.alerts) ? snapshot.alerts : [];
+  elements.operationsStatus.textContent = snapshot.ready
+    ? `READY${snapshot.activeConnectivityChecked ? " · CONNECTIVITY CHECKED" : ""}`
+    : `ATTENTION · ${alerts.length} ALERT${alerts.length === 1 ? "" : "S"}`;
+  if (checks.length === 0) {
+    elements.operationsList.append(
+      createElement("div", "empty-card", "Operational readiness is unavailable."));
+    return;
+  }
+  for (const check of checks) {
+    const row = createElement("article", "admin-audit-event");
+    const identity = createElement("div", "admin-audit-identity");
+    identity.append(
+      createElement("strong", "", String(check.id || "check").toUpperCase()),
+      createElement("small", "", String(check.state || "unknown").toUpperCase()));
+    const stateName = String(check.state || "unknown");
+    const outcome = createElement(
+      "span",
+      `status-pill${stateName === "healthy" || stateName === "not-applicable"
+        ? ""
+        : " offline"}`,
+      stateName.toUpperCase());
+    const summary = createElement(
+      "p",
+      "admin-audit-summary",
+      String(check.summary || "No operational detail is available."));
+    const action = createElement(
+      "small",
+      "",
+      String(check.action || "No operator action required."));
+    row.append(identity, outcome, summary, action);
+    elements.operationsList.append(row);
+  }
 }
 
 function renderAudit() {

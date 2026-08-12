@@ -51,6 +51,9 @@ jobs:
       - name: Restore .NET dependencies
         run: dotnet restore AetherSDR-Web.slnx
 
+      - name: Scan NuGet dependencies for vulnerabilities
+        run: bash tools/security/validate-nuget-vulnerabilities.sh
+
       - name: Build solution
         run: dotnet build AetherSDR-Web.slnx --configuration Release --no-restore
 

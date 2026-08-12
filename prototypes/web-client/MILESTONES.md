@@ -4753,6 +4753,19 @@ clean-host acceptance remains pending and is not claimed by this checkpoint.
   readiness, and rollback readiness with actionable operator-facing errors.
 - Publish versioned release notes and a supported browser, device, architecture,
   reverse-proxy, and station-topology matrix.
+- M8G implementation evidence on 2026-08-12: the 14-project Release build passes
+  with 0 warnings and 0 errors; `dotnet format --verify-no-changes`, release
+  automation validation, service-unit validation, and the direct/transitive NuGet
+  vulnerability gate all pass. Focused backup/operations acceptance passes 7/7
+  .NET tests and 6/6 browser security tests. GitHub CI run `31650000707` on the
+  native Linux runner passes the complete 1,871/1,871 web tests, 48/48 TX-HIL
+  isolation tests, 57/57 independent-watchdog tests, 17/17 release-builder tests,
+  87/87 AetherRemote tests, and the complete browser suite; the same browser suite
+  passes locally at 168/168. That is 2,080 .NET tests and 2,248 tests overall. The
+  shared CIFS worktree separately demonstrated that seven existing installer
+  proxy/firewall permission checks fail closed when reviewed assets are reported
+  group/other-writable. No live RF/HIL, radio command, TX action, service
+  stop/start, reboot, deployment, or VM mutation was performed.
 
 ### M8H — Standalone release acceptance
 

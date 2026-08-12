@@ -866,6 +866,65 @@ The root updater exposes no network transport or arbitrary command surface.
 None of these messages grant radio command capability, browser TX authority,
 TX lease ownership, watchdog arming, keying, or unkeying.
 
+## M8G encrypted backup and operations contracts
+
+### Encrypted backup file schema 1
+
+A `.aebak` file is a local operator-controlled artifact, not an HTTP protocol.
+All multibyte integers in its fixed header are little-endian:
+
+| Offset | Size | Meaning |
+|---:|---:|---|
+| 0 | 8 | ASCII magic `AETHBKP1` |
+| 8 | 4 | Backup schema version `1` |
+| 12 | 4 | PBKDF2 iteration count `600000` |
+| 16 | 16 | Random PBKDF2 salt |
+| 32 | 12 | Random AES-GCM nonce |
+| 44 | 8 | Ciphertext byte length |
+| 52 | variable | AES-256-GCM ciphertext of the bounded Brotli-compressed JSON payload |
+| end - 16 | 16 | AES-GCM authentication tag |
+
+The 52-byte header is authenticated as AES-GCM associated data. The 32-byte key
+is derived with PBKDF2-HMAC-SHA256 from the interactive passphrase and header
+salt. Decryption rejects wrong magic/schema/iteration count, noncanonical or
+oversized length, wrong passphrase, or any header/ciphertext/tag modification
+before payload data is accepted.
+
+The decrypted payload is strict schema-versioned JSON with bounded logical roots,
+relative regular-file/directory entries, SHA-256 content digests, logical service
+owners, setup revision/topology, current/rollback release identities, optional
+installer-owned managed-proxy configuration, and human-readable external
+dependency descriptions. Unknown JSON members, path escape, links/reparse points,
+unsupported owners/modes, duplicate roots/entries, bad hashes/lengths, and excess
+entry/byte counts are rejected. Numeric source-host UIDs/GIDs and absolute source
+root paths are not backup authority.
+
+### Admin operations HTTP contract
+
+All routes below require `Aether.Admin`:
+
+- `GET /api/admin/diagnostics/operations` returns passive schema-1 readiness,
+  alerts, and aggregate metrics. It performs no outward probe.
+- `POST /api/admin/diagnostics/operations/run` requires the normal AetherSDR
+  antiforgery token and the `admin-operations` rate limit. It may probe only the
+  persisted canonical HTTPS origin and fixed health, configured auth-callback,
+  `/ws/radio`, and `/aetherremote/broker/station/v1` routes as applicable.
+- `GET /api/admin/diagnostics/bundle` is `admin-operations` rate-limited and
+  returns `application/zip` containing only the strongly redacted support
+  projections described in `docs/OPERATIONS.md`.
+
+`OperationsReadinessSnapshot` contains a schema version, observation time,
+`ready`, whether active connectivity has been checked, bounded `checks`, bounded
+`alerts`, and aggregate metrics. Check states are exactly `healthy`, `warning`,
+`failed`, or `not-applicable`; alert severities are exactly `info`, `warning`, or
+`critical`. Failed checks become critical alerts. No readiness or diagnostic
+message grants radio authority, TX authority, release approval, service-control
+authority, or arbitrary network-target selection.
+
+The Setup Center does not import these normal-runtime services. Its existing
+non-mutating preflight response gains `postInstallOperationalChecks`, a text-only
+list of the fixed checks an administrator must perform after installation.
+
 ## Spectrum binary frame
 
 All integer fields use little-endian byte order.

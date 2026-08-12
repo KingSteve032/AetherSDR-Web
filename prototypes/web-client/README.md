@@ -2565,6 +2565,71 @@ broker acknowledgement does the Agent acknowledge the durable local completion.
 This path grants no TX authority and does not bypass the station-local radio,
 lease, watchdog, command, or ownership gates.
 
+### Encrypted backup, restore, and operational diagnostics
+
+M8G adds one supported encrypted backup workflow. On a production host, create and
+restore are offline maintenance operations: the CLI first proves the fixed
+AetherSDR/AetherRemote systemd units are inactive and refuses to proceed if any
+remain active. It never stops services itself. The backup passphrase is entered
+interactively and is never accepted in argv.
+
+Create a backup with the installed gateway binary:
+
+```bash
+sudo /opt/aethersdr/current/gateway-web/AetherSDR.Web \
+  --create-encrypted-backup
+```
+
+Inspect or restore an exact backup with:
+
+```bash
+sudo /opt/aethersdr/current/gateway-web/AetherSDR.Web \
+  --inspect-encrypted-backup \
+  --backup-file /var/backups/aethersdr/<backup>.aebak
+
+sudo /opt/aethersdr/current/gateway-web/AetherSDR.Web \
+  --restore-encrypted-backup \
+  --backup-file /var/backups/aethersdr/<backup>.aebak
+```
+
+Backup schema 1 uses AES-256-GCM authenticated encryption and a
+PBKDF2-HMAC-SHA256 passphrase-derived key. It covers AetherSDR-owned durable
+configuration/state/secrets, local identity/MFA, Data Protection keys, radio and
+TX-policy state, station credentials, signing/trust state, durable audit, and
+installer-owned managed proxy state. It records current/rollback release
+identities rather than embedding release packages. Restore requires those exact
+signed releases to be installed first and uses a durable prepared/committed
+journal plus atomic root/pointer replacement. Replacement-host restore remaps the
+validated installation paths and logical service ownership.
+
+External DNS, externally managed proxy/TLS private material, provider-side
+Entra/OIDC registration and provider secret lifecycle, and signed release package
+bytes remain explicit external dependencies. See `docs/OPERATIONS.md` for the
+complete maintenance and replacement-VM procedure.
+
+Admin includes **Health, backup, and diagnostics**. Passive readiness reports
+storage, backup age, release/update/rollback state, radio discovery, station
+broker/AetherRemote compatibility, auth readiness, browser WebSocket registration,
+and TX-policy prerequisites. **Run connectivity checks** explicitly probes only
+the persisted canonical public HTTPS origin and fixed health/auth-callback/browser
+WebSocket/station-broker paths for TLS, certificate expiry, security headers, and
+route reachability. It cannot open a radio session, acquire a TX lease, send a
+radio command, or alter release state. Active checks and diagnostic-bundle
+creation are Admin-only, antiforgery-protected where mutating request semantics
+apply, and rate-limited.
+
+**Download diagnostic bundle** creates a bounded ZIP from strongly redacted
+projections. It excludes passwords/hashes, MFA secrets, Data Protection/signing
+key bytes, station/runtime credentials, enrollment/auth/session tokens, raw
+configuration/logs/environment, URLs/headers, and user/radio/station identifiers.
+Aggregate metrics and warning/critical alerts remain available in the operations
+snapshot.
+
+CI runs `tools/security/validate-nuget-vulnerabilities.sh` to reject vulnerable
+direct or transitive NuGet packages. Supported server/browser/device/proxy/topology
+targets are documented in `docs/SUPPORT-MATRIX.md`, and versioned M8G release
+notes are under `docs/releases/`.
+
 ## Network placement
 
 Deploy the gateway beside AetherD on the shack LAN. Terminate HTTPS at the

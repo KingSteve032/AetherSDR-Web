@@ -324,6 +324,34 @@
       </div>
     </section>
 
+    <section class="admin-audit-section" aria-labelledby="admin-operations-heading">
+      <div class="admin-audit-heading">
+        <div>
+          <p class="eyebrow">OPERATIONS READINESS</p>
+          <h2 id="admin-operations-heading">Health, backup, and diagnostics</h2>
+        </div>
+        <span id="admin-operations-status">Loading…</span>
+      </div>
+      <div class="admin-enrollment-copy-row">
+        <button class="secondary-action" type="button"
+                id="admin-operations-run">
+          Run connectivity checks
+        </button>
+        <button class="secondary-action" type="button"
+                id="admin-diagnostics-download">
+          Download diagnostic bundle
+        </button>
+      </div>
+      <p class="muted admin-enrollment-help">
+        Connectivity checks probe only the configured public AetherSDR origin and
+        fixed protected routes. They do not open a radio session, acquire a TX
+        lease, send a radio command, or change release state. The diagnostic ZIP
+        excludes secrets and sensitive identifiers.
+      </p>
+      <div class="admin-audit-list" id="admin-operations-list"
+           aria-live="polite"></div>
+    </section>
+
     <section class="admin-audit-section" aria-labelledby="admin-audit-heading">
       <div class="admin-audit-heading">
         <div>
@@ -338,7 +366,7 @@
   </main>
 
   <script type="module"
-          src="/admin-page.js?v=m8e-radio-onboarding-1"></script>
+          src="/admin-page.js?v=m8g-operations-1"></script>
   <script type="module"
           src="/identity-admin.js?v=m8d-identity-admin-1"></script>
 </body>
