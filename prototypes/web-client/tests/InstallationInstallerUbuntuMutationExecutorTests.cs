@@ -414,7 +414,8 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
                 "aethersdr:aethersdr",
                 "--",
                 "/var/lib/aethersdr/identity",
-                "/var/lib/aethersdr/secrets/data-protection"
+                "/var/lib/aethersdr/secrets/data-protection",
+                "/var/lib/aethersdr/setup"
             ],
             handoff.Arguments);
     }
@@ -894,7 +895,8 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
                 "aethersdr:aethersdr",
                 "--",
                 "/var/lib/aethersdr/identity",
-                "/var/lib/aethersdr/secrets/data-protection"
+                "/var/lib/aethersdr/secrets/data-protection",
+                "/var/lib/aethersdr/setup"
             ],
             start.ArgumentList.Cast<string>());
         Assert.Equal(2, inspector.InspectionCount);
@@ -989,14 +991,19 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
         using TemporaryDirectory temporary = new();
         string identity = Path.Combine(temporary.Path, "identity");
         string protection = Path.Combine(temporary.Path, "data-protection");
+        string setup = Path.Combine(temporary.Path, "setup");
         Directory.CreateDirectory(identity);
         Directory.CreateDirectory(protection);
+        Directory.CreateDirectory(setup);
         await File.WriteAllTextAsync(
             Path.Combine(identity, "aethersdr-identity.db"),
             "identity");
         await File.WriteAllTextAsync(
             Path.Combine(protection, "key.xml"),
             "key");
+        await File.WriteAllTextAsync(
+            Path.Combine(setup, "installation.json"),
+            "setup");
         List<ProcessStartInfo> starts = [];
         LocalInstallationInstallerUbuntuPrimitiveInspector rootOwned = new(
             (start, _) =>
@@ -1012,12 +1019,12 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
         InstallationInstallerUbuntuPrimitiveInspection missing =
             await rootOwned.InspectAsync(
                 Request(),
-                SetupIdentityOperation(identity, protection));
+                SetupIdentityOperation(identity, protection, setup));
 
         Assert.Equal(
             InstallationInstallerUbuntuPrimitiveInspectionOutcome.Missing,
             missing.Outcome);
-        Assert.Equal(4, starts.Count);
+        Assert.Equal(6, starts.Count);
         Assert.All(starts, start =>
         {
             Assert.Equal("/usr/bin/stat", start.FileName);
@@ -1037,7 +1044,7 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
         InstallationInstallerUbuntuPrimitiveInspection converged =
             await adopted.InspectAsync(
                 Request(),
-                SetupIdentityOperation(identity, protection));
+                SetupIdentityOperation(identity, protection, setup));
 
         Assert.Equal(
             InstallationInstallerUbuntuPrimitiveInspectionOutcome.Converged,
@@ -1054,8 +1061,10 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
         using TemporaryDirectory temporary = new();
         string identity = Path.Combine(temporary.Path, "identity");
         string protection = Path.Combine(temporary.Path, "data-protection");
+        string setup = Path.Combine(temporary.Path, "setup");
         Directory.CreateDirectory(identity);
         Directory.CreateDirectory(protection);
+        Directory.CreateDirectory(setup);
         File.CreateSymbolicLink(
             Path.Combine(identity, "unexpected-link"),
             "/etc/passwd");
@@ -1066,7 +1075,7 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
         InstallationInstallerUbuntuPrimitiveInspection rejected =
             await inspector.InspectAsync(
                 Request(),
-                SetupIdentityOperation(identity, protection));
+                SetupIdentityOperation(identity, protection, setup));
 
         Assert.Equal(
             InstallationInstallerUbuntuPrimitiveInspectionOutcome.Rejected,
@@ -1325,7 +1334,10 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
     }
 
     private static InstallationInstallerUbuntuPrimitiveOperation
-        SetupIdentityOperation(string identity, string protection) =>
+        SetupIdentityOperation(
+            string identity,
+            string protection,
+            string setup) =>
         new(
             2,
             InstallationInstallerUbuntuPrimitiveKind.AdoptSetupIdentityState,
@@ -1337,7 +1349,8 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
                 "aethersdr:aethersdr",
                 "--",
                 identity,
-                protection
+                protection,
+                setup
             ]);
 
     private static InstallationInstallerUbuntuPrimitiveOperation

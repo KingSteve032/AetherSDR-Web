@@ -85,11 +85,16 @@ public sealed class AetherIdentityAdministrationHttpAdapterTests
                 isDevelopmentEnvironment: true);
         await using AdapterApplication developmentHost =
             await AdapterApplication.CreateAsync(development);
+        await using AdapterApplication serviceBoundaryHost =
+            await AdapterApplication.CreateAsync(
+                AetherAuthenticationConfiguration.CreateServiceBoundary());
         await using AdapterApplication combinedHost =
             await AdapterApplication.CreateAsync(CombinedTopology());
 
         Assert.Empty(developmentHost.Report.EndpointPaths);
         Assert.Empty(developmentHost.Endpoints());
+        Assert.Empty(serviceBoundaryHost.Report.EndpointPaths);
+        Assert.Empty(serviceBoundaryHost.Endpoints());
         Assert.Contains(
             AetherIdentityAdministrationHttpAdapter
                 .ExternalReauthenticationPath,

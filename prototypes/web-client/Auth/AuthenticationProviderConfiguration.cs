@@ -6,7 +6,8 @@ internal enum AetherAuthenticationMode
     Local = 2,
     MicrosoftEntraId = 3,
     OpenIdConnect = 4,
-    Combined = 5
+    Combined = 5,
+    ServiceBoundary = 6
 }
 
 internal enum AetherExternalProviderKind
@@ -110,6 +111,15 @@ internal static class AetherAuthenticationConfiguration
             sessionLifetime,
             localPolicy);
     }
+
+    internal static AetherAuthenticationTopology
+        CreateServiceBoundary() =>
+        new(
+            AetherAuthenticationMode.ServiceBoundary,
+            LocalAccountsEnabled: false,
+            ExternalProvider: null,
+            TimeSpan.FromMinutes(480),
+            ValidateLocalPolicy(new LocalAuthenticationSettings()));
 
     internal static AetherLocalAuthenticationPolicy
         CreateSetupLocalPolicy() =>

@@ -112,6 +112,51 @@ public sealed class AetherAuthenticationCompositionTests
     }
 
     [Fact]
+    public async Task ServiceBoundaryHasOneFailClosedScheme()
+    {
+        WebApplicationBuilder builder = WebApplication.CreateBuilder(
+            new WebApplicationOptions
+            {
+                EnvironmentName = Environments.Production
+            });
+        AetherAuthenticationTopology topology =
+            AetherAuthenticationConfiguration.CreateServiceBoundary();
+
+        AetherAuthenticationComposition.Configure(
+            builder,
+            new AuthSettings(),
+            topology);
+        await using WebApplication application = builder.Build();
+
+        AuthenticationOptions authentication =
+            application.Services
+                .GetRequiredService<IOptions<AuthenticationOptions>>()
+                .Value;
+        IAuthenticationSchemeProvider schemes =
+            application.Services
+                .GetRequiredService<IAuthenticationSchemeProvider>();
+
+        Assert.Equal(
+            ServiceBoundaryAuthenticationDefaults.Scheme,
+            authentication.DefaultAuthenticateScheme);
+        Assert.Equal(
+            ServiceBoundaryAuthenticationDefaults.Scheme,
+            authentication.DefaultChallengeScheme);
+        AuthenticationScheme scheme = Assert.IsType<AuthenticationScheme>(
+            await schemes.GetSchemeAsync(
+                ServiceBoundaryAuthenticationDefaults.Scheme));
+        Assert.Equal(
+            typeof(ServiceBoundaryAuthenticationHandler),
+            scheme.HandlerType);
+        Assert.Null(
+            await schemes.GetSchemeAsync(
+                CookieAuthenticationDefaults.AuthenticationScheme));
+        Assert.Null(
+            await schemes.GetSchemeAsync(
+                OpenIdConnectDefaults.AuthenticationScheme));
+    }
+
+    [Fact]
     public async Task LocalCompositionUsesCanonicalCookieWithoutOidcScheme()
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder(

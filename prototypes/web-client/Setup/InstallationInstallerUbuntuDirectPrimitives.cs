@@ -900,7 +900,7 @@ internal sealed class LocalInstallationInstallerUbuntuPrimitiveInspector :
                 operation.Executable,
                 "/usr/bin/chown",
                 StringComparison.Ordinal) ||
-            operation.Arguments.Count != 6 ||
+            operation.Arguments.Count != 7 ||
             !string.Equals(
                 operation.Arguments[0],
                 "--recursive",
@@ -920,7 +920,12 @@ internal sealed class LocalInstallationInstallerUbuntuPrimitiveInspector :
                 "The setup identity ownership handoff is not one exact fixed operation.");
         }
 
-        string[] roots = [operation.Arguments[4], operation.Arguments[5]];
+        string[] roots =
+        [
+            operation.Arguments[4],
+            operation.Arguments[5],
+            operation.Arguments[6]
+        ];
         List<string> paths = [];
         try
         {

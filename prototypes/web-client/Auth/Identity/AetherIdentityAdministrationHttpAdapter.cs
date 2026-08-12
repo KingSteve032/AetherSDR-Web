@@ -57,7 +57,9 @@ internal static class AetherIdentityAdministrationHttpAdapter
         ArgumentNullException.ThrowIfNull(app);
         ArgumentNullException.ThrowIfNull(topology);
         List<string> paths = [];
-        if (topology.Mode == AetherAuthenticationMode.Development)
+        if (topology.Mode is
+            AetherAuthenticationMode.Development or
+            AetherAuthenticationMode.ServiceBoundary)
         {
             return new(paths.AsReadOnly());
         }

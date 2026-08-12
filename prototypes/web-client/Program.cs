@@ -647,6 +647,14 @@ if (installationHostStartupPlan.Mode == InstallationHostStartupMode.SetupOnly)
     return;
 }
 
+InstallationServiceHostSettings installationServiceHostSettings =
+    builder.Configuration
+        .GetSection(InstallationServiceHostSettings.SectionName)
+        .Get<InstallationServiceHostSettings>(options =>
+            options.ErrorOnUnknownConfiguration = true) ??
+    new InstallationServiceHostSettings();
+InstallationServiceHostRole installationServiceHostRole =
+    InstallationServiceHost.Validate(installationServiceHostSettings);
 AuthSettings authSettings =
     builder.Configuration
         .GetSection(AuthSettings.SectionName)
@@ -654,10 +662,13 @@ AuthSettings authSettings =
             options.ErrorOnUnknownConfiguration = true) ??
     new AuthSettings();
 AetherAuthenticationTopology authenticationTopology =
-    AetherAuthenticationConfiguration.Validate(
-        authSettings,
-        builder.Environment.IsDevelopment());
-if (authenticationTopology.Mode != AetherAuthenticationMode.Development)
+    installationServiceHostRole == InstallationServiceHostRole.StationEngine
+        ? AetherAuthenticationConfiguration.CreateServiceBoundary()
+        : AetherAuthenticationConfiguration.Validate(
+            authSettings,
+            builder.Environment.IsDevelopment());
+if (installationServiceHostRole == InstallationServiceHostRole.Gateway &&
+    authenticationTopology.Mode != AetherAuthenticationMode.Development)
 {
     InstallationPaths identityRuntimePaths = resolveInstallationPaths();
     AetherIdentityDatabaseReport identityDatabase =

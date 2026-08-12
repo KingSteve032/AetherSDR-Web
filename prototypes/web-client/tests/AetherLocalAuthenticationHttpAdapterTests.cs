@@ -26,6 +26,23 @@ public sealed class AetherLocalAuthenticationHttpAdapterTests
     private const string Password = "correct horse battery staple";
 
     [Fact]
+    public async Task ServiceBoundaryMapsNoAuthenticationEndpoints()
+    {
+        WebApplicationBuilder builder = WebApplication.CreateBuilder();
+        await using WebApplication application = builder.Build();
+
+        AetherLocalAuthenticationHttpAdapterReport report =
+            AetherLocalAuthenticationHttpAdapter.Map(
+                application,
+                AetherAuthenticationConfiguration.CreateServiceBoundary());
+
+        Assert.Empty(report.EndpointPaths);
+        Assert.Empty(
+            ((IEndpointRouteBuilder)application).DataSources
+                .SelectMany(source => source.Endpoints));
+    }
+
+    [Fact]
     public async Task LocalModeMapsOptionsAndOnlyRateLimitsCredentialMutations()
     {
         await using AdapterHost host = await AdapterHost.CreateAsync();

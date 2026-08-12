@@ -257,7 +257,8 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
                 "aethersdr:aethersdr",
                 "--",
                 "/var/lib/aethersdr/identity",
-                "/var/lib/aethersdr/secrets/data-protection"
+                "/var/lib/aethersdr/secrets/data-protection",
+                "/var/lib/aethersdr/setup"
             ]);
     }
 

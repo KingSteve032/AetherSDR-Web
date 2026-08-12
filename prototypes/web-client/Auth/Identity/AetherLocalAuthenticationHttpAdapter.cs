@@ -33,6 +33,11 @@ internal static class AetherLocalAuthenticationHttpAdapter
         ArgumentNullException.ThrowIfNull(app);
         ArgumentNullException.ThrowIfNull(topology);
 
+        if (topology.Mode == AetherAuthenticationMode.ServiceBoundary)
+        {
+            return new([]);
+        }
+
         List<string> paths = [OptionsPath];
         app.MapGet(
                 OptionsPath,

@@ -19,6 +19,25 @@ internal static class AetherAuthenticationComposition
         ArgumentNullException.ThrowIfNull(authenticationTopology);
 
         if (authenticationTopology.Mode ==
+            AetherAuthenticationMode.ServiceBoundary)
+        {
+            builder.Services
+                .AddAuthentication(options =>
+                {
+                    options.DefaultAuthenticateScheme =
+                        ServiceBoundaryAuthenticationDefaults.Scheme;
+                    options.DefaultChallengeScheme =
+                        ServiceBoundaryAuthenticationDefaults.Scheme;
+                })
+                .AddScheme<
+                    AuthenticationSchemeOptions,
+                    ServiceBoundaryAuthenticationHandler>(
+                    ServiceBoundaryAuthenticationDefaults.Scheme,
+                    _ => { });
+            return;
+        }
+
+        if (authenticationTopology.Mode ==
             AetherAuthenticationMode.Development)
         {
             builder.Services
