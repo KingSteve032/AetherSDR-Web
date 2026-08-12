@@ -35,9 +35,13 @@ import {
 } from "./layout-controls.js?v=tool-toggle-1";
 import {
   buildPolicyRequest,
+  buildTransmitPolicyRequest,
   formatClientCapacity,
-  normalizeAdminMode
-} from "./admin-controls.js?v=radio-admin-1";
+  formatRadioOwnership,
+  normalizeAdminMode,
+  normalizeRadioLabel,
+  normalizeTransmitPolicyState
+} from "./admin-controls.js?v=m8e-radio-onboarding-1";
 import {
   ReconnectBackoff
 } from "./radio-transport-core.js?v=background-delivery-1";
@@ -730,6 +734,72 @@ function buildAdminRadioCard(radio, index) {
       radio.licensedClients)} · ` +
     `${radio.multiFlexEnabled ? "Multi-Flex enabled" : "Multi-Flex disabled"}`;
 
+  const onboardingForm = document.createElement("div");
+  onboardingForm.className = "admin-policy-form";
+  const onboardingLabel = document.createElement("label");
+  const onboardingCaption = document.createElement("span");
+  onboardingCaption.textContent = "Stable radio label";
+  const onboardingInput = document.createElement("input");
+  onboardingInput.type = "text";
+  onboardingInput.maxLength = 64;
+  onboardingInput.value = radio.onboarding?.label || radio.label || "";
+  onboardingInput.title = formatRadioOwnership(radio);
+  onboardingLabel.append(onboardingCaption, onboardingInput);
+
+  const saveIdentity = document.createElement("button");
+  saveIdentity.type = "button";
+  saveIdentity.className = "admin-save";
+  saveIdentity.textContent = "SAVE IDENTITY";
+  saveIdentity.addEventListener("click", async () => {
+    await saveAdminRadioIdentity(
+      radio.radioId,
+      normalizeRadioLabel(onboardingInput.value),
+      saveIdentity);
+  });
+
+  const transmitLabel = document.createElement("label");
+  const transmitCaption = document.createElement("span");
+  transmitCaption.textContent = "Transmit policy";
+  const transmitSelect = document.createElement("select");
+  for (const [value, label] of [
+    ["receive-only", "Receive only"],
+    ["tx-eligible", "TX eligible"],
+    ["temporarily-disabled", "Temporarily disabled"],
+    ["prerequisites-failed", "Prerequisites failed"]
+  ]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    option.disabled = value === "prerequisites-failed";
+    transmitSelect.append(option);
+  }
+  transmitSelect.value = normalizeTransmitPolicyState(
+    radio.onboarding?.transmitPolicyState);
+  transmitLabel.append(transmitCaption, transmitSelect);
+
+  const saveTransmit = document.createElement("button");
+  saveTransmit.type = "button";
+  saveTransmit.className = "admin-disconnect";
+  saveTransmit.textContent = "APPLY WITH REAUTH";
+  saveTransmit.disabled = !radio.onboarding?.onboarded;
+  saveTransmit.addEventListener("click", async () => {
+    const stateName = normalizeTransmitPolicyState(transmitSelect.value);
+    const confirmed = window.confirm(
+      "Change " + radio.label + " transmit policy to " + stateName + "? " +
+      "This requires fresh administrator reauthentication and never keys TX.");
+    if (confirmed) {
+      await saveAdminTransmitPolicy(
+        radio.radioId,
+        stateName,
+        saveTransmit);
+    }
+  });
+  onboardingForm.append(
+    onboardingLabel,
+    saveIdentity,
+    transmitLabel,
+    saveTransmit);
+
   const policyForm = document.createElement("div");
   policyForm.className = "admin-policy-form";
   const modeLabel = document.createElement("label");
@@ -807,7 +877,12 @@ function buildAdminRadioCard(radio, index) {
     }
   }
 
-  card.append(heading, capacity, policyForm, operatorSection);
+  card.append(
+    heading,
+    capacity,
+    onboardingForm,
+    policyForm,
+    operatorSection);
   return card;
 }
 
@@ -844,6 +919,73 @@ function buildAdminOperatorRow(radio, operator) {
   });
   row.append(identity, disconnect);
   return row;
+}
+
+async function saveAdminRadioIdentity(radioId, label, button) {
+  if (!label) {
+    showToast("A stable radio label is required.", true);
+    return;
+  }
+  button.disabled = true;
+  try {
+    const antiforgeryHeaders = await getAntiforgeryHeaders();
+    const response = await fetch(
+      "/api/admin/radios/" + encodeURIComponent(radioId) + "/identity",
+      {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          ...antiforgeryHeaders
+        },
+        body: JSON.stringify({ label })
+      });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || "The radio identity was not saved.");
+    }
+    showToast("Stable radio identity saved; transmit remains receive-only.");
+    await refreshAdminInventory();
+  } catch (error) {
+    showToast(error.message || "The radio identity was not saved.", true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function saveAdminTransmitPolicy(radioId, stateName, button) {
+  button.disabled = true;
+  try {
+    const antiforgeryHeaders = await getAntiforgeryHeaders();
+    const response = await fetch(
+      "/api/admin/radios/" + encodeURIComponent(radioId) +
+      "/transmit-policy",
+      {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          ...antiforgeryHeaders
+        },
+        body: JSON.stringify(buildTransmitPolicyRequest(stateName))
+      });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(
+        result.error || "The transmit policy transition was rejected.");
+    }
+    showToast("Radio transmit policy changed to " + stateName + ".");
+    await refreshAdminInventory();
+  } catch (error) {
+    showToast(
+      error.message || "The transmit policy transition was rejected.",
+      true);
+    await refreshAdminInventory();
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function saveAdminPolicy(

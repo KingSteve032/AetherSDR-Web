@@ -4649,6 +4649,9 @@ claimed by this checkpoint.
 
 ### M8E — Radio onboarding and per-radio TX policy
 
+Status: implementation and automated acceptance complete. Packaged-release
+clean-host acceptance remains pending and is not claimed by this checkpoint.
+
 - Discover local and remote radios, let administrators assign stable labels, and
   show exact source, health, client capacity, and station ownership before use.
 - Add per-radio Admin policy states: Receive only, TX eligible, Temporarily
@@ -4664,6 +4667,12 @@ claimed by this checkpoint.
   belong to AetherSDR. It must not interrupt SmartSDR, Maestro, or hardware PTT.
 - Keep room for later per-radio maximum power, antenna, and frequency constraints
   implemented beneath the browser rather than as UI-only limits.
+- Automated acceptance passes a 14-project Release build with 0 warnings and
+  0 errors, repository formatting and deployment boundary checks, 1,861 web
+  tests, 48 TX-HIL isolation tests, 57 independent-watchdog tests, 17
+  release-builder tests, 77 AetherRemote tests, and 155 browser tests: 2,060
+  .NET tests and 2,215 tests overall. No live RF/HIL, radio command, TX action,
+  host restart, or VM mutation was performed.
 
 ### M8F — AetherRemote bootstrap and guided station enrollment
 

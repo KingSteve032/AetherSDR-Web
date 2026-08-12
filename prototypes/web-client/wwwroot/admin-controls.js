@@ -25,6 +25,37 @@ export function buildPolicyRequest(mode, reservedUserId) {
   };
 }
 
+export function normalizeRadioLabel(value) {
+  return String(value || "").trim();
+}
+
+export function normalizeTransmitPolicyState(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return new Set([
+    "receive-only",
+    "tx-eligible",
+    "temporarily-disabled",
+    "prerequisites-failed"
+  ]).has(normalized)
+    ? normalized
+    : "receive-only";
+}
+
+export function buildTransmitPolicyRequest(state) {
+  return { state: normalizeTransmitPolicyState(state) };
+}
+
+export function formatRadioOwnership(radio) {
+  const source = String(radio?.source || "local").trim().toLowerCase();
+  const sourceRadioId =
+    String(radio?.sourceRadioId || radio?.radioId || "unknown").trim();
+  if (source === "remote") {
+    const stationId = String(radio?.stationId || "unknown").trim();
+    return `Remote station ${stationId} · source radio ${sourceRadioId}`;
+  }
+  return `Local gateway · source radio ${sourceRadioId}`;
+}
+
 export function normalizeStationId(value) {
   return String(value || "").trim();
 }
@@ -54,7 +85,11 @@ export function formatEnrollmentPurpose(purpose) {
 export function formatAuditAction(action) {
   switch (String(action || "").trim().toLowerCase()) {
     case "radio.policy.update":
-      return "Radio policy changed";
+      return "Radio access policy changed";
+    case "radio.identity.update":
+      return "Radio identity updated";
+    case "radio.transmit_policy.update":
+      return "Radio transmit policy changed";
     case "radio.operator.force_disconnect":
       return "Operator released";
     case "station.enrollment_code.create":

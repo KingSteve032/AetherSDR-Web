@@ -28,7 +28,7 @@ test("receiver header filter follows the active radio slice", () => {
 test("radio page uses current production TX capability asset revisions", () => {
   assert.match(
     indexHtml,
-    /src="\/app\.js\?v=production-tx-capability-refresh-1"/);
+    /src="\/app\.js\?v=m8e-radio-onboarding-1"/);
   assert.match(
     indexHtml,
     /href="\/styles\.css\?v=2d-only-1"/);

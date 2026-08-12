@@ -31,6 +31,8 @@ test("every authenticated HTTP mutation requires shared antiforgery validation",
     ["Post", "/api/radio/low-bandwidth"],
     ["Post", "/api/admin/stations/enrollment-codes"],
     ["Post", "/api/admin/stations/{stationId}/{action}"],
+    ["Post", "/api/admin/radios/{radioId}/identity"],
+    ["Post", "/api/admin/radios/{radioId}/transmit-policy"],
     ["Post", "/api/admin/radios/{radioId}/policy"],
     ["Post", "/api/admin/radios/{radioId}/operators/{userId}/disconnect"]
   ];
@@ -41,6 +43,27 @@ test("every authenticated HTTP mutation requires shared antiforgery validation",
       /\.RequireAetherAntiforgery\(\)/,
       `${method} ${path} lacks antiforgery validation`);
   }
+});
+
+test("radio TX onboarding requires reauthentication and exact preflight", () => {
+  const transition = routeBlock(
+    "Post",
+    "/api/admin/radios/{radioId}/transmit-policy");
+  assert.match(
+    transition,
+    /authority\.RequireFreshAsync/);
+  assert.match(
+    transition,
+    /RadioTransmitOnboardingPreflight\.Evaluate/);
+  assert.match(
+    transition,
+    /ApplyTransmitPolicyAsync/);
+  assert.match(
+    transition,
+    /\.RequireAuthorization\(AetherPolicies\.Admin\)/);
+  assert.match(
+    transition,
+    /\.RequireAetherAntiforgery\(\)/);
 });
 
 test("logout GET is confirmation-only and logout mutation is POST-only", () => {

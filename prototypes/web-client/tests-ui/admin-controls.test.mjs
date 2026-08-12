@@ -3,14 +3,18 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
   buildPolicyRequest,
+  buildTransmitPolicyRequest,
   formatAuditAction,
   formatAuditResult,
   formatClientCapacity,
   formatEnrollmentPurpose,
+  formatRadioOwnership,
   formatStationCredentialSource,
   normalizeAdminMode,
+  normalizeRadioLabel,
   normalizeReservation,
   normalizeStationId,
+  normalizeTransmitPolicyState,
   stationIdValid
 } from "../wwwroot/admin-controls.js";
 
@@ -41,6 +45,26 @@ test("blank reservations are removed from policy requests", () => {
     });
 });
 
+test("radio onboarding controls normalize fail-closed policy", () => {
+  assert.equal(normalizeRadioLabel(" Club Flex "), "Club Flex");
+  assert.equal(
+    normalizeTransmitPolicyState(" TX-ELIGIBLE "),
+    "tx-eligible");
+  assert.equal(
+    normalizeTransmitPolicyState("unsupported"),
+    "receive-only");
+  assert.deepEqual(
+    buildTransmitPolicyRequest("temporarily-disabled"),
+    { state: "temporarily-disabled" });
+  assert.equal(
+    formatRadioOwnership({
+      source: "remote",
+      stationId: "station-a",
+      sourceRadioId: "flex-6600"
+    }),
+    "Remote station station-a · source radio flex-6600");
+});
+
 test("radio client capacity has a safe unknown state", () => {
   assert.equal(
     formatClientCapacity(2, 4),
@@ -53,7 +77,13 @@ test("radio client capacity has a safe unknown state", () => {
 test("administrative audit actions use operator-facing labels", () => {
   assert.equal(
     formatAuditAction("radio.policy.update"),
-    "Radio policy changed");
+    "Radio access policy changed");
+  assert.equal(
+    formatAuditAction("radio.identity.update"),
+    "Radio identity updated");
+  assert.equal(
+    formatAuditAction("radio.transmit_policy.update"),
+    "Radio transmit policy changed");
   assert.equal(
     formatAuditAction("radio.operator.force_disconnect"),
     "Operator released");
@@ -91,10 +121,10 @@ test("station enrollment IDs and labels are constrained", () => {
 test("Admin page revisions load connection diagnostics and styles together", () => {
   assert.match(
     adminHtml,
-    /src="\/admin-page\.js\?v=m8d-identity-admin-1"/);
+    /src="\/admin-page\.js\?v=m8e-radio-onboarding-1"/);
   assert.match(
     adminHtml,
-    /href="\/portal\.css\?v=m8d-identity-admin-1"/);
+    /href="\/portal\.css\?v=m8e-radio-onboarding-1"/);
   assert.match(
     adminPageSource,
     /admin-diagnostics\.js\?v=watchdog-arming-1/);
@@ -117,6 +147,14 @@ test("Admin station security never puts enrollment codes in URLs", () => {
   assert.match(
     adminPageSource,
     /sudo aetherremote-enroll \$\{window\.location\.origin\}/);
+});
+
+test("Admin radio onboarding exposes stable labels and guarded TX policy", () => {
+  assert.match(adminPageSource, /function buildOnboardingForm\(radio\)/);
+  assert.match(adminPageSource, /\/identity/);
+  assert.match(adminPageSource, /\/transmit-policy/);
+  assert.match(adminPageSource, /Apply with reauthentication/);
+  assert.match(adminPageSource, /does not key TX/);
 });
 
 test("Admin radio inventory surfaces operational health", () => {

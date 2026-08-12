@@ -40,7 +40,8 @@ public sealed record RadioSelectionOption(
     int LicensedClients,
     string Source = "local",
     string StationId = "",
-    bool TunnelReady = true);
+    bool TunnelReady = true,
+    string SourceRadioId = "");
 
 public sealed record SelectedRadioEndpoint(
     string RadioId,
@@ -573,7 +574,8 @@ public sealed class RadioSelectionManager : IRadioConnectionSelection
             radio.LicensedClients,
             "remote",
             radio.StationId,
-            radio.ReceiveProjectionReady);
+            radio.ReceiveProjectionReady,
+            radio.SourceRadioId);
     }
 
     private SelectedRadioEndpoint ToRemoteEndpoint(

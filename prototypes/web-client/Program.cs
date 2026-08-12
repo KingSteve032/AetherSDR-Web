@@ -691,6 +691,7 @@ builder.Services.AddSingleton(authenticationTopology);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<AetherExternalAuthenticationService>();
 builder.Services.AddScoped<AetherAuthenticationSessionService>();
+builder.Services.AddScoped<AetherAdministratorAuthorityService>();
 builder.Services.AddScoped<AetherOpenIdConnectEvents>();
 builder.Services.AddScoped<AetherCookieAuthenticationEvents>();
 RadioSettings radioSettings =
@@ -1037,23 +1038,24 @@ ConfigureReverseProxy(builder.Services, reverseProxySettings);
 string dataProtectionPath =
     builder.Configuration["DataProtection:KeyPath"] ??
     Path.Combine(builder.Environment.ContentRootPath, ".data-protection");
+InstallationPaths persistentRuntimePaths = resolveInstallationPaths();
 string? configuredRadioAccessPolicyPath =
     builder.Configuration["RadioAccess:PolicyPath"];
 string radioAccessPolicyPath =
     string.IsNullOrWhiteSpace(configuredRadioAccessPolicyPath)
-        ? Path.Combine(
-        builder.Environment.ContentRootPath,
-        ".radio-access",
-        "policies.json")
+        ? persistentRuntimePaths.RadioAccessPolicyPath
         : configuredRadioAccessPolicyPath;
+string? configuredRadioOnboardingPolicyPath =
+    builder.Configuration["RadioOnboarding:PolicyPath"];
+string radioOnboardingPolicyPath =
+    string.IsNullOrWhiteSpace(configuredRadioOnboardingPolicyPath)
+        ? persistentRuntimePaths.RadioOnboardingPolicyPath
+        : configuredRadioOnboardingPolicyPath;
 string? configuredAdministrativeAuditPath =
     builder.Configuration["RadioAccess:AuditPath"];
 string administrativeAuditPath =
     string.IsNullOrWhiteSpace(configuredAdministrativeAuditPath)
-        ? Path.Combine(
-            Path.GetDirectoryName(Path.GetFullPath(radioAccessPolicyPath)) ??
-            builder.Environment.ContentRootPath,
-            "audit.json")
+        ? persistentRuntimePaths.AdministrativeAuditPath
         : configuredAdministrativeAuditPath;
 builder.Services
     .AddDataProtection()
@@ -1078,6 +1080,12 @@ builder.Services.AddSingleton(
         radioAccessPolicyPath,
         services.GetRequiredService<
             ILogger<RadioAccessPolicyStore>>()));
+builder.Services.AddSingleton(
+    services => new RadioOnboardingPolicyStore(
+        radioOnboardingPolicyPath,
+        services.GetRequiredService<
+            ILogger<RadioOnboardingPolicyStore>>(),
+        services.GetRequiredService<TimeProvider>()));
 builder.Services.AddSingleton(
     services => new AdministrativeAuditStore(
         administrativeAuditPath,
@@ -5156,6 +5164,241 @@ app.MapGet(
                 events = audit.GetRecent(limit ?? 50)
             }))
     .RequireAuthorization(AetherPolicies.Admin);
+
+app.MapPost(
+        "/api/admin/radios/{radioId}/identity",
+        (
+            string radioId,
+            UpdateRadioOnboardingRequest request,
+            ClaimsPrincipal user,
+            RadioAdministrationService administration,
+            AdministrativeAuditStore audit) =>
+        {
+            (string administratorId, string administratorName) =
+                GetAdministrativeActor(user);
+            if (!RadioSessionRegistry.TryGetUserId(
+                    user,
+                    out administratorId))
+            {
+                audit.Record(
+                    administratorId,
+                    administratorName,
+                    AdministrativeAuditActions.UpdateRadioIdentity,
+                    radioId,
+                    null,
+                    AdministrativeAuditResults.Failed,
+                    "A stable administrator ID was not available.");
+                return Results.BadRequest(
+                    new { error = "A stable administrator ID is required." });
+            }
+
+            try
+            {
+                RadioOnboardingPolicySnapshot policy =
+                    administration.UpdateLabel(
+                        radioId,
+                        request,
+                        administratorId);
+                audit.Record(
+                    administratorId,
+                    administratorName,
+                    AdministrativeAuditActions.UpdateRadioIdentity,
+                    radioId,
+                    null,
+                    AdministrativeAuditResults.Succeeded,
+                    "The stable radio label was updated.");
+                return Results.Ok(policy);
+            }
+            catch (ArgumentException exception)
+            {
+                audit.Record(
+                    administratorId,
+                    administratorName,
+                    AdministrativeAuditActions.UpdateRadioIdentity,
+                    radioId,
+                    null,
+                    AdministrativeAuditResults.Failed,
+                    exception.Message);
+                return Results.BadRequest(new { error = exception.Message });
+            }
+            catch (KeyNotFoundException exception)
+            {
+                audit.Record(
+                    administratorId,
+                    administratorName,
+                    AdministrativeAuditActions.UpdateRadioIdentity,
+                    radioId,
+                    null,
+                    AdministrativeAuditResults.Failed,
+                    exception.Message);
+                return Results.NotFound(new { error = exception.Message });
+            }
+        })
+    .RequireAuthorization(AetherPolicies.Admin)
+    .RequireAetherAntiforgery();
+
+app.MapPost(
+        "/api/admin/radios/{radioId}/transmit-policy",
+        async (
+            string radioId,
+            UpdateRadioTransmitPolicyRequest request,
+            ClaimsPrincipal user,
+            RadioAdministrationService administration,
+            RadioSessionRegistry sessions,
+            AetherAdministratorAuthorityService authority,
+            AdministrativeAuditStore audit,
+            TimeProvider timeProvider,
+            CancellationToken cancellationToken) =>
+        {
+            (string administratorId, string administratorName) =
+                GetAdministrativeActor(user);
+            try
+            {
+                AetherAdministratorAuthorityEvidence evidence =
+                    await authority.RequireFreshAsync(
+                        user,
+                        cancellationToken);
+                administratorId = evidence.UserId.ToString("D");
+            }
+            catch (AetherAdministratorReauthenticationRequiredException)
+            {
+                audit.Record(
+                    administratorId,
+                    administratorName,
+                    AdministrativeAuditActions.UpdateRadioTransmitPolicy,
+                    radioId,
+                    request.State,
+                    AdministrativeAuditResults.Failed,
+                    "Fresh durable administrator reauthentication was required.");
+                return Results.Conflict(new
+                {
+                    code = "administrator-reauthentication-required",
+                    error = "Fresh administrator reauthentication is required."
+                });
+            }
+
+            try
+            {
+                if (!RadioTransmitPolicyStates.TryNormalize(
+                        request.State,
+                        out string requestedState) ||
+                    requestedState == RadioTransmitPolicyStates
+                        .PrerequisitesFailed)
+                {
+                    throw new ArgumentException(
+                        "State must be receive-only, tx-eligible, or " +
+                        "temporarily-disabled.",
+                        nameof(request));
+                }
+
+                RadioOnboardingIdentity identity =
+                    administration.GetOnboardingIdentity(radioId);
+                RadioTransmitPreflightSnapshot? preflight = null;
+                string appliedState = requestedState;
+                if (requestedState == RadioTransmitPolicyStates.TxEligible)
+                {
+                    preflight = RadioTransmitOnboardingPreflight.Evaluate(
+                        identity,
+                        builder.Environment.ContentRootPath,
+                        stationTxProductionActivationSettings,
+                        radioSettings,
+                        stationTxCommandTrustSettings,
+                        stationTxCommandSigningSettings,
+                        stationTxCommandEnvelopeCoordinatorSettings,
+                        stationTxCommandTransportSettings,
+                        stationTxEmergencyUnkeyTransportSettings,
+                        independentTxWatchdogSettings,
+                        timeProvider);
+                    if (!preflight.Ready)
+                    {
+                        appliedState =
+                            RadioTransmitPolicyStates.PrerequisitesFailed;
+                    }
+                }
+
+                RadioOnboardingPolicySnapshot policy =
+                    administration.UpdateTransmitPolicy(
+                        identity,
+                        appliedState,
+                        administratorId,
+                        preflight);
+                bool transmitEligible = string.Equals(
+                    policy.TransmitPolicyState,
+                    RadioTransmitPolicyStates.TxEligible,
+                    StringComparison.Ordinal);
+                RadioTransmitPolicyApplicationResult application =
+                    await sessions.ApplyTransmitPolicyAsync(
+                        radioId,
+                        transmitEligible,
+                        cancellationToken);
+                bool prerequisitesFailed =
+                    requestedState == RadioTransmitPolicyStates.TxEligible &&
+                    !transmitEligible;
+                audit.Record(
+                    administratorId,
+                    administratorName,
+                    AdministrativeAuditActions.UpdateRadioTransmitPolicy,
+                    radioId,
+                    identity.SourceRadioId,
+                    prerequisitesFailed
+                        ? AdministrativeAuditResults.Failed
+                        : AdministrativeAuditResults.Succeeded,
+                    prerequisitesFailed
+                        ? $"TX eligibility was rejected: " +
+                          $"{policy.TransmitPreflight?.Reason ?? "unknown"}."
+                        : $"Transmit policy changed to " +
+                          $"{policy.TransmitPolicyState}; " +
+                          $"{application.RevokedLeases} lease(s) revoked.");
+                return prerequisitesFailed
+                    ? Results.Conflict(new
+                    {
+                        code = "radio-transmit-prerequisites-failed",
+                        error = "Exact-radio transmit prerequisites failed: " +
+                            $"{policy.TransmitPreflight?.Reason ?? "unknown"}.",
+                        policy,
+                        application
+                    })
+                    : Results.Ok(new { policy, application });
+            }
+            catch (ArgumentException exception)
+            {
+                audit.Record(
+                    administratorId,
+                    administratorName,
+                    AdministrativeAuditActions.UpdateRadioTransmitPolicy,
+                    radioId,
+                    request.State,
+                    AdministrativeAuditResults.Failed,
+                    exception.Message);
+                return Results.BadRequest(new { error = exception.Message });
+            }
+            catch (KeyNotFoundException exception)
+            {
+                audit.Record(
+                    administratorId,
+                    administratorName,
+                    AdministrativeAuditActions.UpdateRadioTransmitPolicy,
+                    radioId,
+                    request.State,
+                    AdministrativeAuditResults.Failed,
+                    exception.Message);
+                return Results.NotFound(new { error = exception.Message });
+            }
+            catch (InvalidOperationException exception)
+            {
+                audit.Record(
+                    administratorId,
+                    administratorName,
+                    AdministrativeAuditActions.UpdateRadioTransmitPolicy,
+                    radioId,
+                    request.State,
+                    AdministrativeAuditResults.Failed,
+                    exception.Message);
+                return Results.Conflict(new { error = exception.Message });
+            }
+        })
+    .RequireAuthorization(AetherPolicies.Admin)
+    .RequireAetherAntiforgery();
 
 app.MapPost(
         "/api/admin/radios/{radioId}/policy",

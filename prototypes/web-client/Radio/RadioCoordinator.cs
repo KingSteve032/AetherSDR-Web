@@ -225,7 +225,7 @@ public sealed class RadioCoordinator : IDisposable
     private readonly RadioSettings m_radioSettings;
     private readonly RadioTuneTracker m_tuneTracker = new();
     private readonly bool m_allowTransmit;
-    private readonly bool m_browserTxLeaseEnabled;
+    private volatile bool m_browserTxLeaseEnabled;
     private readonly string m_radioMode;
     private CancellationTokenSource? m_sliceRefreshCancellation;
     private RadioSnapshot m_snapshot;
@@ -312,6 +312,13 @@ public sealed class RadioCoordinator : IDisposable
 
     public bool AllowTransmit => m_allowTransmit;
     public bool BrowserTxLeaseEnabled => m_browserTxLeaseEnabled;
+
+    internal void SetBrowserTxLeasePolicy(bool eligible)
+    {
+        m_browserTxLeaseEnabled =
+            m_radioSettings.BrowserTxLeaseEnabled && eligible;
+    }
+
     public TxLeaseStatus? TxLeaseStatus =>
         m_txLeaseManager
             .GetCurrent(m_radioSettings.RadioId)?
