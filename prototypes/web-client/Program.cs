@@ -628,6 +628,12 @@ if (installationHostStartupPlan.Mode == InstallationHostStartupMode.SetupOnly)
             .Get<InstallationSetupHttpSecuritySettings>(options =>
                 options.ErrorOnUnknownConfiguration = true) ??
         new InstallationSetupHttpSecuritySettings();
+    InstallationPaths setupOnlyPaths =
+        installationHostStartupPlan.Paths ??
+        throw new InvalidOperationException(
+            "Setup-only identity initialization requires resolved paths.");
+    _ = await AetherSetupIdentityDatabaseBootstrap.EnsureInitializedAsync(
+        setupOnlyPaths);
     _ = InstallationSetupOnlyProgramComposition.Configure(
         builder,
         installationHostStartupPlan,

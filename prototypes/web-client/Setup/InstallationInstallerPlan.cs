@@ -42,7 +42,8 @@ public enum InstallationInstallerActionKind
     TrustInternalCertificate = 12,
     InitializeIdentityDatabase = 13,
     ConfigureGatewayEnvironment = 14,
-    InstallAuthenticationClientSecret = 15
+    InstallAuthenticationClientSecret = 15,
+    AdoptSetupIdentityState = 16
 }
 
 public sealed record InstallationInstallerSelection(
@@ -465,6 +466,13 @@ public static class InstallationInstallerPlanComposer
                 actions,
                 InstallationInstallerActionKind.EnsureDirectory,
                 directory);
+        }
+        if (profile.GatewayRunsHere)
+        {
+            AddAction(
+                actions,
+                InstallationInstallerActionKind.AdoptSetupIdentityState,
+                paths.StateDirectory);
         }
         AddAction(
             actions,

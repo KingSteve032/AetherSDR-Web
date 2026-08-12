@@ -75,12 +75,17 @@ public sealed class InstallationInstallerCoordinatorTests
         Assert.Equal(
             InstallationInstallerActionKind.EnsureServiceUser,
             first.Actions[0].Kind);
-        Assert.Equal(40, first.Actions.Count);
+        Assert.Equal(41, first.Actions.Count);
         InstallationInstallerPlanAction release = Assert.Single(
             first.Actions,
             action => action.Kind ==
                 InstallationInstallerActionKind.InstallVerifiedRelease);
         Assert.Equal("2026.8.0/linux-x64", release.Target);
+        InstallationInstallerPlanAction adoption = Assert.Single(
+            first.Actions,
+            action => action.Kind ==
+                InstallationInstallerActionKind.AdoptSetupIdentityState);
+        Assert.Equal(Path.Combine(temporary.Path, "state"), adoption.Target);
         InstallationInstallerPlanAction identity = Assert.Single(
             first.Actions,
             action => action.Kind ==
@@ -135,7 +140,7 @@ public sealed class InstallationInstallerCoordinatorTests
                 .PlanAsync(selection);
 
         Assert.Equal(selection.Authentication, plan.Authentication);
-        Assert.Equal(41, plan.Actions.Count);
+        Assert.Equal(42, plan.Actions.Count);
         Assert.Contains(
             plan.Actions,
             action =>

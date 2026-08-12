@@ -16,7 +16,8 @@ public enum InstallationInstallerUbuntuPrimitiveKind
     TrustInternalCertificate = 12,
     InitializeIdentityDatabase = 13,
     ConfigureGatewayEnvironment = 14,
-    InstallAuthenticationClientSecret = 15
+    InstallAuthenticationClientSecret = 15,
+    AdoptSetupIdentityState = 16
 }
 
 public sealed record InstallationInstallerUbuntuPrimitiveOperation(
@@ -99,6 +100,8 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
                     EnsureDirectory(
                         action,
                         DirectoryOwner(action.Target, request.Actions)),
+                InstallationInstallerActionKind.AdoptSetupIdentityState =>
+                    AdoptSetupIdentityState(action),
                 InstallationInstallerActionKind.InstallVerifiedRelease =>
                     VerifyRelease(action, request),
                 InstallationInstallerActionKind.InitializeIdentityDatabase =>
@@ -229,6 +232,32 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
                 owner,
                 "--",
                 action.Target
+            ]);
+    }
+
+    private static InstallationInstallerUbuntuPrimitiveOperation
+        AdoptSetupIdentityState(InstallationInstallerPlanAction action)
+    {
+        const string stateDirectory = "/var/lib/aethersdr";
+        if (!string.Equals(
+                action.Target,
+                stateDirectory,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The installer plan contains a noncanonical setup identity handoff.");
+        }
+        return Direct(
+            action,
+            InstallationInstallerUbuntuPrimitiveKind.AdoptSetupIdentityState,
+            "/usr/bin/chown",
+            [
+                "--recursive",
+                "--no-dereference",
+                "aethersdr:aethersdr",
+                "--",
+                "/var/lib/aethersdr/identity",
+                "/var/lib/aethersdr/secrets/data-protection"
             ]);
     }
 

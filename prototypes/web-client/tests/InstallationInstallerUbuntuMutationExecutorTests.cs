@@ -382,6 +382,74 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
     }
 
     [Fact]
+    public void SetupIdentityHandoffMapsToOneExactDirectPrimitive()
+    {
+        InstallationInstallerUbuntuMutationRequest request = Request(
+        [
+            new(
+                1,
+                InstallationInstallerActionKind.EnsureServiceUser,
+                "aethersdr"),
+            new(
+                2,
+                InstallationInstallerActionKind.AdoptSetupIdentityState,
+                "/var/lib/aethersdr"),
+            new(
+                3,
+                InstallationInstallerActionKind.InstallVerifiedRelease,
+                "2026.8.0/linux-x64")
+        ]);
+
+        InstallationInstallerUbuntuPrimitiveOperation handoff =
+            InstallationInstallerUbuntuPrimitivePlanner.Compose(request)[1];
+
+        Assert.Equal(
+            InstallationInstallerUbuntuPrimitiveKind.AdoptSetupIdentityState,
+            handoff.Kind);
+        Assert.Equal("/usr/bin/chown", handoff.Executable);
+        Assert.Equal(
+            [
+                "--recursive",
+                "--no-dereference",
+                "aethersdr:aethersdr",
+                "--",
+                "/var/lib/aethersdr/identity",
+                "/var/lib/aethersdr/secrets/data-protection"
+            ],
+            handoff.Arguments);
+    }
+
+    [Fact]
+    public void NoncanonicalSetupIdentityHandoffFailsBeforeExecution()
+    {
+        InstallationInstallerUbuntuMutationRequest request = Request(
+        [
+            new(
+                1,
+                InstallationInstallerActionKind.EnsureServiceUser,
+                "aethersdr"),
+            new(
+                2,
+                InstallationInstallerActionKind.AdoptSetupIdentityState,
+                "/tmp/operator-selected"),
+            new(
+                3,
+                InstallationInstallerActionKind.InstallVerifiedRelease,
+                "2026.8.0/linux-x64")
+        ]);
+
+        InvalidOperationException exception =
+            Assert.Throws<InvalidOperationException>(
+                () => InstallationInstallerUbuntuPrimitivePlanner.Compose(
+                    request));
+
+        Assert.Contains(
+            "noncanonical setup identity handoff",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void IdentityDatabaseMapsToOneExactTypedManagedPrimitive()
     {
         InstallationInstallerUbuntuMutationRequest request = Request(
@@ -775,6 +843,64 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
     }
 
     [Fact]
+    public async Task SetupIdentityHandoffExecutesOneExactChownAndPostcondition()
+    {
+        FakeInspector inspector = new();
+        inspector.Results.Enqueue(Inspection(
+            InstallationInstallerUbuntuPrimitiveInspectionOutcome.Missing));
+        inspector.Results.Enqueue(Inspection(
+            InstallationInstallerUbuntuPrimitiveInspectionOutcome.Converged));
+        List<ProcessStartInfo> starts = [];
+        LocalInstallationInstallerUbuntuMutationPrimitives primitives = new(
+            inspector,
+            (start, _) =>
+            {
+                starts.Add(start);
+                return Task.FromResult(
+                    new InstallationInstallerUbuntuDirectProcessResult(
+                        0,
+                        string.Empty,
+                        string.Empty));
+            },
+            () => true);
+        InstallationInstallerUbuntuMutationRequest request = Request(
+        [
+            new(
+                1,
+                InstallationInstallerActionKind.EnsureServiceUser,
+                "aethersdr"),
+            new(
+                2,
+                InstallationInstallerActionKind.AdoptSetupIdentityState,
+                "/var/lib/aethersdr"),
+            new(
+                3,
+                InstallationInstallerActionKind.InstallVerifiedRelease,
+                "2026.8.0/linux-x64")
+        ]);
+
+        InstallationInstallerUbuntuStepResult result =
+            await primitives.ExecuteAsync(request, request.Actions[1]);
+
+        Assert.Equal(InstallationInstallerUbuntuStepOutcome.Applied, result.Outcome);
+        ProcessStartInfo start = Assert.Single(starts);
+        Assert.Equal("/usr/bin/chown", start.FileName);
+        Assert.False(start.UseShellExecute);
+        Assert.Empty(start.Environment);
+        Assert.Equal(
+            [
+                "--recursive",
+                "--no-dereference",
+                "aethersdr:aethersdr",
+                "--",
+                "/var/lib/aethersdr/identity",
+                "/var/lib/aethersdr/secrets/data-protection"
+            ],
+            start.ArgumentList.Cast<string>());
+        Assert.Equal(2, inspector.InspectionCount);
+    }
+
+    [Fact]
     public async Task ConcretePrimitiveTreatsNonzeroAsUnknownAndNeverRetries()
     {
         FakeInspector inspector = new();
@@ -855,6 +981,99 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
         Assert.Equal(
             ["disable", "--now", "--", "aethersdr-web.service"],
             starts[2].ArgumentList.Cast<string>());
+    }
+
+    [Fact]
+    public async Task SetupIdentityHandoffRequiresRootOwnedTreeAdoption()
+    {
+        using TemporaryDirectory temporary = new();
+        string identity = Path.Combine(temporary.Path, "identity");
+        string protection = Path.Combine(temporary.Path, "data-protection");
+        Directory.CreateDirectory(identity);
+        Directory.CreateDirectory(protection);
+        await File.WriteAllTextAsync(
+            Path.Combine(identity, "aethersdr-identity.db"),
+            "identity");
+        await File.WriteAllTextAsync(
+            Path.Combine(protection, "key.xml"),
+            "key");
+        List<ProcessStartInfo> starts = [];
+        LocalInstallationInstallerUbuntuPrimitiveInspector rootOwned = new(
+            (start, _) =>
+            {
+                starts.Add(start);
+                return Task.FromResult(new
+                    InstallationInstallerUbuntuDirectProcessResult(
+                        0,
+                        "root:root\n",
+                        string.Empty));
+            });
+
+        InstallationInstallerUbuntuPrimitiveInspection missing =
+            await rootOwned.InspectAsync(
+                Request(),
+                SetupIdentityOperation(identity, protection));
+
+        Assert.Equal(
+            InstallationInstallerUbuntuPrimitiveInspectionOutcome.Missing,
+            missing.Outcome);
+        Assert.Equal(4, starts.Count);
+        Assert.All(starts, start =>
+        {
+            Assert.Equal("/usr/bin/stat", start.FileName);
+            Assert.Equal(
+                "--format=%U:%G",
+                start.ArgumentList[0]);
+            Assert.Equal("--", start.ArgumentList[1]);
+        });
+
+        LocalInstallationInstallerUbuntuPrimitiveInspector adopted = new(
+            (_, _) => Task.FromResult(new
+                InstallationInstallerUbuntuDirectProcessResult(
+                    0,
+                    "aethersdr:aethersdr\n",
+                    string.Empty)));
+
+        InstallationInstallerUbuntuPrimitiveInspection converged =
+            await adopted.InspectAsync(
+                Request(),
+                SetupIdentityOperation(identity, protection));
+
+        Assert.Equal(
+            InstallationInstallerUbuntuPrimitiveInspectionOutcome.Converged,
+            converged.Outcome);
+    }
+
+    [Fact]
+    public async Task SetupIdentityHandoffRejectsSymbolicLinksWithoutChown()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        using TemporaryDirectory temporary = new();
+        string identity = Path.Combine(temporary.Path, "identity");
+        string protection = Path.Combine(temporary.Path, "data-protection");
+        Directory.CreateDirectory(identity);
+        Directory.CreateDirectory(protection);
+        File.CreateSymbolicLink(
+            Path.Combine(identity, "unexpected-link"),
+            "/etc/passwd");
+        LocalInstallationInstallerUbuntuPrimitiveInspector inspector = new(
+            (_, _) => throw new InvalidOperationException(
+                "Unsafe ownership inventory must not invoke stat."));
+
+        InstallationInstallerUbuntuPrimitiveInspection rejected =
+            await inspector.InspectAsync(
+                Request(),
+                SetupIdentityOperation(identity, protection));
+
+        Assert.Equal(
+            InstallationInstallerUbuntuPrimitiveInspectionOutcome.Rejected,
+            rejected.Outcome);
+        Assert.Equal(
+            "ubuntu-setup-identity-handoff-unsafe",
+            rejected.Code);
     }
 
     [Fact]
@@ -1104,6 +1323,22 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
         Assert.False(Directory.Exists(current));
         Assert.Null(new DirectoryInfo(current).LinkTarget);
     }
+
+    private static InstallationInstallerUbuntuPrimitiveOperation
+        SetupIdentityOperation(string identity, string protection) =>
+        new(
+            2,
+            InstallationInstallerUbuntuPrimitiveKind.AdoptSetupIdentityState,
+            Path.GetDirectoryName(identity)!,
+            "/usr/bin/chown",
+            [
+                "--recursive",
+                "--no-dereference",
+                "aethersdr:aethersdr",
+                "--",
+                identity,
+                protection
+            ]);
 
     private static InstallationInstallerUbuntuPrimitiveOperation
         IdentityOperation() =>

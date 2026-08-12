@@ -55,6 +55,7 @@ public sealed class LocalInstallationInstallerUbuntuMutationPrimitives :
         {
             InstallationInstallerUbuntuPrimitiveKind.EnsureSystemUser,
             InstallationInstallerUbuntuPrimitiveKind.EnsureDirectory,
+            InstallationInstallerUbuntuPrimitiveKind.AdoptSetupIdentityState,
             InstallationInstallerUbuntuPrimitiveKind.InstallSystemdUnit,
             InstallationInstallerUbuntuPrimitiveKind.ReloadSystemd,
             InstallationInstallerUbuntuPrimitiveKind.ActivateSystemdUnit
@@ -633,11 +634,13 @@ public sealed class LocalInstallationInstallerUbuntuMutationPrimitives :
 
     private static bool ConvergesOnApply(
         InstallationInstallerUbuntuPrimitiveKind kind) =>
-        kind == InstallationInstallerUbuntuPrimitiveKind.EnsureDirectory;
+        kind is InstallationInstallerUbuntuPrimitiveKind.EnsureDirectory or
+            InstallationInstallerUbuntuPrimitiveKind.AdoptSetupIdentityState;
 
     private static bool Repairable(
         InstallationInstallerUbuntuPrimitiveKind kind) =>
         kind is InstallationInstallerUbuntuPrimitiveKind.EnsureDirectory or
+            InstallationInstallerUbuntuPrimitiveKind.AdoptSetupIdentityState or
             InstallationInstallerUbuntuPrimitiveKind.InstallSystemdUnit or
             InstallationInstallerUbuntuPrimitiveKind.ConfigureReverseProxy or
             InstallationInstallerUbuntuPrimitiveKind.TrustInternalCertificate or
@@ -787,6 +790,8 @@ internal sealed class LocalInstallationInstallerUbuntuPrimitiveInspector :
                 Task.FromResult(InspectUser(operation)),
             InstallationInstallerUbuntuPrimitiveKind.EnsureDirectory =>
                 InspectDirectoryAsync(operation, cancellationToken),
+            InstallationInstallerUbuntuPrimitiveKind.AdoptSetupIdentityState =>
+                InspectSetupIdentityStateAsync(operation, cancellationToken),
             InstallationInstallerUbuntuPrimitiveKind.InstallSystemdUnit =>
                 InspectUnitAsync(operation, cancellationToken),
             InstallationInstallerUbuntuPrimitiveKind.ActivateSystemdUnit =>
@@ -884,6 +889,176 @@ internal sealed class LocalInstallationInstallerUbuntuPrimitiveInspector :
             group,
             mode,
             cancellationToken);
+    }
+
+    private async Task<InstallationInstallerUbuntuPrimitiveInspection>
+        InspectSetupIdentityStateAsync(
+            InstallationInstallerUbuntuPrimitiveOperation operation,
+            CancellationToken cancellationToken)
+    {
+        if (!string.Equals(
+                operation.Executable,
+                "/usr/bin/chown",
+                StringComparison.Ordinal) ||
+            operation.Arguments.Count != 6 ||
+            !string.Equals(
+                operation.Arguments[0],
+                "--recursive",
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                operation.Arguments[1],
+                "--no-dereference",
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                operation.Arguments[2],
+                "aethersdr:aethersdr",
+                StringComparison.Ordinal) ||
+            !string.Equals(operation.Arguments[3], "--", StringComparison.Ordinal))
+        {
+            return Rejected(
+                "ubuntu-setup-identity-handoff-unsafe",
+                "The setup identity ownership handoff is not one exact fixed operation.");
+        }
+
+        string[] roots = [operation.Arguments[4], operation.Arguments[5]];
+        List<string> paths = [];
+        try
+        {
+            foreach (string root in roots)
+            {
+                if (!Directory.Exists(root))
+                {
+                    return Missing();
+                }
+                FileAttributes rootAttributes = File.GetAttributes(root);
+                if ((rootAttributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    return Rejected(
+                        "ubuntu-setup-identity-handoff-unsafe",
+                        "A setup identity ownership root is a symbolic link.");
+                }
+
+                Queue<string> pending = new();
+                pending.Enqueue(root);
+                while (pending.Count > 0)
+                {
+                    string current = pending.Dequeue();
+                    paths.Add(current);
+                    if (paths.Count > 256)
+                    {
+                        return Rejected(
+                            "ubuntu-setup-identity-handoff-bounds-exceeded",
+                            "The setup identity ownership inventory exceeded its bound.");
+                    }
+                    foreach (string child in
+                             Directory.EnumerateFileSystemEntries(current))
+                    {
+                        FileAttributes attributes = File.GetAttributes(child);
+                        if ((attributes & FileAttributes.ReparsePoint) != 0)
+                        {
+                            return Rejected(
+                                "ubuntu-setup-identity-handoff-unsafe",
+                                "The setup identity ownership inventory contains a symbolic link.");
+                        }
+                        bool directory =
+                            (attributes & FileAttributes.Directory) != 0;
+                        if (!directory && !File.Exists(child))
+                        {
+                            return Rejected(
+                                "ubuntu-setup-identity-handoff-unsafe",
+                                "The setup identity ownership inventory contains an unsupported entry.");
+                        }
+                        if (directory)
+                        {
+                            pending.Enqueue(child);
+                        }
+                        else
+                        {
+                            paths.Add(child);
+                            if (paths.Count > 256)
+                            {
+                                return Rejected(
+                                    "ubuntu-setup-identity-handoff-bounds-exceeded",
+                                    "The setup identity ownership inventory exceeded its bound.");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            return Unknown(
+                "ubuntu-setup-identity-handoff-inspection-unknown",
+                "The setup identity ownership inventory could not be inspected.");
+        }
+
+        bool rootOwnershipObserved = false;
+        foreach (string path in paths)
+        {
+            InstallationInstallerUbuntuDirectProcessResult stat =
+                await RunStatInspectionAsync(path, cancellationToken);
+            if (stat.ExitCode != 0 ||
+                !string.IsNullOrEmpty(stat.StandardError))
+            {
+                return Unknown(
+                    "ubuntu-setup-identity-handoff-inspection-unknown",
+                    "The setup identity ownership metadata could not be inspected.");
+            }
+            string owner = stat.StandardOutput.Trim();
+            if (string.Equals(
+                    owner,
+                    "aethersdr:aethersdr",
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+            if (string.Equals(owner, "root:root", StringComparison.Ordinal))
+            {
+                rootOwnershipObserved = true;
+                continue;
+            }
+            return Drift(
+                "ubuntu-setup-identity-handoff-owner-drift",
+                "The setup identity inventory has an unexpected owner.");
+        }
+
+        return rootOwnershipObserved ? Missing() : Converged();
+    }
+
+    private async Task<InstallationInstallerUbuntuDirectProcessResult>
+        RunStatInspectionAsync(
+            string path,
+            CancellationToken cancellationToken)
+    {
+        ProcessStartInfo start = new()
+        {
+            FileName = StatExecutable,
+            UseShellExecute = false,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+        start.Environment.Clear();
+        start.ArgumentList.Add("--format=%U:%G");
+        start.ArgumentList.Add("--");
+        start.ArgumentList.Add(path);
+        try
+        {
+            return await m_runner(start, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return new(
+                ExitCode: int.MinValue,
+                StandardOutput: string.Empty,
+                StandardError: string.Empty);
+        }
     }
 
     private async Task<InstallationInstallerUbuntuPrimitiveInspection>
