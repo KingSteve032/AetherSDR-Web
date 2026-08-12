@@ -4,15 +4,24 @@ using System.Net.Sockets;
 using System.Text.Json;
 using AetherRemote.Protocol;
 
+if (!OperatingSystem.IsLinux())
+{
+    throw new PlatformNotSupportedException(
+        "The AetherRemote fixed-purpose updater requires Linux.");
+}
+
 HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddHostedService<ReleaseServiceControlUpdater>();
+builder.Services.AddHostedService<StationReleaseUpdateUpdater>();
 await builder.Build().RunAsync();
 
 internal sealed class ReleaseServiceControlUpdater(
     ILogger<ReleaseServiceControlUpdater> logger) : BackgroundService
 {
-    internal const string DirectoryName = "aetherremote-release-updater";
-    internal const string SocketFileName = "control.sock";
+    internal const string RuntimeDirectory =
+        "/run/aetherremote-release-updater";
+    internal const string SocketPath =
+        "/run/aetherremote-release-updater/control.sock";
     internal const int MaximumMessageBytes = 16 * 1024;
     private const string SystemctlPath = "/usr/bin/systemctl";
     private static readonly TimeSpan ActionTimeout = TimeSpan.FromSeconds(20);
@@ -24,39 +33,28 @@ internal sealed class ReleaseServiceControlUpdater(
             throw new PlatformNotSupportedException(
                 "The AetherRemote release updater requires Linux.");
         }
-        string runtimeRoot = GetRuntimeRoot();
-        string socketRoot = Path.GetFullPath(Path.Combine(runtimeRoot, DirectoryName));
-        string socketPath = Path.GetFullPath(
-            Path.Combine(socketRoot, SocketFileName));
-        if (!string.Equals(
-                Path.GetDirectoryName(socketRoot),
-                runtimeRoot,
-                StringComparison.Ordinal) ||
-            !string.Equals(
-                Path.GetDirectoryName(socketPath),
-                socketRoot,
-                StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                "The AetherRemote updater socket escaped the user runtime directory.");
-        }
-
-        Directory.CreateDirectory(socketRoot);
+        Directory.CreateDirectory(RuntimeDirectory);
         File.SetUnixFileMode(
-            socketRoot,
+            RuntimeDirectory,
             UnixFileMode.UserRead |
             UnixFileMode.UserWrite |
-            UnixFileMode.UserExecute);
-        RemoveStaleSocket(socketPath);
+            UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite |
+            UnixFileMode.GroupExecute);
+        RemoveStaleSocket(SocketPath);
 
         using Socket listener = new(
             AddressFamily.Unix,
             SocketType.Stream,
             ProtocolType.Unspecified);
-        listener.Bind(new UnixDomainSocketEndPoint(socketPath));
+        listener.Bind(new UnixDomainSocketEndPoint(SocketPath));
         File.SetUnixFileMode(
-            socketPath,
-            UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            SocketPath,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite);
         listener.Listen(backlog: 4);
         logger.LogInformation(
             "AetherRemote fixed release updater is listening on an owner-private Unix socket");
@@ -71,7 +69,7 @@ internal sealed class ReleaseServiceControlUpdater(
         finally
         {
             listener.Close();
-            RemoveStaleSocket(socketPath);
+            RemoveStaleSocket(SocketPath);
         }
     }
 
@@ -128,7 +126,6 @@ internal sealed class ReleaseServiceControlUpdater(
             CreateNoWindow = true
         };
         start.Environment.Clear();
-        start.ArgumentList.Add("--user");
         start.ArgumentList.Add("--no-ask-password");
         start.ArgumentList.Add("--no-pager");
         start.ArgumentList.Add("--plain");
@@ -210,23 +207,6 @@ internal sealed class ReleaseServiceControlUpdater(
             }
             throw;
         }
-    }
-
-    private static string GetRuntimeRoot()
-    {
-        string value =
-            Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR") ?? string.Empty;
-        const string prefix = "/run/user/";
-        if (!value.StartsWith(prefix, StringComparison.Ordinal) ||
-            value.Length <= prefix.Length ||
-            !value[prefix.Length..].All(character =>
-                character is >= '0' and <= '9') ||
-            !string.Equals(Path.GetFullPath(value), value, StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                "XDG_RUNTIME_DIR is unavailable or unsafe for the updater socket.");
-        }
-        return value;
     }
 
     private static void RemoveStaleSocket(string path)

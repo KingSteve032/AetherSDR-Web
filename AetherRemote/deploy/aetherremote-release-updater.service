@@ -1,21 +1,40 @@
 [Unit]
-Description=AetherRemote fixed release service-control updater
-After=default.target
+Description=AetherRemote fixed-purpose signed release updater
+After=local-fs.target
+Before=aetherremote-station-engine.service aetherremote-agent.service
 
 [Service]
 Type=simple
-ExecStart=%h/.local/lib/aetherremote/updater/AetherRemote.Updater
+User=root
+Group=aetherremote
+WorkingDirectory=/opt/aetherremote/updater
+ExecStart=/opt/aetherremote/updater/AetherRemote.Updater
 Restart=on-failure
 RestartSec=3
+RuntimeDirectory=aetherremote-release-updater
+RuntimeDirectoryMode=0770
+TimeoutStopSec=15
+
 NoNewPrivileges=true
+PrivateDevices=true
 PrivateTmp=true
-ProtectHome=read-only
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
 ProtectSystem=strict
+ReadWritePaths=/opt/aetherremote /var/lib/aetherremote /etc/systemd/system
 RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
 SystemCallArchitectures=native
 UMask=0077
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target

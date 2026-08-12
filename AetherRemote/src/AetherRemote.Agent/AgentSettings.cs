@@ -9,6 +9,11 @@ public sealed class AgentSettings
     public string BrokerUrl { get; set; } = string.Empty;
     public string StationId { get; set; } = string.Empty;
     public string CredentialFile { get; set; } = string.Empty;
+    public string GatewayUrl { get; set; } = string.Empty;
+    public string ReleaseIdentity { get; set; } = string.Empty;
+    public string StationEngineVersion { get; set; } = string.Empty;
+    public string ReleaseVerificationKeyPath { get; set; } = string.Empty;
+    public string ReleaseVerificationKeySha256File { get; set; } = string.Empty;
     public string SoftwareVersion =>
         typeof(AgentSettings).Assembly.GetName().Version?.ToString(3) ??
         "0.0.0";
@@ -21,6 +26,7 @@ public sealed class AgentSettings
         "http://127.0.0.1:5081";
     public bool AllowInsecureDevelopmentTransport { get; set; }
     public bool ReleaseServiceControlEnabled { get; set; }
+    public bool ReleaseUpdateEnabled { get; set; }
     public string[]? Capabilities { get; set; }
     public ConfiguredRadioSettings[] ConfiguredRadios { get; set; } = [];
 }

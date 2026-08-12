@@ -4696,6 +4696,43 @@ clean-host acceptance remains pending and is not claimed by this checkpoint.
   specific signed release update. It never exposes an arbitrary remote shell or
   arbitrary-command channel. The station stages, verifies, restarts, reconnects,
   and rolls back locally if its health check fails.
+- Implemented acceptance binds public bootstrap publication to the gateway's
+  active locally verified signed release. `/.well-known/aethersdr` publishes only
+  bounded non-secret metadata; Admin supplies a separately fetched, SHA-256-pinned
+  install command and separately displays the one-time enrollment code. The
+  station installer independently pins the release verification key, verifies the
+  signed manifest and exact package hashes/lengths, safely extracts only the
+  matching architecture, performs no-command FLEX discovery, and prompts for the
+  enrollment code locally with terminal echo disabled.
+- Remote-accepting gateway topologies provision distinct owner-only broker runtime
+  and administration credentials transactionally. The gateway reads the exact
+  credential files while the broker receives only SHA-256 verifiers. The managed
+  proxy exposes only `/aetherremote/broker/*` to loopback broker port 5090; the
+  broker itself remains non-public.
+- Signed station updates are capability-gated and name only the exact release
+  identity selected server-side from the gateway's verified active bundle. The
+  station independently verifies the signed manifest and packages, stages under a
+  fixed private root, switches only fixed release symlinks and signed units, and
+  uses a root-owned fixed-purpose updater with no network address family or
+  arbitrary command/path/service input. A failed new Agent startup triggers local
+  rollback. Successful or rolled-back startup completion is retained durably until
+  the broker accepts the exact correlated result and returns a matching protocol
+  acknowledgement; duplicate exact completion after reconnect is idempotently
+  acknowledged, while altered or untracked completion is rejected.
+- Automated acceptance on 2026-08-12 passes the 14-project Release build with
+  0 warnings and 0 errors, `dotnet format --verify-no-changes`, release-automation
+  and systemd-unit boundary validators, station-installer shell syntax, and the
+  production deployment validation-only publish inspection. Tests pass with 1,867
+  web tests, 48 TX-HIL isolation tests, 57 independent-watchdog tests, 17
+  release-builder tests, 87 AetherRemote tests, and 162 browser tests: 2,076 .NET
+  tests and 2,238 tests overall. A local ephemeral-key release build also created
+  and self-verified both linux-x64 and linux-arm64 signed manifests and confirmed
+  that each Agent archive contains the Agent, nested updater, three signed station
+  units, and enrollment helper expected by bootstrap. Production artifact
+  inspection retained exactly the previously reviewed dormant TX command strings
+  and transport markers, a Disarmed independent watchdog, and no HIL/CWX/TX-audio
+  surface. No live RF/HIL, radio command, TX action, host reboot, VM mutation,
+  GitHub release, or deployment was performed.
 
 ### M8G — Backup, restore, diagnostics, and operations
 

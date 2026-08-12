@@ -20,6 +20,8 @@ public sealed record RemoteStationSnapshot(
     string ConnectionId,
     string State,
     string SoftwareVersion,
+    string ReleaseIdentity,
+    string StationEngineVersion,
     string RemoteAddress,
     DateTimeOffset ConnectedAt,
     DateTimeOffset LastSeen,
@@ -75,7 +77,9 @@ public sealed class StationRegistry
         string instanceId,
         string softwareVersion,
         string remoteAddress,
-        IReadOnlyList<string>? capabilities = null)
+        IReadOnlyList<string>? capabilities = null,
+        string releaseIdentity = "",
+        string stationEngineVersion = "")
     {
         DateTimeOffset now = m_timeProvider.GetUtcNow();
         string connectionId = Guid.NewGuid().ToString("N");
@@ -118,6 +122,8 @@ public sealed class StationRegistry
                 instanceId,
                 connectionId,
                 softwareVersion,
+                releaseIdentity,
+                stationEngineVersion,
                 remoteAddress,
                 now,
                 now,
@@ -311,6 +317,8 @@ public sealed class StationRegistry
             station.ConnectionId,
             state,
             station.SoftwareVersion,
+            station.ReleaseIdentity,
+            station.StationEngineVersion,
             station.RemoteAddress,
             station.ConnectedAt,
             station.LastSeen,
@@ -330,6 +338,8 @@ public sealed class StationRegistry
         string instanceId,
         string connectionId,
         string softwareVersion,
+        string releaseIdentity,
+        string stationEngineVersion,
         string remoteAddress,
         DateTimeOffset connectedAt,
         DateTimeOffset lastSeen,
@@ -350,6 +360,8 @@ public sealed class StationRegistry
         public string InstanceId { get; } = instanceId;
         public string ConnectionId { get; } = connectionId;
         public string SoftwareVersion { get; } = softwareVersion;
+        public string ReleaseIdentity { get; } = releaseIdentity;
+        public string StationEngineVersion { get; } = stationEngineVersion;
         public string RemoteAddress { get; } = remoteAddress;
         public DateTimeOffset ConnectedAt { get; } = connectedAt;
         public DateTimeOffset LastSeen { get; set; } = lastSeen;

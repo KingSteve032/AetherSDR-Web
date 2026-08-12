@@ -78,6 +78,8 @@ const state = {
     credentials: []
   },
   enrollmentCode: null,
+  enrollmentBootstrap: null,
+  stationBootstrap: null,
   releaseTransaction: null,
   auditEvents: [],
   refreshing: false,
@@ -110,14 +112,22 @@ async function refreshInventory(announce = false) {
   state.refreshing = true;
   elements.refresh.disabled = true;
   try {
-    const [result, stations, audit, releaseTransaction] = await Promise.all([
+    const [
+      result,
+      stations,
+      bootstrap,
+      audit,
+      releaseTransaction
+    ] = await Promise.all([
       getJson("/api/admin/radios"),
       getJson("/api/admin/stations"),
+      getJson("/api/admin/stations/bootstrap"),
       getJson("/api/admin/audit?limit=50"),
       getJson("/api/admin/releases/transaction")
     ]);
     state.radios = Array.isArray(result.radios) ? result.radios : [];
     state.stationAdministration = stations || state.stationAdministration;
+    state.stationBootstrap = bootstrap || null;
     state.auditEvents = Array.isArray(audit.events) ? audit.events : [];
     state.releaseTransaction = releaseTransaction || null;
     renderCredentialSecurity();
@@ -179,6 +189,14 @@ async function createEnrollmentCode(event) {
 async function requestEnrollmentCode(stationId) {
   elements.enrollmentCreate.disabled = true;
   try {
+    state.enrollmentBootstrap = await getJson(
+      `/api/admin/stations/bootstrap?stationId=${encodeURIComponent(stationId)}`);
+    if (!state.enrollmentBootstrap?.ready ||
+        !state.enrollmentBootstrap?.installCommand) {
+      throw new Error(
+        state.enrollmentBootstrap?.message ||
+        "A signed AetherRemote installer is not ready on this gateway.");
+    }
     state.enrollmentCode = await postJson(
       "/api/admin/stations/enrollment-codes",
       { stationId });
@@ -258,8 +276,7 @@ function renderEnrollmentResult() {
       "Code copied"));
   codeRow.append(code, copyCode);
 
-  const commandText =
-    `sudo aetherremote-enroll ${window.location.origin}`;
+  const commandText = state.enrollmentBootstrap?.installCommand || "";
   const commandRow = createElement("div", "admin-enrollment-copy-row");
   const command = createElement(
     "code",
@@ -275,11 +292,18 @@ function renderEnrollmentResult() {
       commandText,
       copyCommand,
       "Command copied"));
+  copyCommand.disabled = !commandText;
   commandRow.append(command, copyCommand);
+  const installHelp = createElement(
+    "p",
+    "muted",
+    "Run the signed bootstrap command first. The station prompts for this " +
+    "one-time code locally; the code is intentionally not part of the command.");
   elements.enrollmentResult.append(
     heading,
     warning,
     codeRow,
+    installHelp,
     commandRow);
 }
 
@@ -508,6 +532,8 @@ function buildStationCard(station) {
       "small",
       "",
       `Agent ${station.softwareVersion || "unknown"} · ` +
+      `Engine ${station.stationEngineVersion || "unknown"} · ` +
+      `release ${station.releaseIdentity || "legacy"} · ` +
       `instance ${shortId(station.instanceId)}`));
   heading.append(
     identity,
@@ -541,7 +567,13 @@ function buildStationCard(station) {
     diagnosticMetric(
       "LINK RECOVERY",
       formatStationConnectionCount(station.connectionCount),
-      formatStationRecoveryDetail(station, stationState)));
+      formatStationRecoveryDetail(station, stationState)),
+    diagnosticMetric(
+      "SIGNED RELEASE",
+      station.releaseIdentity || "Legacy / unknown",
+      station.stationEngineVersion
+        ? `Station engine ${station.stationEngineVersion}`
+        : "No exact station release metadata advertised"));
 
   const radios = createElement("div", "admin-station-connections");
   radios.append(
@@ -598,8 +630,54 @@ function buildStationCard(station) {
     }
   }
 
+  const updateActions = createElement("div", "admin-enrollment-copy-row");
+  const targetRelease = state.stationBootstrap?.ready
+    ? state.stationBootstrap.releaseIdentity
+    : "";
+  const canUpdate =
+    stationState !== "offline" &&
+    Array.isArray(station.capabilities) &&
+    station.capabilities.includes("release-update-v1") &&
+    Boolean(targetRelease);
+  if (canUpdate && station.releaseIdentity !== targetRelease) {
+    const update = createElement(
+      "button",
+      "secondary-action",
+      `Update to ${targetRelease}`);
+    update.type = "button";
+    update.addEventListener("click", () =>
+      requestStationReleaseUpdate(station.stationId, update));
+    updateActions.append(update);
+  } else if (canUpdate && station.releaseIdentity === targetRelease) {
+    updateActions.append(
+      createElement("span", "status-pill", "RELEASE CURRENT"));
+  }
+
   card.append(heading, metrics, radios, sessions);
+  if (updateActions.childNodes.length > 0) {
+    card.append(updateActions);
+  }
   return card;
+}
+
+async function requestStationReleaseUpdate(stationId, button) {
+  button.disabled = true;
+  try {
+    const result = await postJson(
+      `/api/admin/stations/${encodeURIComponent(stationId)}/release-update`,
+      {});
+    showNotice(
+      result?.outcome === "already-current"
+        ? `${stationId} is already on the gateway release.`
+        : `${stationId} signed release update completed.`);
+    await refreshInventory(true);
+  } catch (error) {
+    showNotice(
+      error.message || "The signed station release update failed.",
+      true);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function buildRemoteReceiveSessionRow(session) {
@@ -628,7 +706,11 @@ function formatStationCapabilities(capabilities) {
     ? values.map(capability =>
         capability === "receive-projection-v1"
           ? "Receive projection"
-          : capability).join(", ")
+          : capability === "release-service-control-v1"
+            ? "Release service control"
+            : capability === "release-update-v1"
+              ? "Signed release updates"
+              : capability).join(", ")
     : "No receive capability advertised";
 }
 

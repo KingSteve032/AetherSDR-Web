@@ -146,7 +146,10 @@ test("Admin station security never puts enrollment codes in URLs", () => {
     /enrollmentCode=.*(?:fetch|location)/);
   assert.match(
     adminPageSource,
-    /sudo aetherremote-enroll \$\{window\.location\.origin\}/);
+    /state\.enrollmentBootstrap\?\.installCommand/);
+  assert.match(
+    adminPageSource,
+    /one-time code locally; the code is intentionally not part of the command/);
 });
 
 test("Admin radio onboarding exposes stable labels and guarded TX policy", () => {

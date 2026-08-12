@@ -3,6 +3,15 @@ using AetherRemote.Protocol;
 using Microsoft.Extensions.Options;
 using System.Net;
 
+if (FlexDiscoveryConsole.IsRequested(args))
+{
+    Environment.ExitCode = await FlexDiscoveryConsole.ExecuteAsync(
+        args,
+        Console.Out,
+        Console.Error);
+    return;
+}
+
 HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddSimpleConsole(options =>
@@ -28,6 +37,9 @@ builder.Services.AddSingleton<StationReceiveSessionManager>();
 builder.Services.AddSingleton<IStationReleaseUpdaterClient,
     UnixSocketStationReleaseUpdaterClient>();
 builder.Services.AddSingleton<StationReleaseServiceControlService>();
+builder.Services.AddSingleton<IStationReleaseUpdateLocalClient,
+    UnixSocketStationReleaseUpdateLocalClient>();
+builder.Services.AddSingleton<StationReleaseUpdateService>();
 builder.Services.AddHostedService<StationLinkClient>();
 
 IHost host = builder.Build();
@@ -72,6 +84,58 @@ static void ValidateSettings(AgentSettings settings)
     {
         throw new InvalidOperationException(
             "Agent:SoftwareVersion is invalid.");
+    }
+    bool releaseIdentityPresent =
+        !string.IsNullOrEmpty(settings.ReleaseIdentity);
+    bool stationEngineVersionPresent =
+        !string.IsNullOrEmpty(settings.StationEngineVersion);
+    if (releaseIdentityPresent != stationEngineVersionPresent ||
+        releaseIdentityPresent &&
+        (!StationProtocolValidator.IsIdentifier(settings.ReleaseIdentity, 96) ||
+         !StationProtocolValidator.IsText(settings.StationEngineVersion, 64)))
+    {
+        throw new InvalidOperationException(
+            "Agent release identity and station-engine version are invalid.");
+    }
+    if (settings.ReleaseServiceControlEnabled &&
+        settings.Capabilities?.Contains(
+            StationCapabilities.ReleaseServiceControlV1,
+            StringComparer.Ordinal) != true)
+    {
+        throw new InvalidOperationException(
+            "Agent release service control requires the " +
+            "release-service-control-v1 capability grant.");
+    }
+    if (settings.ReleaseUpdateEnabled)
+    {
+        if (!releaseIdentityPresent ||
+            settings.Capabilities?.Contains(
+                StationCapabilities.ReleaseUpdateV1,
+                StringComparer.Ordinal) != true)
+        {
+            throw new InvalidOperationException(
+                "Agent release updates require exact release metadata and the " +
+                "release-update-v1 capability grant.");
+        }
+        if (!OperatingSystem.IsLinux() ||
+            !Uri.TryCreate(
+                settings.GatewayUrl,
+                UriKind.Absolute,
+                out Uri? gatewayUri) ||
+            gatewayUri.Scheme != Uri.UriSchemeHttps ||
+            string.IsNullOrEmpty(gatewayUri.Host) ||
+            !string.IsNullOrEmpty(gatewayUri.UserInfo) ||
+            !string.IsNullOrEmpty(gatewayUri.Query) ||
+            !string.IsNullOrEmpty(gatewayUri.Fragment) ||
+            gatewayUri.AbsolutePath is not ("" or "/") ||
+            !IsExactAbsolutePath(settings.ReleaseVerificationKeyPath) ||
+            !IsExactAbsolutePath(
+                settings.ReleaseVerificationKeySha256File))
+        {
+            throw new InvalidOperationException(
+                "Agent release updates require Linux, one exact HTTPS gateway " +
+                "origin, and exact absolute release-trust file paths.");
+        }
     }
     if (settings.InventorySeconds is < 2 or > 60 ||
         settings.RadioOfflineSeconds is < 5 or > 300)
@@ -128,3 +192,8 @@ static void ValidateSettings(AgentSettings settings)
             $"Agent:ConfiguredRadios is invalid: {inventoryError}");
     }
 }
+
+static bool IsExactAbsolutePath(string? path) =>
+    !string.IsNullOrEmpty(path) &&
+    Path.IsPathFullyQualified(path) &&
+    string.Equals(Path.GetFullPath(path), path, StringComparison.Ordinal);

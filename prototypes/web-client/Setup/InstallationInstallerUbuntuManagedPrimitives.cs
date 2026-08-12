@@ -77,7 +77,9 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
             InstallationInstallerUbuntuPrimitiveKind
                 .ConfigureGatewayEnvironment,
             InstallationInstallerUbuntuPrimitiveKind
-                .InstallAuthenticationClientSecret
+                .InstallAuthenticationClientSecret,
+            InstallationInstallerUbuntuPrimitiveKind
+                .ConfigureAetherRemoteGateway
         };
 
     private readonly InstallationInstallerUbuntuDirectProcessRunner m_runner;
@@ -148,6 +150,12 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
             InstallationInstallerUbuntuPrimitiveKind
                 .InstallAuthenticationClientSecret =>
                 InspectAuthenticationClientSecretAsync(
+                    request,
+                    operation,
+                    cancellationToken),
+            InstallationInstallerUbuntuPrimitiveKind
+                .ConfigureAetherRemoteGateway =>
+                InspectAetherRemoteGatewayAsync(
                     request,
                     operation,
                     cancellationToken),
@@ -240,6 +248,12 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
                 InstallationInstallerUbuntuPrimitiveKind
                     .InstallAuthenticationClientSecret =>
                     await InstallAuthenticationClientSecretAsync(
+                        request,
+                        operation,
+                        cancellationToken),
+                InstallationInstallerUbuntuPrimitiveKind
+                    .ConfigureAetherRemoteGateway =>
+                    await ConfigureAetherRemoteGatewayAsync(
                         request,
                         operation,
                         cancellationToken),
@@ -830,6 +844,316 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
             : InstallationInstallerUbuntuStepResult.Unknown(
                 "ubuntu-gateway-environment-postcondition-unknown",
                 "The gateway runtime environment postcondition could not be proven.");
+    }
+
+    private async Task<InstallationInstallerUbuntuPrimitiveInspection>
+        InspectAetherRemoteGatewayAsync(
+            InstallationInstallerUbuntuMutationRequest request,
+            InstallationInstallerUbuntuPrimitiveOperation operation,
+            CancellationToken cancellationToken)
+    {
+        InstallationInstallerAetherRemoteGatewayConfigurationPlan plan;
+        try
+        {
+            plan = InstallationInstallerAetherRemoteGatewayConfiguration.Compose(
+                request);
+        }
+        catch
+        {
+            return Rejected(
+                "ubuntu-aetherremote-gateway-plan-rejected",
+                "The reviewed AetherRemote gateway configuration could not be composed safely.");
+        }
+        if (operation.Kind !=
+                InstallationInstallerUbuntuPrimitiveKind
+                    .ConfigureAetherRemoteGateway ||
+            !string.Equals(
+                operation.Target,
+                plan.BrokerEnvironmentTargetPath,
+                StringComparison.Ordinal))
+        {
+            return Rejected(
+                "ubuntu-aetherremote-gateway-target-rejected",
+                "The AetherRemote gateway configuration target is not canonical.");
+        }
+
+        string? runtimeCredential;
+        string? administrationCredential;
+        try
+        {
+            runtimeCredential = await InspectAetherRemoteCredentialAsync(
+                plan.RuntimeCredentialPath,
+                cancellationToken);
+            administrationCredential =
+                await InspectAetherRemoteCredentialAsync(
+                    plan.AdministrationCredentialPath,
+                    cancellationToken);
+        }
+        catch (InvalidDataException)
+        {
+            return Rejected(
+                "ubuntu-aetherremote-gateway-credential-rejected",
+                "An installed AetherRemote gateway credential is malformed or unsafe.");
+        }
+        if (runtimeCredential is null || administrationCredential is null)
+        {
+            return Missing();
+        }
+        if (!await HasExactOwnershipAsync(
+                plan.RuntimeCredentialPath,
+                "aethersdr:aethersdr:600",
+                cancellationToken) ||
+            !await HasExactOwnershipAsync(
+                plan.AdministrationCredentialPath,
+                "aethersdr:aethersdr:600",
+                cancellationToken))
+        {
+            return Rejected(
+                "ubuntu-aetherremote-gateway-credential-ownership-rejected",
+                "The AetherRemote gateway credentials are not owned only by the gateway service identity.");
+        }
+
+        string rendered;
+        try
+        {
+            rendered = InstallationInstallerAetherRemoteGatewayConfiguration
+                .RenderBrokerEnvironment(
+                    runtimeCredential,
+                    administrationCredential);
+        }
+        catch
+        {
+            return Rejected(
+                "ubuntu-aetherremote-gateway-credential-rejected",
+                "The installed AetherRemote gateway credentials are invalid or ambiguous.");
+        }
+
+        InstallationInstallerUbuntuPrimitiveInspection environment =
+            await InspectManagedFileAsync(
+                plan.BrokerEnvironmentTargetPath,
+                rendered,
+                plan.BrokerEnvironmentMarkerPath,
+                cancellationToken);
+        if (environment.Outcome !=
+            InstallationInstallerUbuntuPrimitiveInspectionOutcome.Converged)
+        {
+            return environment;
+        }
+        if (!HasOwnerOnlyMode(plan.BrokerEnvironmentTargetPath) ||
+            !await HasExactOwnershipAsync(
+                plan.BrokerEnvironmentTargetPath,
+                "root:root:600",
+                cancellationToken))
+        {
+            return Rejected(
+                "ubuntu-aetherremote-broker-environment-ownership-rejected",
+                "The AetherRemote broker environment is not root-owned and owner-only.");
+        }
+        return Converged();
+    }
+
+    private async Task<InstallationInstallerUbuntuStepResult>
+        ConfigureAetherRemoteGatewayAsync(
+            InstallationInstallerUbuntuMutationRequest request,
+            InstallationInstallerUbuntuPrimitiveOperation operation,
+            CancellationToken cancellationToken)
+    {
+        InstallationInstallerAetherRemoteGatewayConfigurationPlan plan =
+            InstallationInstallerAetherRemoteGatewayConfiguration.Compose(
+                request);
+        if (operation.Kind !=
+                InstallationInstallerUbuntuPrimitiveKind
+                    .ConfigureAetherRemoteGateway ||
+            !string.Equals(
+                operation.Target,
+                plan.BrokerEnvironmentTargetPath,
+                StringComparison.Ordinal))
+        {
+            return InstallationInstallerUbuntuStepResult.Rejected(
+                "ubuntu-aetherremote-gateway-target-rejected",
+                "The AetherRemote gateway configuration target is not canonical.");
+        }
+
+        await EnsureAetherRemoteCredentialAsync(
+            plan.RuntimeCredentialPath,
+            cancellationToken);
+        await EnsureAetherRemoteCredentialAsync(
+            plan.AdministrationCredentialPath,
+            cancellationToken);
+        string runtimeCredential =
+            await ReadAetherRemoteCredentialAsync(
+                plan.RuntimeCredentialPath,
+                cancellationToken);
+        string administrationCredential =
+            await ReadAetherRemoteCredentialAsync(
+                plan.AdministrationCredentialPath,
+                cancellationToken);
+        string rendered =
+            InstallationInstallerAetherRemoteGatewayConfiguration
+                .RenderBrokerEnvironment(
+                    runtimeCredential,
+                    administrationCredential);
+
+        string staged = await StageManagedFileAsync(
+            plan.BrokerEnvironmentTargetPath,
+            rendered,
+            plan.BrokerEnvironmentMarkerPath,
+            request.Repair,
+            cancellationToken,
+            publishedMode:
+                UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        PublishManagedFile(staged, plan.BrokerEnvironmentTargetPath);
+        await WriteMarkerAsync(
+            plan.BrokerEnvironmentMarkerPath,
+            Sha256(rendered),
+            request.PlanId,
+            cancellationToken);
+
+        InstallationInstallerUbuntuPrimitiveInspection after =
+            await InspectAetherRemoteGatewayAsync(
+                request,
+                operation,
+                cancellationToken);
+        return after.Outcome ==
+            InstallationInstallerUbuntuPrimitiveInspectionOutcome.Converged
+            ? InstallationInstallerUbuntuStepResult.Applied(
+                "ubuntu-aetherremote-gateway-configured",
+                "The owner-only AetherRemote gateway credentials and broker verifiers are configured.")
+            : InstallationInstallerUbuntuStepResult.Unknown(
+                "ubuntu-aetherremote-gateway-postcondition-unknown",
+                "The AetherRemote gateway configuration postcondition could not be proven.");
+    }
+
+    private async Task<string?> InspectAetherRemoteCredentialAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        FileInfo file = new(path);
+        file.Refresh();
+        if (!file.Exists)
+        {
+            return null;
+        }
+        if (!SafeOwnerOnlySecret(file))
+        {
+            throw new InvalidDataException(
+                "An AetherRemote gateway credential file is unsafe.");
+        }
+        return await ReadAetherRemoteCredentialAsync(path, cancellationToken);
+    }
+
+    private async Task EnsureAetherRemoteCredentialAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        FileInfo existing = new(path);
+        existing.Refresh();
+        if (existing.Exists)
+        {
+            if (!SafeOwnerOnlySecret(existing) ||
+                !await HasExactOwnershipAsync(
+                    path,
+                    "aethersdr:aethersdr:600",
+                    cancellationToken))
+            {
+                throw new InvalidDataException(
+                    "An existing AetherRemote gateway credential is unsafe.");
+            }
+            _ = await ReadAetherRemoteCredentialAsync(path, cancellationToken);
+            return;
+        }
+
+        string parent = Path.GetDirectoryName(path) ??
+            throw new InvalidOperationException(
+                "The AetherRemote credential target has no parent.");
+        string temporary = Path.Combine(
+            parent,
+            $".{Path.GetFileName(path)}.installing");
+        if (File.Exists(temporary) || Directory.Exists(temporary))
+        {
+            throw new InvalidOperationException(
+                "A prior AetherRemote credential staging path requires reconciliation.");
+        }
+
+        if (!OperatingSystem.IsLinux())
+        {
+            throw new PlatformNotSupportedException(
+                "AetherRemote gateway credential installation requires Linux.");
+        }
+        string credential = Convert.ToHexStringLower(
+            RandomNumberGenerator.GetBytes(
+                InstallationInstallerAetherRemoteGatewayConfiguration
+                    .CredentialBytes));
+        InstallationInstallerAetherRemoteGatewayConfiguration
+            .ValidateCredential(credential);
+        byte[] bytes = Encoding.ASCII.GetBytes(credential);
+        try
+        {
+            await using (FileStream stream = new(
+                temporary,
+                new FileStreamOptions
+                {
+                    Mode = FileMode.CreateNew,
+                    Access = FileAccess.Write,
+                    Share = FileShare.None,
+                    Options = FileOptions.Asynchronous,
+                    UnixCreateMode =
+                        UnixFileMode.UserRead | UnixFileMode.UserWrite
+                }))
+            {
+                await stream.WriteAsync(bytes, cancellationToken);
+                await stream.FlushAsync(cancellationToken);
+            }
+            InstallationInstallerUbuntuDirectProcessResult installed =
+                await RunAsync(
+                    InstallExecutable,
+                    [
+                        "-m", "0600",
+                        "-o", "aethersdr",
+                        "-g", "aethersdr",
+                        "--",
+                        temporary,
+                        path
+                    ],
+                    cancellationToken);
+            if (installed.ExitCode != 0 ||
+                !string.IsNullOrEmpty(installed.StandardError))
+            {
+                throw new InvalidOperationException(
+                    "The fixed installer could not publish an AetherRemote gateway credential.");
+            }
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(bytes);
+            if (File.Exists(temporary))
+            {
+                File.Delete(temporary);
+            }
+        }
+    }
+
+    private static async Task<string> ReadAetherRemoteCredentialAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        FileInfo file = new(path);
+        file.Refresh();
+        if (!file.Exists ||
+            file.Length !=
+                InstallationInstallerAetherRemoteGatewayConfiguration
+                    .CredentialBytes * 2)
+        {
+            throw new InvalidDataException(
+                "An AetherRemote gateway credential has an invalid size.");
+        }
+        string credential = await File.ReadAllTextAsync(
+            path,
+            Encoding.ASCII,
+            cancellationToken);
+        InstallationInstallerAetherRemoteGatewayConfiguration
+            .ValidateCredential(credential);
+        return credential;
     }
 
     private async Task<InstallationInstallerUbuntuPrimitiveInspection>

@@ -790,6 +790,82 @@ A snapshot also carries `connectionState` and `connectionError`. A
 `radio-busy` state means the live radio rejected the GUI registration; the
 gateway retries without estimating or overriding the radio's client limit.
 
+## AetherRemote bootstrap and signed station updates
+
+The public gateway bootstrap document at `GET /.well-known/aethersdr` is not a
+station credential protocol. It contains only bounded non-secret release,
+protocol, broker-route, enrollment, verification-key, installer, manifest, and
+package metadata derived from the active locally verified signed release. The
+one-time enrollment code is created through the protected Admin boundary and is
+never embedded in this document, an installer URL, or an installation command.
+
+A station link still uses the version-1 `aetherremote.station.v1` WebSocket
+subprotocol. `station.hello` may additionally report `releaseIdentity` and
+`stationEngineVersion`. A station advertising `release-update-v1` must provide
+both exact values; a legacy station without the capability may omit them. Link
+tokens continue to bind the exact advertised capability set.
+
+A signed update request is fixed-purpose:
+
+```json
+{"type":"broker.release.update",
+ "correlationId":"0123456789abcdef0123456789abcdef",
+ "releaseIdentity":"aethersdr-8.5.0"}
+```
+
+The broker can send it only to a station whose authenticated link grants
+`release-update-v1`. `correlationId` is one canonical 32-character lowercase
+hex value and `releaseIdentity` accepts only the bounded canonical release
+identity grammar. There is deliberately no URL, path, executable, shell,
+service name, command, argument list, environment, or arbitrary payload field.
+
+After the station has either started the requested signed release or restored
+its prior release, it reports exactly one durable completion shape:
+
+```json
+{"type":"station.release.update-result",
+ "correlationId":"0123456789abcdef0123456789abcdef",
+ "releaseIdentity":"aethersdr-8.5.0",
+ "succeeded":true,
+ "outcome":"confirmed",
+ "activeReleaseIdentity":"aethersdr-8.5.0",
+ "rolledBack":false}
+```
+
+A rollback completion uses `succeeded:false`, `outcome:"startup-rollback"`,
+`rolledBack:true`, and names the prior release in `activeReleaseIdentity`. The
+broker accepts a result only when correlation, authenticated station, requested
+release, and result shape match a bounded tracked request. It retains recent
+completed request identity briefly so a reconnect may repeat the exact same
+result. An altered duplicate or an untracked correlation is rejected.
+
+For each accepted exact completion the broker sends:
+
+```json
+{"type":"broker.release.update-ack",
+ "correlationId":"0123456789abcdef0123456789abcdef",
+ "releaseIdentity":"aethersdr-8.5.0"}
+```
+
+The station does not discard its durable local completion merely because a
+WebSocket send completed. It clears that pending completion only after this
+application-level acknowledgement exactly matches the reported correlation and
+target release and the station-local updater has durably acknowledged it.
+This makes completion delivery idempotent across Agent or socket failure.
+
+The Agent-to-root-updater local protocol is owner-scoped Unix IPC with fixed
+messages only. Requests use `type:"local.release.update"`, exact correlation,
+exact release identity, and one action from `apply`, `rollback`, `confirm`, or
+`acknowledge`. `apply` consumes only the fixed private staging directory for the
+correlation; the message cannot provide its path. `confirm` recovers the durable
+successful or rollback completion after Agent restart. `acknowledge` marks that
+completion durably acknowledged after the broker ACK; a repeated acknowledgement
+is idempotent. A subsequent startup removes acknowledged completion evidence.
+The root updater exposes no network transport or arbitrary command surface.
+
+None of these messages grant radio command capability, browser TX authority,
+TX lease ownership, watchdog arming, keying, or unkeying.
+
 ## Spectrum binary frame
 
 All integer fields use little-endian byte order.

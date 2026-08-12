@@ -2516,6 +2516,55 @@ Disabling or revoking a station closes that station's outbound link and remote
 receive sessions without disturbing other stations or local radios. Revocation
 requires a fresh one-time enrollment, while disable can be reversed.
 
+### AetherRemote gateway bootstrap and station updates
+
+Remote-station and hybrid gateway topologies publish a bounded, non-secret
+bootstrap document at `/.well-known/aethersdr`. It describes the active verified
+release, compatible station protocol, the prefixed broker WebSocket/token route,
+enrollment endpoint, release manifest, verification key, and architecture-specific
+Agent/station-engine packages. Bootstrap publication is refused unless the running
+gateway content root is the active locally verified signed `gateway-web` artifact.
+Personal and local-only gateway topologies leave this publication disabled.
+
+Admin obtains the signed station installation command from the gateway separately
+from the one-time enrollment code. The command pins both the installer SHA-256 and
+the release verification-key SHA-256; the code is never appended to that command,
+a URL, or downloaded content. `install-from-gateway.sh` requires HTTPS, detects
+Linux x64 or ARM64, downloads only the declared artifacts from the same gateway,
+verifies the pinned key, signed release manifest, exact package hash and length,
+and archive paths, then installs the signed systemd units under dedicated service
+ownership. Before enrollment it runs the Agent's bounded `--discover-once` FLEX
+discovery mode, which sends no radio command or TX action. The one-time code is
+then read locally from `/dev/tty` with echo disabled and exchanged for the station
+credential, which is stored with restrictive permissions.
+
+The reverse proxy publishes only the `/aetherremote/broker/*` subtree to the
+loopback broker on port 5090; normal gateway traffic remains on loopback port
+5080 and the broker port is not directly exposed. For topologies that accept
+remote stations, the transactional installer also provisions distinct runtime
+and administration credentials. The gateway receives fixed owner-only credential
+files; broker configuration contains only their SHA-256 verifiers.
+
+Admin may request a station update only to the gateway's current verified signed
+release and only after fresh administrator reauthentication. The remote protocol
+contains station ID/correlation and exact release identity only—no URL, shell,
+executable, service name, path, or arbitrary command. The Agent downloads and
+verifies the manifest and packages independently, stages them under its fixed
+private root, and asks the root-owned fixed-purpose updater to apply only that
+identity. The updater has no network address family, re-verifies the signed
+staging bundle, switches fixed release symlinks and signed units, restarts the
+station engine, and retains rollback state until the new Agent confirms startup.
+
+Completion is crash-safe across the Agent restart. The root updater persists an
+exact correlation/release completion for either successful startup or automatic
+startup rollback. The restarted Agent reports that result to the broker; the
+broker accepts only a tracked exact result, returns an exact
+`broker.release.update-ack`, and idempotently acknowledges the same completion
+after reconnect while rejecting altered or untracked results. Only after that
+broker acknowledgement does the Agent acknowledge the durable local completion.
+This path grants no TX authority and does not bypass the station-local radio,
+lease, watchdog, command, or ownership gates.
+
 ## Network placement
 
 Deploy the gateway beside AetherD on the shack LAN. Terminate HTTPS at the

@@ -18,6 +18,7 @@ public static class AdministrativeAuditActions
         "station.credential.disable";
     public const string RevokeStationCredential =
         "station.credential.revoke";
+    public const string UpdateStationRelease = "station.release.update";
     public const string PrepareReleaseUpdate = "release.update.prepare";
     public const string ActivateReleaseUpdate = "release.update.activate";
     public const string RollbackReleaseUpdate = "release.update.rollback";

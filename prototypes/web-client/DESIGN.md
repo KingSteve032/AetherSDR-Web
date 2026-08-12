@@ -2031,6 +2031,65 @@ external SmartSDR/Maestro Local PTT authority or active external TX
 No reconnect, model reconciliation, timer, profile load, or status echo is an
 operator keying intent.
 
+## M8F AetherRemote bootstrap and station release boundary
+
+A gateway topology that accepts remote stations publishes one bounded bootstrap
+surface from the exact active locally verified signed release. The public
+`/.well-known/aethersdr` document contains only release/protocol identities and
+same-gateway locations for the installer, signed manifest, verification key,
+architecture-specific Agent/station-engine packages, enrollment endpoint, and
+prefixed broker route. Publication additionally binds the running content root to
+the active release's signed `gateway-web` tree. No enrollment code, station
+credential, broker credential, private key, administrator authority, radio state,
+or TX authority is public bootstrap data.
+
+The Admin enrollment workflow deliberately keeps two channels separate. It
+requests the signed install guide without a station secret and creates the
+single-use enrollment code through the existing protected administration
+boundary. The generated install command pins the installer digest and release-key
+digest but contains no enrollment code. The station installer independently
+requires HTTPS, validates architecture, release signature, package hashes and
+lengths, and safe archive paths, installs only signed service assets, performs a
+bounded no-command local FLEX discovery, and reads the one-time enrollment code
+interactively with terminal echo disabled.
+
+The reverse proxy is the only public bridge to the broker. It strips the fixed
+`/aetherremote/broker` prefix and forwards only that subtree to loopback port
+5090; all ordinary gateway traffic stays on loopback port 5080. Remote-accepting
+installer plans transactionally provision separate runtime and administration
+credentials. Plaintext remains in fixed owner-only files readable by the gateway;
+the broker environment receives only SHA-256 verifiers. The credential material
+never enters the deterministic plan ID or process arguments.
+
+Station release update is a capability-gated fixed-purpose protocol, not remote
+execution. The gateway can select only its active verified signed release and the
+wire request carries only the station identity, random correlation, and canonical
+release identity. The Agent derives same-gateway URLs, independently re-verifies
+the pinned release key, signed manifest, architecture, TX-disabled declaration,
+and exact Agent/station-engine packages, then stages only beneath a fixed private
+root. The root updater accepts only fixed local `apply`, `rollback`, `confirm`,
+and `acknowledge` actions over a private Unix socket; it has no network address
+family and accepts no arbitrary path, URL, executable, service identity, shell,
+or command payload.
+
+Activation is two phase and crash safe. Before switching, the updater records the
+previous and target releases plus a bounded confirmation deadline. It switches
+only the fixed Agent, station-engine, and updater symlinks and signed units, then
+restarts the station engine. If the new Agent does not confirm startup before the
+deadline, the updater restores the prior release and persists a rollback
+completion. A confirmed new Agent likewise persists a successful completion.
+That completion is retained until the Agent reconnects, reports the exact
+correlation/release result, receives `broker.release.update-ack`, and performs a
+matching local acknowledgement. The broker retains a bounded recent-request set
+so an exact duplicate completion after reconnect receives the same acknowledgement;
+altered or untracked results fail closed. Local acknowledgement is idempotent and
+retained across response loss, preventing either lost final outcomes or repeated
+updater restarts.
+
+This bootstrap/update path never grants radio command, TX lease, watchdog arming,
+key/unkey, or browser TX authority. Remote station radio policy continues to obey
+the station-local safety and ownership boundaries.
+
 ## Browser rendering
 
 The prototype uses one Canvas 2D spectrum path with a compact binary frame and

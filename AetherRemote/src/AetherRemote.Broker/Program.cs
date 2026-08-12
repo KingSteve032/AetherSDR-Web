@@ -59,6 +59,7 @@ builder.Services.AddSingleton<StationLinkTokenEndpoint>();
 builder.Services.AddSingleton<StationRegistry>();
 builder.Services.AddSingleton<RemoteReceiveSessionBroker>();
 builder.Services.AddSingleton<RemoteReleaseServiceControlBroker>();
+builder.Services.AddSingleton<RemoteReleaseUpdateBroker>();
 builder.Services.AddSingleton<StationWebSocketEndpoint>();
 builder.Services.AddSingleton<ReceiveProjectionWebSocketEndpoint>();
 builder.Services.AddHostedService<StationLivenessMonitor>();
@@ -234,6 +235,44 @@ app.MapPost(
                     StatusCodes.Status400BadRequest,
                 "station_offline" => StatusCodes.Status404NotFound,
                 "station_capability" => StatusCodes.Status409Conflict,
+                "station_timeout" or "station_disconnected" =>
+                    StatusCodes.Status503ServiceUnavailable,
+                _ => StatusCodes.Status422UnprocessableEntity
+            };
+            return Results.Json(
+                new { error = exception.Message, code = exception.Code },
+                statusCode: status);
+        }
+    });
+
+app.MapPost(
+    "/api/release-updates",
+    async (
+        HttpContext context,
+        RemoteReleaseUpdateRequest request,
+        StationCredentialVerifier credentials,
+        RemoteReleaseUpdateBroker updates,
+        CancellationToken cancellationToken) =>
+    {
+        string credential = ReadBearerCredential(context.Request);
+        if (!credentials.VerifyAdministration(credential))
+        {
+            return Results.Unauthorized();
+        }
+        try
+        {
+            return Results.Ok(
+                await updates.ExecuteAsync(request, cancellationToken));
+        }
+        catch (RemoteReleaseUpdateException exception)
+        {
+            int status = exception.Code switch
+            {
+                "invalid_station" or "invalid_request" =>
+                    StatusCodes.Status400BadRequest,
+                "station_offline" => StatusCodes.Status404NotFound,
+                "station_capability" or "station_busy" =>
+                    StatusCodes.Status409Conflict,
                 "station_timeout" or "station_disconnected" =>
                     StatusCodes.Status503ServiceUnavailable,
                 _ => StatusCodes.Status422UnprocessableEntity
