@@ -1,3 +1,5 @@
+using AetherSDR.Web.Auth.Identity;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AetherSDR.Web.Setup;
@@ -87,6 +89,12 @@ public static class InstallationSetupOnlyProgramComposition
         builder.Services.AddSingleton(time);
         builder.Services.AddSingleton(paths);
         builder.Services.AddSingleton(identity);
+        builder.Services
+            .AddDataProtection()
+            .PersistKeysToFileSystem(
+                new DirectoryInfo(paths.DataProtectionKeyDirectory))
+            .SetApplicationName("AetherSDR.Web");
+        builder.Services.AddAetherFirstLocalAdministratorProvisioning(paths);
         builder.Services.AddSingleton(
             _ => new InstallationSetupStore(paths.SetupStatePath, time));
         builder.Services.AddSingleton<InstallationSetupOnlyLifecycleEvaluator>();
@@ -99,7 +107,9 @@ public static class InstallationSetupOnlyProgramComposition
             services => new InstallationSetupCenterApplication(
                 services.GetRequiredService<InstallationSetupStore>(),
                 services.GetRequiredService<InstallationSetupHttpSecurityPolicy>(),
-                time));
+                time,
+                services.GetRequiredService<
+                    IInstallationFirstLocalAdministratorProvisioningExecutor>()));
         builder.Services.AddSingleton(report);
 
         return report;

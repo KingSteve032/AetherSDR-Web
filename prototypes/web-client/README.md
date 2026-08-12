@@ -296,16 +296,16 @@ performs no installation. These commands still exit before the web host,
 authentication, radio discovery, station sessions, command transport, or TX
 supervision start.
 
-The internal first-administrator handoff can complete the setup lock only after a
-future trusted account provider verifies one durable, enabled subject with the
-exact `Aether.Admin` role for the current setup schema, revision, creation
-identity, topology, and canonical URL. Failed verification or a concurrent setup
-change leaves setup claimed and retryable. The setup document retains no account
-identity, credential, provider secret, or role list. Production local-account
-creation and a browser setup center remain separate reviewed work.
+The first-administrator handoff completes the setup lock only after the production
+local provider verifies one durable, enabled subject with the exact
+`Aether.Admin` role, a password, confirmed TOTP MFA, and generated recovery
+codes for the current setup schema, revision, creation identity, topology, and
+canonical URL. Failed verification or a concurrent setup change leaves setup
+claimed and retryable. The setup document retains no account identity,
+credential, provider secret, MFA secret, recovery code, or role list.
 
 The internal setup claim-session boundary can consume a valid bootstrap token and
-return one short-lived 256-bit process-local bearer for a future browser setup
+return one short-lived 256-bit process-local bearer for the browser setup
 center. Only a SHA-256 digest is retained in memory; no session token or digest is
 written to setup state. The bearer is bound to the exact setup identity and
 revision, expires without sliding, is replaced by a new successful claim, and is
@@ -314,12 +314,12 @@ rotated; stale, skipped, concurrent, expired, replaced, restarted, or completed
 sessions all fail with the same unauthorized result. Validation, rotation, and
 revocation do not mutate setup state.
 
-This boundary is not registered in `Program.cs` and adds no HTTP route, cookie,
-browser asset, setup-only listener, account provider, installer mutation, radio
-action, or TX action.
+This boundary is registered only in the isolated setup-only composition. It adds
+no normal-runtime route, installer mutation, radio action, watchdog action,
+command authority, or TX action.
 
-The internal host-startup planner now gives a future integration one mutually
-exclusive decision among exact legacy defaults, setup-only eligibility, and exact
+The internal host-startup planner gives the runtime one mutually exclusive
+decision among exact legacy defaults, setup-only eligibility, and exact
 normal-runtime readiness. Setup-only planning requires an existing valid and
 unfinished setup document, rejects completed setup and remote-node-only topology,
 and returns only the redacted setup status. It does not create state, issue a
@@ -416,11 +416,17 @@ and uses no local storage, session storage, IndexedDB, inline script, inline
 style, or token-bearing URL. Preflight output is added with text nodes rather
 than HTML injection.
 
-The browser shell stops after preflight review. It still creates no administrator,
-account provider, package, service, proxy change, firewall rule, migration, radio
-action, watchdog action, command path, or TX action. If its process-local session
-is lost or expires, the UI fails closed and instructs the operator to issue a new
-bootstrap token locally, reload, and reclaim the preserved workflow.
+After preflight review, the browser creates the first local administrator through
+two bounded setup-only mutations. The first requires a unique operator-entered
+password and returns one TOTP secret plus single-display recovery codes; the
+second accepts the current TOTP code, verifies the durable enabled
+`Aether.Admin` account, and completes setup. The browser clears password and
+TOTP inputs and removes displayed enrollment material after completion. These
+operations create no package, service, proxy change, firewall rule, radio action,
+watchdog action, command path, or TX action. If the process-local setup session is
+lost or expires before completion, the UI fails closed and instructs the
+operator to issue a new bootstrap token locally, reload, and reclaim the
+preserved workflow.
 
 The setup-only lifecycle monitor binds the running host to the exact setup schema,
 creation timestamp, and startup revision. It accepts only monotonically increasing
@@ -436,9 +442,9 @@ old-session rejection, local recovery-token reissue, preserved-step reclaim,
 trusted administrator evidence, lifecycle shutdown, setup-only restart rejection,
 and normal-runtime transition. Published builds include
 `tools/validate-setup-only-host.sh` and `tools/SETUP-ONLY-ACCEPTANCE.md`. The smoke
-script is read-only and requires trusted HTTPS. Production administrator creation
-remains M8D work; native installer, proxy, service, package, and firewall mutation
-remains M8C work.
+script is read-only and requires trusted HTTPS. M8D now supplies production
+administrator creation; M8C supplies native installer, proxy, service, package,
+and firewall mutation.
 
 M8C now provides one deterministic standalone Ubuntu installer transaction derived
 from the claimed M8A setup state plus explicit architecture, reverse-proxy/TLS,
@@ -464,7 +470,8 @@ at both coordinator and local Ubuntu runtime boundaries.
   --installation-architecture linux-x64 \
   --installation-reverse-proxy managed-caddy \
   --installation-firewall guidance \
-  --installation-release 2026.8.0
+  --installation-release 2026.8.0 \
+  --installation-authentication local
 ```
 
 Apply or repair additionally requires the exact printed plan ID, an immutable
@@ -481,7 +488,8 @@ InstallationInstallerUbuntu__MutationEnabled=true \
   --confirm-installation-plan <exact-64-character-plan-id> \
   --installation-bundle /srv/aethersdr/bundles/aethersdr-2026.8.0 \
   --installation-configuration-schema 1 \
-  --installation-protocol-version 2
+  --installation-protocol-version 2 \
+  --installation-authentication local
 ```
 
 The normal `ReleaseManifestTrust` configuration must also enable verification and
@@ -491,12 +499,24 @@ and TX-capability verification before any host write. Initial installation rejec
 manifests that require a migration or host restart because M8C does not reconstruct
 those update authorities.
 
-Managed Caddy activation expects the owner-only gateway runtime environment to
-allow the canonical public host plus `localhost` and `127.0.0.1`, and to configure
-`ReverseProxy__KnownProxies__0=127.0.0.1`. Caddy's active `/healthz` probe uses the
-loopback upstream identity; an incomplete allowlist fails the bounded public-health
-gate. Authentication credentials and other operator policy remain external to the
-installer and are never generated or overwritten.
+M8D schema-v7 plans add one exact production authentication selection. Gateway
+plans require `local`, `entra-id`, `oidc`, `combined-entra-id`, or
+`combined-oidc`; remote station nodes require `none`. The transaction installs
+an owner-only `/etc/aethersdr/environment` containing the exact runtime/setup
+binding, canonical public origin, loopback proxy trust, Simulation radio mode,
+disabled TX execution, and reviewed non-secret authentication settings. It always
+allows the canonical public host plus `localhost` and `127.0.0.1` because Caddy's
+active loopback `/healthz` probe uses that upstream identity.
+
+External or Combined plans additionally require provider ID, HTTPS authority, and
+client ID. Plan and validate never accept a client secret. Apply and repair require
+`--installation-auth-client-secret-file` naming an existing owner-only bounded
+regular file. Its contents never enter command arguments, setup state, the plan ID,
+JSON output, logs, markers, or installer evidence. The fixed transaction copies it
+only to `/var/lib/aethersdr/secrets/auth-client-secret` as mode `0600`, owned by
+the `aethersdr` service identity; runtime configuration contains only that
+canonical target path. Repair replaces the environment or secret only after exact
+installer ownership is proven.
 
 The Ubuntu transaction uses only fixed absolute executables and argument shapes with
 an empty child environment. It has no shell, PATH lookup, command string, arbitrary
@@ -2295,11 +2315,77 @@ HTTP and radio ports. The root-managed stack instead installs
 `deploy/aethersdr-web.service` under `/etc/systemd/system` and controls it
 with system `systemctl`; never enable both units on the same host.
 
-## Microsoft Entra ID / Active Directory authentication
+## Production local authentication and identity administration
+
+Production authentication uses exact `Auth:Mode` values `Local`, `EntraId`,
+`OpenIdConnect`, or `Combined`; combined mode additionally requires exact
+`Auth:ProviderType` value `EntraId` or `OpenIdConnect`. There is no built-in user
+or default password. The first enabled administrator is created only through the
+claimed setup-only browser flow described above. Subsequent local accounts are
+created from the protected Admin page.
+
+Passwords use the ASP.NET Core Identity V3 password hasher with 210,000 PBKDF2
+iterations by default. Password verification performs a bounded dummy hash for an
+unknown account, applies per-address request limits and per-account lockout, and
+does not reveal whether the account exists. A correct password creates only a
+short-lived in-memory MFA challenge; a canonical session is issued after a
+current six-digit TOTP code or one unused recovery code succeeds. Recovery codes
+are stored only as hashes and each code can be consumed once.
+
+The Admin page lists internal accounts and their exact persisted
+`Aether.Observe`, `Aether.Control`, `Aether.Transmit`, and `Aether.Admin`
+roles. It supports local enrollment and MFA setup, role changes, enable/disable,
+revoke-all, password reset, external-account provisioning, and exact
+provider-subject link or unlink. TOTP secrets and recovery codes are displayed
+only during the operation that creates or rotates them. Pure external accounts
+begin disabled and passwordless.
+
+Sensitive changes require a fresh administrator reauthentication ceremony:
+password plus TOTP for a local administrator, or a new validated external OIDC
+round trip for an external administrator. Reauthentication proof is
+purpose-bound, short-lived, single-use, and process-local. Role, password,
+enablement, MFA, and provider-link changes rotate the affected account's
+authority version and revoke its sessions where appropriate. The last enabled
+administrator cannot be disabled or stripped of Admin authority.
+
+Every production session is represented by a random server-side record with idle
+and absolute expiry, a user security-stamp snapshot, authority version, and
+revocation state. Cookie validation reloads current user status and roles. Logout,
+administrator revoke-all, account disablement, and authority-changing mutations
+invalidate the appropriate session records. Restart does not reconstruct
+sessions, reauthentication proof, setup sessions, release approval, rollback,
+pointer-switch, radio, command, lease, watchdog, or TX authority from disk.
+
+Identity schema creation is an explicit transactional installer action. Production
+runtime refuses a missing or unconverged schema. The standalone layout stores the
+database at `/var/lib/aethersdr/identity/aethersdr-identity.db`, separately from
+gateway Data Protection keys and provider secrets, under the fixed-purpose
+`aethersdr` service identity.
+
+Ubuntu Server 24.04 linux-x64 packaged acceptance used signed release
+`aethersdr-8.4.0-beta.6` and exact 42-action plan
+`5fb4510f57b2e29f2f1f8a0aa07202527571ebf8fa2fba2b5451dae4b7119e77`.
+First-administrator password plus TOTP setup, ten recovery codes, protected local
+login, trusted HTTPS, converged validation, and idempotent Repair all succeeded.
+Gateway, station engine, and broker stayed loopback-only; runtime stayed Simulation
+with transmit disabled; and the host did not reboot. ARM64 acceptance remains
+deferred and is not claimed by this checkpoint.
+
+## Production external authentication
 
 The browser uses the backend-for-frontend pattern: the ASP.NET Core gateway is
 the confidential OIDC client, the browser receives only a secure session
 cookie, and authorization is enforced again at the WebSocket boundary.
+Microsoft Entra ID and generic OpenID Connect establish external identity only.
+A durable link must exactly match the configured provider ID plus the validated
+`iss` and `sub` claims. Email addresses, display names, Entra object IDs,
+groups, and external role claims never create links or grant Aether authority.
+
+The canonical authorization roles remain `Aether.Observe`, `Aether.Control`,
+`Aether.Transmit`, and `Aether.Admin`. They are assigned to the internal
+Aether user and loaded from the identity database for every authenticated
+request. A provider role can therefore neither create nor preserve Transmit or
+Admin authority.
 
 For Microsoft Entra ID:
 
@@ -2307,57 +2393,95 @@ For Microsoft Entra ID:
 2. Add redirect URI `https://radio.example.com/signin-oidc`.
 3. Add front-channel logout URI
    `https://radio.example.com/signout-callback-oidc`.
-4. Define these user/group app roles with the exact values below.
-5. Assign users or, preferably, station security groups to the roles.
-6. Enable **Assignment required** on the enterprise application.
-7. Put the client secret in a secret store or owner-only file, never in this
-   repository. `deploy/set-client-secret.sh` writes the file without echoing
-   the secret to the terminal.
-
-| App role value | Purpose |
-|---|---|
-| `Aether.Observe` | View radio state, spectrum, waterfall, meters, and presence |
-| `Aether.Control` | Change RX state in the user's assigned radio session |
-| `Aether.Transmit` | Become eligible to request the single-holder TX lease |
-| `Aether.Admin` | Manage the gateway and all non-keying controls |
+4. Enable **Assignment required** on the enterprise application if tenant
+   policy should limit who may attempt sign-in. This is not Aether role
+   assignment.
+5. Put the client secret in an owner-only file beneath
+   `/var/lib/aethersdr/secrets`; never commit it or put it directly in normal
+   configuration.
+6. Initialize the identity schema through the explicit
+   `--identity-database-plan` and confirmed `--identity-database-apply`
+   commands before starting production runtime.
 
 Example production environment:
 
 ```text
 ASPNETCORE_ENVIRONMENT=Production
-Auth__Mode=Oidc
+Auth__Mode=EntraId
+Auth__ProviderId=entra-primary
 Auth__Authority=https://login.microsoftonline.com/<tenant-id>/v2.0
 Auth__ClientId=<application-client-id>
-Auth__ClientSecretFile=/home/flexweb/.config/aethersdr-web/client-secret
-Auth__NameClaimType=name
-Auth__RoleClaimType=roles
+Auth__ClientSecretFile=/var/lib/aethersdr/secrets/entra-primary-client-secret
+Auth__Session__AbsoluteLifetimeMinutes=480
 AllowedHosts=radio.example.com
 AllowedOrigins__0=https://radio.example.com
 ReverseProxy__Enabled=true
 ReverseProxy__KnownProxies__0=<exact-proxy-LAN-IP>
-DataProtection__KeyPath=/var/lib/aethersdr-web/keys
-RadioAccess__PolicyPath=/var/lib/aethersdr-web/radio-access.json
-RadioAccess__AuditPath=/var/lib/aethersdr-web/audit.json
 ```
 
-The production deployment uses `deploy/aethersdr-web.service` as a
-root-installed system unit while the process itself runs as the unprivileged
-`flexweb` account. The unit starts after `network-online.target`, restarts on
-failure, writes to the persistent system journal, exposes only the required
-network address families, and makes the host filesystem read-only except for
-the owner-only `/var/lib/aethersdr-web` state directory created by systemd.
-Data Protection keys, radio policy, and administrative audit records all live
-under that one canonical directory.
+The guided standalone equivalent is reviewed without the secret:
 
-Accounts assigned `Aether.Admin` get a **Radio allocation** applet. It reports
-discovered capacity and active operators, applies persistent shared or
-exclusive access per radio, optionally reserves a radio to one Entra object
-ID, and can immediately release a selected operator's browser and radio
-sessions. These rules are enforced when the server creates the physical radio
-session; hiding the applet is not the security boundary. Administrators bypass
-radio reservations so a bad policy cannot lock them out of the control plane.
-Policy changes affect new sessions. Existing operators remain connected until
-they leave or an administrator explicitly disconnects them.
+```bash
+./AetherSDR.Web --installation-installer-plan \
+  --installation-architecture linux-x64 \
+  --installation-reverse-proxy managed-caddy \
+  --installation-firewall guidance \
+  --installation-release 2026.8.0 \
+  --installation-authentication combined-entra-id \
+  --installation-auth-provider-id entra-primary \
+  --installation-auth-authority https://login.microsoftonline.com/<tenant-id>/v2.0 \
+  --installation-auth-client-id <application-client-id>
+```
+
+The confirmed apply or repair repeats those non-secret options and adds only
+`--installation-auth-client-secret-file /srv/private/entra-client-secret`.
+Use `oidc` or `combined-oidc` with the provider's HTTPS issuer authority for
+a generic provider, including AD FS configured for OIDC. `Auth__ProviderId`
+is a stable lowercase identifier and must not change after identities are
+linked. The production runtime refuses to create a missing identity database
+or run against an unconverged schema.
+
+External sign-in fails closed until an administrator has explicitly linked the
+exact external subject to an enabled internal user. The M8D identity
+administration boundary starts that operation from a freshly reauthenticated
+canonical administrator session, accepts no issuer or subject in the request,
+and obtains the exact binding only from the validated OIDC callback. Linking or
+unlinking rotates the target account's authority and revokes its active
+sessions. Unlinking is rejected when it would remove the account's final sign-in
+method that is actually enabled by the configured authentication mode.
+
+A new external-only deployment is bootstrapped without database edits by first
+using the corresponding `combined-*` installer mode and the protected local
+administrator created during setup, linking that administrator's external
+identity, and only then composing and confirming a new schema-v7 repair plan for
+`entra-id` or `oidc` with the same stable provider identity. The repair rotates
+only installer-owned runtime configuration and requires the owner-only secret
+source again. Do not hand-edit the SQLite database or treat email, display name,
+groups, or external roles as link authority.
+
+A successful external sign-in creates a durable, absolute-lifetime Aether
+session. Every cookie request revalidates the session, user status, authority
+version, expiry, and current persisted roles. Logout revokes that exact session
+and records the event in the durable identity audit; a stale, revoked, expired,
+disabled, or malformed session is rejected.
+
+The M8C standalone layout runs the gateway as its fixed-purpose unprivileged
+service identity. Identity data lives in
+`/var/lib/aethersdr/identity/aethersdr-identity.db`, while gateway Data
+Protection keys live separately in
+`/var/lib/aethersdr/secrets/data-protection`. Those paths do not contain or
+reconstruct TX leases, approvals, radio sessions, command authority, watchdog
+authority, release approvals, rollback authority, or pointer-switch authority.
+
+Accounts with the persisted `Aether.Admin` role get a **Radio allocation**
+applet. It reports discovered capacity and active operators, applies persistent
+shared or exclusive access per radio, optionally reserves a radio to one
+internal user, and can immediately release a selected operator's browser and
+radio sessions. These rules are enforced when the server creates the physical
+radio session; hiding the applet is not the security boundary. Administrators
+bypass radio reservations so a bad policy cannot lock them out of the control
+plane. Policy changes affect new sessions. Existing operators remain connected
+until they leave or an administrator explicitly disconnects them.
 
 The same Admin page manages remote station device identity. Enrollment codes
 are random, single-use, and short-lived. The browser displays a code only in
@@ -2365,21 +2489,6 @@ the Admin session that created it; the gateway does not put it in a URL.
 Disabling or revoking a station closes that station's outbound link and remote
 receive sessions without disturbing other stations or local radios. Revocation
 requires a fresh one-time enrollment, while disable can be reversed.
-
-Microsoft recommends app roles for application authorization. Groups can be
-assigned to those roles, avoiding direct dependence on tenant-specific group
-IDs and JWT group-overage behavior:
-
-- [Add app roles and receive them in a token](https://learn.microsoft.com/en-us/entra/identity-platform/howto-add-app-roles-in-apps)
-- [Configure group claims and app roles](https://learn.microsoft.com/en-us/security/zero-trust/develop/configure-tokens-group-claims-app-roles)
-- [Configure OIDC web authentication in ASP.NET Core](https://learn.microsoft.com/en-us/aspnet/core/security/authentication/configure-oidc-web-authentication?view=aspnetcore-10.0)
-
-For on-premises Active Directory, use AD FS as the OIDC authority. Set
-`Auth__RoleClaimType` to the claim type emitted by that relying-party
-configuration. Microsoft recommends AD FS/OIDC when Windows Authentication
-would otherwise need to cross a proxy or load balancer:
-
-- [Windows Authentication and AD FS/OIDC guidance](https://learn.microsoft.com/en-us/aspnet/core/security/authentication/windowsauth?view=aspnetcore-10.0)
 
 ## Network placement
 

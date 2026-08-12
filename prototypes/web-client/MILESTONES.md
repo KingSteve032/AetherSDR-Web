@@ -4583,16 +4583,69 @@ pointer switch, radio, watchdog, command, lease, TX, or live RF operation occurr
 
 ### M8D — Production local authentication and role administration
 
-- Add production local accounts for operators who do not use Entra ID. The
-  development authentication handler remains development-only.
-- Support local accounts, Microsoft Entra ID, and generic OpenID Connect, with an
-  optional combined local and external-provider deployment.
-- Local authentication has no default password and requires secure password
-  hashing, rate limiting, lockout, passkeys or TOTP MFA, recovery codes, session
-  revocation, administrator reset, and durable audit records.
-- Preserve the explicit Observe, Control, Transmit, and Admin roles. Role changes
-  and authentication-provider changes require administrator reauthentication and
-  revoke affected active authority where appropriate.
+Status: complete for the tested Ubuntu Server 24.04 linux-x64 scope. The
+implementation, complete automated acceptance gate, and clean-host packaged-release
+acceptance are complete. ARM64 acceptance remains explicitly deferred and is not
+claimed by this checkpoint.
+
+- Production identity state is persisted in a private SQLite database with
+  explicit transactional schema initialization. Production sessions use
+  server-side security stamps, bounded idle and absolute lifetimes, antiforgery,
+  canonical authority resolution, and durable administrative audit records.
+- Local accounts have no default password. Passwords use the ASP.NET Core
+  Identity V3 password hasher with 210,000 PBKDF2 iterations by default. Sign-in
+  has bounded request rate limits, per-account lockout, TOTP MFA, single-display
+  recovery codes, recovery-code consumption, session revocation, and
+  administrator password reset.
+- First-run setup creates exactly one protected local administrator through the
+  setup-only browser boundary. The password, TOTP secret, and recovery codes
+  remain operator-held and are never placed in installer plans, command lines,
+  setup state, logs, or evidence.
+- Local, Microsoft Entra ID, generic OpenID Connect, combined local/Entra, and
+  combined local/OIDC modes are explicit. External identities resolve through
+  exact issuer, subject, and provider bindings; pure external accounts begin
+  disabled and passwordless until an administrator enables them.
+- Identity administration supports account provisioning, enable/disable,
+  Observe, Control, Transmit, and Admin role assignment, local MFA and recovery
+  setup, password reset, external link/unlink, and revoke-all. The last enabled
+  administrator cannot be removed or disabled.
+- Role and authentication-provider changes require fresh administrator
+  reauthentication and revoke affected active authority. No authority is
+  reconstructed from the database after restart.
+- Installer plan schema 7 binds the exact non-secret authentication mode and
+  provider configuration into the signed release plan. External client secrets
+  are accepted only at Apply or Repair from an owner-protected regular file,
+  copied to a fixed root-managed path with mode 0600, and excluded from plans,
+  primitive arguments, logs, and evidence.
+- Installation action counts remain topology, proxy/TLS, firewall, and
+  authentication-mode dependent. The accepted personal-topology local-authentication
+  plan contained 42 deterministic actions with exact plan ID
+  `5fb4510f57b2e29f2f1f8a0aa07202527571ebf8fa2fba2b5451dae4b7119e77`.
+  Its generated environment preserved Simulation radio mode, disabled transmit
+  support, disabled browser TX leases, disabled station TX activation,
+  loopback-only gateway/station services, and the existing release/update, remote
+  service-control, and host-restart execution defaults.
+- Automated acceptance passed a 14-project Release build with 0 warnings and
+  0 errors, repository formatting and deployment boundary checks, 1,848 web
+  tests, 48 TX-HIL isolation tests, 57 independent-watchdog tests, 17
+  release-builder tests, 77 AetherRemote tests, and 152 browser tests: 2,047
+  .NET tests and 2,199 tests overall.
+- Signed validation release `aethersdr-8.4.0-beta.6` was built from signed commit
+  `cb24079637d8c0095c8229f04783af4d9be6075c` and independently verified for
+  linux-x64 through the production offline trust path.
+- Clean Ubuntu Server 24.04 x64 acceptance completed first-administrator setup
+  with password, TOTP MFA, and ten recovery codes; applied the exact 42-action
+  plan; returned `ubuntu-host-converged` from non-mutating validation; and returned
+  `MutationAttempted:false` from a second Repair. Trusted HTTPS and protected
+  administrator and diagnostics endpoints succeeded. Gateway, station engine, and
+  broker ports remained loopback-only while Caddy alone served the public HTTPS
+  listener. Both service-specific Data Protection key rings retained mode-0700
+  directories and mode-0600 keys with their exact service owners. Runtime remained
+  Simulation with transmit disabled, the host did not reboot, and no radio, live
+  RF/HIL, command, watchdog, lease, or TX authority was exercised.
+- The validation release's linux-arm64 artifact exists only because the release
+  builder requires a complete asset set; it is not an ARM64 acceptance or support
+  claim.
 
 ### M8E — Radio onboarding and per-radio TX policy
 

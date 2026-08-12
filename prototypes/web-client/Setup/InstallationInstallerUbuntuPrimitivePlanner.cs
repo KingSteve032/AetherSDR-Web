@@ -13,7 +13,11 @@ public enum InstallationInstallerUbuntuPrimitiveKind
     ActivateInitialRelease = 9,
     ActivateSystemdUnit = 10,
     VerifyHealth = 11,
-    TrustInternalCertificate = 12
+    TrustInternalCertificate = 12,
+    InitializeIdentityDatabase = 13,
+    ConfigureGatewayEnvironment = 14,
+    InstallAuthenticationClientSecret = 15,
+    AdoptSetupIdentityState = 16
 }
 
 public sealed record InstallationInstallerUbuntuPrimitiveOperation(
@@ -64,6 +68,7 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
             "/var/lib/aethersdr",
             "/var/lib/aethersdr/secrets",
             "/var/lib/aethersdr/secrets/data-protection",
+            "/var/lib/aethersdr/identity",
             "/var/lib/aethersdr-installer",
             "/var/lib/aethersdr-installer/proxy",
             "/var/lib/aethersdr-installer/firewall",
@@ -95,8 +100,25 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
                     EnsureDirectory(
                         action,
                         DirectoryOwner(action.Target, request.Actions)),
+                InstallationInstallerActionKind.AdoptSetupIdentityState =>
+                    AdoptSetupIdentityState(action),
                 InstallationInstallerActionKind.InstallVerifiedRelease =>
                     VerifyRelease(action, request),
+                InstallationInstallerActionKind.InitializeIdentityDatabase =>
+                    InitializeIdentityDatabase(action),
+                InstallationInstallerActionKind.ConfigureGatewayEnvironment =>
+                    GatewayConfiguration(
+                        action,
+                        request,
+                        InstallationInstallerUbuntuPrimitiveKind
+                            .ConfigureGatewayEnvironment),
+                InstallationInstallerActionKind
+                    .InstallAuthenticationClientSecret =>
+                    GatewayConfiguration(
+                        action,
+                        request,
+                        InstallationInstallerUbuntuPrimitiveKind
+                            .InstallAuthenticationClientSecret),
                 InstallationInstallerActionKind.InstallSystemdUnit =>
                     InstallUnit(action, request),
                 InstallationInstallerActionKind.ConfigureReverseProxy =>
@@ -183,16 +205,25 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
                 StringComparison.Ordinal) ||
             action.Target.EndsWith(
                 "/data-protection",
+                StringComparison.Ordinal) ||
+            action.Target.EndsWith(
+                "/identity",
                 StringComparison.Ordinal);
         bool sharedReleaseRoot = string.Equals(
             action.Target,
             "/opt/aethersdr/releases",
             StringComparison.Ordinal);
+        bool multiServiceStateRoot = string.Equals(
+            action.Target,
+            "/var/lib/aethersdr",
+            StringComparison.Ordinal);
         string octalMode = secret
             ? "0700"
             : sharedReleaseRoot
                 ? "0755"
-                : "0750";
+                : multiServiceStateRoot
+                    ? "0751"
+                    : "0750";
         return Direct(
             action,
             InstallationInstallerUbuntuPrimitiveKind.EnsureDirectory,
@@ -210,6 +241,33 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
             ]);
     }
 
+    private static InstallationInstallerUbuntuPrimitiveOperation
+        AdoptSetupIdentityState(InstallationInstallerPlanAction action)
+    {
+        const string stateDirectory = "/var/lib/aethersdr";
+        if (!string.Equals(
+                action.Target,
+                stateDirectory,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The installer plan contains a noncanonical setup identity handoff.");
+        }
+        return Direct(
+            action,
+            InstallationInstallerUbuntuPrimitiveKind.AdoptSetupIdentityState,
+            "/usr/bin/chown",
+            [
+                "--recursive",
+                "--no-dereference",
+                "aethersdr:aethersdr",
+                "--",
+                "/var/lib/aethersdr/identity",
+                "/var/lib/aethersdr/secrets/data-protection",
+                "/var/lib/aethersdr/setup"
+            ]);
+    }
+
     private static InstallationInstallerUbuntuPrimitiveOperation VerifyRelease(
         InstallationInstallerPlanAction action,
         InstallationInstallerUbuntuMutationRequest request)
@@ -222,6 +280,51 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
             request.TargetReleasePath,
             Executable: string.Empty,
             Arguments: []);
+    }
+
+    private static InstallationInstallerUbuntuPrimitiveOperation
+        InitializeIdentityDatabase(InstallationInstallerPlanAction action)
+    {
+        const string identityDatabase =
+            "/var/lib/aethersdr/identity/aethersdr-identity.db";
+        if (!string.Equals(
+                action.Target,
+                identityDatabase,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The installer plan contains a noncanonical identity database.");
+        }
+        return Typed(
+            action,
+            InstallationInstallerUbuntuPrimitiveKind.InitializeIdentityDatabase);
+    }
+
+    private static InstallationInstallerUbuntuPrimitiveOperation
+        GatewayConfiguration(
+            InstallationInstallerPlanAction action,
+            InstallationInstallerUbuntuMutationRequest request,
+            InstallationInstallerUbuntuPrimitiveKind kind)
+    {
+        InstallationInstallerGatewayConfigurationPlan plan =
+            InstallationInstallerGatewayConfigurationPlanComposer.Compose(
+                request);
+        string expectedTarget = kind ==
+            InstallationInstallerUbuntuPrimitiveKind.ConfigureGatewayEnvironment
+                ? plan.EnvironmentTargetPath
+                : plan.RequiresClientSecret
+                    ? plan.ClientSecretTargetPath
+                    : throw new InvalidOperationException(
+                        "The installer plan contains an unnecessary authentication secret action.");
+        if (!string.Equals(
+                action.Target,
+                expectedTarget,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The installer plan contains a noncanonical gateway configuration target.");
+        }
+        return Typed(action, kind);
     }
 
     private static InstallationInstallerUbuntuPrimitiveOperation InstallUnit(

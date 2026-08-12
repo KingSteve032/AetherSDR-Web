@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using AetherSDR.Web.Auth;
 using AetherSDR.Web.Setup;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -19,7 +20,7 @@ public sealed class InstallationSetupOnlyHttpAdapterTests
         new(2026, 8, 3, 18, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task MapPublishesOnlyElevenRateLimitedSetupRoutes()
+    public async Task MapPublishesOnlyThirteenRateLimitedSetupRoutes()
     {
         await using AdapterHost host = await AdapterHost.CreateAsync();
 
@@ -30,9 +31,9 @@ public sealed class InstallationSetupOnlyHttpAdapterTests
                 .OfType<RouteEndpoint>()
                 .ToArray();
 
-        Assert.Equal(11, report.EndpointPaths.Count);
+        Assert.Equal(13, report.EndpointPaths.Count);
         Assert.Equal(4, report.RateLimitPolicies.Count);
-        Assert.Equal(11, endpoints.Length);
+        Assert.Equal(13, endpoints.Length);
         Assert.Equal(
             report.EndpointPaths.Order(StringComparer.Ordinal),
             endpoints
@@ -186,6 +187,220 @@ public sealed class InstallationSetupOnlyHttpAdapterTests
         CapturedResponse current = await host.InvokeAsync(
             SessionRequest(nextSession, nextRevision));
         Assert.Equal(StatusCodes.Status200OK, current.StatusCode);
+    }
+
+    [Fact]
+    public async Task AdministratorEnrollmentRequiresExactAuthorityReturnsSecretsOnceAndFreezesChoices()
+    {
+        await using AdapterHost host = await AdapterHost.CreateAsync();
+        ClaimedCookies ready = await host.ConfigureReadyAsync();
+        string password = "correct horse battery staple";
+        string body = JsonSerializer.Serialize(
+            new
+            {
+                expectedRevision = ready.Revision,
+                userName = "administrator",
+                displayName = "Station Administrator",
+                email = "operator@example.org",
+                password
+            });
+        string before = await File.ReadAllTextAsync(host.Store.StatePath);
+
+        CapturedResponse rejected = await host.InvokeAsync(
+            JsonRequest(
+                "POST",
+                InstallationSetupOnlyHttpAdapter.AdministratorEnrollmentPath,
+                body,
+                ready.Session,
+                ready.Csrf,
+                "wrong-csrf-token"));
+
+        Assert.Equal(StatusCodes.Status403Forbidden, rejected.StatusCode);
+        Assert.Equal(0, host.Administrator.BeginCalls);
+        Assert.Equal(0, host.Administrator.HasIdentityCalls);
+        Assert.Equal(before, await File.ReadAllTextAsync(host.Store.StatePath));
+
+        CapturedResponse enrolled = await host.InvokeAsync(
+            JsonRequest(
+                "POST",
+                InstallationSetupOnlyHttpAdapter.AdministratorEnrollmentPath,
+                body,
+                ready.Session,
+                ready.Csrf,
+                ready.Csrf));
+
+        Assert.Equal(StatusCodes.Status200OK, enrolled.StatusCode);
+        Assert.Equal("no-store, max-age=0", enrolled.Header("Cache-Control"));
+        Assert.Equal(string.Empty, enrolled.Header("Set-Cookie"));
+        Assert.DoesNotContain(password, enrolled.Body, StringComparison.Ordinal);
+        using (JsonDocument json = JsonDocument.Parse(enrolled.Body))
+        {
+            Assert.Equal(
+                ready.Revision,
+                json.RootElement
+                    .GetProperty("session")
+                    .GetProperty("setupRevision")
+                    .GetInt64());
+            Assert.Equal(
+                TestAdministratorProvisioningExecutor.SharedSecret,
+                json.RootElement
+                    .GetProperty("sharedSecretBase32")
+                    .GetString());
+            Assert.Equal(
+                TestAdministratorProvisioningExecutor.RecoveryCodes,
+                json.RootElement
+                    .GetProperty("recoveryCodes")
+                    .EnumerateArray()
+                    .Select(value => value.GetString()!)
+                    .ToArray());
+            Assert.False(json.RootElement.GetProperty("rotated").GetBoolean());
+        }
+        Assert.Equal(1, host.Administrator.BeginCalls);
+        Assert.True(host.Administrator.HasIdentity);
+        Assert.Equal("administrator", host.Administrator.LastEnrollment?.UserName);
+        Assert.Equal(
+            "Station Administrator",
+            host.Administrator.LastEnrollment?.DisplayName);
+        Assert.Equal(
+            "operator@example.org",
+            host.Administrator.LastEnrollment?.Email);
+        Assert.Equal(password, host.Administrator.LastEnrollment?.Password);
+        Assert.StartsWith(
+            "setup-administrator-enroll-",
+            host.Administrator.LastEnrollment?.CorrelationId,
+            StringComparison.Ordinal);
+        Assert.Equal(before, await File.ReadAllTextAsync(host.Store.StatePath));
+
+        string mutationBody = JsonSerializer.Serialize(
+            new
+            {
+                expectedRevision = ready.Revision,
+                topology = "personalSingleStation"
+            });
+        CapturedResponse frozen = await host.InvokeAsync(
+            JsonRequest(
+                "POST",
+                InstallationSetupOnlyHttpAdapter.TopologyPath,
+                mutationBody,
+                ready.Session,
+                ready.Csrf,
+                ready.Csrf));
+
+        Assert.Equal(StatusCodes.Status409Conflict, frozen.StatusCode);
+        Assert.Contains("setupUnavailable", frozen.Body, StringComparison.Ordinal);
+        Assert.Equal(string.Empty, frozen.Header("Set-Cookie"));
+        Assert.Equal(1, host.Administrator.HasIdentityCalls);
+        Assert.Equal(before, await File.ReadAllTextAsync(host.Store.StatePath));
+    }
+
+    [Fact]
+    public async Task AdministratorConfirmationRejectsWrongTotpThenCompletesAndRevokesSetup()
+    {
+        await using AdapterHost host = await AdapterHost.CreateAsync();
+        ClaimedCookies ready = await host.ConfigureReadyAsync();
+        string enrollmentBody = JsonSerializer.Serialize(
+            new
+            {
+                expectedRevision = ready.Revision,
+                userName = "administrator",
+                displayName = "Station Administrator",
+                email = (string?)null,
+                password = "correct horse battery staple"
+            });
+        CapturedResponse enrolled = await host.InvokeAsync(
+            JsonRequest(
+                "POST",
+                InstallationSetupOnlyHttpAdapter.AdministratorEnrollmentPath,
+                enrollmentBody,
+                ready.Session,
+                ready.Csrf,
+                ready.Csrf));
+        Assert.Equal(StatusCodes.Status200OK, enrolled.StatusCode);
+        string beforeConfirmation =
+            await File.ReadAllTextAsync(host.Store.StatePath);
+
+        string wrongBody = JsonSerializer.Serialize(
+            new
+            {
+                expectedRevision = ready.Revision,
+                totpCode = "000000"
+            });
+        CapturedResponse rejected = await host.InvokeAsync(
+            JsonRequest(
+                "POST",
+                InstallationSetupOnlyHttpAdapter.AdministratorConfirmationPath,
+                wrongBody,
+                ready.Session,
+                ready.Csrf,
+                ready.Csrf));
+
+        Assert.Equal(StatusCodes.Status401Unauthorized, rejected.StatusCode);
+        Assert.Contains(
+            "first-local-administrator-confirmation-rejected",
+            rejected.Body,
+            StringComparison.Ordinal);
+        Assert.Equal(string.Empty, rejected.Header("Set-Cookie"));
+        Assert.Equal(
+            beforeConfirmation,
+            await File.ReadAllTextAsync(host.Store.StatePath));
+
+        string correctBody = JsonSerializer.Serialize(
+            new
+            {
+                expectedRevision = ready.Revision,
+                totpCode = "123456"
+            });
+        CapturedResponse completed = await host.InvokeAsync(
+            JsonRequest(
+                "POST",
+                InstallationSetupOnlyHttpAdapter.AdministratorConfirmationPath,
+                correctBody,
+                ready.Session,
+                ready.Csrf,
+                ready.Csrf));
+
+        Assert.Equal(StatusCodes.Status200OK, completed.StatusCode);
+        Assert.Contains(
+            "expires=Thu, 01 Jan 1970",
+            completed.SetCookie(
+                InstallationSetupHttpSecurityPolicy.SessionCookieName),
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "expires=Thu, 01 Jan 1970",
+            completed.SetCookie(
+                InstallationSetupHttpSecurityPolicy.CsrfCookieName),
+            StringComparison.OrdinalIgnoreCase);
+        using (JsonDocument json = JsonDocument.Parse(completed.Body))
+        {
+            Assert.True(json.RootElement.GetProperty("completed").GetBoolean());
+            Assert.Equal(
+                "first-local-administrator-confirmed",
+                json.RootElement.GetProperty("code").GetString());
+            Assert.Equal(
+                ready.Revision + 1,
+                json.RootElement
+                    .GetProperty("status")
+                    .GetProperty("revision")
+                    .GetInt64());
+            Assert.Equal(
+                "administrator",
+                json.RootElement
+                    .GetProperty("status")
+                    .GetProperty("lastCompletedStep")
+                    .GetString());
+        }
+        InstallationSetupState state = await host.Store.LoadAsync();
+        Assert.Equal(InstallationSetupLockMode.Complete, state.Lock.Mode);
+        Assert.Equal(InstallationSetupStep.Administrator, state.LastCompletedStep);
+        Assert.Equal(2, host.Administrator.ConfirmationCalls);
+        Assert.StartsWith(
+            "setup-administrator-confirm-",
+            host.Administrator.LastConfirmationCorrelationId,
+            StringComparison.Ordinal);
+
+        CapturedResponse replay = await host.InvokeAsync(
+            SessionRequest(ready.Session, ready.Revision));
+        Assert.Equal(StatusCodes.Status401Unauthorized, replay.StatusCode);
     }
 
     [Fact]
@@ -465,6 +680,7 @@ public sealed class InstallationSetupOnlyHttpAdapterTests
             InstallationSetupOnlyHttpAdapterReport adapterReport,
             InstallationSetupStore store,
             InstallationBootstrapTokenIssue bootstrap,
+            TestAdministratorProvisioningExecutor administrator,
             TemporaryDirectory temporary)
         {
             Application = application;
@@ -472,6 +688,7 @@ public sealed class InstallationSetupOnlyHttpAdapterTests
             AdapterReport = adapterReport;
             Store = store;
             Bootstrap = bootstrap;
+            Administrator = administrator;
             m_temporary = temporary;
         }
 
@@ -482,6 +699,8 @@ public sealed class InstallationSetupOnlyHttpAdapterTests
         public InstallationSetupStore Store { get; }
 
         public InstallationBootstrapTokenIssue Bootstrap { get; }
+
+        public TestAdministratorProvisioningExecutor Administrator { get; }
 
         public static async Task<AdapterHost> CreateAsync()
         {
@@ -517,6 +736,10 @@ public sealed class InstallationSetupOnlyHttpAdapterTests
                     plan,
                     new InstallationSetupHttpSecuritySettings(),
                     time);
+                TestAdministratorProvisioningExecutor administrator = new();
+                builder.Services.AddSingleton<
+                    IInstallationFirstLocalAdministratorProvisioningExecutor>(
+                        administrator);
                 WebApplication application = builder.Build();
                 InstallationSetupOnlyHttpAdapterReport adapterReport =
                     InstallationSetupOnlyHttpAdapter.Map(application);
@@ -528,6 +751,7 @@ public sealed class InstallationSetupOnlyHttpAdapterTests
                     adapterReport,
                     store,
                     bootstrap,
+                    administrator,
                     temporary);
             }
             catch
@@ -560,6 +784,104 @@ public sealed class InstallationSetupOnlyHttpAdapterTests
             return new ClaimedCookies(
                 claim.Cookie(InstallationSetupHttpSecurityPolicy.SessionCookieName),
                 claim.Cookie(InstallationSetupHttpSecurityPolicy.CsrfCookieName),
+                json.RootElement
+                    .GetProperty("session")
+                    .GetProperty("setupRevision")
+                    .GetInt64());
+        }
+
+        public async Task<ClaimedCookies> ConfigureReadyAsync()
+        {
+            ClaimedCookies current = await ClaimAsync();
+            current = await MutateAsync(
+                InstallationSetupOnlyHttpAdapter.TopologyPath,
+                new
+                {
+                    expectedRevision = current.Revision,
+                    topology = "personalSingleStation"
+                },
+                current);
+            current = await MutateAsync(
+                InstallationSetupOnlyHttpAdapter.PublicUrlPath,
+                new
+                {
+                    expectedRevision = current.Revision,
+                    canonicalPublicUrl = CanonicalUrl
+                },
+                current);
+            current = await MutateAsync(
+                InstallationSetupOnlyHttpAdapter.PathsPath,
+                new
+                {
+                    expectedRevision = current.Revision,
+                    configurationDirectory = Path.Combine(
+                        m_temporary.Path,
+                        "installed-config"),
+                    stateDirectory = Path.Combine(
+                        m_temporary.Path,
+                        "installed-state"),
+                    secretDirectory = Path.Combine(
+                        m_temporary.Path,
+                        "installed-secrets"),
+                    releaseDirectory = Path.Combine(
+                        m_temporary.Path,
+                        "installed-releases"),
+                    backupDirectory = Path.Combine(
+                        m_temporary.Path,
+                        "installed-backups"),
+                    logDirectory = Path.Combine(
+                        m_temporary.Path,
+                        "installed-logs")
+                },
+                current);
+            current = await MutateAsync(
+                InstallationSetupOnlyHttpAdapter.UpdateChannelPath,
+                new
+                {
+                    expectedRevision = current.Revision,
+                    updateChannel = "stable",
+                    pinnedRelease = (string?)null
+                },
+                current);
+            current = await MutateAsync(
+                InstallationSetupOnlyHttpAdapter.BackupPath,
+                new
+                {
+                    expectedRevision = current.Revision,
+                    confirmed = true
+                },
+                current);
+            return await MutateAsync(
+                InstallationSetupOnlyHttpAdapter.TransmitSupportPath,
+                new
+                {
+                    expectedRevision = current.Revision,
+                    installTransmitSupport = false,
+                    acknowledgedInstallationDoesNotEnableTransmit = true
+                },
+                current);
+        }
+
+        private async Task<ClaimedCookies> MutateAsync(
+            string path,
+            object body,
+            ClaimedCookies current)
+        {
+            CapturedResponse response = await InvokeAsync(
+                JsonRequest(
+                    "POST",
+                    path,
+                    JsonSerializer.Serialize(body),
+                    current.Session,
+                    current.Csrf,
+                    current.Csrf));
+            Assert.Equal(StatusCodes.Status200OK, response.StatusCode);
+            using JsonDocument json = JsonDocument.Parse(response.Body);
+            return new(
+                response.Cookie(
+                    InstallationSetupHttpSecurityPolicy.SessionCookieName),
+                response.Cookie(
+                    InstallationSetupHttpSecurityPolicy.CsrfCookieName),
                 json.RootElement
                     .GetProperty("session")
                     .GetProperty("setupRevision")
@@ -641,6 +963,117 @@ public sealed class InstallationSetupOnlyHttpAdapterTests
         {
             await Application.DisposeAsync();
             m_temporary.Dispose();
+        }
+    }
+
+    private sealed class TestAdministratorProvisioningExecutor
+        : IInstallationFirstLocalAdministratorProvisioningExecutor,
+          IInstallationFirstAdministratorVerifier
+    {
+        internal static readonly Guid UserId =
+            Guid.Parse("83a74f35-9613-4659-bdf9-7372fc72a12f");
+        internal const string SharedSecret =
+            "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+        internal static readonly IReadOnlyList<string> RecoveryCodes =
+            ["ALPHA-BRAVO-CHARLIE", "DELTA-ECHO-FOXTROT"];
+
+        private InstallationFirstAdministratorVerificationRequest? m_setup;
+
+        public bool HasIdentity { get; private set; }
+
+        public int BeginCalls { get; private set; }
+
+        public int ConfirmationCalls { get; private set; }
+
+        public int HasIdentityCalls { get; private set; }
+
+        public InstallationFirstLocalAdministratorEnrollment? LastEnrollment
+        {
+            get;
+            private set;
+        }
+
+        public string? LastConfirmationCorrelationId { get; private set; }
+
+        public Task<InstallationFirstLocalAdministratorEnrollmentIssue> BeginAsync(
+            InstallationFirstAdministratorVerificationRequest setup,
+            InstallationFirstLocalAdministratorEnrollment enrollment,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            BeginCalls++;
+            HasIdentity = true;
+            m_setup = setup;
+            LastEnrollment = enrollment;
+            return Task.FromResult(
+                new InstallationFirstLocalAdministratorEnrollmentIssue(
+                    UserId,
+                    Start,
+                    SharedSecret,
+                    RecoveryCodes,
+                    rotated: BeginCalls > 1));
+        }
+
+        public async Task<InstallationFirstLocalAdministratorCompletionResult>
+            ConfirmAndCompleteAsync(
+                InstallationFirstAdministratorHandoff handoff,
+                long expectedRevision,
+                InstallationFirstAdministratorVerificationRequest setup,
+                string? totpCode,
+                string correlationId,
+                CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ConfirmationCalls++;
+            LastConfirmationCorrelationId = correlationId;
+            if (!HasIdentity || m_setup != setup || totpCode != "123456")
+            {
+                return new(
+                    new InstallationFirstLocalAdministratorConfirmationResult(
+                        Succeeded: false,
+                        "first-local-administrator-confirmation-rejected",
+                        UserId: null,
+                        MutationAttempted: false),
+                    CompletedState: null);
+            }
+
+            InstallationSetupState completed = await handoff.CompleteAsync(
+                expectedRevision,
+                this,
+                cancellationToken);
+            return new(
+                new InstallationFirstLocalAdministratorConfirmationResult(
+                    Succeeded: true,
+                    "first-local-administrator-confirmed",
+                    UserId,
+                    MutationAttempted: true),
+                completed);
+        }
+
+        public Task<bool> HasIdentityAsync(
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            HasIdentityCalls++;
+            return Task.FromResult(HasIdentity);
+        }
+
+        public Task<InstallationFirstAdministratorEvidence> VerifyAsync(
+            InstallationFirstAdministratorVerificationRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(
+                new InstallationFirstAdministratorEvidence(
+                    request.SetupSchemaVersion,
+                    request.SetupRevision,
+                    request.SetupCreatedAt,
+                    request.Topology,
+                    request.CanonicalPublicUrl,
+                    $"local:{UserId:D}",
+                    Start,
+                    IsEnabled: true,
+                    Roles: [AetherRoles.Observe, AetherRoles.Admin]));
         }
     }
 

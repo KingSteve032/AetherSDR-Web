@@ -334,7 +334,44 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
     }
 
     [Fact]
-    public void DataProtectionDirectoriesAreOwnerOnlyAndRoleOwned()
+    public void MultiServiceStateRootAllowsTraversalWithoutDirectoryListing()
+    {
+        InstallationInstallerUbuntuMutationRequest request = Request(
+        [
+            new(
+                1,
+                InstallationInstallerActionKind.EnsureServiceUser,
+                "aethersdr"),
+            new(
+                2,
+                InstallationInstallerActionKind.EnsureDirectory,
+                "/var/lib/aethersdr"),
+            new(
+                3,
+                InstallationInstallerActionKind.InstallVerifiedRelease,
+                "2026.8.0/linux-x64")
+        ]);
+
+        InstallationInstallerUbuntuPrimitiveOperation stateRoot =
+            InstallationInstallerUbuntuPrimitivePlanner.Compose(request)[1];
+
+        Assert.Equal(
+            [
+                "-d",
+                "-m",
+                "0751",
+                "-o",
+                "aethersdr",
+                "-g",
+                "aethersdr",
+                "--",
+                "/var/lib/aethersdr"
+            ],
+            stateRoot.Arguments);
+    }
+
+    [Fact]
+    public void IdentityAndDataProtectionDirectoriesAreOwnerOnlyAndRoleOwned()
     {
         InstallationInstallerUbuntuMutationRequest request = Request(
         [
@@ -353,9 +390,13 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
             new(
                 4,
                 InstallationInstallerActionKind.EnsureDirectory,
-                "/var/lib/aethersdr/aetherremote/station-engine/data-protection"),
+                "/var/lib/aethersdr/identity"),
             new(
                 5,
+                InstallationInstallerActionKind.EnsureDirectory,
+                "/var/lib/aethersdr/aetherremote/station-engine/data-protection"),
+            new(
+                6,
                 InstallationInstallerActionKind.InstallVerifiedRelease,
                 "2026.8.0/linux-x64")
         ]);
@@ -368,9 +409,144 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
                 "/var/lib/aethersdr/secrets/data-protection"],
             operations[2].Arguments);
         Assert.Equal(
+            ["-d", "-m", "0700", "-o", "aethersdr", "-g", "aethersdr", "--",
+                "/var/lib/aethersdr/identity"],
+            operations[3].Arguments);
+        Assert.Equal(
             ["-d", "-m", "0700", "-o", "aetherremote", "-g", "aetherremote", "--",
                 "/var/lib/aethersdr/aetherremote/station-engine/data-protection"],
-            operations[3].Arguments);
+            operations[4].Arguments);
+    }
+
+    [Fact]
+    public void SetupIdentityHandoffMapsToOneExactDirectPrimitive()
+    {
+        InstallationInstallerUbuntuMutationRequest request = Request(
+        [
+            new(
+                1,
+                InstallationInstallerActionKind.EnsureServiceUser,
+                "aethersdr"),
+            new(
+                2,
+                InstallationInstallerActionKind.AdoptSetupIdentityState,
+                "/var/lib/aethersdr"),
+            new(
+                3,
+                InstallationInstallerActionKind.InstallVerifiedRelease,
+                "2026.8.0/linux-x64")
+        ]);
+
+        InstallationInstallerUbuntuPrimitiveOperation handoff =
+            InstallationInstallerUbuntuPrimitivePlanner.Compose(request)[1];
+
+        Assert.Equal(
+            InstallationInstallerUbuntuPrimitiveKind.AdoptSetupIdentityState,
+            handoff.Kind);
+        Assert.Equal("/usr/bin/chown", handoff.Executable);
+        Assert.Equal(
+            [
+                "--recursive",
+                "--no-dereference",
+                "aethersdr:aethersdr",
+                "--",
+                "/var/lib/aethersdr/identity",
+                "/var/lib/aethersdr/secrets/data-protection",
+                "/var/lib/aethersdr/setup"
+            ],
+            handoff.Arguments);
+    }
+
+    [Fact]
+    public void NoncanonicalSetupIdentityHandoffFailsBeforeExecution()
+    {
+        InstallationInstallerUbuntuMutationRequest request = Request(
+        [
+            new(
+                1,
+                InstallationInstallerActionKind.EnsureServiceUser,
+                "aethersdr"),
+            new(
+                2,
+                InstallationInstallerActionKind.AdoptSetupIdentityState,
+                "/tmp/operator-selected"),
+            new(
+                3,
+                InstallationInstallerActionKind.InstallVerifiedRelease,
+                "2026.8.0/linux-x64")
+        ]);
+
+        InvalidOperationException exception =
+            Assert.Throws<InvalidOperationException>(
+                () => InstallationInstallerUbuntuPrimitivePlanner.Compose(
+                    request));
+
+        Assert.Contains(
+            "noncanonical setup identity handoff",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void IdentityDatabaseMapsToOneExactTypedManagedPrimitive()
+    {
+        InstallationInstallerUbuntuMutationRequest request = Request(
+        [
+            new(
+                1,
+                InstallationInstallerActionKind.EnsureServiceUser,
+                "aethersdr"),
+            new(
+                2,
+                InstallationInstallerActionKind.InstallVerifiedRelease,
+                "2026.8.0/linux-x64"),
+            new(
+                3,
+                InstallationInstallerActionKind.InitializeIdentityDatabase,
+                "/var/lib/aethersdr/identity/aethersdr-identity.db")
+        ]);
+
+        InstallationInstallerUbuntuPrimitiveOperation identity =
+            InstallationInstallerUbuntuPrimitivePlanner.Compose(request)[2];
+
+        Assert.Equal(
+            InstallationInstallerUbuntuPrimitiveKind.InitializeIdentityDatabase,
+            identity.Kind);
+        Assert.Equal(
+            "/var/lib/aethersdr/identity/aethersdr-identity.db",
+            identity.Target);
+        Assert.Empty(identity.Executable);
+        Assert.Empty(identity.Arguments);
+    }
+
+    [Fact]
+    public void NoncanonicalIdentityDatabaseFailsBeforePrimitiveExecution()
+    {
+        InstallationInstallerUbuntuMutationRequest request = Request(
+        [
+            new(
+                1,
+                InstallationInstallerActionKind.EnsureServiceUser,
+                "aethersdr"),
+            new(
+                2,
+                InstallationInstallerActionKind.InstallVerifiedRelease,
+                "2026.8.0/linux-x64"),
+            new(
+                3,
+                InstallationInstallerActionKind.InitializeIdentityDatabase,
+                "/tmp/operator-selected.db")
+        ]);
+
+        InvalidOperationException exception =
+            Assert.Throws<InvalidOperationException>(
+                () => InstallationInstallerUbuntuPrimitivePlanner.Compose(
+                    request));
+
+        Assert.Contains(
+            "noncanonical identity database",
+            exception.Message,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -705,6 +881,65 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
     }
 
     [Fact]
+    public async Task SetupIdentityHandoffExecutesOneExactChownAndPostcondition()
+    {
+        FakeInspector inspector = new();
+        inspector.Results.Enqueue(Inspection(
+            InstallationInstallerUbuntuPrimitiveInspectionOutcome.Missing));
+        inspector.Results.Enqueue(Inspection(
+            InstallationInstallerUbuntuPrimitiveInspectionOutcome.Converged));
+        List<ProcessStartInfo> starts = [];
+        LocalInstallationInstallerUbuntuMutationPrimitives primitives = new(
+            inspector,
+            (start, _) =>
+            {
+                starts.Add(start);
+                return Task.FromResult(
+                    new InstallationInstallerUbuntuDirectProcessResult(
+                        0,
+                        string.Empty,
+                        string.Empty));
+            },
+            () => true);
+        InstallationInstallerUbuntuMutationRequest request = Request(
+        [
+            new(
+                1,
+                InstallationInstallerActionKind.EnsureServiceUser,
+                "aethersdr"),
+            new(
+                2,
+                InstallationInstallerActionKind.AdoptSetupIdentityState,
+                "/var/lib/aethersdr"),
+            new(
+                3,
+                InstallationInstallerActionKind.InstallVerifiedRelease,
+                "2026.8.0/linux-x64")
+        ]);
+
+        InstallationInstallerUbuntuStepResult result =
+            await primitives.ExecuteAsync(request, request.Actions[1]);
+
+        Assert.Equal(InstallationInstallerUbuntuStepOutcome.Applied, result.Outcome);
+        ProcessStartInfo start = Assert.Single(starts);
+        Assert.Equal("/usr/bin/chown", start.FileName);
+        Assert.False(start.UseShellExecute);
+        Assert.Empty(start.Environment);
+        Assert.Equal(
+            [
+                "--recursive",
+                "--no-dereference",
+                "aethersdr:aethersdr",
+                "--",
+                "/var/lib/aethersdr/identity",
+                "/var/lib/aethersdr/secrets/data-protection",
+                "/var/lib/aethersdr/setup"
+            ],
+            start.ArgumentList.Cast<string>());
+        Assert.Equal(2, inspector.InspectionCount);
+    }
+
+    [Fact]
     public async Task ConcretePrimitiveTreatsNonzeroAsUnknownAndNeverRetries()
     {
         FakeInspector inspector = new();
@@ -788,6 +1023,295 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
     }
 
     [Fact]
+    public async Task SetupIdentityHandoffRequiresRootOwnedTreeAdoption()
+    {
+        using TemporaryDirectory temporary = new();
+        string identity = Path.Combine(temporary.Path, "identity");
+        string protection = Path.Combine(temporary.Path, "data-protection");
+        string setup = Path.Combine(temporary.Path, "setup");
+        Directory.CreateDirectory(identity);
+        Directory.CreateDirectory(protection);
+        Directory.CreateDirectory(setup);
+        await File.WriteAllTextAsync(
+            Path.Combine(identity, "aethersdr-identity.db"),
+            "identity");
+        await File.WriteAllTextAsync(
+            Path.Combine(protection, "key.xml"),
+            "key");
+        await File.WriteAllTextAsync(
+            Path.Combine(setup, "installation.json"),
+            "setup");
+        List<ProcessStartInfo> starts = [];
+        LocalInstallationInstallerUbuntuPrimitiveInspector rootOwned = new(
+            (start, _) =>
+            {
+                starts.Add(start);
+                return Task.FromResult(new
+                    InstallationInstallerUbuntuDirectProcessResult(
+                        0,
+                        "root:root\n",
+                        string.Empty));
+            });
+
+        InstallationInstallerUbuntuPrimitiveInspection missing =
+            await rootOwned.InspectAsync(
+                Request(),
+                SetupIdentityOperation(identity, protection, setup));
+
+        Assert.Equal(
+            InstallationInstallerUbuntuPrimitiveInspectionOutcome.Missing,
+            missing.Outcome);
+        Assert.Equal(6, starts.Count);
+        Assert.All(starts, start =>
+        {
+            Assert.Equal("/usr/bin/stat", start.FileName);
+            Assert.Equal(
+                "--format=%U:%G",
+                start.ArgumentList[0]);
+            Assert.Equal("--", start.ArgumentList[1]);
+        });
+
+        LocalInstallationInstallerUbuntuPrimitiveInspector adopted = new(
+            (_, _) => Task.FromResult(new
+                InstallationInstallerUbuntuDirectProcessResult(
+                    0,
+                    "aethersdr:aethersdr\n",
+                    string.Empty)));
+
+        InstallationInstallerUbuntuPrimitiveInspection converged =
+            await adopted.InspectAsync(
+                Request(),
+                SetupIdentityOperation(identity, protection, setup));
+
+        Assert.Equal(
+            InstallationInstallerUbuntuPrimitiveInspectionOutcome.Converged,
+            converged.Outcome);
+    }
+
+    [Fact]
+    public async Task SetupIdentityHandoffRejectsSymbolicLinksWithoutChown()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        using TemporaryDirectory temporary = new();
+        string identity = Path.Combine(temporary.Path, "identity");
+        string protection = Path.Combine(temporary.Path, "data-protection");
+        string setup = Path.Combine(temporary.Path, "setup");
+        Directory.CreateDirectory(identity);
+        Directory.CreateDirectory(protection);
+        Directory.CreateDirectory(setup);
+        File.CreateSymbolicLink(
+            Path.Combine(identity, "unexpected-link"),
+            "/etc/passwd");
+        LocalInstallationInstallerUbuntuPrimitiveInspector inspector = new(
+            (_, _) => throw new InvalidOperationException(
+                "Unsafe ownership inventory must not invoke stat."));
+
+        InstallationInstallerUbuntuPrimitiveInspection rejected =
+            await inspector.InspectAsync(
+                Request(),
+                SetupIdentityOperation(identity, protection, setup));
+
+        Assert.Equal(
+            InstallationInstallerUbuntuPrimitiveInspectionOutcome.Rejected,
+            rejected.Outcome);
+        Assert.Equal(
+            "ubuntu-setup-identity-handoff-unsafe",
+            rejected.Code);
+    }
+
+    [Fact]
+    public async Task IdentityInspectionIsMissingBeforeReleasePublication()
+    {
+        using TemporaryDirectory temporary = new();
+        LocalInstallationInstallerUbuntuManagedPrimitiveHandler handler = new(
+            (_, _) => throw new InvalidOperationException(
+                "A missing release must not start the identity command."));
+
+        InstallationInstallerUbuntuPrimitiveInspection inspection =
+            await handler.InspectAsync(
+                Request(targetReleasePath:
+                    Path.Combine(temporary.Path, "missing-release")),
+                IdentityOperation());
+
+        Assert.Equal(
+            InstallationInstallerUbuntuPrimitiveInspectionOutcome.Missing,
+            inspection.Outcome);
+    }
+
+    [Fact]
+    public async Task IdentityInitializationUsesFixedServiceIdentityAndExactPlan()
+    {
+        using TemporaryDirectory temporary = new();
+        string release = CreateExecutableGatewayRelease(temporary.Path);
+        string missingPlanId = new('b', 64);
+        Queue<InstallationInstallerUbuntuDirectProcessResult> results = new(
+        [
+            ProcessResult(IdentityReport(
+                "incomplete",
+                "identity-schema-not-initialized",
+                existingSchemaVersion: null,
+                mutationRequired: true,
+                mutationAttempted: false,
+                databaseCreated: false,
+                new string('a', 64))),
+            ProcessResult(IdentityReport(
+                "planned",
+                "identity-schema-initialization-required",
+                existingSchemaVersion: null,
+                mutationRequired: true,
+                mutationAttempted: false,
+                databaseCreated: false,
+                missingPlanId)),
+            ProcessResult(IdentityReport(
+                "applied",
+                "identity-schema-initialized",
+                existingSchemaVersion: 1,
+                mutationRequired: false,
+                mutationAttempted: true,
+                databaseCreated: true,
+                new string('c', 64))),
+            ProcessResult(IdentityReport(
+                "converged",
+                "identity-schema-converged",
+                existingSchemaVersion: 1,
+                mutationRequired: false,
+                mutationAttempted: false,
+                databaseCreated: false,
+                new string('d', 64)))
+        ]);
+        List<ProcessStartInfo> starts = [];
+        LocalInstallationInstallerUbuntuManagedPrimitiveHandler handler = new(
+            (start, _) =>
+            {
+                starts.Add(start);
+                return Task.FromResult(results.Dequeue());
+            });
+
+        InstallationInstallerUbuntuStepResult result = await handler.ExecuteAsync(
+            Request(targetReleasePath: release),
+            IdentityOperation());
+
+        Assert.Equal(
+            InstallationInstallerUbuntuStepOutcome.Applied,
+            result.Outcome);
+        Assert.Equal("ubuntu-identity-schema-initialized", result.Code);
+        Assert.Empty(results);
+        Assert.Equal(4, starts.Count);
+        Assert.All(
+            starts,
+            start =>
+            {
+                Assert.Equal("/usr/sbin/runuser", start.FileName);
+                Assert.Equal(
+                    Path.Combine(release, "gateway-web"),
+                    start.WorkingDirectory);
+                Assert.False(start.UseShellExecute);
+                Assert.Empty(start.Environment);
+                Assert.Equal(
+                    ["--user", "aethersdr", "--",
+                        Path.Combine(
+                            release,
+                            "gateway-web",
+                            "AetherSDR.Web")],
+                    start.ArgumentList.Cast<string>().Take(4));
+            });
+        Assert.Equal(
+            "--identity-database-validate",
+            starts[0].ArgumentList[4]);
+        Assert.Equal(
+            "--identity-database-plan",
+            starts[1].ArgumentList[4]);
+        Assert.Equal(
+            [
+                "--identity-database-apply",
+                "--confirm-identity-database-plan",
+                missingPlanId
+            ],
+            starts[2].ArgumentList.Cast<string>().Skip(4));
+        Assert.Equal(
+            "--identity-database-validate",
+            starts[3].ArgumentList[4]);
+    }
+
+    [Fact]
+    public async Task IdentityInitializationIsIdempotentWhenAlreadyConverged()
+    {
+        using TemporaryDirectory temporary = new();
+        string release = CreateExecutableGatewayRelease(temporary.Path);
+        List<ProcessStartInfo> starts = [];
+        LocalInstallationInstallerUbuntuManagedPrimitiveHandler handler = new(
+            (start, _) =>
+            {
+                starts.Add(start);
+                return Task.FromResult(ProcessResult(IdentityReport(
+                    "converged",
+                    "identity-schema-converged",
+                    existingSchemaVersion: 1,
+                    mutationRequired: false,
+                    mutationAttempted: false,
+                    databaseCreated: false,
+                    new string('a', 64))));
+            });
+
+        InstallationInstallerUbuntuStepResult result = await handler.ExecuteAsync(
+            Request(targetReleasePath: release, repair: true),
+            IdentityOperation());
+
+        Assert.Equal(
+            InstallationInstallerUbuntuStepOutcome.Converged,
+            result.Outcome);
+        ProcessStartInfo start = Assert.Single(starts);
+        Assert.Equal(
+            "--identity-database-validate",
+            start.ArgumentList[4]);
+    }
+
+    [Fact]
+    public async Task IdentityApplyFailureRequiresReconciliation()
+    {
+        using TemporaryDirectory temporary = new();
+        string release = CreateExecutableGatewayRelease(temporary.Path);
+        Queue<InstallationInstallerUbuntuDirectProcessResult> results = new(
+        [
+            ProcessResult(IdentityReport(
+                "incomplete",
+                "identity-schema-not-initialized",
+                existingSchemaVersion: null,
+                mutationRequired: true,
+                mutationAttempted: false,
+                databaseCreated: false,
+                new string('a', 64))),
+            ProcessResult(IdentityReport(
+                "planned",
+                "identity-schema-initialization-required",
+                existingSchemaVersion: null,
+                mutationRequired: true,
+                mutationAttempted: false,
+                databaseCreated: false,
+                new string('b', 64))),
+            new(
+                2,
+                "{\"outcome\":\"rejected\"}",
+                string.Empty)
+        ]);
+        LocalInstallationInstallerUbuntuManagedPrimitiveHandler handler = new(
+            (_, _) => Task.FromResult(results.Dequeue()));
+
+        InstallationInstallerUbuntuStepResult result = await handler.ExecuteAsync(
+            Request(targetReleasePath: release),
+            IdentityOperation());
+
+        Assert.Equal(
+            InstallationInstallerUbuntuStepOutcome.Unknown,
+            result.Outcome);
+        Assert.Equal("ubuntu-identity-apply-unknown", result.Code);
+        Assert.Empty(results);
+    }
+
+    [Fact]
     public async Task PointerRollbackPreservesMismatchedSymlink()
     {
         using TemporaryDirectory temporary = new();
@@ -844,6 +1368,88 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
             result.Outcome);
         Assert.False(Directory.Exists(current));
         Assert.Null(new DirectoryInfo(current).LinkTarget);
+    }
+
+    private static InstallationInstallerUbuntuPrimitiveOperation
+        SetupIdentityOperation(
+            string identity,
+            string protection,
+            string setup) =>
+        new(
+            2,
+            InstallationInstallerUbuntuPrimitiveKind.AdoptSetupIdentityState,
+            Path.GetDirectoryName(identity)!,
+            "/usr/bin/chown",
+            [
+                "--recursive",
+                "--no-dereference",
+                "aethersdr:aethersdr",
+                "--",
+                identity,
+                protection,
+                setup
+            ]);
+
+    private static InstallationInstallerUbuntuPrimitiveOperation
+        IdentityOperation() =>
+        new(
+            3,
+            InstallationInstallerUbuntuPrimitiveKind.InitializeIdentityDatabase,
+            "/var/lib/aethersdr/identity/aethersdr-identity.db",
+            Executable: string.Empty,
+            Arguments: []);
+
+    private static InstallationInstallerUbuntuDirectProcessResult ProcessResult(
+        string output) =>
+        new(0, output, string.Empty);
+
+    private static string IdentityReport(
+        string outcome,
+        string code,
+        int? existingSchemaVersion,
+        bool mutationRequired,
+        bool mutationAttempted,
+        bool databaseCreated,
+        string planId) =>
+        System.Text.Json.JsonSerializer.Serialize(new
+        {
+            outcome,
+            code,
+            targetSchemaVersion = 1,
+            existingSchemaVersion,
+            databasePath =
+                "/var/lib/aethersdr/identity/aethersdr-identity.db",
+            planId,
+            mutationRequired,
+            mutationAttempted,
+            databaseCreated,
+            backupRequired = false,
+            rollbackAttempted = false,
+            rollbackSucceeded = false
+        });
+
+    private static string CreateExecutableGatewayRelease(string root)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            throw new PlatformNotSupportedException(
+                "The Ubuntu primitive test requires Linux.");
+        }
+        string release = Path.Combine(root, "release");
+        string gateway = Path.Combine(release, "gateway-web");
+        string executable = Path.Combine(gateway, "AetherSDR.Web");
+        Directory.CreateDirectory(gateway);
+        File.WriteAllText(executable, "#!/bin/false\n");
+        File.SetUnixFileMode(
+            executable,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupExecute |
+            UnixFileMode.OtherRead |
+            UnixFileMode.OtherExecute);
+        return release;
     }
 
     private static InstallationInstallerUbuntuPrimitiveInspection Inspection(

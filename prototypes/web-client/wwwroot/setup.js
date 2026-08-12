@@ -8,6 +8,8 @@ const endpoints = Object.freeze({
   updateChannel: "/setup/api/update-channel",
   backup: "/setup/api/backup",
   transmitSupport: "/setup/api/transmit-support",
+  administratorEnrollment: "/setup/api/administrator/enroll",
+  administratorConfirmation: "/setup/api/administrator/confirm",
   revoke: "/setup/api/revoke"
 });
 
@@ -19,7 +21,8 @@ export const setupSteps = Object.freeze([
   "updateChannel",
   "backup",
   "transmitSupport",
-  "preflight"
+  "preflight",
+  "administrator"
 ]);
 
 const stepRanks = Object.freeze({
@@ -51,6 +54,8 @@ export function nextSetupStep(lastCompletedStep) {
     case "paths": return "updateChannel";
     case "updateChannel": return "backup";
     case "backup": return "transmitSupport";
+    case "transmitSupport": return "preflight";
+    case "preflight": return "administrator";
     default: return "preflight";
   }
 }
@@ -100,6 +105,16 @@ export function buildMutationBody(kind, revision, values = {}) {
         acknowledgedInstallationDoesNotEnableTransmit:
           values.acknowledgedInstallationDoesNotEnableTransmit === true
       };
+    case "administratorEnrollment":
+      return {
+        expectedRevision,
+        userName: values.userName,
+        displayName: values.displayName,
+        email: values.email || null,
+        password: values.password
+      };
+    case "administratorConfirmation":
+      return { expectedRevision, totpCode: values.totpCode };
     case "revoke":
       return { expectedRevision };
     default:
@@ -140,6 +155,8 @@ function initialState(root) {
     installTransmitSupport: data.installTransmitSupport === "true",
     sessionReady: false,
     preflight: null,
+    administratorReady: false,
+    administratorEnrollment: null,
     busy: false
   };
 }
@@ -223,9 +240,13 @@ function setBusy(state, busy) {
 }
 
 function renderSteps(state) {
-  const active = state.lockMode === "bootstrapRequired"
-    ? "bootstrapClaim"
-    : nextSetupStep(state.lastCompletedStep);
+  const active = state.setupComplete
+    ? null
+    : state.lockMode === "bootstrapRequired"
+      ? "bootstrapClaim"
+      : state.administratorReady
+        ? "administrator"
+        : nextSetupStep(state.lastCompletedStep);
   const completedRank = stepRanks[state.lastCompletedStep] ?? 0;
   for (const item of document.querySelectorAll("#setup-steps li")) {
     const rank = stepRanks[item.dataset.step] ?? 0;
@@ -239,11 +260,21 @@ function render(state) {
   element("status-summary").textContent = statusSummary(state);
   renderSteps(state);
 
-  const claiming = state.lockMode === "bootstrapRequired";
+  const claiming = state.lockMode === "bootstrapRequired" && !state.setupComplete;
   element("claim-panel").hidden = !claiming;
-  element("workflow-panel").hidden = claiming || !state.sessionReady;
-  element("session-recovery").hidden = claiming || state.sessionReady;
+  element("workflow-panel").hidden = claiming || (!state.sessionReady && !state.setupComplete);
+  element("session-recovery").hidden = claiming || state.sessionReady || state.setupComplete;
 
+  if (state.setupComplete) {
+    for (const section of document.querySelectorAll(".setup-step")) {
+      section.hidden = true;
+    }
+    element("configured-panel").hidden = false;
+    element("session-actions").hidden = true;
+    return;
+  }
+  element("configured-panel").hidden = true;
+  element("session-actions").hidden = false;
   if (claiming) {
     const bootstrapStatus = state.bootstrapTokenPresent
       ? `Token expires ${new Date(state.bootstrapTokenExpiresAt).toLocaleString()}.`
@@ -253,11 +284,12 @@ function render(state) {
   }
   if (!state.sessionReady) return;
 
-  const active = nextSetupStep(state.lastCompletedStep);
+  const active = state.administratorReady
+    ? "administrator"
+    : nextSetupStep(state.lastCompletedStep);
   for (const section of document.querySelectorAll(".setup-step")) {
     section.hidden = section.id !== `step-${active.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}`;
   }
-  element("configured-panel").hidden = !state.preflight;
   if (active === "preflight" && state.preflight) {
     element("step-preflight").hidden = false;
   }
@@ -367,6 +399,41 @@ function renderPreflight(report) {
     target.append(listSection(title, values));
   }
   target.hidden = false;
+  element("continue-to-administrator").hidden = false;
+}
+
+function authenticatorUri(userName, sharedSecret) {
+  const account = encodeURIComponent(String(userName || ""));
+  const secret = encodeURIComponent(String(sharedSecret || ""));
+  return `otpauth://totp/AetherSDR:${account}?secret=${secret}&issuer=AetherSDR&algorithm=SHA1&digits=6&period=30`;
+}
+
+function clearAdministratorSecrets(state) {
+  state.administratorEnrollment = null;
+  element("administrator-password").value = "";
+  element("administrator-password-confirmation").value = "";
+  element("administrator-totp-code").value = "";
+  element("administrator-totp-secret").textContent = "";
+  element("administrator-totp-uri").textContent = "";
+  element("administrator-recovery-codes").replaceChildren();
+  element("administrator-mfa-panel").hidden = true;
+}
+
+function renderAdministratorEnrollment(state, enrollment, userName) {
+  state.administratorEnrollment = enrollment;
+  element("administrator-totp-secret").textContent =
+    enrollment.sharedSecretBase32;
+  element("administrator-totp-uri").textContent =
+    authenticatorUri(userName, enrollment.sharedSecretBase32);
+  const codes = element("administrator-recovery-codes");
+  codes.replaceChildren();
+  for (const recoveryCode of enrollment.recoveryCodes || []) {
+    const item = document.createElement("li");
+    item.textContent = String(recoveryCode);
+    codes.append(item);
+  }
+  element("administrator-mfa-panel").hidden = false;
+  element("administrator-enrollment-form").hidden = true;
 }
 
 function bind(state, root) {
@@ -446,6 +513,7 @@ function bind(state, root) {
       const response = await apiRequest(endpoints.preflight, { revision: state.revision });
       applyStatus(state, response);
       state.preflight = response.preflight;
+      state.administratorReady = false;
       renderPreflight(response.preflight);
       setNotice("Preflight generated without changing the installation.");
     } catch (error) {
@@ -457,6 +525,86 @@ function bind(state, root) {
       render(state);
     }
   });
+
+  element("continue-to-administrator").addEventListener("click", () => {
+    state.administratorReady = true;
+    element("continue-to-administrator").hidden = true;
+    setNotice("Preflight reviewed. Create the first administrator.");
+    render(state);
+  });
+
+  element("administrator-enrollment-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    const passwordInput = element("administrator-password");
+    const confirmationInput = element("administrator-password-confirmation");
+    const password = passwordInput.value;
+    const confirmation = confirmationInput.value;
+    passwordInput.value = "";
+    confirmationInput.value = "";
+    if (password !== confirmation) {
+      setNotice("The administrator passwords do not match.", true);
+      return;
+    }
+
+    const userName = element("administrator-user-name").value;
+    setBusy(state, true);
+    try {
+      const response = await apiRequest(endpoints.administratorEnrollment, {
+        method: "POST",
+        body: buildMutationBody("administratorEnrollment", state.revision, {
+          userName,
+          displayName: element("administrator-display-name").value,
+          email: element("administrator-email").value,
+          password
+        })
+      });
+      applyStatus(state, response);
+      renderAdministratorEnrollment(state, response, userName);
+      setNotice(response.rotated
+        ? "Administrator enrollment rotated. Replace every previously saved MFA value."
+        : "Administrator created. Save every recovery code, then verify TOTP.");
+    } catch (error) {
+      setNotice(error.status === 409
+        ? "Administrator enrollment is no longer available for this setup state."
+        : "The administrator account was rejected. Review the fields and try again.", true);
+    } finally {
+      setBusy(state, false);
+      render(state);
+    }
+  });
+
+  element("administrator-confirmation-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    const codeInput = element("administrator-totp-code");
+    const totpCode = codeInput.value;
+    codeInput.value = "";
+    setBusy(state, true);
+    try {
+      const response = await apiRequest(endpoints.administratorConfirmation, {
+        method: "POST",
+        body: buildMutationBody("administratorConfirmation", state.revision, {
+          totpCode
+        })
+      });
+      applyStatus(state, response);
+      state.setupComplete = Boolean(response.completed);
+      if (!state.setupComplete) {
+        throw new Error("administratorConfirmationRejected");
+      }
+      clearAdministratorSecrets(state);
+      state.sessionReady = false;
+      setNotice("First administrator verified. Setup authority has been revoked.");
+    } catch (error) {
+      setNotice(error.status === 401
+        ? "The TOTP code was rejected. Wait for a new code and try again."
+        : "Administrator confirmation could not complete.", true);
+    } finally {
+      setBusy(state, false);
+      render(state);
+    }
+  });
+
+  window.addEventListener("pagehide", () => clearAdministratorSecrets(state));
 
   element("revoke-session").addEventListener("click", async () => {
     setBusy(state, true);

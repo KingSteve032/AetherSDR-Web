@@ -42,7 +42,11 @@ public sealed class InstallationSetupOnlyProgramCompositionTests
         Assert.Equal("radio.example.org", builder.Configuration["AllowedHosts"]);
         Assert.Equal(paths.SetupStatePath, report.SetupStatePath);
         Assert.Equal(initial.Revision, report.SetupRevision);
-        Assert.DoesNotContain(builder.Services, IsNormalRuntimeService);
+        Assert.Contains(
+            builder.Services,
+            descriptor => descriptor.ServiceType ==
+                typeof(IInstallationFirstLocalAdministratorProvisioningExecutor));
+        Assert.DoesNotContain(builder.Services, IsForbiddenRuntimeService);
 
         await using WebApplication app = builder.Build();
         InstallationSetupCenterApplication application =
@@ -320,20 +324,34 @@ public sealed class InstallationSetupOnlyProgramCompositionTests
             CanonicalAccessUrl = CanonicalUrl
         };
 
-    private static bool IsNormalRuntimeService(ServiceDescriptor descriptor)
-    {
-        string serviceNamespace = descriptor.ServiceType.Namespace ?? string.Empty;
-        string implementationNamespace =
-            descriptor.ImplementationType?.Namespace ?? string.Empty;
-        return IsNormalRuntimeNamespace(serviceNamespace) ||
-            IsNormalRuntimeNamespace(implementationNamespace);
-    }
+    private static bool IsForbiddenRuntimeService(ServiceDescriptor descriptor) =>
+        IsForbiddenRuntimeType(descriptor.ServiceType) ||
+        IsForbiddenRuntimeType(descriptor.ImplementationType);
 
-    private static bool IsNormalRuntimeNamespace(string value) =>
-        value.StartsWith("AetherSDR.Web.Auth", StringComparison.Ordinal) ||
-        value.StartsWith("AetherSDR.Web.Radio", StringComparison.Ordinal) ||
-        value.StartsWith("AetherRemote", StringComparison.Ordinal) ||
-        value.StartsWith("AetherSDR.TxWatchdog", StringComparison.Ordinal);
+    private static bool IsForbiddenRuntimeType(Type? type)
+    {
+        if (type is null)
+        {
+            return false;
+        }
+        string typeNamespace = type.Namespace ?? string.Empty;
+        if (typeNamespace.StartsWith("AetherSDR.Web.Radio", StringComparison.Ordinal) ||
+            typeNamespace.StartsWith("AetherRemote", StringComparison.Ordinal) ||
+            typeNamespace.StartsWith("AetherSDR.TxWatchdog", StringComparison.Ordinal))
+        {
+            return true;
+        }
+        if (!typeNamespace.StartsWith("AetherSDR.Web.Auth", StringComparison.Ordinal))
+        {
+            return false;
+        }
+        return type.Name is not "AetherLocalAuthenticationPolicy" and
+            not "AetherIdentityDbContext" and
+            not "AetherLocalMfaCredentialProtector" &&
+            !type.Name.StartsWith(
+                "AetherFirstLocalAdministrator",
+                StringComparison.Ordinal);
+    }
 
     private static InstallationPaths CreatePaths(string root) =>
         new(

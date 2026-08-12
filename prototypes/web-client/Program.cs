@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Net;
 using System.Text.Json;
 using AetherSDR.Web.Auth;
+using AetherSDR.Web.Auth.Identity;
 using AetherSDR.Web.Radio;
 using AetherSDR.Web.Releases;
 using AetherSDR.Web.Setup;
@@ -15,8 +16,6 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Microsoft.IdentityModel.Protocols.OpenIdConnect;
-using Microsoft.IdentityModel.Tokens;
 using System.Threading.RateLimiting;
 
 const string ProductionTxPreflightSwitch =
@@ -34,15 +33,18 @@ OfflineReleaseInstallPreflightCommandLine releaseInstallPreflightCommandLine =
 ReleaseUpdateConsoleCommandLine releaseUpdateCommandLine =
     ReleaseUpdateConsoleCommandParser.Parse(
         releaseInstallPreflightCommandLine.ApplicationArguments);
+AetherIdentityDatabaseCommandLine identityDatabaseCommandLine =
+    AetherIdentityDatabaseCommandParser.Parse(
+        releaseUpdateCommandLine.ApplicationArguments);
 bool productionTxPreflightRequested = false;
 string? productionTxPreflightRadioId = null;
 List<string> applicationArguments = [];
 for (int index = 0;
-     index < releaseUpdateCommandLine.ApplicationArguments.Count;
+     index < identityDatabaseCommandLine.ApplicationArguments.Count;
      index++)
 {
     string argument =
-        releaseUpdateCommandLine.ApplicationArguments[index];
+        identityDatabaseCommandLine.ApplicationArguments[index];
     if (string.Equals(
             argument,
             ProductionTxPreflightSwitch,
@@ -160,6 +162,21 @@ if (productionTxPreflightRequested &&
     throw new InvalidOperationException(
         "Release update commands cannot run with production TX preflight.");
 }
+if (identityDatabaseCommandLine.Command !=
+        AetherIdentityDatabaseCommandKind.None &&
+    (installationInstallerCommandLine.Command !=
+        InstallationInstallerConsoleCommandKind.None ||
+     installationSetupCommandLine.Command !=
+        InstallationSetupConsoleCommandKind.None ||
+     releaseInstallPreflightCommandLine.Command !=
+        OfflineReleaseInstallPreflightCommandKind.None ||
+     releaseUpdateCommandLine.Command !=
+        ReleaseUpdateConsoleCommandKind.None ||
+     productionTxPreflightRequested))
+{
+    throw new InvalidOperationException(
+        "Identity database commands cannot run with another standalone command.");
+}
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(
     [.. applicationArguments]);
@@ -169,6 +186,42 @@ builder.Logging.AddSimpleConsole(options =>
     options.SingleLine = true;
     options.TimestampFormat = "HH:mm:ss ";
 });
+
+if (identityDatabaseCommandLine.Command !=
+    AetherIdentityDatabaseCommandKind.None)
+{
+    InstallationPathSettings identityPathSettings =
+        builder.Configuration
+            .GetSection(InstallationPathSettings.SectionName)
+            .Get<InstallationPathSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new InstallationPathSettings();
+    InstallationPathLayout identityPathLayout =
+        builder.Environment.IsDevelopment()
+            ? InstallationPathLayout.Development
+            : OperatingSystem.IsLinux()
+                ? InstallationPathLayout.LinuxSystem
+                : throw new InvalidOperationException(
+                    "Standalone production identity database commands require Linux.");
+    InstallationPaths identityPaths = InstallationPaths.Resolve(
+        builder.Environment.ContentRootPath,
+        identityPathLayout,
+        identityPathSettings);
+    if (!builder.Environment.IsDevelopment() &&
+        !string.Equals(
+            Environment.UserName,
+            "aethersdr",
+            StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException(
+            "Production identity database commands must run as the aethersdr service user.");
+    }
+    Environment.ExitCode = await AetherIdentityDatabaseConsole.ExecuteAsync(
+        identityDatabaseCommandLine,
+        identityPaths,
+        Console.Out);
+    return;
+}
 
 if (releaseInstallPreflightCommandLine.Command ==
     OfflineReleaseInstallPreflightCommandKind.Preflight)
@@ -467,7 +520,11 @@ if (installationInstallerCommandLine.Command !=
     LocalInstallationInstallerUbuntuRuntime installerRuntime =
         new(installerMutationExecutor, installerRuntimeSettings);
     InstallationInstallerUbuntuHostTransaction installerHost =
-        new(installerRuntime, installerRelease);
+        new(
+            installerRuntime,
+            installerRelease,
+            installationInstallerCommandLine
+                .AuthenticationClientSecretSourceFile);
     using InstallationInstallerCoordinator installerCoordinator =
         new(
             installerSetupStore,
@@ -571,6 +628,12 @@ if (installationHostStartupPlan.Mode == InstallationHostStartupMode.SetupOnly)
             .Get<InstallationSetupHttpSecuritySettings>(options =>
                 options.ErrorOnUnknownConfiguration = true) ??
         new InstallationSetupHttpSecuritySettings();
+    InstallationPaths setupOnlyPaths =
+        installationHostStartupPlan.Paths ??
+        throw new InvalidOperationException(
+            "Setup-only identity initialization requires resolved paths.");
+    _ = await AetherSetupIdentityDatabaseBootstrap.EnsureInitializedAsync(
+        setupOnlyPaths);
     _ = InstallationSetupOnlyProgramComposition.Configure(
         builder,
         installationHostStartupPlan,
@@ -584,9 +647,52 @@ if (installationHostStartupPlan.Mode == InstallationHostStartupMode.SetupOnly)
     return;
 }
 
+InstallationServiceHostSettings installationServiceHostSettings =
+    builder.Configuration
+        .GetSection(InstallationServiceHostSettings.SectionName)
+        .Get<InstallationServiceHostSettings>(options =>
+            options.ErrorOnUnknownConfiguration = true) ??
+    new InstallationServiceHostSettings();
+InstallationServiceHostRole installationServiceHostRole =
+    InstallationServiceHost.Validate(installationServiceHostSettings);
 AuthSettings authSettings =
-    builder.Configuration.GetSection(AuthSettings.SectionName).Get<AuthSettings>() ??
+    builder.Configuration
+        .GetSection(AuthSettings.SectionName)
+        .Get<AuthSettings>(options =>
+            options.ErrorOnUnknownConfiguration = true) ??
     new AuthSettings();
+AetherAuthenticationTopology authenticationTopology =
+    installationServiceHostRole == InstallationServiceHostRole.StationEngine
+        ? AetherAuthenticationConfiguration.CreateServiceBoundary()
+        : AetherAuthenticationConfiguration.Validate(
+            authSettings,
+            builder.Environment.IsDevelopment());
+if (installationServiceHostRole == InstallationServiceHostRole.Gateway &&
+    authenticationTopology.Mode != AetherAuthenticationMode.Development)
+{
+    InstallationPaths identityRuntimePaths = resolveInstallationPaths();
+    AetherIdentityDatabaseReport identityDatabase =
+        await AetherIdentityDatabaseMigration.ValidateAsync(
+            identityRuntimePaths);
+    if (!string.Equals(
+            identityDatabase.Outcome,
+            "converged",
+            StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException(
+            "The identity database must be explicitly initialized and " +
+            "validated before production authentication can start.");
+    }
+    builder.Services.AddAetherIdentityPersistence(identityRuntimePaths);
+    builder.Services.AddAetherLocalAuthenticationFoundation(
+        authenticationTopology.LocalPolicy);
+}
+builder.Services.AddSingleton(authenticationTopology);
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<AetherExternalAuthenticationService>();
+builder.Services.AddScoped<AetherAuthenticationSessionService>();
+builder.Services.AddScoped<AetherOpenIdConnectEvents>();
+builder.Services.AddScoped<AetherCookieAuthenticationEvents>();
 RadioSettings radioSettings =
     builder.Configuration.GetSection(RadioSettings.SectionName).Get<RadioSettings>() ??
     new RadioSettings();
@@ -769,6 +875,12 @@ string[] allowedOrigins =
 builder.Services.AddAntiforgery(options =>
 {
     options.HeaderName = AetherAntiforgery.HeaderName;
+    options.Cookie.Name = "__Host-AetherSdrWeb-Csrf";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.Path = "/";
 });
 builder.Services.AddSingleton(Options.Create(authSettings));
 builder.Services.AddSingleton(Options.Create(radioSettings));
@@ -948,7 +1060,10 @@ builder.Services
     .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionPath))
     .SetApplicationName("AetherSDR.Web");
 
-ConfigureAuthentication(builder, authSettings);
+AetherAuthenticationComposition.Configure(
+    builder,
+    authSettings,
+    authenticationTopology);
 ConfigureAuthorization(builder.Services);
 
 builder.Services.AddSingleton<RadioSelectionManager>();
@@ -981,6 +1096,21 @@ builder.Services.AddSingleton<IHostedService>(
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(
+        AetherLocalAuthenticationDefaults.RateLimitPolicy,
+        context => RateLimitPartition.GetFixedWindowLimiter(
+            RequestRateLimitPartitionKey.ForAddress(context),
+            _ => AetherLocalAuthenticationDefaults
+                .CreateRateLimiterOptions(
+                    authenticationTopology.LocalPolicy)));
+    options.AddPolicy(
+        AetherIdentityAdministrationDefaults.RateLimitPolicy,
+        context => RateLimitPartition.GetFixedWindowLimiter(
+            RequestRateLimitPartitionKey.ForAuthenticatedUserOrAddress(
+                context),
+            _ => AetherLocalAuthenticationDefaults
+                .CreateRateLimiterOptions(
+                    authenticationTopology.LocalPolicy)));
     options.AddPolicy(
         "websocket",
         context => RateLimitPartition.GetFixedWindowLimiter(
@@ -1191,6 +1321,12 @@ app.Use(async (context, next) =>
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
+_ = AetherLocalAuthenticationHttpAdapter.Map(
+    app,
+    authenticationTopology);
+_ = AetherIdentityAdministrationHttpAdapter.Map(
+    app,
+    authenticationTopology);
 _ = ReleaseUpdateHttpAdapter.Map(app);
 app.UseRateLimiter();
 app.UseWebSockets(
@@ -4411,15 +4547,19 @@ app.MapGet(
 
 app.MapGet(
         "/auth/login",
-        (HttpContext context, string? returnUrl) =>
+        (string? returnUrl) =>
         {
             string safeReturnUrl = LocalReturnUrl.Normalize(returnUrl);
-            if (string.Equals(
-                    authSettings.Mode,
-                    "Development",
-                    StringComparison.OrdinalIgnoreCase))
+            if (authenticationTopology.Mode ==
+                AetherAuthenticationMode.Development)
             {
                 return Results.Redirect(safeReturnUrl);
+            }
+            if (authenticationTopology.ExternalProvider is null)
+            {
+                return Results.Redirect(
+                    "/login?returnUrl=" +
+                    Uri.EscapeDataString(safeReturnUrl));
             }
 
             AuthenticationProperties properties =
@@ -4438,24 +4578,45 @@ app.MapGet(
 
 app.MapPost(
         "/auth/logout",
-        () =>
+        async (
+            HttpContext context,
+            ClaimsPrincipal user,
+            CancellationToken cancellationToken) =>
         {
-            if (string.Equals(
-                    authSettings.Mode,
-                    "Development",
-                    StringComparison.OrdinalIgnoreCase))
+            if (authenticationTopology.Mode ==
+                AetherAuthenticationMode.Development)
             {
                 return Results.Redirect("/");
             }
 
+            AetherAuthenticationSessionService sessions =
+                context.RequestServices
+                    .GetRequiredService<
+                        AetherAuthenticationSessionService>();
+            AetherAuthenticationSessionRevocationResult revoked =
+                await sessions.RevokeAsync(
+                    user,
+                    "user-logout",
+                    cancellationToken);
+            if (!revoked.Succeeded)
+            {
+                return Results.Unauthorized();
+            }
+
             AuthenticationProperties properties =
                 new() { RedirectUri = "/" };
-            return Results.SignOut(
-                properties,
-                [
-                    CookieAuthenticationDefaults.AuthenticationScheme,
-                    OpenIdConnectDefaults.AuthenticationScheme
-                ]);
+            string[] schemes =
+                user.HasClaim(
+                    claim =>
+                        claim.Type ==
+                        AetherIdentityClaimTypes.ProviderId)
+                    ?
+                    [
+                        CookieAuthenticationDefaults.AuthenticationScheme,
+                        OpenIdConnectDefaults.AuthenticationScheme
+                    ]
+                    : [CookieAuthenticationDefaults.AuthenticationScheme];
+            return Results.SignOut(properties, schemes);
         })
     .RequireAuthorization()
     .RequireAetherAntiforgery();
@@ -5415,102 +5576,6 @@ static IResult RemoteStationManagementFailure(
     return Results.Json(
         new { error = exception.Message },
         statusCode: statusCode);
-}
-
-static void ConfigureAuthentication(
-    WebApplicationBuilder builder,
-    AuthSettings authSettings)
-{
-    bool developmentAuth = string.Equals(
-        authSettings.Mode,
-        "Development",
-        StringComparison.OrdinalIgnoreCase);
-
-    if (developmentAuth)
-    {
-        if (!builder.Environment.IsDevelopment())
-        {
-            throw new InvalidOperationException(
-                "Development authentication is forbidden outside the Development environment.");
-        }
-
-        builder.Services
-            .AddAuthentication(options =>
-            {
-                options.DefaultAuthenticateScheme =
-                    DevelopmentAuthenticationDefaults.Scheme;
-                options.DefaultChallengeScheme =
-                    DevelopmentAuthenticationDefaults.Scheme;
-            })
-            .AddScheme<
-                AuthenticationSchemeOptions,
-                DevelopmentAuthenticationHandler>(
-                DevelopmentAuthenticationDefaults.Scheme,
-                _ => { });
-        return;
-    }
-
-    string clientSecret = OidcClientSecretResolver.Resolve(authSettings);
-    if (string.IsNullOrWhiteSpace(authSettings.Authority) ||
-        string.IsNullOrWhiteSpace(authSettings.ClientId) ||
-        string.IsNullOrWhiteSpace(clientSecret))
-    {
-        throw new InvalidOperationException(
-            "OIDC authentication requires Auth:Authority, Auth:ClientId, and " +
-            "either Auth:ClientSecret or Auth:ClientSecretFile.");
-    }
-
-    builder.Services
-        .AddAuthentication(options =>
-        {
-            options.DefaultAuthenticateScheme =
-                CookieAuthenticationDefaults.AuthenticationScheme;
-            options.DefaultSignInScheme =
-                CookieAuthenticationDefaults.AuthenticationScheme;
-            options.DefaultChallengeScheme =
-                OpenIdConnectDefaults.AuthenticationScheme;
-        })
-        .AddCookie(
-            CookieAuthenticationDefaults.AuthenticationScheme,
-            options =>
-            {
-                options.Cookie.Name = "__Host-AetherSdrWeb";
-                options.Cookie.HttpOnly = true;
-                options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-                options.Cookie.SameSite = SameSiteMode.Lax;
-                options.Cookie.Path = "/";
-                options.AccessDeniedPath = "/access-denied";
-                options.ExpireTimeSpan = TimeSpan.FromHours(8);
-                options.SlidingExpiration = true;
-            })
-        .AddOpenIdConnect(
-            OpenIdConnectDefaults.AuthenticationScheme,
-            options =>
-            {
-                options.Authority = authSettings.Authority.TrimEnd('/');
-                options.ClientId = authSettings.ClientId;
-                options.ClientSecret = clientSecret;
-                options.CallbackPath = authSettings.CallbackPath;
-                options.SignedOutCallbackPath =
-                    authSettings.SignedOutCallbackPath;
-                options.SignInScheme =
-                    CookieAuthenticationDefaults.AuthenticationScheme;
-                options.ResponseType = OpenIdConnectResponseType.Code;
-                options.UsePkce = true;
-                options.SaveTokens = false;
-                options.GetClaimsFromUserInfoEndpoint = false;
-                options.MapInboundClaims = false;
-                options.Scope.Clear();
-                options.Scope.Add("openid");
-                options.Scope.Add("profile");
-                options.Scope.Add("email");
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    NameClaimType = authSettings.NameClaimType,
-                    RoleClaimType = authSettings.RoleClaimType,
-                    ValidateIssuer = true
-                };
-            });
 }
 
 static void ConfigureAuthorization(IServiceCollection services)

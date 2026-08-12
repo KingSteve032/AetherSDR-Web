@@ -13,6 +13,7 @@ Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=DOTNET_ENVIRONMENT=Production
 Environment=ASPNETCORE_URLS=http://127.0.0.1:5081
 Environment=DataProtection__KeyPath=/var/lib/aethersdr/aetherremote/station-engine/data-protection
+Environment=InstallationServiceHost__Role=StationEngine
 EnvironmentFile=-/etc/aethersdr/aetherremote/station-engine/environment
 ExecStart=/opt/aethersdr/current/station-engine/AetherSDR.Web
 Restart=on-failure

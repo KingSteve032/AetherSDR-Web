@@ -200,9 +200,101 @@ h2 {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 30px;
+  gap: 24px;
   padding: clamp(34px, 5vw, 58px);
   background: #0b1625;
+}
+
+.login-form {
+  display: grid;
+  gap: 12px;
+}
+
+.login-form[hidden],
+.login-separator[hidden],
+#external-login-section[hidden] {
+  display: none;
+}
+
+.login-form label {
+  color: #c5d4e5;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.login-form input {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid var(--portal-line);
+  border-radius: 9px;
+  background: #07111f;
+  color: var(--portal-text);
+}
+
+.login-form input:hover,
+.login-form input:focus {
+  border-color: #4b759c;
+}
+
+.login-form h3 {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+
+.login-form .muted {
+  margin: 0;
+  font-size: 14px;
+}
+
+.login-form button {
+  width: 100%;
+  margin-top: 5px;
+}
+
+.login-form button:disabled,
+.login-form input:disabled {
+  cursor: wait;
+  opacity: .62;
+}
+
+.login-separator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #6f8399;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.login-separator::before,
+.login-separator::after {
+  height: 1px;
+  flex: 1;
+  background: var(--portal-line-soft);
+  content: "";
+}
+
+.provider-action {
+  width: 100%;
+  gap: 11px;
+}
+
+.provider-mark {
+  color: var(--portal-blue);
+  font-size: 19px;
+}
+
+.login-status {
+  min-height: 20px;
+  margin: 0;
+  color: var(--portal-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.login-status.is-error {
+  color: #ff9da6;
 }
 
 .muted {
@@ -1089,7 +1181,250 @@ h2 {
   text-align: center;
 }
 
+.identity-admin-section {
+  scroll-margin-top: 24px;
+}
+
+.identity-reauth-panel,
+.identity-secret-panel {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+  padding: 20px;
+  border: 1px solid #285071;
+  border-radius: 14px;
+  background: #091827;
+}
+
+.identity-reauth-panel h3,
+.identity-secret-panel h3,
+.identity-create-card h3,
+.identity-list-heading h3 {
+  margin: 0;
+}
+
+.identity-reauth-panel p,
+.identity-secret-panel p,
+.identity-create-card p {
+  margin: 0;
+}
+
+.identity-inline-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.identity-inline-form label,
+.identity-create-card > label,
+.identity-secret-panel > label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.identity-inline-form label > span,
+.identity-create-card label > span,
+.identity-secret-panel label > span {
+  color: #8ca2b9;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+
+.identity-status {
+  min-height: 22px;
+  color: #b8c9da;
+  line-height: 1.5;
+}
+
+.identity-status.is-error {
+  color: #ffafb7;
+}
+
+.identity-create-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.identity-create-card {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid #223a52;
+  border-radius: 14px;
+  background: #0a1523;
+}
+
+.identity-role-fieldset {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid #263e56;
+  border-radius: 10px;
+}
+
+.identity-role-fieldset legend {
+  padding: 0 6px;
+  color: #9bb1c7;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.identity-role-fieldset label,
+.identity-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #c8d7e6;
+  font-size: 13px;
+}
+
+.identity-role-fieldset input,
+.identity-check input {
+  width: 17px;
+  height: 17px;
+  min-height: 17px;
+  margin: 0;
+}
+
+.identity-secret-value {
+  display: block;
+  overflow-wrap: anywhere;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid #263e56;
+  border-radius: 9px;
+  background: #050d17;
+  color: #d2ebff;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  user-select: all;
+}
+
+.identity-recovery-codes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 18px;
+  margin: 0;
+  color: #d2ebff;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  user-select: all;
+}
+
+.identity-list-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 28px 0 14px;
+}
+
+.identity-account-list {
+  display: grid;
+  gap: 14px;
+}
+
+.identity-account-card {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid #263e56;
+  border-radius: 14px;
+  background: #091522;
+}
+
+.identity-account-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.identity-account-heading h4 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.identity-account-heading p {
+  margin: 0;
+}
+
+.identity-account-badges,
+.identity-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.identity-badge {
+  padding: 5px 9px;
+  border: 1px solid #31516e;
+  border-radius: 999px;
+  color: #abc5dc;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.identity-badge.is-enabled {
+  border-color: #2d785e;
+  color: #78dfb3;
+}
+
+.identity-badge.is-disabled {
+  border-color: #854956;
+  color: #ff9ba7;
+}
+
+.identity-account-roles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.identity-account-roles label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #c5d4e3;
+  font-size: 13px;
+}
+
+.identity-account-roles input {
+  width: 17px;
+  height: 17px;
+  min-height: 17px;
+  margin: 0;
+}
+
+.identity-account-reset {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.identity-account-actions .danger-action,
+.identity-account-actions .secondary-action {
+  min-height: 38px;
+}
+
 @media (max-width: 820px) {
+  .identity-create-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .identity-account-roles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .login-layout {
     grid-template-columns: 1fr;
     width: min(560px, 100%);
@@ -1140,6 +1475,26 @@ h2 {
 }
 
 @media (max-width: 600px) {
+  .identity-inline-form,
+  .identity-account-reset {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .identity-list-heading,
+  .identity-account-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .identity-recovery-codes,
+  .identity-role-fieldset {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .identity-account-actions {
+    display: grid;
+  }
+
   .login-body {
     display: block;
     padding: 0;

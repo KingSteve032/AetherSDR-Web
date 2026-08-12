@@ -91,10 +91,10 @@ test("station enrollment IDs and labels are constrained", () => {
 test("Admin page revisions load connection diagnostics and styles together", () => {
   assert.match(
     adminHtml,
-    /src="\/admin-page\.js\?v=m8b-release-transactions-1"/);
+    /src="\/admin-page\.js\?v=m8d-identity-admin-1"/);
   assert.match(
     adminHtml,
-    /href="\/portal\.css\?v=m6-wan-soak-1"/);
+    /href="\/portal\.css\?v=m8d-identity-admin-1"/);
   assert.match(
     adminPageSource,
     /admin-diagnostics\.js\?v=watchdog-arming-1/);

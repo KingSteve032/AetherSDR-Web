@@ -28,7 +28,8 @@ test("setup progression follows the persisted workflow order", () => {
     "updateChannel",
     "backup",
     "transmitSupport",
-    "preflight"
+    "preflight",
+    "administrator"
   ]);
   assert.equal(nextSetupStep("none"), "bootstrapClaim");
   assert.equal(nextSetupStep("bootstrapClaim"), "topology");
@@ -38,6 +39,7 @@ test("setup progression follows the persisted workflow order", () => {
   assert.equal(nextSetupStep("updateChannel"), "backup");
   assert.equal(nextSetupStep("backup"), "transmitSupport");
   assert.equal(nextSetupStep("transmitSupport"), "preflight");
+  assert.equal(nextSetupStep("preflight"), "administrator");
 });
 
 test("setup mutation bodies carry exact revisions and acknowledgements", () => {
@@ -64,6 +66,25 @@ test("setup mutation bodies carry exact revisions and acknowledgements", () => {
       installTransmitSupport: true,
       acknowledgedInstallationDoesNotEnableTransmit: true
     });
+  assert.deepEqual(
+    buildMutationBody("administratorEnrollment", 12, {
+      userName: "admin",
+      displayName: "Station Administrator",
+      email: "",
+      password: "not-a-default-password"
+    }),
+    {
+      expectedRevision: 12,
+      userName: "admin",
+      displayName: "Station Administrator",
+      email: null,
+      password: "not-a-default-password"
+    });
+  assert.deepEqual(
+    buildMutationBody("administratorConfirmation", 12, {
+      totpCode: "123456"
+    }),
+    { expectedRevision: 12, totpCode: "123456" });
   assert.deepEqual(
     buildMutationBody("revoke", 12),
     { expectedRevision: 12 });
@@ -112,6 +133,9 @@ test("browser shell exposes every setup form without inline script or style", ()
     "backup-form",
     "transmit-support-form",
     "run-preflight",
+    "continue-to-administrator",
+    "administrator-enrollment-form",
+    "administrator-confirmation-form",
     "revoke-session"
   ]) {
     assert.match(html, new RegExp(`id="${id}"`));
@@ -136,6 +160,21 @@ test("setup browser authority stays in cookies and request bodies only", () => {
   assert.doesNotMatch(source, /bootstrapToken=.*(?:location|URL|searchParams)/);
   assert.doesNotMatch(source, /sessionToken=.*(?:location|URL|searchParams)/);
   assert.doesNotMatch(source, /console\.(?:log|info|warn|error)/);
+  assert.match(source, /administrator-password"\)\.value = ""/);
+  assert.match(source, /administrator-totp-code"\)\.value = ""/);
+  assert.match(source, /pagehide/);
+  assert.match(source, /replaceChildren\(\)/);
+});
+
+test("first administrator requires a unique password, TOTP, and recovery-code acknowledgement", () => {
+  assert.match(html, /No default credential is created/);
+  assert.match(html, /id="administrator-password"[\s\S]*minlength="12"/);
+  assert.match(html, /id="administrator-totp-code"[\s\S]*pattern="\[0-9\]\{6\}"/);
+  assert.match(html, /id="administrator-recovery-confirmation"/);
+  assert.match(source, /\/setup\/api\/administrator\/enroll/);
+  assert.match(source, /\/setup\/api\/administrator\/confirm/);
+  assert.match(source, /otpauth:\/\/totp\/AetherSDR/);
+  assert.doesNotMatch(html, /value="(?:admin|password|changeme)"/i);
 });
 
 test("TX support remains package intent with explicit non-enablement copy", () => {

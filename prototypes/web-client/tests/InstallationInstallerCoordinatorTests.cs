@@ -38,11 +38,16 @@ public sealed class InstallationInstallerCoordinatorTests
         Assert.Equal(
             ["aethersdr", "aetherremote"],
             first.ServiceUsers);
-        Assert.Equal(19, first.Directories.Count);
+        Assert.Equal(20, first.Directories.Count);
         Assert.Contains(
             first.Directories,
             directory => directory.EndsWith(
                 "/secrets/data-protection",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            first.Directories,
+            directory => directory.EndsWith(
+                "/identity",
                 StringComparison.Ordinal));
         Assert.Contains(
             first.Directories,
@@ -70,12 +75,26 @@ public sealed class InstallationInstallerCoordinatorTests
         Assert.Equal(
             InstallationInstallerActionKind.EnsureServiceUser,
             first.Actions[0].Kind);
-        Assert.Contains(
+        Assert.Equal(41, first.Actions.Count);
+        InstallationInstallerPlanAction release = Assert.Single(
             first.Actions,
-            action =>
-                action.Kind ==
-                    InstallationInstallerActionKind.InstallVerifiedRelease &&
-                action.Target == "2026.8.0/linux-x64");
+            action => action.Kind ==
+                InstallationInstallerActionKind.InstallVerifiedRelease);
+        Assert.Equal("2026.8.0/linux-x64", release.Target);
+        InstallationInstallerPlanAction adoption = Assert.Single(
+            first.Actions,
+            action => action.Kind ==
+                InstallationInstallerActionKind.AdoptSetupIdentityState);
+        Assert.Equal(Path.Combine(temporary.Path, "state"), adoption.Target);
+        InstallationInstallerPlanAction identity = Assert.Single(
+            first.Actions,
+            action => action.Kind ==
+                InstallationInstallerActionKind.InitializeIdentityDatabase);
+        Assert.EndsWith(
+            Path.Combine("identity", "aethersdr-identity.db"),
+            identity.Target,
+            StringComparison.Ordinal);
+        Assert.Equal(release.Order + 1, identity.Order);
         Assert.Contains(
             first.Actions,
             action =>
@@ -93,6 +112,120 @@ public sealed class InstallationInstallerCoordinatorTests
             first.Actions.Select(action => action.Order));
         Assert.False(first.InstallTransmitSupport);
         Assert.Equal(0, host.TotalCalls);
+    }
+
+    [Fact]
+    public async Task CompletedAdministratorSetupCanComposeInstallerPlan()
+    {
+        using TemporaryDirectory temporary = new();
+        InstallationSetupStore store = await CreateConfiguredStoreAsync(
+            temporary.Path,
+            InstallationTopologyKind.PersonalSingleStation,
+            installTransmitSupport: false);
+        InstallationSetupState configured = await store.LoadAsync();
+        DateTimeOffset completedAt = configured.UpdatedAt.AddSeconds(1);
+        InstallationSetupState completed = configured with
+        {
+            Revision = configured.Revision + 1,
+            UpdatedAt = completedAt,
+            LastCompletedStep = InstallationSetupStep.Administrator,
+            Lock = configured.Lock with
+            {
+                Mode = InstallationSetupLockMode.Complete,
+                CompletedAt = completedAt
+            }
+        };
+
+        InstallationInstallerPlanReport plan =
+            InstallationInstallerPlanComposer.Compose(
+                completed,
+                DefaultSelection());
+
+        Assert.Equal(completed.Revision, plan.SetupRevision);
+        Assert.Equal(InstallationSetupStep.Administrator, completed.LastCompletedStep);
+        Assert.Equal(InstallationSetupLockMode.Complete, completed.Lock.Mode);
+        Assert.Equal(41, plan.Actions.Count);
+    }
+
+    [Fact]
+    public async Task CompleteLockWithoutAdministratorStepIsRejected()
+    {
+        using TemporaryDirectory temporary = new();
+        InstallationSetupStore store = await CreateConfiguredStoreAsync(
+            temporary.Path,
+            InstallationTopologyKind.PersonalSingleStation,
+            installTransmitSupport: false);
+        InstallationSetupState configured = await store.LoadAsync();
+        DateTimeOffset completedAt = configured.UpdatedAt.AddSeconds(1);
+        InstallationSetupState malformed = configured with
+        {
+            Revision = configured.Revision + 1,
+            UpdatedAt = completedAt,
+            Lock = configured.Lock with
+            {
+                Mode = InstallationSetupLockMode.Complete,
+                CompletedAt = completedAt
+            }
+        };
+
+        InvalidOperationException exception =
+            Assert.Throws<InvalidOperationException>(
+                () => InstallationInstallerPlanComposer.Compose(
+                    malformed,
+                    DefaultSelection()));
+
+        Assert.Contains(
+            "administrator step",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExternalAuthenticationIsExactAndSecretFreeInPlan()
+    {
+        using TemporaryDirectory temporary = new();
+        InstallationSetupStore store = await CreateConfiguredStoreAsync(
+            temporary.Path,
+            InstallationTopologyKind.PersonalSingleStation,
+            installTransmitSupport: false);
+        InstallationInstallerSelection selection = new(
+            InstallationInstallerArchitecture.LinuxX64,
+            InstallationReverseProxyMode.ManagedCaddy,
+            "2026.8.0")
+        {
+            Authentication = new(
+                InstallationInstallerAuthenticationMode
+                    .CombinedOpenIdConnect,
+                "primary",
+                "https://issuer.example/",
+                "client-id")
+        };
+
+        InstallationInstallerPlanReport plan =
+            await new InstallationInstallerCoordinator(store, new FakeHost())
+                .PlanAsync(selection);
+
+        Assert.Equal(selection.Authentication, plan.Authentication);
+        Assert.Equal(42, plan.Actions.Count);
+        Assert.Contains(
+            plan.Actions,
+            action =>
+                action.Kind ==
+                    InstallationInstallerActionKind
+                        .InstallAuthenticationClientSecret &&
+                action.Target ==
+                    "/var/lib/aethersdr/secrets/auth-client-secret");
+        Assert.Contains(
+            plan.Actions,
+            action =>
+                action.Kind ==
+                    InstallationInstallerActionKind
+                        .ConfigureGatewayEnvironment &&
+                action.Target == "/etc/aethersdr/environment");
+        Assert.DoesNotContain(
+            "secret-value",
+            System.Text.Json.JsonSerializer.Serialize(plan),
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -153,9 +286,20 @@ public sealed class InstallationInstallerCoordinatorTests
                 linux,
                 DefaultSelection());
 
+        Assert.Equal(7, plan.SchemaVersion);
+        Assert.Contains(
+            "/var/lib/aethersdr/identity",
+            plan.Directories);
         Assert.Contains(
             "/var/lib/aethersdr-installer",
             plan.Directories);
+        Assert.Contains(
+            plan.Actions,
+            action =>
+                action.Kind ==
+                    InstallationInstallerActionKind.InitializeIdentityDatabase &&
+                action.Target ==
+                    "/var/lib/aethersdr/identity/aethersdr-identity.db");
         Assert.Contains(
             "/var/lib/aethersdr-installer/releases",
             plan.Directories);
@@ -228,7 +372,11 @@ public sealed class InstallationInstallerCoordinatorTests
             await nodeCoordinator.PlanAsync(new(
                 InstallationInstallerArchitecture.LinuxArm64,
                 InstallationReverseProxyMode.None,
-                "2026.8.0"));
+                "2026.8.0")
+            {
+                Authentication =
+                    new(InstallationInstallerAuthenticationMode.None)
+            });
         Assert.Equal(["aetherremote"], nodePlan.ServiceUsers);
         Assert.Equal(
             [
@@ -245,6 +393,11 @@ public sealed class InstallationInstallerCoordinatorTests
             nodePlan.Actions,
             action =>
                 action.Kind == InstallationInstallerActionKind.VerifyHealth);
+        Assert.DoesNotContain(
+            nodePlan.Actions,
+            action =>
+                action.Kind ==
+                    InstallationInstallerActionKind.InitializeIdentityDatabase);
     }
 
     [Fact]
@@ -703,7 +856,9 @@ public sealed class InstallationInstallerCoordinatorTests
                 InstallationInstallerConsoleCommandParser.ReverseProxySwitch,
                 "managed-caddy",
                 InstallationInstallerConsoleCommandParser.ReleaseSwitch,
-                "2026.8.0"
+                "2026.8.0",
+                InstallationInstallerConsoleCommandParser.AuthenticationSwitch,
+                "local"
             ]));
 
         InstallationInstallerConsoleCommandLine parsed =
@@ -724,6 +879,8 @@ public sealed class InstallationInstallerCoordinatorTests
                 "1",
                 InstallationInstallerConsoleCommandParser.ProtocolVersionSwitch,
                 "2",
+                InstallationInstallerConsoleCommandParser.AuthenticationSwitch,
+                "local",
                 "--urls",
                 "http://127.0.0.1:5080"
             ]);
@@ -735,6 +892,77 @@ public sealed class InstallationInstallerCoordinatorTests
         Assert.Equal(
             ["--urls", "http://127.0.0.1:5080"],
             parsed.ApplicationArguments);
+    }
+
+    [Fact]
+    public void InstallerConsoleSeparatesExternalPlanFromMutationSecret()
+    {
+        string[] common =
+        [
+            InstallationInstallerConsoleCommandParser.ArchitectureSwitch,
+            "linux-x64",
+            InstallationInstallerConsoleCommandParser.ReverseProxySwitch,
+            "managed-caddy",
+            InstallationInstallerConsoleCommandParser.ReleaseSwitch,
+            "2026.8.0",
+            InstallationInstallerConsoleCommandParser.AuthenticationSwitch,
+            "combined-oidc",
+            InstallationInstallerConsoleCommandParser
+                .AuthenticationProviderIdSwitch,
+            "primary",
+            InstallationInstallerConsoleCommandParser
+                .AuthenticationAuthoritySwitch,
+            "https://issuer.example",
+            InstallationInstallerConsoleCommandParser
+                .AuthenticationClientIdSwitch,
+            "client"
+        ];
+
+        InstallationInstallerConsoleCommandLine planned =
+            InstallationInstallerConsoleCommandParser.Parse(
+                [InstallationInstallerConsoleCommandParser.PlanSwitch, .. common]);
+        Assert.True(planned.Authentication?.UsesExternalProvider);
+        Assert.Empty(planned.AuthenticationClientSecretSourceFile);
+
+        Assert.Throws<InvalidOperationException>(
+            () => InstallationInstallerConsoleCommandParser.Parse(
+            [
+                InstallationInstallerConsoleCommandParser.ApplySwitch,
+                .. common,
+                InstallationInstallerConsoleCommandParser.ConfirmPlanSwitch,
+                new string('a', 64),
+                InstallationInstallerConsoleCommandParser.BundleSwitch,
+                "/srv/bundle",
+                InstallationInstallerConsoleCommandParser
+                    .ConfigurationSchemaSwitch,
+                "1",
+                InstallationInstallerConsoleCommandParser
+                    .ProtocolVersionSwitch,
+                "2"
+            ]));
+
+        InstallationInstallerConsoleCommandLine applied =
+            InstallationInstallerConsoleCommandParser.Parse(
+            [
+                InstallationInstallerConsoleCommandParser.ApplySwitch,
+                .. common,
+                InstallationInstallerConsoleCommandParser.ConfirmPlanSwitch,
+                new string('a', 64),
+                InstallationInstallerConsoleCommandParser.BundleSwitch,
+                "/srv/bundle",
+                InstallationInstallerConsoleCommandParser
+                    .ConfigurationSchemaSwitch,
+                "1",
+                InstallationInstallerConsoleCommandParser
+                    .ProtocolVersionSwitch,
+                "2",
+                InstallationInstallerConsoleCommandParser
+                    .AuthenticationClientSecretFileSwitch,
+                "/srv/private/client-secret"
+            ]);
+        Assert.Equal(
+            "/srv/private/client-secret",
+            applied.AuthenticationClientSecretSourceFile);
     }
 
     [Fact]
@@ -760,6 +988,9 @@ public sealed class InstallationInstallerCoordinatorTests
             BundleDirectory: "/srv/aethersdr-bundle",
             ConfigurationSchemaVersion: 1,
             ProtocolVersion: 2,
+            Authentication:
+                InstallationInstallerAuthenticationSelection.Local,
+            AuthenticationClientSecretSourceFile: string.Empty,
             ApplicationArguments: []);
 
         int exitCode = await console.ExecuteAsync(command, output);

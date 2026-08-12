@@ -87,6 +87,10 @@ public sealed class InstallationInstallerSystemdAssetTests
             station,
             StringComparison.Ordinal);
         Assert.Contains(
+            "Environment=InstallationServiceHost__Role=StationEngine",
+            station,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "ReadWritePaths=/var/lib/aethersdr/aetherremote/station-engine /var/log/aethersdr/aetherremote",
             station,
             StringComparison.Ordinal);

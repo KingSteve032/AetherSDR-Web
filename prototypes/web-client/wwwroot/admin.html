@@ -8,7 +8,7 @@
   <meta name="description" content="AetherSDR radio and operator administration.">
   <title>Administration · AetherSDR Web</title>
   <link rel="icon" href="/assets/logo.png">
-  <link rel="stylesheet" href="/portal.css?v=m6-wan-soak-1">
+  <link rel="stylesheet" href="/portal.css?v=m8d-identity-admin-1">
 </head>
 <body class="portal-body">
   <header class="portal-header">
@@ -52,6 +52,161 @@
          aria-live="polite">
       Loading radio inventory…
     </div>
+
+    <section class="admin-enrollment-section identity-admin-section"
+             id="identity-administration"
+             aria-labelledby="identity-admin-heading">
+      <div class="admin-audit-heading">
+        <div>
+          <p class="eyebrow">PRODUCTION IDENTITY</p>
+          <h2 id="identity-admin-heading">Operators and authentication</h2>
+        </div>
+        <span id="identity-provider-status">LOADING AUTHENTICATION</span>
+      </div>
+
+      <div class="identity-reauth-panel" id="identity-reauth-panel">
+        <div>
+          <h3>Fresh administrator verification</h3>
+          <p class="muted">
+            Account listing and every authority change require a recent,
+            durable administrator reauthentication.
+          </p>
+        </div>
+        <form id="identity-local-reauth-password-form"
+              class="identity-inline-form"
+              autocomplete="off"
+              hidden>
+          <label>
+            <span>CURRENT PASSWORD</span>
+            <input id="identity-local-reauth-password"
+                   type="password"
+                   maxlength="256"
+                   autocomplete="current-password"
+                   required>
+          </label>
+          <button class="secondary-action" type="submit">
+            Continue with MFA
+          </button>
+        </form>
+        <form id="identity-local-reauth-mfa-form"
+              class="identity-inline-form"
+              autocomplete="off"
+              hidden>
+          <label>
+            <span>TOTP OR RECOVERY CODE</span>
+            <input id="identity-local-reauth-code"
+                   maxlength="128"
+                   autocomplete="one-time-code"
+                   required>
+          </label>
+          <button class="secondary-action" type="submit">
+            Verify administrator
+          </button>
+        </form>
+        <button id="identity-external-reauth"
+                class="secondary-action"
+                type="button"
+                hidden>
+          Verify with external provider
+        </button>
+        <output id="identity-reauth-status"
+                class="identity-status"
+                aria-live="polite"></output>
+      </div>
+
+      <div id="identity-workspace" hidden>
+        <div class="identity-create-grid">
+          <form id="identity-local-enrollment-form"
+                class="identity-create-card"
+                autocomplete="off"
+                hidden>
+            <p class="eyebrow">LOCAL ACCOUNT</p>
+            <h3>Enroll a local operator</h3>
+            <label><span>USER NAME</span><input id="identity-local-user-name" maxlength="100" autocomplete="off" required></label>
+            <label><span>DISPLAY NAME</span><input id="identity-local-display-name" maxlength="200" required></label>
+            <label><span>EMAIL (OPTIONAL)</span><input id="identity-local-email" type="email" maxlength="320"></label>
+            <label><span>INITIAL PASSWORD</span><input id="identity-local-password" type="password" minlength="12" maxlength="256" autocomplete="new-password" required></label>
+            <fieldset class="identity-role-fieldset">
+              <legend>Roles</legend>
+              <label><input type="checkbox" name="identity-local-role" value="Observe" checked> Observe</label>
+              <label><input type="checkbox" name="identity-local-role" value="Control"> Control</label>
+              <label><input type="checkbox" name="identity-local-role" value="Transmit"> Transmit</label>
+              <label><input type="checkbox" name="identity-local-role" value="Admin"> Admin</label>
+            </fieldset>
+            <button class="secondary-action" type="submit">Create and enroll TOTP</button>
+          </form>
+
+          <form id="identity-external-provisioning-form"
+                class="identity-create-card"
+                autocomplete="off"
+                hidden>
+            <p class="eyebrow">EXTERNAL ACCOUNT</p>
+            <h3>Provision an external operator</h3>
+            <p class="muted">
+              The account starts disabled and without a password. Link the
+              configured provider before enabling it.
+            </p>
+            <label><span>USER NAME</span><input id="identity-external-user-name" maxlength="100" autocomplete="off" required></label>
+            <label><span>DISPLAY NAME</span><input id="identity-external-display-name" maxlength="200" required></label>
+            <label><span>EMAIL (OPTIONAL)</span><input id="identity-external-email" type="email" maxlength="320"></label>
+            <fieldset class="identity-role-fieldset">
+              <legend>Roles</legend>
+              <label><input type="checkbox" name="identity-external-role" value="Observe" checked> Observe</label>
+              <label><input type="checkbox" name="identity-external-role" value="Control"> Control</label>
+              <label><input type="checkbox" name="identity-external-role" value="Transmit"> Transmit</label>
+              <label><input type="checkbox" name="identity-external-role" value="Admin"> Admin</label>
+            </fieldset>
+            <button class="secondary-action" type="submit">Provision disabled account</button>
+          </form>
+        </div>
+
+        <section id="identity-local-enrollment-result"
+                 class="identity-secret-panel"
+                 hidden>
+          <p class="eyebrow">ONE-TIME LOCAL MFA ENROLLMENT</p>
+          <h3>Save recovery codes and verify TOTP</h3>
+          <p class="muted">
+            These secrets remain only in page memory and are removed on
+            completion or when the page is left.
+          </p>
+          <label><span>AUTHENTICATOR SETUP KEY</span><output id="identity-local-totp-secret" class="identity-secret-value"></output></label>
+          <label><span>AUTHENTICATOR URI</span><output id="identity-local-totp-uri" class="identity-secret-value"></output></label>
+          <ol id="identity-local-recovery-codes" class="identity-recovery-codes"></ol>
+          <form id="identity-local-enrollment-confirmation-form"
+                class="identity-inline-form"
+                autocomplete="off">
+            <label>
+              <span>SIX-DIGIT TOTP CODE</span>
+              <input id="identity-local-enrollment-code"
+                     inputmode="numeric"
+                     pattern="[0-9]{6}"
+                     minlength="6"
+                     maxlength="6"
+                     autocomplete="one-time-code"
+                     required>
+            </label>
+            <label class="identity-check">
+              <input id="identity-local-recovery-confirmed" type="checkbox" required>
+              <span>I saved every recovery code.</span>
+            </label>
+            <button class="secondary-action" type="submit">Confirm local account</button>
+          </form>
+        </section>
+
+        <div class="identity-list-heading">
+          <div>
+            <p class="eyebrow">DURABLE ACCOUNTS</p>
+            <h3>Account authority</h3>
+          </div>
+          <button id="identity-refresh" class="secondary-action" type="button">
+            Refresh accounts
+          </button>
+        </div>
+        <div id="identity-account-list"
+             class="identity-account-list"
+             aria-live="polite"></div>
+      </div>
+    </section>
 
     <section class="admin-enrollment-section"
              aria-labelledby="admin-enrollment-heading">
@@ -183,6 +338,8 @@
   </main>
 
   <script type="module"
-          src="/admin-page.js?v=m8b-release-transactions-1"></script>
+          src="/admin-page.js?v=m8d-identity-admin-1"></script>
+  <script type="module"
+          src="/identity-admin.js?v=m8d-identity-admin-1"></script>
 </body>
 </html>

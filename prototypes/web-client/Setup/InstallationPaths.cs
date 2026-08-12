@@ -41,6 +41,14 @@ public sealed record InstallationPaths(
         Path.Combine(SecretDirectory, "data-protection");
 
     [JsonIgnore]
+    public string IdentityStoreDirectory =>
+        Path.Combine(StateDirectory, "identity");
+
+    [JsonIgnore]
+    public string IdentityDatabasePath =>
+        Path.Combine(IdentityStoreDirectory, "aethersdr-identity.db");
+
+    [JsonIgnore]
     public string RadioAccessPolicyPath =>
         Path.Combine(StateDirectory, "radio-access", "policies.json");
 
