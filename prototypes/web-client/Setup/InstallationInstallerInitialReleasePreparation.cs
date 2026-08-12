@@ -35,16 +35,15 @@ public sealed class InstallationInstallerInitialReleasePreparation
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(paths);
         cancellationToken.ThrowIfCancellationRequested();
+        InstallationInstallerSetupEligibility.Require(state);
         if (!OperatingSystem.IsLinux() ||
             configurationSchemaVersion < 1 ||
             protocolVersion < 1 ||
-            state.Lock.Mode != InstallationSetupLockMode.Claimed ||
-            state.LastCompletedStep < InstallationSetupStep.TransmitSupport ||
             !Enum.IsDefined(state.UpdateChannel) ||
             state.Revision < 1)
         {
             throw new InvalidOperationException(
-                "Initial release preparation requires one eligible claimed Linux setup state.");
+                "Initial release preparation requires one eligible Linux setup state.");
         }
         InstallationPaths.Validate(paths);
 

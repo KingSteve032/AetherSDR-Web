@@ -132,6 +132,24 @@ internal sealed class InstallationInstallerPlan
     internal string PlanId { get; }
 }
 
+internal static class InstallationInstallerSetupEligibility
+{
+    internal static void Require(InstallationSetupState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        InstallationSetupStateValidator.Validate(state);
+        if (state.Lock.Mode is not (
+                InstallationSetupLockMode.Claimed or
+                InstallationSetupLockMode.Complete) ||
+            state.LastCompletedStep < InstallationSetupStep.TransmitSupport)
+        {
+            throw new InvalidOperationException(
+                "Installer operations require a claimed or completed setup " +
+                "state through the transmit-support choice.");
+        }
+    }
+}
+
 public static class InstallationInstallerPlanComposer
 {
     public const int CurrentPlanSchemaVersion = 7;
@@ -142,18 +160,8 @@ public static class InstallationInstallerPlanComposer
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(selection);
-        InstallationSetupStateValidator.Validate(state);
+        InstallationInstallerSetupEligibility.Require(state);
         ValidateSelection(selection);
-
-        if (state.Lock.Mode is not (
-                InstallationSetupLockMode.Claimed or
-                InstallationSetupLockMode.Complete) ||
-            state.LastCompletedStep < InstallationSetupStep.TransmitSupport)
-        {
-            throw new InvalidOperationException(
-                "An installer plan requires claimed setup state completed through " +
-                "the transmit-support choice.");
-        }
 
         InstallationTopologyKind topology = state.Topology ??
             throw new InvalidOperationException(
