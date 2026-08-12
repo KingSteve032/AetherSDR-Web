@@ -2090,6 +2090,64 @@ This bootstrap/update path never grants radio command, TX lease, watchdog arming
 key/unkey, or browser TX authority. Remote station radio policy continues to obey
 the station-local safety and ownership boundaries.
 
+## M8G backup, restore, diagnostics, and operations
+
+The supported backup boundary is an explicit offline maintenance operation. The
+standalone CLI accepts create, inspect, and restore commands but never accepts a
+passphrase in argv; passphrases are read only from an interactive local terminal.
+Production create/restore first prove every fixed AetherSDR/AetherRemote systemd
+unit is inactive and refuse to continue otherwise. The CLI never stops or starts
+a service itself.
+
+Backup schema 1 captures each AetherSDR-owned durable root exactly once, including
+nested secrets, plus installer-owned managed-Caddy state when its ownership marker
+is present. It includes identity/MFA, Data Protection, radio/onboarding policy,
+audit, station credential/broker credential, signing/trust, configuration, and
+state authority. Release binaries, downloads, logs, and prior backups are not
+recursively embedded; only the validated current and rollback release identities
+are retained. External DNS, externally managed proxy/TLS state, provider-side
+OIDC/Entra registration and secret lifecycle, and signed release package bytes are
+reported as explicit external dependencies.
+
+The backup payload is bounded, schema-validated, compressed, and authenticated
+with AES-256-GCM. Its key is derived from a locally entered passphrase using
+PBKDF2-HMAC-SHA256 with a random salt. Restore requires the recorded immutable
+release identities to be installed first, reconstructs files only beneath fixed
+validated target roots, remaps the validated setup `InstallationPaths` object for
+a replacement host, and maps logical `root`/`aethersdr`/`aetherremote` ownership
+to the destination host rather than copying numeric UIDs/GIDs. A root-external
+durable journal records `prepared` then `committed`: pre-commit interruption is
+rolled back, while post-commit recovery can only finish cleanup and never revert
+the committed restored state. The `current` pointer switches as part of that same
+bounded transaction.
+
+Normal runtime adds one passive `OperationsReadinessService`. It projects setup,
+canonical URL, storage free space, backup age, release/update/rollback readiness,
+FLEX discovery health, broker/station state, signed AetherRemote compatibility,
+authentication readiness, browser WebSocket registration, and TX-policy
+prerequisites without issuing a radio command or acquiring authority. An explicit
+Admin POST may additionally probe only the persisted canonical HTTPS origin and
+fixed health, authentication-callback, browser-WebSocket, and station-broker paths.
+TLS chain/certificate expiry and required public security headers are observed in
+that probe. Active probes and diagnostic ZIP creation are antiforgery/admin
+protected and rate-limited; no arbitrary URL is accepted.
+
+The downloadable diagnostic bundle is built in memory under a configured byte
+bound from already-redacted projections. It contains runtime/version metadata,
+aggregate readiness/alerts/metrics, identifier-free radio/station health, release
+identities, and aggregate audit action/result counts. It intentionally excludes
+raw configuration/logs/environment, URLs, headers, user/actor/radio/station
+identifiers, serials/addresses, passwords/hashes, MFA material, Data Protection
+keys, signing-key bytes, station/runtime credentials, enrollment codes, auth
+client secrets, and bearer/session/CSRF tokens. Setup-only composition remains
+isolated; its preflight merely enumerates the exact post-install operational checks
+that must later be executed from Admin.
+
+CI performs a direct-and-transitive NuGet vulnerability query and fails closed if
+NuGet reports an advisory. Operator procedures and the support matrix live in
+`docs/OPERATIONS.md` and `docs/SUPPORT-MATRIX.md`; versioned M8G notes live under
+`docs/releases/`.
+
 ## Browser rendering
 
 The prototype uses one Canvas 2D spectrum path with a compact binary frame and

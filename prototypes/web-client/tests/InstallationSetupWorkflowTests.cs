@@ -225,6 +225,25 @@ public sealed class InstallationSetupWorkflowTests
             value => value.Contains(
                 "does not enable TX",
                 StringComparison.Ordinal));
+        Assert.NotNull(report.PostInstallOperationalChecks);
+        foreach (string expected in new[]
+        {
+            "TLS",
+            "reverse-proxy",
+            "browser WebSocket",
+            "authentication callback",
+            "FLEX discovery",
+            "TX prerequisites",
+            "encrypted-backup",
+            "signed update",
+            "rollback",
+            "station WebSocket"
+        })
+        {
+            Assert.Contains(
+                report.PostInstallOperationalChecks!,
+                value => value.Contains(expected, StringComparison.OrdinalIgnoreCase));
+        }
     }
 
     [Fact]

@@ -121,7 +121,7 @@ test("station enrollment IDs and labels are constrained", () => {
 test("Admin page revisions load connection diagnostics and styles together", () => {
   assert.match(
     adminHtml,
-    /src="\/admin-page\.js\?v=m8e-radio-onboarding-1"/);
+    /src="\/admin-page\.js\?v=m8g-operations-1"/);
   assert.match(
     adminHtml,
     /href="\/portal\.css\?v=m8e-radio-onboarding-1"/);

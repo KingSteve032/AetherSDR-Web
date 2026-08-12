@@ -394,7 +394,8 @@ function renderPreflight(report) {
     ["Proxy changes", report.plannedProxyChanges],
     ["Firewall expectations", report.firewallExpectations],
     ["Migrations", report.plannedMigrations],
-    ["Warnings", report.warnings]
+    ["Warnings", report.warnings],
+    ["Post-install operations checks", report.postInstallOperationalChecks]
   ]) {
     target.append(listSection(title, values));
   }

@@ -18,7 +18,8 @@ public sealed record InstallationSetupPreflightReport(
     IReadOnlyList<string> PlannedProxyChanges,
     IReadOnlyList<string> FirewallExpectations,
     IReadOnlyList<string> PlannedMigrations,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<string>? PostInstallOperationalChecks = null);
 
 public sealed class InstallationSetupPreflight
 {
@@ -156,6 +157,23 @@ public sealed class InstallationSetupPreflight
             "Apply no migration, package installation, service change, or firewall " +
             "change during this preflight."
         ];
+        List<string> postInstallChecks =
+        [
+            "Validate the canonical public URL, TLS trust chain, and certificate expiry.",
+            "Validate reverse-proxy forwarding and required browser security headers.",
+            "Reach the protected browser WebSocket authentication boundary at /ws/radio.",
+            "Validate the configured authentication callback or local-authentication readiness.",
+            "Confirm FLEX discovery and radio health without sending a radio command.",
+            "Confirm per-radio TX prerequisites without acquiring a TX lease or keying the radio.",
+            "Confirm encrypted-backup readiness and backup-age objective.",
+            "Confirm the active immutable release is ready for signed update.",
+            "Confirm at least one retained immutable release is available for rollback."
+        ];
+        if (profile.AcceptsRemoteStations)
+        {
+            postInstallChecks.Add(
+                "Reach the protected station WebSocket broker boundary through /aetherremote/broker and validate signed AetherRemote compatibility.");
+        }
 
         return new InstallationSetupPreflightReport(
             state.SchemaVersion,
@@ -175,7 +193,8 @@ public sealed class InstallationSetupPreflight
             proxyChanges.AsReadOnly(),
             firewall.AsReadOnly(),
             migrations,
-            warnings.AsReadOnly());
+            warnings.AsReadOnly(),
+            postInstallChecks.AsReadOnly());
     }
 
     private static void AddAetherRemoteUser(List<string> users)

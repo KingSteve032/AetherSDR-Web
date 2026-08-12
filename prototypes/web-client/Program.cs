@@ -5,6 +5,7 @@ using AetherSDR.Web.Auth;
 using AetherSDR.Web.Auth.Identity;
 using AetherSDR.Web.Radio;
 using AetherSDR.Web.Releases;
+using AetherSDR.Web.Operations;
 using AetherSDR.Web.Setup;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -36,15 +37,18 @@ ReleaseUpdateConsoleCommandLine releaseUpdateCommandLine =
 AetherIdentityDatabaseCommandLine identityDatabaseCommandLine =
     AetherIdentityDatabaseCommandParser.Parse(
         releaseUpdateCommandLine.ApplicationArguments);
+OperationsConsoleCommandLine operationsCommandLine =
+    OperationsConsoleCommandParser.Parse(
+        identityDatabaseCommandLine.ApplicationArguments);
 bool productionTxPreflightRequested = false;
 string? productionTxPreflightRadioId = null;
 List<string> applicationArguments = [];
 for (int index = 0;
-     index < identityDatabaseCommandLine.ApplicationArguments.Count;
+     index < operationsCommandLine.ApplicationArguments.Count;
      index++)
 {
     string argument =
-        identityDatabaseCommandLine.ApplicationArguments[index];
+        operationsCommandLine.ApplicationArguments[index];
     if (string.Equals(
             argument,
             ProductionTxPreflightSwitch,
@@ -64,13 +68,13 @@ for (int index = 0;
             StringComparison.Ordinal))
     {
         if (productionTxPreflightRadioId is not null ||
-            index + 1 >= releaseUpdateCommandLine.ApplicationArguments.Count)
+            index + 1 >= operationsCommandLine.ApplicationArguments.Count)
         {
             throw new InvalidOperationException(
                 "Production TX activation preflight requires one exact radio ID.");
         }
         productionTxPreflightRadioId =
-            releaseUpdateCommandLine.ApplicationArguments[++index];
+            operationsCommandLine.ApplicationArguments[++index];
         continue;
     }
     applicationArguments.Add(argument);
@@ -172,10 +176,25 @@ if (identityDatabaseCommandLine.Command !=
         OfflineReleaseInstallPreflightCommandKind.None ||
      releaseUpdateCommandLine.Command !=
         ReleaseUpdateConsoleCommandKind.None ||
+     operationsCommandLine.Command != OperationsConsoleCommandKind.None ||
      productionTxPreflightRequested))
 {
     throw new InvalidOperationException(
         "Identity database commands cannot run with another standalone command.");
+}
+if (operationsCommandLine.Command != OperationsConsoleCommandKind.None &&
+    (installationInstallerCommandLine.Command !=
+        InstallationInstallerConsoleCommandKind.None ||
+     installationSetupCommandLine.Command !=
+        InstallationSetupConsoleCommandKind.None ||
+     releaseInstallPreflightCommandLine.Command !=
+        OfflineReleaseInstallPreflightCommandKind.None ||
+     releaseUpdateCommandLine.Command != ReleaseUpdateConsoleCommandKind.None ||
+     identityDatabaseCommandLine.Command != AetherIdentityDatabaseCommandKind.None ||
+     productionTxPreflightRequested))
+{
+    throw new InvalidOperationException(
+        "Encrypted backup commands cannot run with another standalone command.");
 }
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(
@@ -186,6 +205,39 @@ builder.Logging.AddSimpleConsole(options =>
     options.SingleLine = true;
     options.TimestampFormat = "HH:mm:ss ";
 });
+
+if (operationsCommandLine.Command != OperationsConsoleCommandKind.None)
+{
+    InstallationPathSettings operationsPathSettings =
+        builder.Configuration
+            .GetSection(InstallationPathSettings.SectionName)
+            .Get<InstallationPathSettings>(options =>
+                options.ErrorOnUnknownConfiguration = true) ??
+        new InstallationPathSettings();
+    InstallationPathLayout operationsPathLayout =
+        builder.Environment.IsDevelopment()
+            ? InstallationPathLayout.Development
+            : OperatingSystem.IsLinux()
+                ? InstallationPathLayout.LinuxSystem
+                : throw new InvalidOperationException(
+                    "Standalone production backup/restore commands require Linux.");
+    InstallationPaths operationsPaths = InstallationPaths.Resolve(
+        builder.Environment.ContentRootPath,
+        operationsPathLayout,
+        operationsPathSettings);
+    if (!builder.Environment.IsDevelopment() &&
+        !string.Equals(Environment.UserName, "root", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException(
+            "Production backup/restore commands must run as root so all protected authority can be read or restored exactly.");
+    }
+    Environment.ExitCode = await OperationsConsole.ExecuteAsync(
+        operationsCommandLine,
+        operationsPaths,
+        TimeProvider.System,
+        Console.Out);
+    return;
+}
 
 if (identityDatabaseCommandLine.Command !=
     AetherIdentityDatabaseCommandKind.None)
@@ -708,6 +760,13 @@ AetherRemoteBootstrapSettings aetherRemoteBootstrapSettings =
         .Get<AetherRemoteBootstrapSettings>(options =>
             options.ErrorOnUnknownConfiguration = true) ??
     new AetherRemoteBootstrapSettings();
+OperationsSettings operationsSettings =
+    builder.Configuration
+        .GetSection(OperationsSettings.SectionName)
+        .Get<OperationsSettings>(options =>
+            options.ErrorOnUnknownConfiguration = true) ??
+    new OperationsSettings();
+OperationsReadinessService.ValidateSettings(operationsSettings);
 IndependentTxWatchdogSettings independentTxWatchdogSettings =
     builder.Configuration
         .GetSection(IndependentTxWatchdogSettings.SectionName)
@@ -908,7 +967,9 @@ builder.Services.AddSingleton(
     Options.Create(releaseActivationOperatorApprovalSettings));
 builder.Services.AddSingleton(Options.Create(releaseUpdateTransactionSettings));
 builder.Services.AddSingleton(Options.Create(aetherRemoteBootstrapSettings));
+builder.Services.AddSingleton(Options.Create(operationsSettings));
 builder.Services.AddSingleton(Options.Create(installationRuntimeSettings));
+builder.Services.AddSingleton(Options.Create(reverseProxySettings));
 builder.Services.AddSingleton(
     Options.Create(releaseActivationHostRestartSettings));
 builder.Services.AddSingleton(Options.Create(stationTxCommandTrustSettings));
@@ -981,6 +1042,7 @@ builder.Services.AddSingleton(
             statusPaths);
     });
 builder.Services.AddSingleton<ReleaseStatusConsole>();
+builder.Services.AddSingleton<InstallationBackupService>();
 builder.Services.AddSingleton<AetherRemoteBootstrapService>();
 builder.Services.AddSingleton<OfflineReleaseInstallPreflightPlanner>();
 builder.Services.AddSingleton<OfflineReleaseInstallPreflightConsole>();
@@ -1103,6 +1165,8 @@ builder.Services.AddSingleton(
 builder.Services.AddSingleton<RadioSessionRegistry>();
 builder.Services.AddSingleton<RadioPresenceRegistry>();
 builder.Services.AddSingleton<RadioAdministrationService>();
+builder.Services.AddSingleton<OperationsReadinessService>();
+builder.Services.AddSingleton<OperationsDiagnosticBundleService>();
 builder.Services.AddSingleton<IHostedService>(
     services => services.GetRequiredService<RadioSessionRegistry>());
 builder.Services.AddHostedService<FlexRadioDiscoveryService>();
@@ -1146,6 +1210,17 @@ builder.Services.AddRateLimiter(options =>
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+    options.AddPolicy(
+        "admin-operations",
+        context => RateLimitPartition.GetFixedWindowLimiter(
+            RequestRateLimitPartitionKey.ForAuthenticatedUserOrAddress(context),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 6,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
                 AutoReplenishment = true
@@ -4550,6 +4625,41 @@ app.MapGet(
             });
         })
     .RequireAuthorization(AetherPolicies.Admin);
+
+app.MapGet(
+        "/api/admin/diagnostics/operations",
+        async (
+            OperationsReadinessService operations,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await operations.GetSnapshotAsync(cancellationToken)))
+    .RequireAuthorization(AetherPolicies.Admin);
+
+app.MapPost(
+        "/api/admin/diagnostics/operations/run",
+        async (
+            OperationsReadinessService operations,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await operations.RunActiveChecksAsync(cancellationToken)))
+    .RequireAuthorization(AetherPolicies.Admin)
+    .RequireAetherAntiforgery()
+    .RequireRateLimiting("admin-operations");
+
+app.MapGet(
+        "/api/admin/diagnostics/bundle",
+        async (
+            OperationsDiagnosticBundleService diagnostics,
+            CancellationToken cancellationToken) =>
+        {
+            OperationsDiagnosticBundle bundle =
+                await diagnostics.CreateAsync(cancellationToken);
+            return Results.File(
+                bundle.Content,
+                "application/zip",
+                bundle.FileName,
+                enableRangeProcessing: false);
+        })
+    .RequireAuthorization(AetherPolicies.Admin)
+    .RequireRateLimiting("admin-operations");
 
 app.MapGet(
         "/healthz",
