@@ -2483,6 +2483,32 @@ bypass radio reservations so a bad policy cannot lock them out of the control
 plane. Policy changes affect new sessions. Existing operators remain connected
 until they leave or an administrator explicitly disconnects them.
 
+M8E adds a separate durable onboarding inventory at
+`/var/lib/aethersdr/radio-access/onboarding.json` by default. Each record binds
+the selector to its exact local or remote source, owning station, and physical
+source-radio ID, plus a stable operator label. A missing record or changed
+physical identity is always treated as unmanaged **Receive only** and does not
+inherit an earlier radio's policy.
+
+The protected Admin page exposes **Receive only**, **TX eligible**,
+**Temporarily disabled**, and **Prerequisites failed** states. A TX-eligible
+request requires a freshly reauthenticated canonical administrator and reruns
+the non-starting production activation preflight for the exact local source
+radio. The retained report is validation-only and human readable. Remote
+receive projections remain ineligible because their station-local watchdog and
+command boundary is not owned by the gateway.
+
+TX eligibility is policy, not TX authority: it does not open a radio, start a
+watchdog, acquire or renew a lease, create command authority, key PTT, or bypass
+the master switches, signing trust, exact allowlists, occupancy ownership, or
+radio-authoritative idle checks. Enabling applies only when a radio session is
+safely created or restarted. Disabling takes effect on existing sessions,
+removes their browser lease capability, releases only the exact AetherSDR lease,
+and feeds the existing ownership-safe lifecycle unkey path; SmartSDR, Maestro,
+external GUI clients, and hardware PTT are not targeted. Identity and transmit
+policy changes are written atomically with owner-only file permissions and
+recorded in the durable administrative audit.
+
 The same Admin page manages remote station device identity. Enrollment codes
 are random, single-use, and short-lived. The browser displays a code only in
 the Admin session that created it; the gateway does not put it in a URL.

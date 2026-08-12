@@ -1,14 +1,18 @@
 import {
   buildPolicyRequest,
+  buildTransmitPolicyRequest,
   formatAuditAction,
   formatAuditResult,
   formatClientCapacity,
   formatEnrollmentPurpose,
+  formatRadioOwnership,
   formatStationCredentialSource,
   normalizeAdminMode,
+  normalizeRadioLabel,
   normalizeStationId,
+  normalizeTransmitPolicyState,
   stationIdValid
-} from "./admin-controls.js?v=m6-station-enrollment-1";
+} from "./admin-controls.js?v=m8e-radio-onboarding-1";
 import {
   formatAge,
   formatBrowserAudio,
@@ -725,6 +729,7 @@ function buildRadioCard(radio, index) {
     `${radio.multiFlexEnabled ? "Multi-Flex enabled" : "Multi-Flex disabled"}`);
   const capacityHistory = buildCapacityHistory(radio);
 
+  const onboarding = buildOnboardingForm(radio);
   const policy = buildPolicyForm(radio, index);
   const connectedClients = buildConnectedClients(radio);
   const operators = createElement("div", "admin-operator-list");
@@ -751,6 +756,7 @@ function buildRadioCard(radio, index) {
     healthDetail,
     capacity,
     capacityHistory,
+    onboarding,
     policy,
     connectedClients,
     operators,
@@ -1183,6 +1189,121 @@ function diagnosticMetric(label, value, detail) {
     createElement("strong", "", value),
     createElement("small", "", detail));
   return metric;
+}
+
+function buildOnboardingForm(radio) {
+  const section = createElement("div", "admin-operator-list");
+  section.append(
+    createElement(
+      "div",
+      "admin-operator-title",
+      "RADIO ONBOARDING · RECEIVE-ONLY BY DEFAULT"),
+    createElement("small", "", formatRadioOwnership(radio)));
+
+  const identityForm = createElement("div", "admin-policy-form");
+  const labelField = document.createElement("label");
+  labelField.append(createElement("span", "", "STABLE LABEL"));
+  const label = document.createElement("input");
+  label.type = "text";
+  label.maxLength = 64;
+  label.required = true;
+  label.value = radio.onboarding?.label || radio.label || "";
+  label.setAttribute("aria-label", "Stable label for " + radio.label);
+  labelField.append(label);
+  const saveLabel = createElement(
+    "button",
+    "secondary-action",
+    "Save label");
+  saveLabel.type = "button";
+  saveLabel.addEventListener("click", async () => {
+    const normalized = normalizeRadioLabel(label.value);
+    if (!normalized) {
+      showNotice("A stable radio label is required.", true);
+      return;
+    }
+    saveLabel.disabled = true;
+    try {
+      await postJson(
+        "/api/admin/radios/" + encodeURIComponent(radio.radioId) +
+        "/identity",
+        { label: normalized });
+      showNotice(
+        normalized + " identity saved; transmit remains receive-only.");
+      await refreshInventory();
+    } catch (error) {
+      showNotice(error.message || "The radio identity was not saved.", true);
+    } finally {
+      saveLabel.disabled = false;
+    }
+  });
+  identityForm.append(labelField, saveLabel);
+
+  const transmitForm = createElement("div", "admin-policy-form");
+  const stateField = document.createElement("label");
+  stateField.append(createElement("span", "", "TRANSMIT POLICY"));
+  const transmitState = document.createElement("select");
+  transmitState.setAttribute(
+    "aria-label",
+    "Transmit policy for " + radio.label);
+  transmitState.append(
+    createOption("receive-only", "Receive only"),
+    createOption("tx-eligible", "TX eligible"),
+    createOption("temporarily-disabled", "Temporarily disabled"),
+    createOption("prerequisites-failed", "Prerequisites failed"));
+  transmitState.options[3].disabled = true;
+  transmitState.value = normalizeTransmitPolicyState(
+    radio.onboarding?.transmitPolicyState);
+  stateField.append(transmitState);
+
+  const saveTransmit = createElement(
+    "button",
+    "danger-action",
+    "Apply with reauthentication");
+  saveTransmit.type = "button";
+  saveTransmit.disabled = !radio.onboarding?.onboarded;
+  saveTransmit.addEventListener("click", async () => {
+    const stateName = normalizeTransmitPolicyState(transmitState.value);
+    const confirmed = window.confirm(
+      "Change " + radio.label + " transmit policy to " + stateName + "? " +
+      "Fresh administrator reauthentication is required. Enabling only " +
+      "records eligibility after exact-radio validation and does not key TX.");
+    if (!confirmed) {
+      return;
+    }
+    saveTransmit.disabled = true;
+    try {
+      await postJson(
+        "/api/admin/radios/" + encodeURIComponent(radio.radioId) +
+        "/transmit-policy",
+        buildTransmitPolicyRequest(stateName));
+      showNotice(
+        radio.label + " transmit policy changed to " + stateName + ".");
+      await refreshInventory();
+    } catch (error) {
+      showNotice(
+        error.message ||
+        "The transmit policy transition was rejected.",
+        true);
+      await refreshInventory();
+    } finally {
+      saveTransmit.disabled = false;
+    }
+  });
+  transmitForm.append(stateField, saveTransmit);
+
+  const preflight = radio.onboarding?.transmitPreflight;
+  const detail = preflight
+    ? "Last exact-radio preflight: " + preflight.reason + " · " +
+      (preflight.ready ? "ready" : "not ready") + " · " +
+      formatAge(preflight.evaluatedAt)
+    : radio.onboarding?.onboarded
+      ? "No TX eligibility preflight is retained for this receive-only policy."
+      : "Save a stable label before changing transmit policy.";
+  section.append(
+    identityForm,
+    transmitForm,
+    createElement("small", "", detail));
+  return section;
 }
 
 function buildPolicyForm(radio, index) {
