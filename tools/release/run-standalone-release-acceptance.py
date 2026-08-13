@@ -224,6 +224,32 @@ def assert_authority(expected: dict[str, str], stage: str) -> None:
             die(f"durable authority '{name}' changed during {stage}")
 
 
+def decode_environment_file_value(value: str) -> str:
+    if not value.startswith('"'):
+        if '"' in value or "\\" in value or any(ord(ch) < 0x20 for ch in value):
+            die("installed environment file contains an unsafe unquoted value")
+        return value
+    if len(value) < 2 or not value.endswith('"'):
+        die("installed environment file contains an unterminated quoted value")
+    decoded: list[str] = []
+    index = 1
+    end = len(value) - 1
+    while index < end:
+        character = value[index]
+        if ord(character) < 0x20:
+            die("installed environment file contains a control character")
+        if character != "\\":
+            decoded.append(character)
+            index += 1
+            continue
+        index += 1
+        if index >= end or value[index] not in {'"', "\\"}:
+            die("installed environment file contains an unsupported escape")
+        decoded.append(value[index])
+        index += 1
+    return "".join(decoded)
+
+
 def load_environment_file(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     for raw in path.read_text(encoding="utf-8").splitlines():
@@ -233,7 +259,9 @@ def load_environment_file(path: Path) -> dict[str, str]:
         if "=" not in line:
             die("installed environment file contains a malformed line")
         key, value = line.split("=", 1)
-        values[key] = value
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            die("installed environment file contains an invalid key")
+        values[key] = decode_environment_file_value(value)
     return values
 
 

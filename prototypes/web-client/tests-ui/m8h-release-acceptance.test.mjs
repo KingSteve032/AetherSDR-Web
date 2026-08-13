@@ -15,6 +15,7 @@ const assets = read("tools/release/build-standalone-acceptance-assets.sh");
 const uninstall = read("prototypes/web-client/deploy/uninstall-aethersdr.sh");
 const bootstrap = read("prototypes/web-client/Radio/AetherRemoteBootstrap.cs");
 const installerConsole = read("prototypes/web-client/Setup/InstallationInstallerConsole.cs");
+const stationInstaller = read("AetherRemote/deploy/install-from-gateway.sh");
 
 test("M8H native acceptance runs packaged artifacts on both supported Ubuntu architectures", () => {
   assert.match(workflow, /runner: ubuntu-24\.04\n/);
@@ -65,6 +66,8 @@ test("packaged installer harness follows the exact installer console JSON contra
   assert.doesNotMatch(standalone, /plan_payload\["planId"\]|result\.get\("outcome", ""\)/);
   assert.match(installerConsole, /private static readonly JsonSerializerOptions JsonOptions = new\(\)/);
   assert.doesNotMatch(installerConsole, /PropertyNamingPolicy\s*=/);
+  assert.match(standalone, /def decode_environment_file_value\(/);
+  assert.match(standalone, /values\[key\] = decode_environment_file_value\(value\)/);
 });
 
 test("M8H deliberate failures corrupt only packaged startup configuration", () => {
@@ -85,6 +88,8 @@ test("supported uninstall preserves durable authority and immutable releases", (
 test("AetherRemote bootstrap consumes the canonical verified persistent bundle manifest", () => {
   assert.match(bootstrap, /LocalOfflineReleaseBundleVerificationService\.ManifestFileName/);
   assert.doesNotMatch(bootstrap, /\$"release-manifest-\{architectureToken\}\.json"/);
+  assert.match(stationInstaller, /packages\/\[A-Za-z0-9\._-\]\{1,160\}/);
+  assert.doesNotMatch(stationInstaller, /or "\/" in name/);
 });
 
 test("remote acceptance uses guided enrollment and synthetic receive-only discovery", () => {

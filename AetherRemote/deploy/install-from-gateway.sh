@@ -415,7 +415,7 @@ def validate_package(role):
     name = package.get("fileName", "")
     digest = str(package.get("sha256", "")).lower()
     length = package.get("length")
-    if not re.fullmatch(r"[A-Za-z0-9._-]{1,160}", name) or "/" in name or "\\" in name:
+    if not re.fullmatch(r"packages/[A-Za-z0-9._-]{1,160}", name) or "\\" in name:
         die("unsafe package file name")
     if not re.fullmatch(r"[0-9a-f]{64}", digest):
         die("invalid package digest")
