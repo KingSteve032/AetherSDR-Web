@@ -202,6 +202,69 @@ public sealed class VerifiedReleaseActivationConfigurationBackupServiceTests
     }
 
     [Fact]
+    public async Task TransientReleaseUpdaterRuntimeSubtreeIsExcludedFromBackup()
+    {
+        using Fixture fixture = new();
+        string runtime = Path.Combine(
+            fixture.Paths.StateDirectory,
+            ReleaseUpdateSupervisor.DirectoryName);
+        Directory.CreateDirectory(runtime);
+        File.SetUnixFileMode(
+            runtime,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite |
+            UnixFileMode.GroupExecute);
+        string socketPlaceholder = Path.Combine(
+            runtime,
+            ReleaseUpdateSupervisor.SocketFileName);
+        File.WriteAllText(socketPlaceholder, "transient");
+        File.SetUnixFileMode(
+            socketPlaceholder,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite);
+
+        VerifiedReleaseActivationConfigurationBackupReport report =
+            await fixture.CreateService().ExecuteAsync(fixture.BackupPlanReport);
+
+        Assert.True(report.Succeeded);
+        Assert.True(report.ConfigurationBackupReady);
+        Assert.False(
+            Directory.Exists(
+                Path.Combine(
+                    fixture.BackupPlan.PublishedPath,
+                    "state",
+                    ReleaseUpdateSupervisor.DirectoryName)));
+    }
+
+    [Fact]
+    public async Task TransientReleaseUpdaterRuntimeEntryMustBeCanonicalDirectory()
+    {
+        using Fixture fixture = new();
+        string outside = Path.Combine(fixture.Root, "runtime-outside");
+        Directory.CreateDirectory(outside);
+        Directory.CreateSymbolicLink(
+            Path.Combine(
+                fixture.Paths.StateDirectory,
+                ReleaseUpdateSupervisor.DirectoryName),
+            outside);
+
+        VerifiedReleaseActivationConfigurationBackupReport report =
+            await fixture.CreateService().ExecuteAsync(fixture.BackupPlanReport);
+
+        Assert.False(report.Succeeded);
+        Assert.Equal(
+            VerifiedReleaseActivationConfigurationBackupFailureCode
+                .UnsafeSourceLayout,
+            report.FailureCode);
+        Assert.False(report.ConfigurationBackupReady);
+    }
+
+    [Fact]
     public async Task ExistingPublishedBackupIsNeverOverwritten()
     {
         using Fixture fixture = new();

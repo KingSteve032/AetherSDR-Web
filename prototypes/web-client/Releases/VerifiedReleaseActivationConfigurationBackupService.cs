@@ -1329,6 +1329,13 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
                     .ToArray();
                 foreach (FileSystemInfo entry in entries.Reverse())
                 {
+                    if (IsExcludedTransientStateRuntimeEntry(
+                            source.Kind,
+                            relativePath,
+                            entry))
+                    {
+                        continue;
+                    }
                     entry.Refresh();
                     if ((entry.Attributes & FileAttributes.ReparsePoint) != 0 ||
                         entry.LinkTarget is not null)
@@ -1405,6 +1412,37 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
             Array.AsReadOnly(frozenDirectories),
             Array.AsReadOnly(frozenFiles),
             sourceBytes);
+    }
+
+    [SupportedOSPlatform("linux")]
+    private static bool IsExcludedTransientStateRuntimeEntry(
+        VerifiedReleaseActivationConfigurationBackupSourceKind kind,
+        string relativePath,
+        FileSystemInfo entry)
+    {
+        if (kind !=
+                VerifiedReleaseActivationConfigurationBackupSourceKind.State ||
+            !string.Equals(relativePath, ".", StringComparison.Ordinal) ||
+            !string.Equals(
+                entry.Name,
+                ReleaseUpdateSupervisor.DirectoryName,
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        entry.Refresh();
+        if (entry is not DirectoryInfo ||
+            (entry.Attributes & FileAttributes.ReparsePoint) != 0 ||
+            entry.LinkTarget is not null ||
+            !IsCanonicalAbsolutePath(entry.FullName))
+        {
+            throw Failure(
+                VerifiedReleaseActivationConfigurationBackupFailureCode
+                    .UnsafeSourceLayout,
+                "The transient release-updater runtime path is not a canonical directory.");
+        }
+        return true;
     }
 
     [SupportedOSPlatform("linux")]

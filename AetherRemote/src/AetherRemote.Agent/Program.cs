@@ -64,13 +64,12 @@ static void ValidateSettings(AgentSettings settings)
         !string.IsNullOrEmpty(brokerUri.UserInfo) ||
         !string.IsNullOrEmpty(brokerUri.Query) ||
         !string.IsNullOrEmpty(brokerUri.Fragment) ||
-        !string.Equals(
-            brokerUri.AbsolutePath.TrimEnd('/'),
-            "/station/v1",
-            StringComparison.Ordinal))
+        !AgentBrokerEndpointValidator.IsSupportedPath(
+            brokerUri.AbsolutePath))
     {
         throw new InvalidOperationException(
-            "Agent:BrokerUrl must use the /station/v1 wss:// endpoint in production.");
+            "Agent:BrokerUrl must use either the direct /station/v1 endpoint " +
+            "or the canonical /aetherremote/broker/station/v1 gateway endpoint.");
     }
     if (string.IsNullOrWhiteSpace(settings.CredentialFile))
     {

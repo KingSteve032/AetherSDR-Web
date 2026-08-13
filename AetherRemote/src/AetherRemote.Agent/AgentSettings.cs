@@ -31,6 +31,32 @@ public sealed class AgentSettings
     public ConfiguredRadioSettings[] ConfiguredRadios { get; set; } = [];
 }
 
+public static class AgentBrokerEndpointValidator
+{
+    public const string DirectStationPath = "/station/v1";
+    public const string GatewayPrefixedStationPath =
+        "/aetherremote/broker/station/v1";
+
+    public static bool IsSupportedPath(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return false;
+        }
+        string normalized = path.EndsWith("/", StringComparison.Ordinal)
+            ? path[..^1]
+            : path;
+        return string.Equals(
+                normalized,
+                DirectStationPath,
+                StringComparison.Ordinal) ||
+            string.Equals(
+                normalized,
+                GatewayPrefixedStationPath,
+                StringComparison.Ordinal);
+    }
+}
+
 public static class AgentCapabilityGrantValidator
 {
     public static void Validate(IReadOnlyList<string>? capabilities)
