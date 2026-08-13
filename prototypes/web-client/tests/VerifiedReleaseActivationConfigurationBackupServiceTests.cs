@@ -157,7 +157,7 @@ public sealed class VerifiedReleaseActivationConfigurationBackupServiceTests
             File.GetUnixFileMode(plan.ManifestPath));
 
         string manifestJson = File.ReadAllText(plan.ManifestPath);
-        Assert.Contains("\"schemaVersion\": 2", manifestJson);
+        Assert.Contains("\"schemaVersion\": 3", manifestJson);
         Assert.Contains("\"sourceDirectoryCount\": 3", manifestJson);
         Assert.Contains("\"fileCount\": 3", manifestJson);
         Assert.Contains("\"unixMode\":", manifestJson);

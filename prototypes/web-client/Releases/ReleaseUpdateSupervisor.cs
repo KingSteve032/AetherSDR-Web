@@ -43,8 +43,8 @@ internal sealed record ReleaseUpdateSupervisorResponse(
     ReleaseUpdateTransactionReport Report);
 
 /// <summary>
-/// Dedicated local updater process. It listens only on an owner-private Unix
-/// socket below installation state and executes one transaction at a time. The
+/// Dedicated local updater process. It listens only on a service-group-private
+/// Unix socket below installation state and executes one transaction at a time. The
 /// gateway and CLI are clients, so stopping or restarting the gateway cannot
 /// destroy the coordinator's exact in-memory authority tokens. No TCP listener,
 /// HTTP endpoint, browser credential, arbitrary command, radio command, or TX
@@ -99,7 +99,10 @@ public sealed class ReleaseUpdateSupervisor
             m_root,
             UnixFileMode.UserRead |
             UnixFileMode.UserWrite |
-            UnixFileMode.UserExecute);
+            UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite |
+            UnixFileMode.GroupExecute);
         RemoveStaleSocket();
 
         using Socket listener = new(
@@ -109,14 +112,23 @@ public sealed class ReleaseUpdateSupervisor
         listener.Bind(new UnixDomainSocketEndPoint(m_socketPath));
         File.SetUnixFileMode(
             m_socketPath,
-            UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite);
         listener.Listen(backlog: 8);
         try
         {
             while (!cancellationToken.IsCancellationRequested)
             {
                 Socket connection = await listener.AcceptAsync(cancellationToken);
-                _ = HandleAndDisposeAsync(connection, cancellationToken);
+                bool reload = await HandleAndDisposeAsync(
+                    connection,
+                    cancellationToken);
+                if (reload)
+                {
+                    return;
+                }
             }
         }
         finally
@@ -133,7 +145,7 @@ public sealed class ReleaseUpdateSupervisor
     }
 
     [SupportedOSPlatform("linux")]
-    private async Task HandleAndDisposeAsync(
+    private async Task<bool> HandleAndDisposeAsync(
         Socket connection,
         CancellationToken cancellationToken)
     {
@@ -154,6 +166,7 @@ public sealed class ReleaseUpdateSupervisor
                         ReleaseUpdateSupervisorProtocol.Version,
                         report),
                     cancellationToken);
+                return RequiresProcessReload(request.Operation, report);
             }
             catch (Exception exception)
                 when (exception is JsonException or IOException or
@@ -178,8 +191,27 @@ public sealed class ReleaseUpdateSupervisor
                 catch
                 {
                 }
+                return false;
             }
         }
+    }
+
+    internal static bool RequiresProcessReload(
+        string operation,
+        ReleaseUpdateTransactionReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        if (report.RestartPending || report.ReconciliationRequired)
+        {
+            return false;
+        }
+        return operation switch
+        {
+            ReleaseUpdateSupervisorProtocol.Activate =>
+                report.ActivationCompleted || report.RollbackPerformed,
+            ReleaseUpdateSupervisorProtocol.Rollback => report.RollbackPerformed,
+            _ => false
+        };
     }
 
     [SupportedOSPlatform("linux")]
@@ -328,7 +360,7 @@ public sealed class ReleaseUpdateSupervisor
 
 /// <summary>
 /// Local client for the dedicated release updater. It can connect only to the
-/// derived owner-private Unix socket and exposes no network address or arbitrary
+/// derived service-group-private Unix socket and exposes no network address or arbitrary
 /// command field.
 /// </summary>
 public sealed class ReleaseUpdateSupervisorClient

@@ -45,9 +45,11 @@ local-config/
 /scripts/migrate-clean-source.sh
 /scripts/finalize-migration.sh
 
-# Node/browser test output
+# Node/browser/Python test output
 **/node_modules/
 **/coverage/
+**/__pycache__/
+**/*.pyc
 
 # Editors and operating systems
 .DS_Store

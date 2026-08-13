@@ -357,7 +357,7 @@ public sealed class AetherRemoteBootstrapService
 
         string manifestPath = Path.Combine(
             bundleDirectory,
-            $"release-manifest-{architectureToken}.json");
+            LocalOfflineReleaseBundleVerificationService.ManifestFileName);
         if (!File.Exists(manifestPath))
         {
             return null;

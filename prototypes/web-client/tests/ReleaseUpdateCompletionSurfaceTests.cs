@@ -205,6 +205,54 @@ public sealed class ReleaseUpdateCompletionSurfaceTests
     }
 
     [Fact]
+    public void SupervisorReloadsOnlyAfterTerminalPointerOutcome()
+    {
+        ReleaseUpdateTransactionReport activated =
+            ReleaseUpdateTransactionReport.Create(
+                null,
+                succeeded: true,
+                ReleaseUpdateTransactionFailureCode.None,
+                "Activated.",
+                phase: ReleaseUpdateTransactionPhase.Completed,
+                pointerChanged: true);
+        ReleaseUpdateTransactionReport rolledBack =
+            ReleaseUpdateTransactionReport.Create(
+                null,
+                succeeded: false,
+                ReleaseUpdateTransactionFailureCode.HealthVerificationFailed,
+                "Rolled back.",
+                phase: ReleaseUpdateTransactionPhase.RolledBack,
+                pointerChanged: true,
+                rollbackPerformed: true);
+        ReleaseUpdateTransactionReport reconciliation =
+            ReleaseUpdateTransactionReport.Create(
+                null,
+                succeeded: false,
+                ReleaseUpdateTransactionFailureCode.ReconciliationRequired,
+                "Reconciliation required.",
+                phase: ReleaseUpdateTransactionPhase.ReconciliationRequired,
+                pointerChanged: true,
+                rollbackPerformed: true,
+                reconciliationRequired: true);
+
+        Assert.True(ReleaseUpdateSupervisor.RequiresProcessReload(
+            ReleaseUpdateSupervisorProtocol.Activate,
+            activated));
+        Assert.True(ReleaseUpdateSupervisor.RequiresProcessReload(
+            ReleaseUpdateSupervisorProtocol.Activate,
+            rolledBack));
+        Assert.True(ReleaseUpdateSupervisor.RequiresProcessReload(
+            ReleaseUpdateSupervisorProtocol.Rollback,
+            rolledBack));
+        Assert.False(ReleaseUpdateSupervisor.RequiresProcessReload(
+            ReleaseUpdateSupervisorProtocol.Activate,
+            reconciliation));
+        Assert.False(ReleaseUpdateSupervisor.RequiresProcessReload(
+            ReleaseUpdateSupervisorProtocol.Status,
+            activated));
+    }
+
+    [Fact]
     public async Task SupervisorProtocolRejectsOversizedLengthBeforeAllocation()
     {
         using MemoryStream stream = new();

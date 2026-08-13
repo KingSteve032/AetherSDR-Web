@@ -213,6 +213,8 @@ internal sealed record VerifiedReleaseActivationConfigurationBackupManifestEntry
     string Path,
     long? Length,
     int UnixMode,
+    uint UserId,
+    uint GroupId,
     string Sha256);
 
 internal sealed record VerifiedReleaseActivationConfigurationBackupManifest(
@@ -238,7 +240,7 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
     internal const int MaximumManifestBytes = 4 * 1024 * 1024;
 
     private const int BufferSize = 128 * 1024;
-    internal const int ManifestSchemaVersion = 2;
+    internal const int ManifestSchemaVersion = 3;
     private const UnixFileMode ForbiddenSharedWritableUnixModes =
         UnixFileMode.GroupWrite | UnixFileMode.OtherWrite;
     private const UnixFileMode ForbiddenSecretSharedUnixModes =
@@ -1097,20 +1099,32 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
             return false;
         }
 
-        VerifiedReleaseActivationConfigurationBackupSourceKind[] expectedKinds =
-        [
-            VerifiedReleaseActivationConfigurationBackupSourceKind.Configuration,
-            VerifiedReleaseActivationConfigurationBackupSourceKind.State,
-            VerifiedReleaseActivationConfigurationBackupSourceKind.Secret
-        ];
-        string[] expectedNames = ["configuration", "state", "secrets"];
+        if (plan.Sources.Count is < 2 or > 3 ||
+            plan.Sources[0].Kind !=
+                VerifiedReleaseActivationConfigurationBackupSourceKind.Configuration ||
+            plan.Sources[1].Kind !=
+                VerifiedReleaseActivationConfigurationBackupSourceKind.State ||
+            (plan.Sources.Count == 3 &&
+             plan.Sources[2].Kind !=
+                VerifiedReleaseActivationConfigurationBackupSourceKind.Secret))
+        {
+            return false;
+        }
         HashSet<string> sourcePaths = new(PathComparer);
         HashSet<string> stagedPaths = new(PathComparer);
-        for (int index = 0; index < expectedKinds.Length; index++)
+        for (int index = 0; index < plan.Sources.Count; index++)
         {
             VerifiedReleaseActivationConfigurationBackupSourcePlan source =
                 plan.Sources[index];
-            if (source.Kind != expectedKinds[index] ||
+            string expectedName = source.Kind switch
+            {
+                VerifiedReleaseActivationConfigurationBackupSourceKind.Configuration =>
+                    "configuration",
+                VerifiedReleaseActivationConfigurationBackupSourceKind.State => "state",
+                VerifiedReleaseActivationConfigurationBackupSourceKind.Secret => "secrets",
+                _ => string.Empty
+            };
+            if (string.IsNullOrEmpty(expectedName) ||
                 !IsCanonicalAbsolutePath(source.SourcePath) ||
                 !IsCanonicalAbsolutePath(source.StagedPath) ||
                 !sourcePaths.Add(source.SourcePath) ||
@@ -1120,7 +1134,7 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
                     plan.StagingPath) ||
                 !string.Equals(
                     Path.GetFileName(source.StagedPath),
-                    expectedNames[index],
+                    expectedName,
                     StringComparison.Ordinal) ||
                 PathsOverlap(source.SourcePath, plan.BackupRootPath))
             {
@@ -1306,7 +1320,8 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
                         directory.FullName,
                         stagedPath,
                         directory.LastWriteTimeUtc,
-                        File.GetUnixFileMode(directory.FullName)));
+                        File.GetUnixFileMode(directory.FullName),
+                        LinuxFileOwnership.Read(directory.FullName)));
 
                 FileSystemInfo[] entries = directory
                     .GetFileSystemInfos()
@@ -1372,6 +1387,7 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
                             file.Length,
                             file.LastWriteTimeUtc,
                             File.GetUnixFileMode(file.FullName),
+                            LinuxFileOwnership.Read(file.FullName),
                             sha256));
                 }
             }
@@ -1633,7 +1649,8 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
                     StringComparison.Ordinal) ||
                 !PathEquals(left.SourcePath, right.SourcePath) ||
                 left.LastWriteTimeUtc != right.LastWriteTimeUtc ||
-                left.Mode != right.Mode)
+                left.Mode != right.Mode ||
+                left.Ownership != right.Ownership)
             {
                 return false;
             }
@@ -1655,6 +1672,7 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
                 left.Length != right.Length ||
                 left.LastWriteTimeUtc != right.LastWriteTimeUtc ||
                 left.Mode != right.Mode ||
+                left.Ownership != right.Ownership ||
                 right.Sha256.Length != 32 ||
                 !copiedByPath.TryGetValue(
                     (right.Kind, right.RelativePath),
@@ -1682,6 +1700,8 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
                 directory.RelativePath,
                 Length: null,
                 UnixMode: (int)directory.Mode,
+                directory.Ownership.UserId,
+                directory.Ownership.GroupId,
                 Sha256: string.Empty)));
         entries.AddRange(snapshot.Files.Select(file =>
             new VerifiedReleaseActivationConfigurationBackupManifestEntry(
@@ -1690,6 +1710,8 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
                 file.RelativePath,
                 file.Length,
                 (int)file.Mode,
+                file.Ownership.UserId,
+                file.Ownership.GroupId,
                 Convert.ToHexString(file.Sha256).ToLowerInvariant())));
         VerifiedReleaseActivationConfigurationBackupManifest manifest = new(
             ManifestSchemaVersion,
@@ -1908,6 +1930,8 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
                         "backup-manifest.json",
                         manifest.Bytes.Length,
                         UnixMode: 0,
+                        UserId: 0,
+                        GroupId: 0,
                         Convert.ToHexString(manifest.Sha256).ToLowerInvariant())
             };
         foreach (VerifiedReleaseActivationConfigurationBackupManifestEntry entry in
@@ -2261,7 +2285,8 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
         string SourcePath,
         string StagedPath,
         DateTime LastWriteTimeUtc,
-        UnixFileMode Mode);
+        UnixFileMode Mode,
+        LinuxFileOwnership Ownership);
 
     private sealed record SourceFile(
         VerifiedReleaseActivationConfigurationBackupSourceKind Kind,
@@ -2271,6 +2296,7 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
         long Length,
         DateTime LastWriteTimeUtc,
         UnixFileMode Mode,
+        LinuxFileOwnership Ownership,
         byte[] Sha256);
 
     private sealed record CopiedFile(

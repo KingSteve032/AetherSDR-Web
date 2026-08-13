@@ -2148,6 +2148,61 @@ NuGet reports an advisory. Operator procedures and the support matrix live in
 `docs/OPERATIONS.md` and `docs/SUPPORT-MATRIX.md`; versioned M8G notes live under
 `docs/releases/`.
 
+## M8H packaged standalone acceptance
+
+M8H adds a separate packaged-release workflow rather than treating source-level
+unit tests as release evidence. The workflow constructs acceptance-only signed
+previous/target/failure releases and runs the packaged gateway on fresh native
+Ubuntu 24.04 x64 and arm64 hosts. Setup, protected local administrator creation,
+receive-only installation, signed update, explicit rollback, automatic rollback
+from a post-switch startup failure, encrypted backup/restore, and supported
+uninstall are all driven through existing product boundaries. Durable identity,
+Data Protection, setup, and installer-configuration authority is hashed across the
+transaction so preservation is evidence rather than an inferred property.
+
+The packaged rehearsal exposed and closes several cross-milestone composition
+mismatches. Standalone release activation controls the installed **system** units,
+not a user service manager. The fixed-purpose updater runs as root with the
+`aethersdr` group, exposes only a group-private AF_UNIX control socket, carries no
+ambient capability, bounds itself to the three Linux capabilities needed to
+read/restore authenticated ownership and mode metadata, and denies INET traffic
+except localhost for the fixed post-switch health probe. `/etc` and `/var/lib` are
+writable mounts only because crash-safe rollback must perform same-parent atomic
+renames of completed-setup-derived `/etc/aethersdr` and `/var/lib/aethersdr` roots;
+the transaction plan accepts no arbitrary path or command field. After a terminal
+activation or rollback response has been durably returned, the supervisor exits;
+`Restart=always` reloads the fixed-purpose process through the now-authoritative
+`current` path. Reconciliation/host-restart states deliberately do not self-reload.
+Activation-backup manifest schema 3 records same-host UID/GID ownership; rollback
+reapplies and verifies it.
+The supported Linux layout treats nested `/var/lib/aethersdr/secrets` as part of
+its state physical root instead of attempting overlapping atomic root swaps, while
+a separately configured secret root remains a third source. AetherRemote bootstrap
+reads the same canonical `release-manifest.json` persistent-bundle layout used by
+the signed release downloader.
+
+The packaged gateway also carries one conservative uninstall tool. It requires an
+offline maintenance window, validates installed systemd/Caddy/internal-CA
+integration against packaged bytes or installer ownership markers before deleting
+anything, removes only proven integration/current-pointer state, and preserves
+configuration, identity/MFA, Data Protection, policies, station credentials,
+trust/signing state, audit history, encrypted backups, immutable releases, service
+users, and firewall policy.
+
+A separate x64 clean-station job installs a RemoteStationGateway and a clean Ubuntu
+systemd station container, obtains the Admin-generated bootstrap command and
+one-time enrollment code, supplies a synthetic discovery advertisement only to the
+station's local UDP discovery boundary, verifies Admin inventory, performs an
+exact signed station update, and proves local station rollback when a later signed
+station-engine package fails health. It never opens a radio control session or
+adds a command/TX surface.
+
+`docs/STANDALONE-RELEASE-ACCEPTANCE.md` defines the evidence split. Native packaged
+CI is safe to automate; external Caddy/Nginx, Entra/OIDC, real device/VPN recovery,
+and physical multi-client/radio soak remain operator-owned against the exact
+production-signed candidate digests. Unrun operator evidence is pending, never an
+implicit pass.
+
 ## Browser rendering
 
 The prototype uses one Canvas 2D spectrum path with a compact binary frame and

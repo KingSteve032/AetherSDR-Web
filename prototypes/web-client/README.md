@@ -2630,6 +2630,48 @@ direct or transitive NuGet packages. Supported server/browser/device/proxy/topol
 targets are documented in `docs/SUPPORT-MATRIX.md`, and versioned M8G release
 notes are under `docs/releases/`.
 
+### Packaged standalone release acceptance
+
+M8H adds `.github/workflows/standalone-release-acceptance.yml` so release acceptance
+runs the packaged product rather than a source checkout. Acceptance-only P-256
+signing authority is generated inside the package job, never uploaded, and signs
+four disposable identities: previous, target, gateway-failure, and
+station-engine-failure. Fresh native Ubuntu Server 24.04 x64 and arm64 jobs use
+the packaged gateway to complete protected setup, receive-only installation,
+signed update, manual rollback, automatic rollback after a deliberately broken
+post-switch startup, encrypted backup/restore, and conservative uninstall.
+
+The standalone updater is the root fixed-purpose process required by that
+installed transaction. Its AF_UNIX control socket is group-private to
+`aethersdr`; it controls system units, not a user service manager, and activation
+backup schema 3 authenticates same-host UID/GID ownership so rollback restores
+mixed `root`/`aethersdr`/`aetherremote` trees exactly. After a terminal activation
+or rollback response, it exits only for an authoritative non-reconciliation
+pointer state and systemd `Restart=always` reloads it from `current`. The normal Linux nested
+secret path is covered by the state physical root rather than an overlapping
+atomic source. Replacement-host restore still uses M8G logical-owner mapping.
+
+The x64 packaged acceptance also provisions a clean Ubuntu systemd station
+container through the exact Admin-generated bootstrap command and one-time code.
+A local synthetic discovery advertisement exercises only station inventory. The
+station must appear in Admin, update to the exact gateway-signed target, reconnect,
+and roll itself back when a later signed station-engine target fails local health.
+The harness never opens `/ws/radio`, sends a FLEX command, acquires a TX lease, or
+keys/unkeys.
+
+The installed gateway carries `tools/uninstall-aethersdr.sh`. Run it only after
+entering an offline maintenance window. It verifies packaged systemd units and any
+installer-owned Caddy/internal-CA markers before removing integration/current
+pointer state. It deliberately retains durable configuration, identity/MFA, Data
+Protection keys, policies, station credentials, trust/signing state, audit,
+encrypted backups, immutable releases, service users, and firewall policy.
+
+The native CI evidence is not a substitute for physical acceptance. External
+Caddy/Nginx, Entra/OIDC, real browser/device/VPN recovery, and packaged radio
+hardware soak remain operator-owned against the exact production-signed candidate
+asset digests. See `docs/STANDALONE-RELEASE-ACCEPTANCE.md`; an unrun checklist row
+is pending evidence, not a pass.
+
 ## Network placement
 
 Deploy the gateway beside AetherD on the shack LAN. Terminate HTTPS at the

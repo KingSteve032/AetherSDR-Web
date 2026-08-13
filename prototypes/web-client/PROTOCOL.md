@@ -925,6 +925,54 @@ The Setup Center does not import these normal-runtime services. Its existing
 non-mutating preflight response gains `postInstallOperationalChecks`, a text-only
 list of the fixed checks an administrator must perform after installation.
 
+## M8H packaged-release acceptance contracts
+
+M8H does not add a radio wire protocol. It tightens the installed release and
+local updater contracts exercised around the existing signed manifest protocols.
+
+Activation configuration-backup manifest schema `3` extends every authenticated
+file/directory entry with the original Linux UID and GID. This metadata is valid
+only for same-host activation rollback. The privileged fixed-purpose updater
+reapplies and re-reads that ownership before a restored source is admitted.
+Replacement-host backup/restore remains M8G schema 1 and deliberately maps logical
+service owners instead of copying numeric IDs.
+
+The physical activation-backup source count is two or three. Configuration and
+state are always separate sources. When the configured secret directory is a
+validated descendant of the state directory, its bytes and ownership are covered
+by the state source and no overlapping secret root is created. A secret directory
+outside state remains a third source. Migration and rollback plans must preserve
+that exact source inventory.
+
+The local release supervisor control endpoint remains AF_UNIX-only. On the
+standalone host the updater service runs as root with primary group `aethersdr`;
+its directory is mode `0770` and socket mode `0660`. The gateway/updater request
+schema remains the existing fixed release-transaction schema and gains no path,
+URL, executable, shell, service-name, radio, or TX field. The privileged process
+controls installed system units rather than a user service manager. After it has
+written a terminal activation/rollback response, it exits only when the resulting
+pointer state is authoritative and not reconciliation/restart-pending; systemd
+`Restart=always` then reloads the updater from the current immutable release.
+
+Persistent verified release bundles use one canonical on-disk shape for both
+release installation and AetherRemote publication:
+
+```text
+<release-download-root>/<releaseIdentity>-<architecture>/
+  release-manifest.json
+  packages/
+    <four signed package archives>
+```
+
+AetherRemote bootstrap therefore resolves `release-manifest.json`; it never
+constructs a second architecture-suffixed manifest name inside that directory.
+
+The M8H acceptance-only release identities/signatures are CI fixtures and are not
+production release authority. Their deliberate failure variants modify only the
+packaged `appsettings.json` of the component whose post-switch health must fail.
+No acceptance message or artifact grants a radio command, TX lease, watchdog arm,
+key/unkey operation, arbitrary remote command, or shell transport.
+
 ## Spectrum binary frame
 
 All integer fields use little-endian byte order.

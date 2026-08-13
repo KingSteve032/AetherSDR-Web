@@ -425,8 +425,6 @@ internal sealed class LinuxVerifiedReleaseActivationServiceControlRuntime :
                 "The planned service-control action is invalid.");
         }
 
-        bool userUnit = action.ServiceRole ==
-            VerifiedReleaseActivationServiceRole.GatewayWeb;
         ProcessStartInfo startInfo = new()
         {
             FileName = m_systemctlPath,
@@ -435,16 +433,12 @@ internal sealed class LinuxVerifiedReleaseActivationServiceControlRuntime :
             RedirectStandardError = true,
             CreateNoWindow = true
         };
-        if (userUnit)
-        {
-            startInfo.ArgumentList.Add("--user");
-        }
         startInfo.ArgumentList.Add(
             action.Kind == VerifiedReleaseActivationServiceControlActionKind.Stop
                 ? "stop"
                 : "start");
         startInfo.ArgumentList.Add(action.UnitIdentity);
-        ConfigureProcessEnvironment(startInfo, userUnit);
+        ConfigureProcessEnvironment(startInfo);
 
         using Process process = new() { StartInfo = startInfo };
         try
@@ -543,47 +537,11 @@ internal sealed class LinuxVerifiedReleaseActivationServiceControlRuntime :
             _ => false
         };
 
-    private static void ConfigureProcessEnvironment(
-        ProcessStartInfo startInfo,
-        bool userUnit)
+    private static void ConfigureProcessEnvironment(ProcessStartInfo startInfo)
     {
         startInfo.Environment.Clear();
         startInfo.Environment["LANG"] = "C";
         startInfo.Environment["LC_ALL"] = "C";
-        if (!userUnit)
-        {
-            return;
-        }
-
-        string xdgRuntimeDirectory =
-            Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR") ?? string.Empty;
-        if (!IsCanonicalUserRuntimeDirectory(xdgRuntimeDirectory))
-        {
-            return;
-        }
-        string expectedBusAddress = $"unix:path={xdgRuntimeDirectory}/bus";
-        string busAddress =
-            Environment.GetEnvironmentVariable("DBUS_SESSION_BUS_ADDRESS") ??
-            string.Empty;
-        if (!string.Equals(
-                busAddress,
-                expectedBusAddress,
-                StringComparison.Ordinal))
-        {
-            return;
-        }
-        startInfo.Environment["XDG_RUNTIME_DIR"] = xdgRuntimeDirectory;
-        startInfo.Environment["DBUS_SESSION_BUS_ADDRESS"] = busAddress;
-    }
-
-    private static bool IsCanonicalUserRuntimeDirectory(string value)
-    {
-        const string prefix = "/run/user/";
-        return value.StartsWith(prefix, StringComparison.Ordinal) &&
-            value.Length > prefix.Length &&
-            value[prefix.Length..].All(character =>
-                character is >= '0' and <= '9') &&
-            string.Equals(Path.GetFullPath(value), value, StringComparison.Ordinal);
     }
 
     private static async Task<string> ReadBoundedAsync(

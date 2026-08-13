@@ -479,14 +479,13 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionTests
     }
 
     [Fact]
-    public async Task DirectRuntimeUsesExactUserUnitArgumentVector()
+    public async Task DirectRuntimeUsesStandaloneGatewaySystemUnitArgumentVector()
     {
         string script = CreateControlScript(
-            "test \"$#\" -eq 3 || exit 10\n" +
-            "test \"$1\" = --user || exit 11\n" +
-            "test \"$2\" = start || exit 12\n" +
-            "test \"$3\" = aethersdr-web.service || exit 13\n" +
-            "test -z \"${HOME+x}\" || exit 14\n");
+            "test \"$#\" -eq 2 || exit 10\n" +
+            "test \"$1\" = start || exit 11\n" +
+            "test \"$2\" = aethersdr-web.service || exit 12\n" +
+            "test -z \"${HOME+x}\" || exit 13\n");
         LinuxVerifiedReleaseActivationServiceControlRuntime runtime = new(script);
         VerifiedReleaseActivationServiceControlAction action = new(
             1,
