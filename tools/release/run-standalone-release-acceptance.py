@@ -124,6 +124,28 @@ def redact_interactive_diagnostics(
     return redacted[-4000:]
 
 
+def release_updater_failure_diagnostic() -> str:
+    sections: list[str] = []
+    for argv in (
+        ["/usr/bin/systemctl", "status", "aethersdr-release-updater.service", "--no-pager", "--full"],
+        ["/usr/bin/journalctl", "-u", "aethersdr-release-updater.service", "-n", "80", "--no-pager", "--output=short-precise"],
+    ):
+        result = run(argv, check=False, timeout=30)
+        text = (result.stdout or "").strip()
+        if text:
+            sections.append(text)
+    socket = Path("/var/lib/aethersdr/release-update-supervisor/control.sock")
+    if socket.exists():
+        stat = socket.stat()
+        sections.append(
+            "updater-socket "
+            f"mode={oct(stat.st_mode & 0o777)} uid={stat.st_uid} gid={stat.st_gid}"
+        )
+    else:
+        sections.append("updater-socket missing")
+    return "\n".join(sections)[-12000:]
+
+
 def pty_capture_sequence(
     argv: list[str],
     *,
@@ -167,7 +189,10 @@ def pty_capture_sequence(
     exit_code = os.waitstatus_to_exitcode(status)
     text = output.decode("utf-8", "replace")
     if pending:
-        diagnostic = redact_interactive_diagnostics(text, prompt_responses)
+        diagnostic = text
+        if "The dedicated release updater is unavailable." in text:
+            diagnostic += "\n--- updater service diagnostic ---\n" + release_updater_failure_diagnostic()
+        diagnostic = redact_interactive_diagnostics(diagnostic, prompt_responses)
         die(
             "interactive command did not request expected prompt: "
             f"{pending[0][0]}\n{diagnostic}"

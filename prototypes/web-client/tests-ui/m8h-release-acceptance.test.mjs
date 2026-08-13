@@ -45,7 +45,9 @@ test("M8H acceptance never authorizes live RF or TX control", () => {
 test("interactive acceptance diagnostics redact operator responses and credential-shaped output", () => {
   assert.match(standalone, /def redact_interactive_diagnostics\(/);
   assert.match(standalone, /redacted = redacted\.replace\(response, "<redacted-response>"\)/);
-  assert.match(standalone, /diagnostic = redact_interactive_diagnostics\(text, prompt_responses\)/);
+  assert.match(standalone, /release_updater_failure_diagnostic\(\)/);
+  assert.match(standalone, /journalctl.*aethersdr-release-updater\.service/);
+  assert.match(standalone, /diagnostic = redact_interactive_diagnostics\(diagnostic, prompt_responses\)/);
   assert.doesNotMatch(standalone, /interactive command exited.*text\[-4000:\]/);
 });
 
@@ -97,6 +99,10 @@ test("runtime update bundles are staged outside protected home paths", () => {
   assert.match(standalone, /\/etc\/aethersdr\/release-trust/);
   assert.match(remote, /target_bundle = seed_bootstrap_bundle\(target_bundle, common\.TARGET_ID\)/);
   assert.match(remote, /station_failure_bundle = seed_bootstrap_bundle/);
+});
+
+test("station bootstrap accepts only the deterministic archive root directory entry", () => {
+  assert.match(read("AetherRemote/deploy/install-from-gateway.sh"), /if not parts and member\.isdir\(\):\n\s+continue/);
 });
 
 test("remote acceptance uses guided enrollment and synthetic receive-only discovery", () => {

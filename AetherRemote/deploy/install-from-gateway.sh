@@ -513,6 +513,8 @@ with tarfile.open(archive, "r:gz") as tar:
     for member in members:
         path = PurePosixPath(member.name)
         parts = [part for part in path.parts if part not in ("", ".")]
+        if not parts and member.isdir():
+            continue
         target = destination.joinpath(*parts)
         resolved_parent = target.parent.resolve()
         if destination != resolved_parent and destination not in resolved_parent.parents:
