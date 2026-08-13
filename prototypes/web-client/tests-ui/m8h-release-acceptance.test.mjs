@@ -41,6 +41,13 @@ test("M8H acceptance never authorizes live RF or TX control", () => {
   assert.match(standalone, /standalone installer enabled a TX authority/);
 });
 
+test("interactive acceptance diagnostics redact operator responses and credential-shaped output", () => {
+  assert.match(standalone, /def redact_interactive_diagnostics\(/);
+  assert.match(standalone, /redacted = redacted\.replace\(response, "<redacted-response>"\)/);
+  assert.match(standalone, /diagnostic = redact_interactive_diagnostics\(text, prompt_responses\)/);
+  assert.doesNotMatch(standalone, /interactive command exited.*text\[-4000:\]/);
+});
+
 test("packaged setup host uses the exact canonical HTTPS authority", () => {
   assert.match(setup, /"Kestrel__Certificates__Default__Path"/);
   assert.match(setup, /"Kestrel__Certificates__Default__Password"/);

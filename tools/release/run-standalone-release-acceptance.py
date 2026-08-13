@@ -108,6 +108,22 @@ def parse_json_lines(output: str) -> list[dict]:
     return reports
 
 
+def redact_interactive_diagnostics(
+    text: str,
+    prompt_responses: list[tuple[str, str]],
+) -> str:
+    redacted = text
+    for _, response in prompt_responses:
+        if response:
+            redacted = redacted.replace(response, "<redacted-response>")
+    redacted = re.sub(
+        r'(?i)("?(?:password|secret|token|credential|enrollmentCode)"?\s*[:=]\s*)"?[^\s"\r\n]+"?',
+        r'\1<redacted>',
+        redacted,
+    )
+    return redacted[-4000:]
+
+
 def pty_capture_sequence(
     argv: list[str],
     *,
@@ -151,9 +167,16 @@ def pty_capture_sequence(
     exit_code = os.waitstatus_to_exitcode(status)
     text = output.decode("utf-8", "replace")
     if pending:
-        die(f"interactive command did not request expected prompt: {pending[0][0]}")
+        diagnostic = redact_interactive_diagnostics(text, prompt_responses)
+        die(
+            "interactive command did not request expected prompt: "
+            f"{pending[0][0]}\n{diagnostic}"
+        )
     if exit_code not in allowed_exit_codes:
-        die(f"interactive command exited {exit_code}: {' '.join(argv)}\n{text[-4000:]}")
+        diagnostic = redact_interactive_diagnostics(text, prompt_responses)
+        die(
+            f"interactive command exited {exit_code}: {' '.join(argv)}\n{diagnostic}"
+        )
     return exit_code, text
 
 
