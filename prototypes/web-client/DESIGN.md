@@ -1274,9 +1274,10 @@ SHA-256 values are checked before rename.
 
 Publication performs no copy and reopens no archive. It temporarily makes only the
 transaction root 0700, uses one `Directory.Move` into the direct inactive release path,
-then sets the published root back to 0500 and validates the complete target tree with the
-same exact mappings. Status must change only by adding the target identity to the release
-inventory; setup and active `current` remain unchanged.
+revalidates the target in its private verification modes, then exposes and revalidates
+the published tree as non-writable 0444 data and 0555 directories/executables. Status
+must change only by adding the target identity to the release inventory; setup and active
+`current` remain unchanged.
 
 Rename outcomes are explicit. Source-present/target-absent after an exception is a clean
 failure only if the source root can be re-frozen. Source-absent/target-present is accepted
@@ -1294,8 +1295,8 @@ The thirty-fourth M8B increment composes those callerless boundaries into the op
 transaction while preserving their token identities. Extracted activation adaptation
 retains the full immutable file/directory inventory and binds each service role to its
 fixed published role root. The current-pointer executor therefore proves every file,
-digest, path, directory count, and 0400/0500 owner mode before switching, rather than
-validating only the earlier five compressed bundle files.
+digest, path, directory count, and exact 0444/0555 published mode before switching,
+rather than validating only the earlier five compressed bundle files.
 
 One `ReleaseUpdateTransactionCoordinator` owns a serialized exact transaction. Prepare
 performs preflight, installation-plan composition, verified staging, extraction, inactive

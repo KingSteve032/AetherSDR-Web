@@ -469,7 +469,6 @@ def main() -> int:
         if not (seeded_previous_bundle / "release-manifest.json").is_file():
             die("seeded previous bootstrap bundle is unavailable")
         configure_web_trust(common, public_key)
-        common.write_update_dropin(public_key)
 
         admin = AdminClient(credentials)
         admin.login()
@@ -503,19 +502,6 @@ def main() -> int:
             if not any(radio.get("serial") == "M8H-REMOTE-1" for radio in radios):
                 die("remote station did not publish the synthetically discovered FLEX radio")
 
-            update_env = common.update_environment(os.environ.copy(), public_key)
-            gateway_update = common.activate(
-                Path("/opt/aethersdr/current/gateway-web/AetherSDR.Web"),
-                target_bundle,
-                common.PREVIOUS_ID,
-                common.PREVIOUS_VERSION,
-                common.TARGET_ID,
-                update_env,
-            )
-            if not gateway_update["final"].get("activationCompleted"):
-                die("remote gateway did not advance to the target signed release")
-            common.wait_health()
-
             station_target = broker_release_update(common.TARGET_ID)
             if not station_target.get("succeeded") or station_target.get("rolledBack"):
                 die(f"station signed update did not succeed: {station_target}")
@@ -523,17 +509,6 @@ def main() -> int:
             if station.get("stationEngineVersion") != common.TARGET_VERSION:
                 die("station engine version did not advance with the signed station release")
 
-            gateway_station_failure = common.activate(
-                Path("/opt/aethersdr/current/gateway-web/AetherSDR.Web"),
-                station_failure_bundle,
-                common.TARGET_ID,
-                common.TARGET_VERSION,
-                STATION_FAILURE_ID,
-                update_env,
-            )
-            if not gateway_station_failure["final"].get("activationCompleted"):
-                die("gateway could not host the station failure acceptance release")
-            common.wait_health()
             station_failure = broker_release_update(STATION_FAILURE_ID)
             if station_failure.get("succeeded") or not station_failure.get("rolledBack"):
                 die(f"station failure did not roll back locally: {station_failure}")

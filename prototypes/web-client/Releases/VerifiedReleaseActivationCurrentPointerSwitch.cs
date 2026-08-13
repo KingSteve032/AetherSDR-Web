@@ -1274,8 +1274,17 @@ public sealed class VerifiedReleaseActivationCurrentPointerSwitchService
             : 0;
         UnixFileMode? requiredMode = executable switch
         {
-            true => UnixFileMode.UserRead | UnixFileMode.UserExecute,
-            false => UnixFileMode.UserRead,
+            true =>
+                UnixFileMode.UserRead |
+                UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead |
+                UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead |
+                UnixFileMode.OtherExecute,
+            false =>
+                UnixFileMode.UserRead |
+                UnixFileMode.GroupRead |
+                UnixFileMode.OtherRead,
             null => null
         };
         if (!file.Exists ||

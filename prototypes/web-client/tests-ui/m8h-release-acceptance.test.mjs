@@ -144,10 +144,13 @@ test("remote acceptance waits boundedly for discovered radio inventory after sta
   assert.match(remote, /socket\.SO_BROADCAST/);
 });
 
-test("remote acceptance uses guided enrollment and synthetic receive-only discovery", () => {
+test("remote acceptance uses guided enrollment and station-owned signed updates", () => {
   assert.match(remote, /\/api\/admin\/stations\/bootstrap/);
   assert.match(remote, /\/api\/admin\/stations\/enrollment-codes/);
   assert.match(remote, /M8H-REMOTE-1/);
+  assert.match(remote, /broker_release_update\(common\.TARGET_ID\)/);
+  assert.match(remote, /broker_release_update\(STATION_FAILURE_ID\)/);
   assert.match(remote, /stationFailedUpdateRolledBack/);
+  assert.doesNotMatch(remote, /common\.activate\(/);
   assert.doesNotMatch(remote, /\/api\/radio|\/ws\/radio/);
 });

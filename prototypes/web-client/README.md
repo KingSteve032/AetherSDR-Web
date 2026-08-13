@@ -1433,9 +1433,9 @@ inactive role tree. `VerifiedReleaseActivationPlanComposer` now has a second typ
 for `VerifiedReleaseExtractedPublicationReport`. It retains every immutable extracted
 file, digest, owner-executable bit, and directory count in the activation token, while the
 four service package plans bind to the fixed role roots rather than the old compressed
-archives. The atomic pointer switch validates the entire role tree and exact owner modes
-before `current` can move; the legacy archive-publication input remains available only for
-compatibility with the earlier tests and transaction tokens.
+archives. The atomic pointer switch validates the entire role tree and exact non-writable
+0444/0555 published modes before `current` can move; the legacy archive-publication input
+remains available only for compatibility with the earlier tests and transaction tokens.
 
 `ReleaseUpdateTransactionCoordinator` carries the existing internal authority tokens
 through one exact prepare/activate/rollback state machine. Preparation performs signed
