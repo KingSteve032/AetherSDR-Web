@@ -20,6 +20,9 @@ const updaterUnit = await readFile(
 const agentUnit = await readFile(
   new URL("../../../AetherRemote/deploy/aetherremote-agent.service", import.meta.url),
   "utf8");
+const stationEngineUnit = await readFile(
+  new URL("../../../AetherRemote/deploy/aetherremote-station-engine.service", import.meta.url),
+  "utf8");
 
 test("station bootstrap keeps enrollment code out of command arguments and history", () => {
   assert.doesNotMatch(installer, /--enrollment(?:-code)?/i);
@@ -63,6 +66,12 @@ test("managed proxies expose only a prefixed station broker route", () => {
   assert.match(nginx, /proxy_pass http:\/\/127\.0\.0\.1:5080/);
   assert.doesNotMatch(caddy, /:5090\s+\{/);
   assert.doesNotMatch(nginx, /listen\s+5090/);
+});
+
+test("station receive engine uses the dedicated service-boundary host role", () => {
+  assert.match(
+    stationEngineUnit,
+    /^Environment=InstallationServiceHost__Role=StationEngine$/m);
 });
 
 test("release updater is a hardened system service with no network family", () => {

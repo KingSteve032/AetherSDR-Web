@@ -1011,7 +1011,7 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
         report.FailureCode ==
             VerifiedReleaseActivationConfigurationBackupPlanFailureCode.None &&
         report.SetupRevision is > 0 &&
-        report.SourceDirectoryCount == 3 &&
+        report.SourceDirectoryCount is >= 2 and <= 3 &&
         report.ConfigurationDirectoryIncluded &&
         report.StateDirectoryIncluded &&
         report.SecretDirectoryIncluded &&
@@ -1042,7 +1042,7 @@ public sealed class VerifiedReleaseActivationConfigurationBackupService
                 report.TargetReleaseIdentity,
                 activation.TargetReleaseIdentity,
                 StringComparison.Ordinal) ||
-            plan.Sources.Count != 3 ||
+            plan.Sources.Count is < 2 or > 3 ||
             plan.ExistingBackupOverwriteAllowed ||
             !plan.AtomicPublicationRequired ||
             activation.SetupRevision < 1 ||

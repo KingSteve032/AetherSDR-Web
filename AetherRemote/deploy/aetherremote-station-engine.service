@@ -13,6 +13,7 @@ Environment=ASPNETCORE_ENVIRONMENT=Development
 Environment=DOTNET_ENVIRONMENT=Development
 Environment=ASPNETCORE_URLS=http://127.0.0.1:5081
 Environment=ASPNETCORE_CONTENTROOT=/etc/aetherremote/station-engine
+Environment=InstallationServiceHost__Role=StationEngine
 ExecStart=/opt/aetherremote/station-engine/AetherSDR.Web
 Restart=on-failure
 RestartSec=3

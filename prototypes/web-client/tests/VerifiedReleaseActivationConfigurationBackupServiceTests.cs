@@ -186,6 +186,22 @@ public sealed class VerifiedReleaseActivationConfigurationBackupServiceTests
     }
 
     [Fact]
+    public async Task NestedStateChildPlanExecutesWithTwoSourceRoots()
+    {
+        using Fixture fixture = new(nestedStateChild: true);
+        VerifiedReleaseActivationConfigurationBackupService service =
+            fixture.CreateService();
+
+        VerifiedReleaseActivationConfigurationBackupReport report =
+            await service.ExecuteAsync(fixture.BackupPlanReport);
+
+        Assert.True(report.Succeeded);
+        Assert.Equal(2, report.SourceDirectoryCount);
+        Assert.True(report.ConfigurationBackupReady);
+        Assert.Equal(2, service.State.SourceDirectoryCount);
+    }
+
+    [Fact]
     public async Task ExistingPublishedBackupIsNeverOverwritten()
     {
         using Fixture fixture = new();
@@ -470,7 +486,7 @@ public sealed class VerifiedReleaseActivationConfigurationBackupServiceTests
 
     private sealed class Fixture : IDisposable
     {
-        internal Fixture()
+        internal Fixture(bool nestedStateChild = false)
         {
             Time = new ManualTimeProvider(
                 new DateTimeOffset(2026, 8, 4, 9, 0, 0, TimeSpan.Zero));
@@ -479,10 +495,13 @@ public sealed class VerifiedReleaseActivationConfigurationBackupServiceTests
                     Path.GetTempPath(),
                     $"activation-backup-execution-{Guid.NewGuid():N}"));
             DeploymentRoot = Path.Combine(Root, "deployment");
+            string stateDirectory = Path.Combine(Root, "state");
             Paths = new InstallationPaths(
                 Path.Combine(Root, "configuration"),
-                Path.Combine(Root, "state"),
-                Path.Combine(Root, "secrets"),
+                stateDirectory,
+                nestedStateChild
+                    ? Path.Combine(stateDirectory, "secrets")
+                    : Path.Combine(Root, "secrets"),
                 Path.Combine(DeploymentRoot, "releases"),
                 Path.Combine(Root, "backups"),
                 Path.Combine(Root, "logs"));
