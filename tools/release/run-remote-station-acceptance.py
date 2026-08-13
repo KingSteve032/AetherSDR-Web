@@ -256,18 +256,36 @@ def station_install(common, command: str, enrollment_code: str) -> None:
     common.run([
         "/usr/bin/docker", "exec", "-d", "m8h-station", "python3", "-c", discovery,
     ])
-    _, output = common.pty_capture_sequence(
-        [
-            "/usr/bin/docker", "exec", "-it", "m8h-station",
-            "/bin/bash", "-lc", command,
-        ],
-        env=os.environ.copy(),
-        prompt_responses=[(
-            "One-time enrollment code (input hidden): ",
-            enrollment_code,
-        )],
-        timeout=300,
-    )
+    prompt_responses = [(
+        "One-time enrollment code (input hidden): ",
+        enrollment_code,
+    )]
+    try:
+        _, output = common.pty_capture_sequence(
+            [
+                "/usr/bin/docker", "exec", "-it", "m8h-station",
+                "/bin/bash", "-lc", command,
+            ],
+            env=os.environ.copy(),
+            prompt_responses=prompt_responses,
+            timeout=300,
+        )
+    except SystemExit as exception:
+        status = common.run([
+            "/usr/bin/docker", "exec", "m8h-station",
+            "systemctl", "status", "aetherremote-station-engine.service",
+            "--no-pager", "--lines=30",
+        ], check=False)
+        journal = common.run([
+            "/usr/bin/docker", "exec", "m8h-station",
+            "journalctl", "-u", "aetherremote-station-engine.service",
+            "--no-pager", "-n", "40",
+        ], check=False)
+        diagnostic = common.redact_interactive_diagnostics(
+            (status.stdout or "") + "\n" + (journal.stdout or ""),
+            prompt_responses,
+        )
+        die(f"{exception}\nstation-engine diagnostic:\n{diagnostic}")
     if "station receive engine is not active" in output.lower():
         die("remote station installer did not start the receive engine")
 

@@ -369,6 +369,19 @@ def write_update_dropin(public_key: Path) -> None:
     run(["/usr/bin/systemctl", "restart", "aethersdr-release-updater.service"])
 
 
+def wait_release_updater_ready(binary: Path, env: dict[str, str]) -> None:
+    deadline = time.monotonic() + 15
+    last_output = ""
+    while time.monotonic() < deadline:
+        status = run([str(binary), "--release-transaction-status"], env=env, check=False, timeout=5)
+        last_output = status.stdout or ""
+        reports = parse_json_lines(last_output)
+        if status.returncode == 0 and reports and reports[-1].get("failureCode") != "executionDisabled":
+            return
+        time.sleep(0.25)
+    die("release updater did not become protocol-ready after restart\n" + release_updater_diagnostic())
+
+
 def current_identity() -> str:
     current = Path("/opt/aethersdr/current")
     if not current.is_symlink():
@@ -666,9 +679,7 @@ def main() -> int:
         if not installed_gateway.is_file():
             die("installed packaged gateway executable is unavailable")
         socket = Path("/var/lib/aethersdr/release-update-supervisor/control.sock")
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline and not socket.exists():
-            time.sleep(0.25)
+        wait_release_updater_ready(installed_gateway, update_env)
         if not socket.exists() or (socket.stat().st_mode & 0o777) != 0o660:
             die("release updater socket is not service-group private 0660")
         if socket.stat().st_gid != grp.getgrnam("aethersdr").gr_gid:

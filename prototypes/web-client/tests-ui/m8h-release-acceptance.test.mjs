@@ -105,6 +105,19 @@ test("station bootstrap accepts only the deterministic archive root directory en
   assert.match(read("AetherRemote/deploy/install-from-gateway.sh"), /if not parts and member\.isdir\(\):\n\s+continue/);
 });
 
+test("release updater readiness requires a protocol handshake after restart", () => {
+  assert.match(standalone, /def wait_release_updater_ready\(/);
+  assert.match(standalone, /--release-transaction-status/);
+  assert.match(standalone, /failureCode.*executionDisabled/);
+  assert.doesNotMatch(standalone, /while time\.monotonic\(\) < deadline and not socket\.exists\(\)/);
+});
+
+test("remote acceptance captures bounded station-engine startup diagnostics", () => {
+  assert.match(remote, /systemctl", "status", "aetherremote-station-engine\.service"/);
+  assert.match(remote, /journalctl", "-u", "aetherremote-station-engine\.service"/);
+  assert.match(remote, /redact_interactive_diagnostics/);
+});
+
 test("remote acceptance uses guided enrollment and synthetic receive-only discovery", () => {
   assert.match(remote, /\/api\/admin\/stations\/bootstrap/);
   assert.match(remote, /\/api\/admin\/stations\/enrollment-codes/);
