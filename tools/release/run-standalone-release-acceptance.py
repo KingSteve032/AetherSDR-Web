@@ -328,7 +328,7 @@ def run_install(binary: Path, bundle: Path, architecture: str, env: dict[str, st
     )
     try:
         plan_payload = json.loads(plan.stdout or "")
-        plan_id = plan_payload["planId"]
+        plan_id = plan_payload["PlanId"]
     except (json.JSONDecodeError, KeyError) as exception:
         die(f"installer plan did not return an exact plan ID: {exception}")
     apply = run(
@@ -352,7 +352,7 @@ def run_install(binary: Path, bundle: Path, architecture: str, env: dict[str, st
         result = json.loads(apply.stdout or "")
     except json.JSONDecodeError as exception:
         die(f"installer apply did not return JSON: {exception}")
-    if str(result.get("outcome", "")).lower() not in {"applied", "converged"}:
+    if str(result.get("Outcome", "")).lower() not in {"applied", "converged"}:
         die(f"installer apply was not accepted: {result}")
 
 

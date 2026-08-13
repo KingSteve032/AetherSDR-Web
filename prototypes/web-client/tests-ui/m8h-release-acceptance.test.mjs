@@ -14,6 +14,7 @@ const setup = read("tools/release/standalone_acceptance_setup.py");
 const assets = read("tools/release/build-standalone-acceptance-assets.sh");
 const uninstall = read("prototypes/web-client/deploy/uninstall-aethersdr.sh");
 const bootstrap = read("prototypes/web-client/Radio/AetherRemoteBootstrap.cs");
+const installerConsole = read("prototypes/web-client/Setup/InstallationInstallerConsole.cs");
 
 test("M8H native acceptance runs packaged artifacts on both supported Ubuntu architectures", () => {
   assert.match(workflow, /runner: ubuntu-24\.04\n/);
@@ -43,6 +44,14 @@ test("packaged setup host uses the exact canonical HTTPS authority", () => {
   assert.match(setup, /SetupClient\(canonical_origin, public_host, public_port\)/);
   assert.match(setup, /"ASPNETCORE_URLS": f"https:\/\/127\.0\.0\.1:\{public_port\}"/);
   assert.doesNotMatch(setup, /ORIGIN = "https:\/\/127\.0\.0\.1/);
+});
+
+test("packaged installer harness follows the exact installer console JSON contract", () => {
+  assert.match(standalone, /plan_payload\["PlanId"\]/);
+  assert.match(standalone, /result\.get\("Outcome", ""\)/);
+  assert.doesNotMatch(standalone, /plan_payload\["planId"\]|result\.get\("outcome", ""\)/);
+  assert.match(installerConsole, /private static readonly JsonSerializerOptions JsonOptions = new\(\)/);
+  assert.doesNotMatch(installerConsole, /PropertyNamingPolicy\s*=/);
 });
 
 test("M8H deliberate failures corrupt only packaged startup configuration", () => {
