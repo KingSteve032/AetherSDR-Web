@@ -23,10 +23,7 @@ import sys
 import time
 from http.cookies import SimpleCookie
 from pathlib import Path
-
-ORIGIN = "https://127.0.0.1:5443"
-HOST = "127.0.0.1"
-PORT = 5443
+from urllib.parse import urlsplit
 CSRF_COOKIE = "__Host-AetherSdrSetupCsrf"
 SESSION_COOKIE = "__Host-AetherSdrSetup"
 CSRF_HEADER = "X-Aether-Setup-Csrf"
@@ -80,7 +77,10 @@ def totp(secret_base32: str) -> str:
 
 
 class SetupClient:
-    def __init__(self) -> None:
+    def __init__(self, origin: str, host: str, port: int) -> None:
+        self.origin = origin
+        self.host = host
+        self.port = port
         self.cookies: dict[str, str] = {}
         self.context = ssl.create_default_context()
         self.context.check_hostname = False
@@ -108,8 +108,8 @@ class SetupClient:
         navigation: bool = False,
     ) -> dict:
         connection = http.client.HTTPSConnection(
-            HOST,
-            PORT,
+            self.host,
+            self.port,
             context=self.context,
             timeout=10,
         )
@@ -119,7 +119,7 @@ class SetupClient:
             "Sec-Fetch-Mode": "navigate" if navigation else "cors",
         }
         if not navigation:
-            headers["Origin"] = ORIGIN
+            headers["Origin"] = self.origin
         if self.cookies:
             headers["Cookie"] = "; ".join(
                 f"{name}={value}" for name, value in self.cookies.items()
@@ -151,7 +151,11 @@ class SetupClient:
         return parsed
 
 
-def wait_for_https(process: subprocess.Popen[bytes]) -> None:
+def wait_for_https(
+    process: subprocess.Popen[bytes],
+    host: str,
+    port: int,
+) -> None:
     context = ssl.create_default_context()
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
@@ -160,7 +164,7 @@ def wait_for_https(process: subprocess.Popen[bytes]) -> None:
         if process.poll() is not None:
             die("packaged setup-only host exited before becoming ready")
         try:
-            connection = http.client.HTTPSConnection(HOST, PORT, context=context, timeout=1)
+            connection = http.client.HTTPSConnection(host, port, context=context, timeout=1)
             connection.request("GET", "/setup", headers={
                 "Sec-Fetch-Site": "none",
                 "Sec-Fetch-Mode": "navigate",
@@ -184,17 +188,35 @@ def main() -> int:
     public_url = sys.argv[4]
     if not binary.is_file() or not certificate.is_file():
         die("packaged gateway binary or TLS certificate is missing")
+    parsed_public_url = urlsplit(public_url)
+    if (
+        parsed_public_url.scheme != "https"
+        or not parsed_public_url.hostname
+        or parsed_public_url.username is not None
+        or parsed_public_url.password is not None
+        or parsed_public_url.path not in {"", "/"}
+        or parsed_public_url.query
+        or parsed_public_url.fragment
+    ):
+        die("public URL must be one canonical HTTPS authority")
+    public_host = parsed_public_url.hostname
+    public_port = parsed_public_url.port or 443
+    canonical_origin = f"https://{public_host}"
+    if public_port != 443:
+        canonical_origin += f":{public_port}"
+    if canonical_origin != public_url:
+        die("public URL is not canonical")
 
     env = os.environ.copy()
     env.update(
         {
             "ASPNETCORE_ENVIRONMENT": "Production",
             "DOTNET_ENVIRONMENT": "Production",
-            "ASPNETCORE_URLS": ORIGIN,
+            "ASPNETCORE_URLS": f"https://127.0.0.1:{public_port}",
             "Kestrel__Certificates__Default__Path": str(certificate),
             "Kestrel__Certificates__Default__Password": certificate_password,
             "InstallationSetupOnly__Enabled": "true",
-            "InstallationSetupOnly__CanonicalAccessUrl": ORIGIN,
+            "InstallationSetupOnly__CanonicalAccessUrl": canonical_origin,
             "InstallationRuntime__Enabled": "false",
         }
     )
@@ -209,8 +231,8 @@ def main() -> int:
         stderr=subprocess.STDOUT,
     )
     try:
-        wait_for_https(host)
-        client = SetupClient()
+        wait_for_https(host, public_host, public_port)
+        client = SetupClient(canonical_origin, public_host, public_port)
         page = client.request("GET", "/setup", navigation=True)
         revision = int(page["status"]["revision"])
         claim = client.request(

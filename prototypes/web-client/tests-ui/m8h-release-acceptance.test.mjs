@@ -34,11 +34,15 @@ test("M8H acceptance never authorizes live RF or TX control", () => {
   assert.match(standalone, /standalone installer enabled a TX authority/);
 });
 
-test("packaged setup host binds its TLS certificate through application Kestrel configuration", () => {
+test("packaged setup host uses the exact canonical HTTPS authority", () => {
   assert.match(setup, /"Kestrel__Certificates__Default__Path"/);
   assert.match(setup, /"Kestrel__Certificates__Default__Password"/);
   assert.doesNotMatch(setup, /ASPNETCORE_Kestrel__/);
   assert.match(setup, /cwd=binary\.parent/);
+  assert.match(setup, /canonical_origin != public_url/);
+  assert.match(setup, /SetupClient\(canonical_origin, public_host, public_port\)/);
+  assert.match(setup, /"ASPNETCORE_URLS": f"https:\/\/127\.0\.0\.1:\{public_port\}"/);
+  assert.doesNotMatch(setup, /ORIGIN = "https:\/\/127\.0\.0\.1/);
 });
 
 test("M8H deliberate failures corrupt only packaged startup configuration", () => {
