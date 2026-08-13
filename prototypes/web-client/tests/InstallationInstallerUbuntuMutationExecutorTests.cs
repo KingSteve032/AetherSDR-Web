@@ -371,7 +371,7 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
     }
 
     [Fact]
-    public void IdentityAndDataProtectionDirectoriesAreOwnerOnlyAndRoleOwned()
+    public void IdentityDataProtectionAndBackupDirectoriesAreOwnerOnlyAndRoleOwned()
     {
         InstallationInstallerUbuntuMutationRequest request = Request(
         [
@@ -397,6 +397,10 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
                 "/var/lib/aethersdr/aetherremote/station-engine/data-protection"),
             new(
                 6,
+                InstallationInstallerActionKind.EnsureDirectory,
+                "/var/backups/aethersdr"),
+            new(
+                7,
                 InstallationInstallerActionKind.InstallVerifiedRelease,
                 "2026.8.0/linux-x64")
         ]);
@@ -416,6 +420,10 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
             ["-d", "-m", "0700", "-o", "aetherremote", "-g", "aetherremote", "--",
                 "/var/lib/aethersdr/aetherremote/station-engine/data-protection"],
             operations[4].Arguments);
+        Assert.Equal(
+            ["-d", "-m", "0700", "-o", "aethersdr", "-g", "aethersdr", "--",
+                "/var/backups/aethersdr"],
+            operations[5].Arguments);
     }
 
     [Fact]

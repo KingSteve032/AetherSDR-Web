@@ -23,6 +23,9 @@ const agentUnit = await readFile(
 const stationEngineUnit = await readFile(
   new URL("../../../AetherRemote/deploy/aetherremote-station-engine.service", import.meta.url),
   "utf8");
+const program = await readFile(
+  new URL("../Program.cs", import.meta.url),
+  "utf8");
 
 test("station bootstrap keeps enrollment code out of command arguments and history", () => {
   assert.doesNotMatch(installer, /--enrollment(?:-code)?/i);
@@ -72,6 +75,9 @@ test("station receive engine uses the dedicated service-boundary host role", () 
   assert.match(
     stationEngineUnit,
     /^Environment=InstallationServiceHost__Role=StationEngine$/m);
+  assert.match(
+    program,
+    /if \(authenticationTopology\.Mode != AetherAuthenticationMode\.ServiceBoundary\)[\s\S]*AddScoped<AetherAuthenticationSessionService>/);
 });
 
 test("release updater is a hardened system service with no network family", () => {
