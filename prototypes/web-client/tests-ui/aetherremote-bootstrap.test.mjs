@@ -98,3 +98,16 @@ test("Agent depends on updater and may write only its private release staging pa
     agentUnit,
     /^ReadWritePaths=\/var\/lib\/aetherremote\/release-staging$/m);
 });
+
+test("bootstrap waits for the fixed-purpose release updater before Agent startup", () => {
+  assert.match(installer, /wait_release_updater_ready\(\)/);
+  assert.match(
+    installer,
+    /systemctl is-active --quiet aetherremote-release-updater\.service/);
+  assert.match(
+    installer,
+    /\[\[ -S \/run\/aetherremote-release-updater\/release\.sock \]\]/);
+  assert.match(
+    installer,
+    /wait_release_updater_ready\n\s*systemctl restart aetherremote-agent\.service/);
+});

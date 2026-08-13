@@ -757,7 +757,23 @@ systemctl enable \
   aetherremote-release-updater.service \
   aetherremote-station-engine.service \
   aetherremote-agent.service >/dev/null
+
+wait_release_updater_ready() {
+  local ready=false
+  for _ in $(seq 1 20); do
+    if systemctl is-active --quiet aetherremote-release-updater.service &&
+       [[ -S /run/aetherremote-release-updater/release.sock ]]; then
+      ready=true
+      break
+    fi
+    sleep 1
+  done
+  [[ "${ready}" == true ]] ||
+    fail "the fixed-purpose release updater did not become ready"
+}
+
 systemctl restart aetherremote-release-updater.service
+wait_release_updater_ready
 systemctl restart aetherremote-station-engine.service
 
 health_ok=false
@@ -812,6 +828,7 @@ curl \
   "${enrollment_url}" >/dev/null ||
   fail "the gateway rejected or could not complete the one-time station enrollment"
 
+wait_release_updater_ready
 systemctl restart aetherremote-agent.service
 sleep 2
 systemctl is-active --quiet aetherremote-station-engine.service ||

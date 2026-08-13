@@ -818,8 +818,8 @@ public sealed class VerifiedReleaseActivationEvidenceCollector
     {
         if (observation.ConfigurationBackupReady)
         {
-            return observation.SourceDirectoryCount == 3 &&
-                observation.DirectoryCount >= 3 &&
+            return observation.SourceDirectoryCount is >= 2 and <= 3 &&
+                observation.DirectoryCount >= observation.SourceDirectoryCount &&
                 observation.DirectoryCount <=
                     VerifiedReleaseActivationConfigurationBackupService
                         .MaximumDirectoryCount &&

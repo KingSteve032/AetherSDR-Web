@@ -112,9 +112,16 @@ test("release updater readiness requires a protocol handshake after restart", ()
   assert.doesNotMatch(standalone, /while time\.monotonic\(\) < deadline and not socket\.exists\(\)/);
 });
 
-test("remote acceptance captures bounded station-engine startup diagnostics", () => {
-  assert.match(remote, /systemctl", "status", "aetherremote-station-engine\.service"/);
-  assert.match(remote, /journalctl", "-u", "aetherremote-station-engine\.service"/);
+test("remote acceptance captures bounded station service startup diagnostics", () => {
+  for (const service of [
+    "aetherremote-station-engine.service",
+    "aetherremote-agent.service",
+    "aetherremote-release-updater.service"
+  ]) {
+    assert.match(remote, new RegExp(service.replaceAll(".", "\\.")));
+  }
+  assert.match(remote, /systemctl", "status", service/);
+  assert.match(remote, /journalctl", "-u", service/);
   assert.match(remote, /redact_interactive_diagnostics/);
 });
 
