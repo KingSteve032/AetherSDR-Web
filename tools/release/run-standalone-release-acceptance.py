@@ -789,7 +789,7 @@ def main() -> int:
             "architecture": architecture,
             "packagedSetup": True,
             "localAdministratorProtected": True,
-            "transmitSupportInstalled": False,
+            "transmitSupportInstalled": True,
             "initialInstall": PREVIOUS_ID,
             "successfulUpdate": TARGET_ID,
             "manualRollback": PREVIOUS_ID,

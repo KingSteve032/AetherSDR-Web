@@ -124,6 +124,9 @@ public sealed class InstallationBackupTests
         string? linkTarget = new DirectoryInfo(current).LinkTarget;
         Assert.NotNull(linkTarget);
         Assert.Equal(
+            Path.Combine("releases", ReleaseIdentity),
+            linkTarget);
+        Assert.Equal(
             Path.GetFullPath(Path.Combine(targetPaths.ReleaseDirectory, ReleaseIdentity)),
             Path.GetFullPath(linkTarget!, targetRoot));
         Assert.False(File.Exists(

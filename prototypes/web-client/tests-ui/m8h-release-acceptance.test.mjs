@@ -38,6 +38,7 @@ test("M8H acceptance never authorizes live RF or TX control", () => {
   assert.match(standalone, /Radio__AllowTransmit=true/);
   assert.match(standalone, /Radio__BrowserTxLeaseEnabled=true/);
   assert.match(standalone, /StationTxProductionActivation__Enabled=true/);
+  assert.match(standalone, /"transmitSupportInstalled": True/);
   assert.match(standalone, /"liveRfPerformed": False/);
   assert.match(remote, /"liveRfPerformed": False/);
   assert.match(standalone, /standalone installer enabled a TX authority/);
@@ -130,6 +131,14 @@ test("remote acceptance captures bounded station service startup diagnostics", (
   assert.match(remote, /systemctl", "status", service/);
   assert.match(remote, /journalctl", "-u", service/);
   assert.match(remote, /redact_interactive_diagnostics/);
+});
+
+test("remote acceptance waits boundedly for discovered radio inventory after station connect", () => {
+  assert.match(remote, /def poll_station_radio\(/);
+  assert.match(remote, /deadline = time\.monotonic\(\) \+ timeout/);
+  assert.match(remote, /last_state == "online"/);
+  assert.match(remote, /radio\.get\("serial"\) == serial/);
+  assert.match(remote, /station = poll_station_radio\(/);
 });
 
 test("remote acceptance uses guided enrollment and synthetic receive-only discovery", () => {

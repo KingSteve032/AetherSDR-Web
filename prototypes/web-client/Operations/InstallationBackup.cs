@@ -1226,7 +1226,22 @@ public sealed class InstallationBackupService
 
     private static void ApplyCurrentPointer(RestorePointerTransaction transaction)
     {
-        Directory.CreateSymbolicLink(transaction.Staging, transaction.Target);
+        string parent = Path.GetDirectoryName(transaction.Current) ??
+            throw new InvalidOperationException(
+                "The current release pointer has no deployment parent.");
+        string linkTarget = Path.GetRelativePath(parent, transaction.Target);
+        if (string.IsNullOrEmpty(linkTarget) ||
+            linkTarget == "." ||
+            Path.IsPathRooted(linkTarget) ||
+            linkTarget == ".." ||
+            linkTarget.StartsWith(
+                ".." + Path.DirectorySeparatorChar,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The restored release cannot produce a canonical relative current link target.");
+        }
+        Directory.CreateSymbolicLink(transaction.Staging, linkTarget);
         DirectoryInfo existing = new(transaction.Current);
         if (existing.LinkTarget is not null)
         {
@@ -1240,8 +1255,9 @@ public sealed class InstallationBackupService
         Directory.Move(transaction.Staging, transaction.Current);
         string? active = new DirectoryInfo(transaction.Current).LinkTarget;
         if (active is null ||
+            !string.Equals(active, linkTarget, StringComparison.Ordinal) ||
             !string.Equals(
-                Path.GetFullPath(active, Path.GetDirectoryName(transaction.Current)!),
+                Path.GetFullPath(active, parent),
                 Path.GetFullPath(transaction.Target),
                 PathComparison))
         {

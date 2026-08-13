@@ -312,6 +312,39 @@ def poll_station(admin: AdminClient, identity: str, timeout: int = 90) -> dict:
     die(f"station did not reach online release {identity}: {last}")
 
 
+def poll_station_radio(
+    admin: AdminClient,
+    identity: str,
+    serial: str,
+    timeout: int = 30,
+) -> dict:
+    deadline = time.monotonic() + timeout
+    last_state = "missing"
+    last_release = ""
+    last_radio_count = 0
+    while time.monotonic() < deadline:
+        snapshot = admin.request("GET", "/api/admin/stations")
+        for station in snapshot.get("stations") or []:
+            if station.get("stationId") != STATION_ID:
+                continue
+            last_state = str(station.get("state") or "")
+            last_release = str(station.get("releaseIdentity") or "")
+            radios = station.get("radios") or []
+            last_radio_count = len(radios)
+            if (
+                last_state == "online"
+                and last_release == identity
+                and any(radio.get("serial") == serial for radio in radios)
+            ):
+                return station
+        time.sleep(1)
+    die(
+        "station inventory did not include the expected synthetic radio within "
+        f"the bounded window: state={last_state!r} release={last_release!r} "
+        f"radioCount={last_radio_count}"
+    )
+
+
 def broker_release_update(identity: str) -> dict:
     credential_path = Path(
         "/var/lib/aethersdr/secrets/remote-stations/administration-credential"
@@ -460,7 +493,11 @@ def main() -> int:
         try:
             station_install(common, str(guide["installCommand"]), enrollment_code)
             enrollment_code = ""
-            station = poll_station(admin, common.PREVIOUS_ID)
+            station = poll_station_radio(
+                admin,
+                common.PREVIOUS_ID,
+                "M8H-REMOTE-1",
+            )
             radios = station.get("radios") or []
             if not any(radio.get("serial") == "M8H-REMOTE-1" for radio in radios):
                 die("remote station did not publish the synthetically discovered FLEX radio")
