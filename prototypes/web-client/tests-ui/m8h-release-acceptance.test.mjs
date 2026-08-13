@@ -92,6 +92,13 @@ test("AetherRemote bootstrap consumes the canonical verified persistent bundle m
   assert.doesNotMatch(stationInstaller, /or "\/" in name/);
 });
 
+test("runtime update bundles are staged outside protected home paths", () => {
+  assert.match(standalone, /\/var\/lib\/aethersdr\/m8h-release-inputs/);
+  assert.match(standalone, /\/etc\/aethersdr\/release-trust/);
+  assert.match(remote, /target_bundle = seed_bootstrap_bundle\(target_bundle, common\.TARGET_ID\)/);
+  assert.match(remote, /station_failure_bundle = seed_bootstrap_bundle/);
+});
+
 test("remote acceptance uses guided enrollment and synthetic receive-only discovery", () => {
   assert.match(remote, /\/api\/admin\/stations\/bootstrap/);
   assert.match(remote, /\/api\/admin\/stations\/enrollment-codes/);

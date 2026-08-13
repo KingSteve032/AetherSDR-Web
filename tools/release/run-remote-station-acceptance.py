@@ -149,7 +149,7 @@ def install_runtime_trust(common, public_key_source: Path) -> Path:
     return target
 
 
-def seed_bootstrap_bundle(source: Path, identity: str) -> None:
+def seed_bootstrap_bundle(source: Path, identity: str) -> Path:
     target = Path("/var/lib/aethersdr/release-downloads") / f"{identity}-linux-x64"
     if target.exists():
         shutil.rmtree(target)
@@ -160,6 +160,7 @@ def seed_bootstrap_bundle(source: Path, identity: str) -> None:
         elif entry.is_file():
             entry.chmod(0o444)
     target.chmod(0o555)
+    return target
 
 
 def configure_web_trust(common, public_key: Path) -> None:
@@ -396,12 +397,17 @@ def main() -> int:
         common.wait_health()
 
         public_key = install_runtime_trust(common, artifact_root / "release-verification-key.pem")
-        for source, identity in (
-            (previous_bundle, common.PREVIOUS_ID),
-            (target_bundle, common.TARGET_ID),
-            (station_failure_bundle, STATION_FAILURE_ID),
-        ):
-            seed_bootstrap_bundle(source, identity)
+        seeded_previous_bundle = seed_bootstrap_bundle(
+            previous_bundle,
+            common.PREVIOUS_ID,
+        )
+        target_bundle = seed_bootstrap_bundle(target_bundle, common.TARGET_ID)
+        station_failure_bundle = seed_bootstrap_bundle(
+            station_failure_bundle,
+            STATION_FAILURE_ID,
+        )
+        if not (seeded_previous_bundle / "release-manifest.json").is_file():
+            die("seeded previous bootstrap bundle is unavailable")
         configure_web_trust(common, public_key)
         common.write_update_dropin(public_key)
 

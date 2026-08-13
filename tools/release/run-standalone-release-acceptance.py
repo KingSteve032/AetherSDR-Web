@@ -288,6 +288,34 @@ def update_environment(base: dict[str, str], public_key: Path) -> dict[str, str]
     return env
 
 
+def install_runtime_release_trust(public_key_source: Path) -> Path:
+    directory = Path("/etc/aethersdr/release-trust")
+    directory.mkdir(parents=True, exist_ok=True)
+    run(["/usr/bin/chown", "root:aethersdr", str(directory)])
+    directory.chmod(0o750)
+    target = directory / "m8h-release.pem"
+    shutil.copyfile(public_key_source, target)
+    run(["/usr/bin/chown", "root:aethersdr", str(target)])
+    target.chmod(0o440)
+    return target
+
+
+def stage_runtime_bundle(source: Path, identity: str) -> Path:
+    root = Path("/var/lib/aethersdr/m8h-release-inputs")
+    root.mkdir(parents=True, exist_ok=True)
+    target = root / identity
+    if target.exists():
+        shutil.rmtree(target)
+    shutil.copytree(source, target, symlinks=False)
+    for entry in target.rglob("*"):
+        if entry.is_dir():
+            entry.chmod(0o555)
+        elif entry.is_file():
+            entry.chmod(0o444)
+    target.chmod(0o555)
+    return target
+
+
 def write_update_dropin(public_key: Path) -> None:
     dropin = Path("/etc/systemd/system/aethersdr-release-updater.service.d")
     dropin.mkdir(parents=True, exist_ok=True)
@@ -574,9 +602,9 @@ def main() -> int:
 
         trust_dir = Path("/root/.aethersdr-m8h-trust")
         trust_dir.mkdir(mode=0o700, exist_ok=False)
-        public_key = trust_dir / "release.pem"
-        shutil.copyfile(public_key_source, public_key)
-        public_key.chmod(0o400)
+        installer_public_key = trust_dir / "release.pem"
+        shutil.copyfile(public_key_source, installer_public_key)
+        installer_public_key.chmod(0o400)
 
         installer_env = os.environ.copy()
         installer_env.update(
@@ -588,7 +616,7 @@ def main() -> int:
                 "ReleaseManifestTrust__VerificationEnabled": "true",
                 "ReleaseManifestTrust__Keys__0__KeyId": KEY_ID,
                 "ReleaseManifestTrust__Keys__0__Algorithm": "EcdsaP256Sha256",
-                "ReleaseManifestTrust__Keys__0__PublicKeyPath": str(public_key),
+                "ReleaseManifestTrust__Keys__0__PublicKeyPath": str(installer_public_key),
             }
         )
         run_install(gateway, previous_bundle, architecture, installer_env)
@@ -604,6 +632,9 @@ def main() -> int:
             }:
                 die("standalone installer enabled a TX authority")
 
+        public_key = install_runtime_release_trust(public_key_source)
+        target_bundle = stage_runtime_bundle(target_bundle, TARGET_ID)
+        failure_bundle = stage_runtime_bundle(failure_bundle, FAILURE_ID)
         write_update_dropin(public_key)
         update_env = update_environment(os.environ.copy(), public_key)
         installed_gateway = Path("/opt/aethersdr/current/gateway-web/AetherSDR.Web")

@@ -496,7 +496,11 @@ with tarfile.open(archive, "r:gz") as tar:
             raise SystemExit("archive entry limit exceeded")
         path = PurePosixPath(member.name)
         parts = [part for part in path.parts if part not in ("", ".")]
-        if path.is_absolute() or not parts or any(part == ".." for part in parts):
+        if path.is_absolute() or any(part == ".." for part in parts):
+            raise SystemExit("unsafe archive path")
+        if not parts:
+            if member.isdir() and member.name in {".", "./"}:
+                continue
             raise SystemExit("unsafe archive path")
         if not (member.isfile() or member.isdir()):
             raise SystemExit("archive contains link, device, or unsupported entry")
