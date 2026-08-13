@@ -40,6 +40,7 @@ def die(message: str) -> "NoReturn":
 def pty_capture(argv: list[str], env: dict[str, str]) -> str:
     pid, fd = pty.fork()
     if pid == 0:
+        os.chdir(str(Path(argv[0]).parent))
         os.execve(argv[0], argv, env)
     chunks: list[bytes] = []
     while True:
@@ -190,8 +191,8 @@ def main() -> int:
             "ASPNETCORE_ENVIRONMENT": "Production",
             "DOTNET_ENVIRONMENT": "Production",
             "ASPNETCORE_URLS": ORIGIN,
-            "ASPNETCORE_Kestrel__Certificates__Default__Path": str(certificate),
-            "ASPNETCORE_Kestrel__Certificates__Default__Password": certificate_password,
+            "Kestrel__Certificates__Default__Path": str(certificate),
+            "Kestrel__Certificates__Default__Password": certificate_password,
             "InstallationSetupOnly__Enabled": "true",
             "InstallationSetupOnly__CanonicalAccessUrl": ORIGIN,
             "InstallationRuntime__Enabled": "false",
@@ -201,6 +202,7 @@ def main() -> int:
     bootstrap = issue_bootstrap(binary, env)
     host = subprocess.Popen(
         [str(binary)],
+        cwd=binary.parent,
         env=env,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,

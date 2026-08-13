@@ -34,6 +34,13 @@ test("M8H acceptance never authorizes live RF or TX control", () => {
   assert.match(standalone, /standalone installer enabled a TX authority/);
 });
 
+test("packaged setup host binds its TLS certificate through application Kestrel configuration", () => {
+  assert.match(setup, /"Kestrel__Certificates__Default__Path"/);
+  assert.match(setup, /"Kestrel__Certificates__Default__Password"/);
+  assert.doesNotMatch(setup, /ASPNETCORE_Kestrel__/);
+  assert.match(setup, /cwd=binary\.parent/);
+});
+
 test("M8H deliberate failures corrupt only packaged startup configuration", () => {
   assert.match(assets, /appsettings\.json/);
   assert.match(assets, /M8H deliberately invalid startup JSON/);
