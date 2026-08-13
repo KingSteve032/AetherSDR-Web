@@ -29,7 +29,13 @@ test("M8H acceptance never authorizes live RF or TX control", () => {
   for (const source of [standalone, remote, setup, assets]) {
     assert.doesNotMatch(source, /xmit 1|xmit 0|SetTransmitAsync|AcquireTxLease|GateTransmit/);
   }
-  assert.match(standalone, /transmitSupportInstalled": False/);
+  assert.match(setup, /"installTransmitSupport": True/);
+  assert.match(setup, /"acknowledgedInstallationDoesNotEnableTransmit": True/);
+  assert.match(setup, /"transmitSupportInstalled": True/);
+  assert.match(setup, /"transmitEnabled": False/);
+  assert.match(standalone, /Radio__AllowTransmit=true/);
+  assert.match(standalone, /Radio__BrowserTxLeaseEnabled=true/);
+  assert.match(standalone, /StationTxProductionActivation__Enabled=true/);
   assert.match(standalone, /"liveRfPerformed": False/);
   assert.match(remote, /"liveRfPerformed": False/);
   assert.match(standalone, /standalone installer enabled a TX authority/);

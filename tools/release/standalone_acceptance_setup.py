@@ -273,7 +273,7 @@ def main() -> int:
             (
                 "/setup/api/transmit-support",
                 {
-                    "installTransmitSupport": False,
+                    "installTransmitSupport": True,
                     "acknowledgedInstallationDoesNotEnableTransmit": True,
                 },
             ),
@@ -284,8 +284,8 @@ def main() -> int:
             revision = int(response["session"]["setupRevision"])
 
         preflight = client.request("GET", "/setup/api/preflight", revision=revision)
-        if bool(preflight["preflight"].get("installTransmitSupport", True)):
-            die("setup preflight did not remain receive-only")
+        if not bool(preflight["preflight"].get("installTransmitSupport", False)):
+            die("setup preflight did not retain the dormant TX-support package choice")
 
         password = "M8H!" + secrets.token_urlsafe(32)
         enrollment = client.request(
@@ -338,7 +338,8 @@ def main() -> int:
             "schemaVersion": 1,
             "setupRevision": int(confirmation["status"]["revision"]),
             "administrator": "created-with-totp-and-recovery-codes",
-            "transmitSupportInstalled": False,
+            "transmitSupportInstalled": True,
+            "transmitEnabled": False,
         }, separators=(",", ":")))
 
         try:

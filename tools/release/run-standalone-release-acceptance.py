@@ -517,8 +517,9 @@ def main() -> int:
             setup_metadata = json.loads((setup_result.stdout or "").strip().splitlines()[-1])
         except (json.JSONDecodeError, IndexError):
             die("packaged setup acceptance did not return its redacted metadata")
-        if setup_metadata.get("transmitSupportInstalled") is not False:
-            die("packaged setup did not remain receive-only")
+        if setup_metadata.get("transmitSupportInstalled") is not True or \
+            setup_metadata.get("transmitEnabled") is not False:
+            die("packaged setup did not retain dormant TX support with transmit disabled")
 
         trust_dir = Path("/root/.aethersdr-m8h-trust")
         trust_dir.mkdir(mode=0o700, exist_ok=False)
