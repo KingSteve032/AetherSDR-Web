@@ -1132,12 +1132,16 @@ public sealed class VerifiedReleaseActivationCurrentPointerSwitchService
             Stack<DirectoryInfo> pending = new();
             pending.Push(target);
             int directoryCount = 0;
+            int maximumDirectoryCount = activation.UsesExtractedRoleTree
+                ? VerifiedReleaseArchiveExtractionService
+                    .MaximumExtractedDirectoryCount + 1
+                : MaximumDirectoryCount;
             while (pending.Count > 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 DirectoryInfo directory = pending.Pop();
                 if (!ValidateImmutableDirectory(directory) ||
-                    ++directoryCount > MaximumDirectoryCount)
+                    ++directoryCount > maximumDirectoryCount)
                 {
                     return false;
                 }

@@ -86,6 +86,7 @@ test("release updater is a hardened system service with no network family", () =
   assert.match(updaterUnit, /^NoNewPrivileges=true$/m);
   assert.match(updaterUnit, /^ProtectSystem=strict$/m);
   assert.match(updaterUnit, /^RestrictAddressFamilies=AF_UNIX$/m);
+  assert.doesNotMatch(updaterUnit, /^MemoryDenyWriteExecute=true$/m);
   assert.match(
     updaterUnit,
     /^ReadWritePaths=\/opt\/aetherremote \/var\/lib\/aetherremote \/etc\/systemd\/system$/m);

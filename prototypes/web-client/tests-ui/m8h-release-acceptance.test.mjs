@@ -15,6 +15,7 @@ const assets = read("tools/release/build-standalone-acceptance-assets.sh");
 const uninstall = read("prototypes/web-client/deploy/uninstall-aethersdr.sh");
 const bootstrap = read("prototypes/web-client/Radio/AetherRemoteBootstrap.cs");
 const installerConsole = read("prototypes/web-client/Setup/InstallationInstallerConsole.cs");
+const pointerSwitch = read("prototypes/web-client/Releases/VerifiedReleaseActivationCurrentPointerSwitch.cs");
 const stationInstaller = read("AetherRemote/deploy/install-from-gateway.sh");
 
 test("M8H native acceptance runs packaged artifacts on both supported Ubuntu architectures", () => {
@@ -103,6 +104,12 @@ test("runtime update bundles are staged outside protected home paths", () => {
 
 test("station bootstrap accepts only the deterministic archive root directory entry", () => {
   assert.match(read("AetherRemote/deploy/install-from-gateway.sh"), /if not parts and member\.isdir\(\):\n\s+continue/);
+});
+
+test("pointer switch revalidates extracted releases with the extracted-tree directory bound", () => {
+  assert.match(pointerSwitch, /activation\.UsesExtractedRoleTree/);
+  assert.match(pointerSwitch, /MaximumExtractedDirectoryCount \+ 1/);
+  assert.match(pointerSwitch, /: MaximumDirectoryCount/);
 });
 
 test("release updater readiness requires a protocol handshake after restart", () => {
