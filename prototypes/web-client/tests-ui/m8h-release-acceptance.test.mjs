@@ -48,7 +48,9 @@ test("interactive acceptance diagnostics redact operator responses and credentia
   assert.match(standalone, /def redact_interactive_diagnostics\(/);
   assert.match(standalone, /redacted = redacted\.replace\(response, "<redacted-response>"\)/);
   assert.match(standalone, /release_updater_failure_diagnostic\(\)/);
+  assert.match(standalone, /release_activation_failure_diagnostic\(\)/);
   assert.match(standalone, /journalctl.*aethersdr-release-updater\.service/);
+  assert.match(standalone, /--- installed service diagnostic ---/);
   assert.match(standalone, /diagnostic = redact_interactive_diagnostics\(diagnostic, prompt_responses\)/);
   assert.doesNotMatch(standalone, /interactive command exited.*text\[-4000:\]/);
 });
@@ -139,6 +141,7 @@ test("remote acceptance waits boundedly for discovered radio inventory after sta
   assert.match(remote, /last_state == "online"/);
   assert.match(remote, /radio\.get\("serial"\) == serial/);
   assert.match(remote, /station = poll_station_radio\(/);
+  assert.match(remote, /socket\.SO_BROADCAST/);
 });
 
 test("remote acceptance uses guided enrollment and synthetic receive-only discovery", () => {

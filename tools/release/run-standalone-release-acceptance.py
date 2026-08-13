@@ -146,6 +146,25 @@ def release_updater_failure_diagnostic() -> str:
     return "\n".join(sections)[-12000:]
 
 
+def release_activation_failure_diagnostic() -> str:
+    sections: list[str] = []
+    for unit in (
+        "aethersdr-web.service",
+        "aethersdr-release-updater.service",
+        "aetherremote-broker.service",
+        "aetherremote-station-engine.service",
+    ):
+        for argv in (
+            ["/usr/bin/systemctl", "status", unit, "--no-pager", "--full", "--lines=20"],
+            ["/usr/bin/journalctl", "-u", unit, "-n", "40", "--no-pager", "--output=short-precise"],
+        ):
+            result = run(argv, check=False, timeout=30)
+            text = (result.stdout or "").strip()
+            if text:
+                sections.append(f"{unit}:\n{text}")
+    return "\n".join(sections)[-16000:]
+
+
 def pty_capture_sequence(
     argv: list[str],
     *,
@@ -499,11 +518,15 @@ def activate(
     *,
     expect_failure_rollback: bool = False,
 ) -> dict:
+    prompt_responses = [(
+        f"Type {target_id} to activate this exact release: ",
+        target_id,
+    )]
     exit_code, output = pty_capture_sequence(
         [str(binary), *update_args(bundle, installed_id, installed_version)],
         env=env,
-        prompt_responses=[(f"Type {target_id} to activate this exact release: ", target_id)],
-        allowed_exit_codes={0, 2} if expect_failure_rollback else {0},
+        prompt_responses=prompt_responses,
+        allowed_exit_codes={0, 2},
         timeout=300,
     )
     reports = parse_json_lines(output)
@@ -517,8 +540,15 @@ def activate(
             "finalReadinessFailed",
         }:
             die(f"failed release did not exercise automatic rollback: {final}")
-    elif not final.get("succeeded") or not final.get("activationCompleted"):
-        die(f"release activation did not complete: {final}")
+    elif exit_code != 0 or not final.get("succeeded") or not final.get("activationCompleted"):
+        diagnostic = redact_interactive_diagnostics(
+            release_activation_failure_diagnostic(),
+            prompt_responses,
+        )
+        die(
+            f"release activation did not complete: {final}\n"
+            f"--- installed service diagnostic ---\n{diagnostic}"
+        )
     return {"prepared": reports[0], "final": final}
 
 

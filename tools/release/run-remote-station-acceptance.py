@@ -251,7 +251,8 @@ def station_install(common, command: str, enrollment_code: str) -> None:
         "p=b'model=FLEX-6700 serial=M8H-REMOTE-1 nickname=M8HRemote status=Available "
         "ip=127.0.0.1 port=4992 available_clients=1 licensed_clients=2';"
         "s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);"
-        "exec('while True:\\n s.sendto(p,(\\\"127.0.0.1\\\",4992))\\n time.sleep(0.2)')"
+        "s.setsockopt(socket.SOL_SOCKET,socket.SO_BROADCAST,1);"
+        "exec('while True:\\n s.sendto(p,(\\\"127.255.255.255\\\",4992))\\n time.sleep(0.2)')"
     )
     common.run([
         "/usr/bin/docker", "exec", "-d", "m8h-station", "python3", "-c", discovery,
