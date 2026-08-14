@@ -89,6 +89,37 @@ public sealed class VerifiedReleaseActivationRollbackExecutionTests
     }
 
     [Fact]
+    public async Task HybridRollbackNoOpsStationOwnedAgentAndRequiresFreshBrokerLink()
+    {
+        using Fixture fixture = await Fixture.CreateAsync(
+            topology: InstallationTopologyKind.HybridGateway);
+
+        VerifiedReleaseActivationRollbackExecutionReport report =
+            await fixture.ExecuteHealthFailureAsync();
+
+        Assert.True(report.Succeeded);
+        Assert.Equal(3, report.ExecutedStopActionCount);
+        Assert.Equal(1, report.TopologyNoOpStopActionCount);
+        Assert.Equal(3, report.ExecutedStartActionCount);
+        Assert.Equal(1, report.TopologyNoOpStartActionCount);
+        Assert.Equal(4, report.VerifiedHealthTargetCount);
+        Assert.Equal(3, report.UnitActivityCheckCount);
+        Assert.Equal(3, report.LoopbackHttpCheckCount);
+        Assert.Equal(1, report.FreshBrokerLinkCheckCount);
+        Assert.True(report.RollbackPerformed);
+        Assert.False(report.ReconciliationRequired);
+        Assert.Equal(6, fixture.ServiceRuntime.Actions.Count);
+        Assert.Equal(3, fixture.ServiceRuntime.ResetActions.Count);
+        Assert.All(
+            fixture.ServiceRuntime.ResetActions,
+            action => Assert.Equal(
+                VerifiedReleaseActivationServiceControlActionKind.Start,
+                action.Kind));
+        Assert.Equal(3, fixture.HealthRuntime.UnitChecks.Count);
+        Assert.Equal(3, fixture.HealthRuntime.HttpChecks.Count);
+    }
+
+    [Fact]
     public async Task ExactHealthFailureRestoresOriginalStateAndModes()
     {
         using Fixture fixture = await Fixture.CreateAsync();
@@ -159,6 +190,12 @@ public sealed class VerifiedReleaseActivationRollbackExecutionTests
             Assert.False(Directory.Exists(source.DisplacedLivePath));
         });
         Assert.Equal(6, fixture.ServiceRuntime.Actions.Count);
+        Assert.Equal(3, fixture.ServiceRuntime.ResetActions.Count);
+        Assert.All(
+            fixture.ServiceRuntime.ResetActions,
+            action => Assert.Equal(
+                VerifiedReleaseActivationServiceControlActionKind.Start,
+                action.Kind));
         Assert.Equal(3, fixture.HealthRuntime.UnitChecks.Count);
         Assert.Equal(3, fixture.HealthRuntime.HttpChecks.Count);
 
@@ -415,6 +452,31 @@ public sealed class VerifiedReleaseActivationRollbackExecutionTests
     }
 
     [Fact]
+    public async Task UnknownResetFailedOutcomeKeepsRollbackInReconciliation()
+    {
+        using Fixture fixture = await Fixture.CreateAsync();
+        fixture.ServiceRuntime.ResetResult =
+            ServiceControlAttemptResult.Unknown("reset-failed outcome unknown");
+
+        VerifiedReleaseActivationRollbackExecutionReport report =
+            await fixture.ExecuteHealthFailureAsync();
+
+        Assert.False(report.Succeeded);
+        Assert.Equal(
+            VerifiedReleaseActivationRollbackExecutionFailureCode
+                .InstalledServiceStartFailed,
+            report.FailureCode);
+        Assert.True(report.CurrentPointerChanged);
+        Assert.True(report.ConfigurationRestored);
+        Assert.False(report.ServicesRestored);
+        Assert.True(report.RollbackPerformed);
+        Assert.True(report.ReconciliationRequired);
+        Assert.Single(fixture.ServiceRuntime.ResetActions);
+        Assert.Equal(3, fixture.ServiceRuntime.Actions.Count);
+        Assert.Empty(fixture.HealthRuntime.UnitChecks);
+    }
+
+    [Fact]
     public async Task InstalledHealthFailureRetainsReconciliationAndDisplacedTrees()
     {
         using Fixture fixture = await Fixture.CreateAsync(
@@ -517,6 +579,8 @@ public sealed class VerifiedReleaseActivationRollbackExecutionTests
         private readonly Action<string, string> m_directoryMove;
         private readonly Func<int, string>? m_activeIdentityFactory;
         private readonly Func<string, bool>? m_treeDelete;
+        private readonly InstallationTopologyKind m_topology;
+        private const string ExpectedStationId = "station-1";
 
         private Fixture(
             Action<string, string>? directoryMove,
@@ -524,8 +588,10 @@ public sealed class VerifiedReleaseActivationRollbackExecutionTests
                 pointerRuntimeFactory,
             Func<FakeHealthRuntime>? healthRuntimeFactory,
             Func<int, string>? activeIdentityFactory,
-            Func<string, bool>? treeDelete)
+            Func<string, bool>? treeDelete,
+            InstallationTopologyKind topology)
         {
+            m_topology = topology;
             Time = new StaticTimeProvider();
             Root = Path.GetFullPath(Path.Combine(
                 Path.GetTempPath(),
@@ -573,14 +639,17 @@ public sealed class VerifiedReleaseActivationRollbackExecutionTests
                 pointerRuntimeFactory = null,
             Func<FakeHealthRuntime>? healthRuntimeFactory = null,
             Func<int, string>? activeIdentityFactory = null,
-            Func<string, bool>? treeDelete = null)
+            Func<string, bool>? treeDelete = null,
+            InstallationTopologyKind topology =
+                InstallationTopologyKind.PersonalSingleStation)
         {
             Fixture fixture = new(
                 directoryMove,
                 pointerRuntimeFactory,
                 healthRuntimeFactory,
                 activeIdentityFactory,
-                treeDelete);
+                treeDelete,
+                topology);
             await fixture.InitializeAsync();
             return fixture;
         }
@@ -679,7 +748,7 @@ public sealed class VerifiedReleaseActivationRollbackExecutionTests
                     ServiceControlReport.Plan);
             VerifiedReleaseActivationServiceControlPreSwitchEvidence pre = new(
                 servicePlan,
-                InstallationTopologyKind.PersonalSingleStation,
+                m_topology,
                 executedActionCount: 3,
                 topologyNoOpActionCount: 1,
                 Time.GetUtcNow());
@@ -703,7 +772,12 @@ public sealed class VerifiedReleaseActivationRollbackExecutionTests
                     "target health failed",
                     new ReleaseActivationHealthVerificationSettings
                     {
-                        ExecutionEnabled = true
+                        ExecutionEnabled = true,
+                        ExpectedStationId =
+                            InstallationTopologyProfile.For(m_topology)
+                                .AcceptsRemoteStations
+                                ? ExpectedStationId
+                                : string.Empty
                     },
                     HealthPlanReport,
                     new HealthProbeTally
@@ -724,24 +798,65 @@ public sealed class VerifiedReleaseActivationRollbackExecutionTests
                     return Task.FromResult(CreateStatus(activeIdentity));
                 },
                 _ => Task.FromResult(Setup),
-                () => new RemoteStationAdministrationSnapshot(
-                    Enabled: false,
-                    BrokerReachable: false,
-                    RefreshedAt: null,
-                    Error: null,
-                    Stations: [],
-                    Credentials: []),
+                () => InstallationTopologyProfile.For(m_topology)
+                    .AcceptsRemoteStations
+                    ? CreateRemoteStationSnapshot()
+                    : new RemoteStationAdministrationSnapshot(
+                        Enabled: false,
+                        BrokerReachable: false,
+                        RefreshedAt: null,
+                        Error: null,
+                        Stations: [],
+                        Credentials: []),
                 ServiceRuntime,
                 HealthRuntime,
                 PointerRuntime,
                 m_directoryMove,
                 new ReleaseActivationRollbackSettings
                 {
-                    ExecutionEnabled = true
+                    ExecutionEnabled = true,
+                    ExpectedStationId =
+                        InstallationTopologyProfile.For(m_topology)
+                            .AcceptsRemoteStations
+                            ? ExpectedStationId
+                            : string.Empty
                 },
                 Time,
                 (_, _) => Task.CompletedTask,
                 m_treeDelete);
+        }
+
+        private RemoteStationAdministrationSnapshot CreateRemoteStationSnapshot()
+        {
+            DateTimeOffset now = Time.GetUtcNow();
+            return new RemoteStationAdministrationSnapshot(
+                Enabled: true,
+                BrokerReachable: true,
+                RefreshedAt: now,
+                Error: null,
+                Stations:
+                [
+                    new RemoteStationAdministrationEntry(
+                        ExpectedStationId,
+                        "instance-1",
+                        "online",
+                        "8.1.0",
+                        now.AddMinutes(-1),
+                        now,
+                        HeartbeatSequence: 4,
+                        InventorySequence: 3,
+                        ConnectionCount: 1,
+                        LastDisconnectedAt: null,
+                        LastDisconnectReason: null,
+                        LastRecoveredAt: null,
+                        LastRecoveryMilliseconds: null,
+                        Capabilities: ["receive-projection-v1"],
+                        Radios: [],
+                        ReceiveSessions: [],
+                        ReleaseIdentity: "aethersdr-8.1.0",
+                        StationEngineVersion: "8.1.0")
+                ],
+                Credentials: []);
         }
 
         private InstallationSetupState CreateSetup() => new()
@@ -757,7 +872,7 @@ public sealed class VerifiedReleaseActivationRollbackExecutionTests
                 ClaimedAt = Time.GetUtcNow().AddMinutes(-9),
                 CompletedAt = Time.GetUtcNow().AddMinutes(-1)
             },
-            Topology = InstallationTopologyKind.PersonalSingleStation,
+            Topology = m_topology,
             CanonicalPublicUrl = "https://radio.example.org",
             Paths = Paths,
             UpdateChannel = InstallationUpdateChannel.Stable,
@@ -950,7 +1065,11 @@ public sealed class VerifiedReleaseActivationRollbackExecutionTests
         IVerifiedReleaseActivationServiceControlRuntime
     {
         internal List<VerifiedReleaseActivationServiceControlAction> Actions { get; } = [];
+        internal List<VerifiedReleaseActivationServiceControlAction> ResetActions
+        { get; } = [];
         internal ServiceControlAttemptResult Result { get; set; } =
+            ServiceControlAttemptResult.Success();
+        internal ServiceControlAttemptResult ResetResult { get; set; } =
             ServiceControlAttemptResult.Success();
 
         public Task<ServiceControlAttemptResult> ControlUnitAsync(
@@ -960,6 +1079,15 @@ public sealed class VerifiedReleaseActivationRollbackExecutionTests
         {
             Actions.Add(action);
             return Task.FromResult(Result);
+        }
+
+        public Task<ServiceControlAttemptResult> ResetUnitFailureAsync(
+            VerifiedReleaseActivationServiceControlAction action,
+            TimeSpan timeout,
+            CancellationToken cancellationToken)
+        {
+            ResetActions.Add(action);
+            return Task.FromResult(ResetResult);
         }
     }
 

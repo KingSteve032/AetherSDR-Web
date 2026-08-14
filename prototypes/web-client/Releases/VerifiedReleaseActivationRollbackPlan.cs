@@ -288,7 +288,8 @@ internal sealed class VerifiedReleaseActivationRollbackPlan
 /// </summary>
 public sealed class VerifiedReleaseActivationRollbackPlanComposer
 {
-    private const int ExpectedRestoreSourceCount = 3;
+    private const int MinimumRestoreSourceCount = 2;
+    private const int MaximumRestoreSourceCount = 3;
     private const int MaximumRollbackIdentityLength = 192;
 
     public VerifiedReleaseActivationRollbackPlanComposer()
@@ -644,17 +645,18 @@ public sealed class VerifiedReleaseActivationRollbackPlanComposer
         VerifiedReleaseActivationConfigurationBackupPlan backupPlan,
         VerifiedReleaseActivationPlan activation)
     {
-        if (sources.Count != ExpectedRestoreSourceCount ||
+        if (sources.Count != backupPlan.Sources.Count ||
+            sources.Count is < MinimumRestoreSourceCount or > MaximumRestoreSourceCount ||
             sources.Select(source => source.Kind).Distinct().Count() !=
-                ExpectedRestoreSourceCount ||
+                sources.Count ||
             sources.Select(source => source.ImmutableBackupPath)
-                .Distinct(PathComparer).Count() != ExpectedRestoreSourceCount ||
+                .Distinct(PathComparer).Count() != sources.Count ||
             sources.Select(source => source.LiveDestinationPath)
-                .Distinct(PathComparer).Count() != ExpectedRestoreSourceCount ||
+                .Distinct(PathComparer).Count() != sources.Count ||
             sources.Select(source => source.RestoreStagingPath)
-                .Distinct(PathComparer).Count() != ExpectedRestoreSourceCount ||
+                .Distinct(PathComparer).Count() != sources.Count ||
             sources.Select(source => source.DisplacedLivePath)
-                .Distinct(PathComparer).Count() != ExpectedRestoreSourceCount)
+                .Distinct(PathComparer).Count() != sources.Count)
         {
             return false;
         }
@@ -728,7 +730,8 @@ public sealed class VerifiedReleaseActivationRollbackPlanComposer
               plan.ServiceControlPlan.StopActions.Count == 0 &&
               plan.ServiceControlPlan.StartActions.Count == 0
             : plan.ServiceControlPlan.HostRestartActions.Count == 0) &&
-        plan.RestoreSources.Count == ExpectedRestoreSourceCount &&
+        plan.RestoreSources.Count == plan.ConfigurationBackup.Plan.Sources.Count &&
+        plan.RestoreSources.Count is >= MinimumRestoreSourceCount and <= MaximumRestoreSourceCount &&
         !plan.ReverseMigrationRunnerRequired &&
         !string.IsNullOrEmpty(plan.RollbackIdentity) &&
         !string.IsNullOrEmpty(plan.ExpectedCurrentLinkTarget) &&
@@ -797,8 +800,8 @@ public sealed class VerifiedReleaseActivationRollbackPlanComposer
         report.FailureCode ==
             VerifiedReleaseActivationConfigurationBackupFailureCode.None &&
         report.SetupRevision is > 0 &&
-        report.SourceDirectoryCount == ExpectedRestoreSourceCount &&
-        report.DirectoryCount >= ExpectedRestoreSourceCount &&
+        report.SourceDirectoryCount is >= MinimumRestoreSourceCount and <= MaximumRestoreSourceCount &&
+        report.DirectoryCount >= report.SourceDirectoryCount &&
         report.FileCount >= 0 &&
         report.BackupBytes > 0 &&
         report.SourceSnapshotStable &&
@@ -832,7 +835,7 @@ public sealed class VerifiedReleaseActivationRollbackPlanComposer
             report.DirectoryCount != backup.DirectoryCount ||
             report.FileCount != backup.FileCount ||
             report.BackupBytes != backup.BackupBytes ||
-            plan.Sources.Count != ExpectedRestoreSourceCount ||
+            plan.Sources.Count is < MinimumRestoreSourceCount or > MaximumRestoreSourceCount ||
             backup.ManifestSha256.Length != 32 ||
             backup.CompletedAt == default ||
             plan.ExistingBackupOverwriteAllowed ||
@@ -860,9 +863,9 @@ public sealed class VerifiedReleaseActivationRollbackPlanComposer
                 PathsOverlap(published, activation.DeploymentRootPath) ||
                 PathsOverlap(published, activation.ReleaseRootPath) ||
                 plan.Sources.Select(source => source.Kind).Distinct().Count() !=
-                    ExpectedRestoreSourceCount ||
+                    plan.Sources.Count ||
                 plan.Sources.Select(source => source.SourcePath)
-                    .Distinct(PathComparer).Count() != ExpectedRestoreSourceCount ||
+                    .Distinct(PathComparer).Count() != plan.Sources.Count ||
                 plan.Sources.Any(source =>
                     !Path.IsPathRooted(source.SourcePath) ||
                     !Path.IsPathRooted(source.StagedPath) ||
@@ -1199,7 +1202,7 @@ public sealed class VerifiedReleaseActivationRollbackPlanComposer
             report.SetupRevision is not > 0 ||
             string.IsNullOrEmpty(report.InstalledReleaseIdentity) ||
             string.IsNullOrEmpty(report.TargetReleaseIdentity) ||
-            report.RestoreSourceCount != ExpectedRestoreSourceCount ||
+            report.RestoreSourceCount is < MinimumRestoreSourceCount or > MaximumRestoreSourceCount ||
             report.StopActionCount is < 0 or > 4 ||
             report.StartActionCount is < 0 or > 4 ||
             report.HealthTargetCount != 4 ||

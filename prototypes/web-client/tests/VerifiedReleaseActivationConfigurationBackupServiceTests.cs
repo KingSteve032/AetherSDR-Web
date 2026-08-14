@@ -157,7 +157,7 @@ public sealed class VerifiedReleaseActivationConfigurationBackupServiceTests
             File.GetUnixFileMode(plan.ManifestPath));
 
         string manifestJson = File.ReadAllText(plan.ManifestPath);
-        Assert.Contains("\"schemaVersion\": 2", manifestJson);
+        Assert.Contains("\"schemaVersion\": 3", manifestJson);
         Assert.Contains("\"sourceDirectoryCount\": 3", manifestJson);
         Assert.Contains("\"fileCount\": 3", manifestJson);
         Assert.Contains("\"unixMode\":", manifestJson);
@@ -183,6 +183,85 @@ public sealed class VerifiedReleaseActivationConfigurationBackupServiceTests
         Assert.Equal(3, observation.FileCount);
         Assert.NotNull(observation.CompletedAt);
         Assert.False(observation.ReconciliationRequired);
+    }
+
+    [Fact]
+    public async Task NestedStateChildPlanExecutesWithTwoSourceRoots()
+    {
+        using Fixture fixture = new(nestedStateChild: true);
+        VerifiedReleaseActivationConfigurationBackupService service =
+            fixture.CreateService();
+
+        VerifiedReleaseActivationConfigurationBackupReport report =
+            await service.ExecuteAsync(fixture.BackupPlanReport);
+
+        Assert.True(report.Succeeded);
+        Assert.Equal(2, report.SourceDirectoryCount);
+        Assert.True(report.ConfigurationBackupReady);
+        Assert.Equal(2, service.State.SourceDirectoryCount);
+    }
+
+    [Fact]
+    public async Task TransientReleaseUpdaterRuntimeSubtreeIsExcludedFromBackup()
+    {
+        using Fixture fixture = new();
+        string runtime = Path.Combine(
+            fixture.Paths.StateDirectory,
+            ReleaseUpdateSupervisor.DirectoryName);
+        Directory.CreateDirectory(runtime);
+        File.SetUnixFileMode(
+            runtime,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite |
+            UnixFileMode.GroupExecute);
+        string socketPlaceholder = Path.Combine(
+            runtime,
+            ReleaseUpdateSupervisor.SocketFileName);
+        File.WriteAllText(socketPlaceholder, "transient");
+        File.SetUnixFileMode(
+            socketPlaceholder,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite);
+
+        VerifiedReleaseActivationConfigurationBackupReport report =
+            await fixture.CreateService().ExecuteAsync(fixture.BackupPlanReport);
+
+        Assert.True(report.Succeeded);
+        Assert.True(report.ConfigurationBackupReady);
+        Assert.False(
+            Directory.Exists(
+                Path.Combine(
+                    fixture.BackupPlan.PublishedPath,
+                    "state",
+                    ReleaseUpdateSupervisor.DirectoryName)));
+    }
+
+    [Fact]
+    public async Task TransientReleaseUpdaterRuntimeEntryMustBeCanonicalDirectory()
+    {
+        using Fixture fixture = new();
+        string outside = Path.Combine(fixture.Root, "runtime-outside");
+        Directory.CreateDirectory(outside);
+        Directory.CreateSymbolicLink(
+            Path.Combine(
+                fixture.Paths.StateDirectory,
+                ReleaseUpdateSupervisor.DirectoryName),
+            outside);
+
+        VerifiedReleaseActivationConfigurationBackupReport report =
+            await fixture.CreateService().ExecuteAsync(fixture.BackupPlanReport);
+
+        Assert.False(report.Succeeded);
+        Assert.Equal(
+            VerifiedReleaseActivationConfigurationBackupFailureCode
+                .UnsafeSourceLayout,
+            report.FailureCode);
+        Assert.False(report.ConfigurationBackupReady);
     }
 
     [Fact]
@@ -470,7 +549,7 @@ public sealed class VerifiedReleaseActivationConfigurationBackupServiceTests
 
     private sealed class Fixture : IDisposable
     {
-        internal Fixture()
+        internal Fixture(bool nestedStateChild = false)
         {
             Time = new ManualTimeProvider(
                 new DateTimeOffset(2026, 8, 4, 9, 0, 0, TimeSpan.Zero));
@@ -479,10 +558,13 @@ public sealed class VerifiedReleaseActivationConfigurationBackupServiceTests
                     Path.GetTempPath(),
                     $"activation-backup-execution-{Guid.NewGuid():N}"));
             DeploymentRoot = Path.Combine(Root, "deployment");
+            string stateDirectory = Path.Combine(Root, "state");
             Paths = new InstallationPaths(
                 Path.Combine(Root, "configuration"),
-                Path.Combine(Root, "state"),
-                Path.Combine(Root, "secrets"),
+                stateDirectory,
+                nestedStateChild
+                    ? Path.Combine(stateDirectory, "secrets")
+                    : Path.Combine(Root, "secrets"),
                 Path.Combine(DeploymentRoot, "releases"),
                 Path.Combine(Root, "backups"),
                 Path.Combine(Root, "logs"));

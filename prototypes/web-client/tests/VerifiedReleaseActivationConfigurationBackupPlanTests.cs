@@ -151,6 +151,34 @@ public sealed class VerifiedReleaseActivationConfigurationBackupPlanTests
     }
 
     [Fact]
+    public void SupportedSystemLayoutCoversNestedSecretsInsideStateWithoutDuplicateSource()
+    {
+        Fixture fixture = new();
+        InstallationPaths paths = fixture.Paths with
+        {
+            SecretDirectory = Path.Combine(fixture.Paths.StateDirectory, "secrets")
+        };
+        VerifiedReleaseActivationConfigurationBackupPlanner planner = new(paths);
+
+        VerifiedReleaseActivationConfigurationBackupPlanReport report =
+            planner.Compose(fixture.PlanResult);
+
+        Assert.True(report.Succeeded, report.Message);
+        Assert.Equal(2, report.SourceDirectoryCount);
+        Assert.True(report.SecretDirectoryIncluded);
+        VerifiedReleaseActivationConfigurationBackupPlan plan = Assert.IsType<
+            VerifiedReleaseActivationConfigurationBackupPlan>(report.Plan);
+        Assert.Collection(
+            plan.Sources,
+            source => Assert.Equal(
+                VerifiedReleaseActivationConfigurationBackupSourceKind.Configuration,
+                source.Kind),
+            source => Assert.Equal(
+                VerifiedReleaseActivationConfigurationBackupSourceKind.State,
+                source.Kind));
+    }
+
+    [Fact]
     public void IndependentlyComposedExactPlansRetainDistinctBindings()
     {
         Fixture fixture = new();

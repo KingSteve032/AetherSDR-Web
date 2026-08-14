@@ -291,19 +291,32 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionTests
     }
 
     [Fact]
-    public async Task HybridRemoteAgentActionFailsBeforeAnyProcess()
+    public async Task HybridGatewayKeepsStationOwnedRemoteAgentAsTopologyNoOp()
     {
         Fixture fixture = new(topology: InstallationTopologyKind.HybridGateway);
 
         VerifiedReleaseActivationServiceControlExecutionReport report =
             await fixture.ExecutePreAsync();
 
-        AssertFailure(
-            report,
-            VerifiedReleaseActivationServiceControlExecutionFailureCode
-                .RemoteServiceControlUnavailable);
-        Assert.Empty(fixture.Runtime.Actions);
+        Assert.True(report.Succeeded);
+        Assert.Equal(4, report.PlannedActionCount);
+        Assert.Equal(3, report.ExecutedActionCount);
+        Assert.Equal(1, report.TopologyNoOpActionCount);
         Assert.False(report.ReconciliationRequired);
+        Assert.Collection(
+            fixture.Runtime.Actions,
+            action => AssertAction(
+                action,
+                VerifiedReleaseActivationServiceControlActionKind.Stop,
+                VerifiedReleaseActivationServiceRole.GatewayWeb),
+            action => AssertAction(
+                action,
+                VerifiedReleaseActivationServiceControlActionKind.Stop,
+                VerifiedReleaseActivationServiceRole.Broker),
+            action => AssertAction(
+                action,
+                VerifiedReleaseActivationServiceControlActionKind.Stop,
+                VerifiedReleaseActivationServiceRole.StationEngine));
     }
 
     [Fact]
@@ -479,14 +492,13 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionTests
     }
 
     [Fact]
-    public async Task DirectRuntimeUsesExactUserUnitArgumentVector()
+    public async Task DirectRuntimeUsesStandaloneGatewaySystemUnitArgumentVector()
     {
         string script = CreateControlScript(
-            "test \"$#\" -eq 3 || exit 10\n" +
-            "test \"$1\" = --user || exit 11\n" +
-            "test \"$2\" = start || exit 12\n" +
-            "test \"$3\" = aethersdr-web.service || exit 13\n" +
-            "test -z \"${HOME+x}\" || exit 14\n");
+            "test \"$#\" -eq 2 || exit 10\n" +
+            "test \"$1\" = start || exit 11\n" +
+            "test \"$2\" = aethersdr-web.service || exit 12\n" +
+            "test -z \"${HOME+x}\" || exit 13\n");
         LinuxVerifiedReleaseActivationServiceControlRuntime runtime = new(script);
         VerifiedReleaseActivationServiceControlAction action = new(
             1,
@@ -496,6 +508,32 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionTests
                 .GatewayWebUnitIdentity);
 
         ServiceControlAttemptResult result = await runtime.ControlUnitAsync(
+            action,
+            TimeSpan.FromSeconds(2),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Reason);
+        Assert.True(result.ProcessStarted);
+        Assert.True(result.OutcomeKnown);
+    }
+
+    [Fact]
+    public async Task DirectRuntimeResetFailedUsesExactFixedUnitArgumentVector()
+    {
+        string script = CreateControlScript(
+            "test \"$#\" -eq 2 || exit 10\n" +
+            "test \"$1\" = reset-failed || exit 11\n" +
+            "test \"$2\" = aethersdr-web.service || exit 12\n" +
+            "test -z \"${HOME+x}\" || exit 13\n");
+        LinuxVerifiedReleaseActivationServiceControlRuntime runtime = new(script);
+        VerifiedReleaseActivationServiceControlAction action = new(
+            1,
+            VerifiedReleaseActivationServiceControlActionKind.Start,
+            VerifiedReleaseActivationServiceRole.GatewayWeb,
+            VerifiedReleaseActivationServiceControlPlanComposer
+                .GatewayWebUnitIdentity);
+
+        ServiceControlAttemptResult result = await runtime.ResetUnitFailureAsync(
             action,
             TimeSpan.FromSeconds(2),
             CancellationToken.None);
@@ -891,5 +929,11 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionTests
                         "fixture unknown outcome")
                     : ServiceControlAttemptResult.Success());
         }
+
+        public Task<ServiceControlAttemptResult> ResetUnitFailureAsync(
+            VerifiedReleaseActivationServiceControlAction action,
+            TimeSpan timeout,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(ServiceControlAttemptResult.Success());
     }
 }

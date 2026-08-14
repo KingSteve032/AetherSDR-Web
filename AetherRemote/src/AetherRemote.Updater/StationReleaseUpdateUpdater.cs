@@ -16,6 +16,9 @@ internal sealed partial class StationReleaseUpdateUpdater(
     ILogger<StationReleaseUpdateUpdater> logger,
     IHostApplicationLifetime applicationLifetime) : BackgroundService
 {
+    [DllImport("libc", EntryPoint = "rename", SetLastError = true)]
+    private static extern int Rename(string oldPath, string newPath);
+
     internal const string RuntimeDirectory = "/run/aetherremote-release-updater";
     internal const string SocketPath =
         "/run/aetherremote-release-updater/release.sock";
@@ -602,20 +605,21 @@ internal sealed partial class StationReleaseUpdateUpdater(
         string releaseIdentity = RequiredString(payload, "releaseIdentity", 96);
         string version = RequiredString(payload, "version", 96);
         string architecture = RequiredString(payload, "architecture", 32);
-        string expectedArchitecture = RuntimeInformation.ProcessArchitecture switch
-        {
-            Architecture.X64 => "linuxX64",
-            Architecture.Arm64 => "linuxArm64",
-            _ => throw new PlatformNotSupportedException(
-                "The root updater supports x64 and arm64 only.")
-        };
+        (string ManifestArchitecture, string PackageArchitecture) expectedArchitecture =
+            RuntimeInformation.ProcessArchitecture switch
+            {
+                Architecture.X64 => ("linuxX64", "linux-x64"),
+                Architecture.Arm64 => ("linuxArm64", "linux-arm64"),
+                _ => throw new PlatformNotSupportedException(
+                    "The root updater supports x64 and arm64 only.")
+            };
         if (!string.Equals(
                 releaseIdentity,
                 expectedReleaseIdentity,
                 StringComparison.Ordinal) ||
             !string.Equals(
                 architecture,
-                expectedArchitecture,
+                expectedArchitecture.ManifestArchitecture,
                 StringComparison.Ordinal))
         {
             throw new InvalidDataException(
@@ -683,11 +687,27 @@ internal sealed partial class StationReleaseUpdateUpdater(
         Dictionary<string, SignedPackage> roles = new(StringComparer.Ordinal);
         foreach (JsonElement package in packages.EnumerateArray())
         {
+            string packageIdentity = RequiredString(
+                package,
+                "packageIdentity",
+                96);
             string role = RequiredString(package, "role", 64);
             string fileName = RequiredString(package, "fileName", 160);
             string digest = RequiredString(package, "sha256", 64).ToLowerInvariant();
             long length = RequiredInt64(package, "length");
-            if (!SafeFileNamePattern().IsMatch(fileName) ||
+            (string ExpectedIdentity, string ExpectedFileName)? expected =
+                ExpectedPackageDeclaration(
+                    role,
+                    expectedArchitecture.PackageArchitecture);
+            if (expected is null ||
+                !string.Equals(
+                    packageIdentity,
+                    expected.Value.ExpectedIdentity,
+                    StringComparison.Ordinal) ||
+                !string.Equals(
+                    fileName,
+                    expected.Value.ExpectedFileName,
+                    StringComparison.Ordinal) ||
                 !Sha256Pattern().IsMatch(digest) ||
                 length is <= 0 or > MaximumPackageBytes ||
                 !roles.TryAdd(role, new SignedPackage(fileName, digest, length)))
@@ -741,13 +761,12 @@ internal sealed partial class StationReleaseUpdateUpdater(
                 throw new InvalidDataException(
                     "The station release archive contains a link, device, or unsupported entry.");
             }
-            string relative = entry.Name.Replace('\\', '/');
-            if (relative.Length is < 1 or > 512 ||
-                relative.StartsWith("/", StringComparison.Ordinal) ||
-                relative.Split('/').Any(part => part is ".." or ""))
+            string relative = NormalizeArchiveEntryName(
+                entry.Name,
+                entry.EntryType == TarEntryType.Directory);
+            if (relative.Length == 0)
             {
-                throw new InvalidDataException(
-                    "The station release archive contains an unsafe path.");
+                continue;
             }
             string target = Path.GetFullPath(Path.Combine(root, relative));
             if (!target.StartsWith(
@@ -922,7 +941,7 @@ internal sealed partial class StationReleaseUpdateUpdater(
         File.Move(temporary, target, overwrite: true);
     }
 
-    private static void ReplaceDirectorySymlink(string link, string target)
+    internal static void ReplaceDirectorySymlink(string link, string target)
     {
         if (!Directory.Exists(target))
         {
@@ -932,7 +951,20 @@ internal sealed partial class StationReleaseUpdateUpdater(
         string temporary = link + ".aetherremote-new";
         RemoveExpectedTemporaryLink(temporary);
         Directory.CreateSymbolicLink(temporary, target);
-        File.Move(temporary, link, overwrite: true);
+        if (Rename(temporary, link) != 0)
+        {
+            int error = Marshal.GetLastPInvokeError();
+            throw new IOException(
+                $"Atomic station release-link rename failed with errno {error}.",
+                error);
+        }
+        DirectoryInfo replaced = new(link);
+        replaced.Refresh();
+        if (!string.Equals(replaced.LinkTarget, target, StringComparison.Ordinal))
+        {
+            throw new IOException(
+                "The station release link does not match its atomic replacement target.");
+        }
     }
 
     private static void RemoveExpectedTemporaryLink(string path)
@@ -1010,6 +1042,39 @@ internal sealed partial class StationReleaseUpdateUpdater(
                 "The updater staging directory escaped its fixed root.");
         }
         return path;
+    }
+
+    internal static string NormalizeArchiveEntryName(
+        string entryName,
+        bool isDirectory)
+    {
+        string normalized = entryName.Replace('\\', '/');
+        if (normalized.Length is < 1 or > 512 ||
+            normalized.StartsWith("/", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The station release archive contains an unsafe path.");
+        }
+        if (isDirectory && normalized is "." or "./")
+        {
+            return string.Empty;
+        }
+        if (normalized.StartsWith("./", StringComparison.Ordinal))
+        {
+            normalized = normalized[2..];
+        }
+        if (isDirectory && normalized.EndsWith("/", StringComparison.Ordinal))
+        {
+            normalized = normalized[..^1];
+        }
+        if (normalized.Length == 0 ||
+            normalized.Split('/').Any(part =>
+                part.Length == 0 || part is "." or ".."))
+        {
+            throw new InvalidDataException(
+                "The station release archive contains an unsafe path.");
+        }
+        return normalized;
     }
 
     private static string ExactStagingFile(string root, string fileName)
@@ -1577,8 +1642,24 @@ internal sealed partial class StationReleaseUpdateUpdater(
     [GeneratedRegex("^[A-Za-z0-9._-]{1,96}$", RegexOptions.CultureInvariant)]
     private static partial Regex ReleaseIdentityPattern();
 
-    [GeneratedRegex("^[A-Za-z0-9._-]{1,160}$", RegexOptions.CultureInvariant)]
-    private static partial Regex SafeFileNamePattern();
+    private static (string ExpectedIdentity, string ExpectedFileName)?
+        ExpectedPackageDeclaration(string role, string architecture) =>
+        role switch
+        {
+            "gatewayWeb" => (
+                "gateway-web",
+                $"packages/aethersdr-gateway-{architecture}.tar.gz"),
+            "broker" => (
+                "broker",
+                $"packages/aethersdr-broker-{architecture}.tar.gz"),
+            "aetherRemoteAgent" => (
+                "aetherremote-agent",
+                $"packages/aetherremote-agent-{architecture}.tar.gz"),
+            "stationEngine" => (
+                "station-engine",
+                $"packages/aethersdr-station-engine-{architecture}.tar.gz"),
+            _ => null
+        };
 
     [GeneratedRegex("^[0-9a-f]{64}$", RegexOptions.CultureInvariant)]
     private static partial Regex Sha256Pattern();

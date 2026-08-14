@@ -1821,11 +1821,16 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
                     "ubuntu-current-pointer-unsafe",
                     "The initial current path is not a symbolic link.");
             }
-            string resolved = Path.GetFullPath(
-                Path.Combine(
-                    pointer.Parent?.FullName ?? "/opt/aethersdr",
-                    pointer.LinkTarget));
-            return PathEquals(resolved, request.TargetReleasePath)
+            if (!TryGetInitialCurrentLinkTarget(request, out string expectedTarget))
+            {
+                return Rejected(
+                    "ubuntu-current-pointer-target-unsafe",
+                    "The verified initial release cannot produce a canonical relative current link target.");
+            }
+            return string.Equals(
+                    pointer.LinkTarget,
+                    expectedTarget,
+                    StringComparison.Ordinal)
                 ? Converged()
                 : Rejected(
                     "ubuntu-current-pointer-preserved",
@@ -1857,9 +1862,16 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
                 "Initial installation never replaces an existing current release pointer.");
         }
 
+        if (!TryGetInitialCurrentLinkTarget(request, out string linkTarget))
+        {
+            return InstallationInstallerUbuntuStepResult.Rejected(
+                "ubuntu-current-pointer-target-unsafe",
+                "The verified initial release cannot produce a canonical relative current link target.");
+        }
+
         Directory.CreateSymbolicLink(
             m_currentPointer,
-            request.TargetReleasePath);
+            linkTarget);
         InstallationInstallerUbuntuPrimitiveInspection after =
             InspectInitialPointer(request);
         return after.Outcome ==
@@ -1870,6 +1882,50 @@ internal sealed class LocalInstallationInstallerUbuntuManagedPrimitiveHandler :
             : InstallationInstallerUbuntuStepResult.Unknown(
                 "ubuntu-current-pointer-postcondition-unknown",
                 "The initial release pointer outcome requires reconciliation.");
+    }
+
+    private bool TryGetInitialCurrentLinkTarget(
+        InstallationInstallerUbuntuMutationRequest request,
+        out string linkTarget)
+    {
+        linkTarget = string.Empty;
+        try
+        {
+            string? parent = Path.GetDirectoryName(m_currentPointer);
+            if (string.IsNullOrEmpty(parent))
+            {
+                return false;
+            }
+            string canonicalParent = Path.GetFullPath(parent);
+            string canonicalTarget = Path.GetFullPath(request.TargetReleasePath);
+            string relative = Path.GetRelativePath(canonicalParent, canonicalTarget);
+            if (string.IsNullOrEmpty(relative) ||
+                relative == "." ||
+                Path.IsPathRooted(relative) ||
+                relative == ".." ||
+                relative.StartsWith(
+                    ".." + Path.DirectorySeparatorChar,
+                    StringComparison.Ordinal) ||
+                relative.Contains(Path.AltDirectorySeparatorChar) &&
+                    Path.AltDirectorySeparatorChar != Path.DirectorySeparatorChar)
+            {
+                return false;
+            }
+            string resolved = Path.GetFullPath(
+                Path.Combine(canonicalParent, relative));
+            if (!PathEquals(resolved, canonicalTarget))
+            {
+                return false;
+            }
+            linkTarget = relative;
+            return true;
+        }
+        catch (Exception exception)
+            when (exception is ArgumentException or NotSupportedException or
+                PathTooLongException)
+        {
+            return false;
+        }
     }
 
     private async Task<InstallationInstallerUbuntuPrimitiveInspection>

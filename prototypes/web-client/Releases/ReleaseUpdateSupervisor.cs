@@ -43,8 +43,8 @@ internal sealed record ReleaseUpdateSupervisorResponse(
     ReleaseUpdateTransactionReport Report);
 
 /// <summary>
-/// Dedicated local updater process. It listens only on an owner-private Unix
-/// socket below installation state and executes one transaction at a time. The
+/// Dedicated local updater process. It listens only on a service-group-private
+/// Unix socket below installation state and executes one transaction at a time. The
 /// gateway and CLI are clients, so stopping or restarting the gateway cannot
 /// destroy the coordinator's exact in-memory authority tokens. No TCP listener,
 /// HTTP endpoint, browser credential, arbitrary command, radio command, or TX
@@ -99,7 +99,10 @@ public sealed class ReleaseUpdateSupervisor
             m_root,
             UnixFileMode.UserRead |
             UnixFileMode.UserWrite |
-            UnixFileMode.UserExecute);
+            UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite |
+            UnixFileMode.GroupExecute);
         RemoveStaleSocket();
 
         using Socket listener = new(
@@ -109,14 +112,23 @@ public sealed class ReleaseUpdateSupervisor
         listener.Bind(new UnixDomainSocketEndPoint(m_socketPath));
         File.SetUnixFileMode(
             m_socketPath,
-            UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite);
         listener.Listen(backlog: 8);
         try
         {
             while (!cancellationToken.IsCancellationRequested)
             {
                 Socket connection = await listener.AcceptAsync(cancellationToken);
-                _ = HandleAndDisposeAsync(connection, cancellationToken);
+                bool reload = await HandleAndDisposeAsync(
+                    connection,
+                    cancellationToken);
+                if (reload)
+                {
+                    return;
+                }
             }
         }
         finally
@@ -133,7 +145,7 @@ public sealed class ReleaseUpdateSupervisor
     }
 
     [SupportedOSPlatform("linux")]
-    private async Task HandleAndDisposeAsync(
+    private async Task<bool> HandleAndDisposeAsync(
         Socket connection,
         CancellationToken cancellationToken)
     {
@@ -154,6 +166,7 @@ public sealed class ReleaseUpdateSupervisor
                         ReleaseUpdateSupervisorProtocol.Version,
                         report),
                     cancellationToken);
+                return RequiresProcessReload(request.Operation, report);
             }
             catch (Exception exception)
                 when (exception is JsonException or IOException or
@@ -178,8 +191,43 @@ public sealed class ReleaseUpdateSupervisor
                 catch
                 {
                 }
+                return false;
             }
         }
+    }
+
+    internal static bool RequiresProcessReload(
+        string operation,
+        ReleaseUpdateTransactionReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        if (report.RestartPending || report.ReconciliationRequired)
+        {
+            return false;
+        }
+        return operation switch
+        {
+            ReleaseUpdateSupervisorProtocol.Prepare =>
+                IsPrepareReloadBoundary(report),
+            ReleaseUpdateSupervisorProtocol.Activate =>
+                report.RollbackPerformed,
+            ReleaseUpdateSupervisorProtocol.Rollback => report.RollbackPerformed,
+            _ => false
+        };
+    }
+
+    internal static bool IsPrepareReloadBoundary(
+        ReleaseUpdateTransactionReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        return !report.Succeeded &&
+            report.FailureCode ==
+                ReleaseUpdateTransactionFailureCode.TransactionAlreadyActive &&
+            report.Phase == ReleaseUpdateTransactionPhase.Completed &&
+            report.ActivationCompleted &&
+            report.RollbackReady &&
+            !report.RestartPending &&
+            !report.ReconciliationRequired;
     }
 
     [SupportedOSPlatform("linux")]
@@ -202,7 +250,7 @@ public sealed class ReleaseUpdateSupervisor
                 when request.Install is not null &&
                      string.IsNullOrEmpty(request.TransactionId) &&
                      string.IsNullOrEmpty(request.SubjectBinding) =>
-                m_coordinator.PrepareOfflineAsync(
+                PrepareOfflineAsync(
                     request.Install,
                     cancellationToken),
             ReleaseUpdateSupervisorProtocol.Activate
@@ -220,6 +268,31 @@ public sealed class ReleaseUpdateSupervisor
             _ => throw new InvalidDataException(
                 "The release updater request shape is invalid.")
         };
+    }
+
+    [SupportedOSPlatform("linux")]
+    private Task<ReleaseUpdateTransactionReport> PrepareOfflineAsync(
+        ReleaseUpdateInstallRequest request,
+        CancellationToken cancellationToken)
+    {
+        ReleaseUpdateTransactionReport current = m_coordinator.Status();
+        if (current.Succeeded &&
+            current.Phase == ReleaseUpdateTransactionPhase.Completed &&
+            current.ActivationCompleted &&
+            current.RollbackReady &&
+            !current.RestartPending &&
+            !current.ReconciliationRequired)
+        {
+            return Task.FromResult(current with
+            {
+                Succeeded = false,
+                FailureCode =
+                    ReleaseUpdateTransactionFailureCode.TransactionAlreadyActive,
+                Message =
+                    "The prior successful activation remains exactly rollbackable in memory. The updater will reload through current before a new prepare relinquishes that rollback window; retry this unchanged prepare after reload."
+            });
+        }
+        return m_coordinator.PrepareOfflineAsync(request, cancellationToken);
     }
 
     private static VerifiedReleaseActivationOperatorAuthenticationEvidence
@@ -328,7 +401,7 @@ public sealed class ReleaseUpdateSupervisor
 
 /// <summary>
 /// Local client for the dedicated release updater. It can connect only to the
-/// derived owner-private Unix socket and exposes no network address or arbitrary
+/// derived service-group-private Unix socket and exposes no network address or arbitrary
 /// command field.
 /// </summary>
 public sealed class ReleaseUpdateSupervisorClient
@@ -375,21 +448,65 @@ public sealed class ReleaseUpdateSupervisorClient
                 ReauthenticatedAt: null),
             cancellationToken);
 
-    public Task<ReleaseUpdateTransactionReport> PrepareOfflineAsync(
+    public async Task<ReleaseUpdateTransactionReport> PrepareOfflineAsync(
         ReleaseUpdateInstallRequest request,
-        CancellationToken cancellationToken = default) =>
-        SendAsync(
-            new ReleaseUpdateSupervisorRequest(
-                ReleaseUpdateSupervisorProtocol.Version,
-                ReleaseUpdateSupervisorProtocol.Prepare,
-                request,
-                TransactionId: string.Empty,
-                SubjectBinding: string.Empty,
-                Authenticated: false,
-                AdministratorAuthorized: false,
-                AuthenticatedAt: null,
-                ReauthenticatedAt: null),
-            cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        ReleaseUpdateSupervisorRequest supervisorRequest = new(
+            ReleaseUpdateSupervisorProtocol.Version,
+            ReleaseUpdateSupervisorProtocol.Prepare,
+            request,
+            TransactionId: string.Empty,
+            SubjectBinding: string.Empty,
+            Authenticated: false,
+            AdministratorAuthorized: false,
+            AuthenticatedAt: null,
+            ReauthenticatedAt: null);
+        ReleaseUpdateTransactionReport first =
+            await SendAsync(supervisorRequest, cancellationToken);
+        if (!ReleaseUpdateSupervisor.IsPrepareReloadBoundary(first))
+        {
+            return first;
+        }
+
+        using CancellationTokenSource reloadTimeout =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        reloadTimeout.CancelAfter(TimeSpan.FromSeconds(20));
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(
+                    TimeSpan.FromMilliseconds(250),
+                    reloadTimeout.Token);
+                ReleaseUpdateTransactionReport status =
+                    await StatusAsync(reloadTimeout.Token);
+                if (status.ReconciliationRequired || status.RestartPending)
+                {
+                    return status;
+                }
+                if (status.Succeeded &&
+                    status.Phase == ReleaseUpdateTransactionPhase.Completed &&
+                    status.ActivationCompleted &&
+                    !status.RollbackReady)
+                {
+                    return await SendAsync(
+                        supervisorRequest,
+                        cancellationToken);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+            when (!cancellationToken.IsCancellationRequested)
+        {
+            return ReleaseUpdateTransactionReport.Create(
+                null,
+                succeeded: false,
+                ReleaseUpdateTransactionFailureCode.ReconciliationRequired,
+                "The updater did not complete its bounded current-release reload before the unchanged prepare could be retried; local reconciliation is required.",
+                reconciliationRequired: true);
+        }
+    }
 
     internal Task<ReleaseUpdateTransactionReport> ApproveAndActivateAsync(
         string transactionId,

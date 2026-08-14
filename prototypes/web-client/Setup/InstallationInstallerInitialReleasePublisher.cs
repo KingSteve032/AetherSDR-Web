@@ -264,7 +264,6 @@ internal sealed class InstallationInstallerInitialReleasePublisher
 
         try
         {
-            ExposeImmutableServiceTree(composition.Plan);
             await WriteInventoryAsync(
                 request,
                 composition.Plan,
@@ -371,63 +370,6 @@ internal sealed class InstallationInstallerInitialReleasePublisher
         catch
         {
             return false;
-        }
-    }
-
-    [SupportedOSPlatform("linux")]
-    private static void ExposeImmutableServiceTree(
-        VerifiedReleaseExtractedPublicationPlan plan)
-    {
-        HashSet<string> directories = new(StringComparer.Ordinal)
-        {
-            plan.TargetPath
-        };
-        foreach (VerifiedReleaseExtractedPublicationFilePlan file in plan.Files)
-        {
-            if (!SafeRegularFile(file.TargetPath))
-            {
-                throw new InvalidOperationException(
-                    "A verified published release file became unsafe.");
-            }
-            File.SetUnixFileMode(
-                file.TargetPath,
-                file.Executable
-                    ? UnixFileMode.UserRead |
-                      UnixFileMode.UserExecute |
-                      UnixFileMode.GroupRead |
-                      UnixFileMode.GroupExecute |
-                      UnixFileMode.OtherRead |
-                      UnixFileMode.OtherExecute
-                    : UnixFileMode.UserRead |
-                      UnixFileMode.GroupRead |
-                      UnixFileMode.OtherRead);
-
-            string? parent = Path.GetDirectoryName(file.TargetPath);
-            while (parent is not null &&
-                   !PathEquals(parent, plan.TargetPath))
-            {
-                if (!directories.Add(parent))
-                {
-                    break;
-                }
-                parent = Path.GetDirectoryName(parent);
-            }
-        }
-        foreach (string directory in directories)
-        {
-            if (!SafeDirectory(directory))
-            {
-                throw new InvalidOperationException(
-                    "A verified published release directory became unsafe.");
-            }
-            File.SetUnixFileMode(
-                directory,
-                UnixFileMode.UserRead |
-                UnixFileMode.UserExecute |
-                UnixFileMode.GroupRead |
-                UnixFileMode.GroupExecute |
-                UnixFileMode.OtherRead |
-                UnixFileMode.OtherExecute);
         }
     }
 

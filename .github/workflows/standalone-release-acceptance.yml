@@ -1,0 +1,157 @@
+name: Standalone release acceptance
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: standalone-release-acceptance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "true"
+  NUGET_XMLDOC_MODE: skip
+
+jobs:
+  package:
+    name: Build ephemeral signed acceptance packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build packaged acceptance release set
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash tools/release/build-standalone-acceptance-assets.sh \
+            --generate-ephemeral-key \
+            --output "${RUNNER_TEMP}/m8h-assets"
+          tar -cf "${RUNNER_TEMP}/m8h-assets.tar" \
+            -C "${RUNNER_TEMP}/m8h-assets" .
+          test ! -e "${RUNNER_TEMP}/m8h-assets/private.pem"
+          if find "${RUNNER_TEMP}/m8h-assets" -type f -name '*private*' -print -quit | grep -q .; then
+            echo "Acceptance artifact contains private-key-like material." >&2
+            exit 1
+          fi
+
+      - name: Upload packaged acceptance artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: m8h-packaged-releases
+          path: ${{ runner.temp }}/m8h-assets.tar
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+
+  native:
+    name: Ubuntu 24.04 ${{ matrix.architecture }} packaged rehearsal
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: linux-x64
+            runner: ubuntu-24.04
+          - architecture: linux-arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out acceptance harness
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Download packaged acceptance artifact
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: m8h-packaged-releases
+          path: ${{ runner.temp }}/m8h-download
+
+      - name: Extract packaged acceptance artifact
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          install -d -m 0755 "${RUNNER_TEMP}/m8h-assets"
+          tar -xf "${RUNNER_TEMP}/m8h-download/m8h-assets.tar" \
+            -C "${RUNNER_TEMP}/m8h-assets"
+
+      - name: Run packaged standalone lifecycle rehearsal
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo python3 tools/release/run-standalone-release-acceptance.py \
+            "${RUNNER_TEMP}/m8h-assets" \
+            "${{ matrix.architecture }}" \
+            "$(pwd -P)/tools/release/standalone_acceptance_setup.py" \
+            >"${RUNNER_TEMP}/m8h-${{ matrix.architecture }}.json"
+          python3 -m json.tool \
+            "${RUNNER_TEMP}/m8h-${{ matrix.architecture }}.json"
+
+      - name: Upload redacted acceptance evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: m8h-${{ matrix.architecture }}-evidence
+          path: ${{ runner.temp }}/m8h-${{ matrix.architecture }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+  remote-station:
+    name: Ubuntu 24.04 x64 clean remote-station rehearsal
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out acceptance harness
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Download packaged acceptance artifact
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: m8h-packaged-releases
+          path: ${{ runner.temp }}/m8h-download
+
+      - name: Extract packaged acceptance artifact
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          install -d -m 0755 "${RUNNER_TEMP}/m8h-assets"
+          tar -xf "${RUNNER_TEMP}/m8h-download/m8h-assets.tar" \
+            -C "${RUNNER_TEMP}/m8h-assets"
+
+      - name: Run clean remote-station enrollment and update rehearsal
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo python3 tools/release/run-remote-station-acceptance.py \
+            "${RUNNER_TEMP}/m8h-assets" \
+            "$(pwd -P)/tools/release/run-standalone-release-acceptance.py" \
+            "$(pwd -P)/tools/release/standalone_acceptance_setup.py" \
+            "${RUNNER_TEMP}/m8h-assets/linux-x64/aethersdr-8.8.0-acceptance.1/packages/aethersdr-gateway-linux-x64.tar.gz" \
+            >"${RUNNER_TEMP}/m8h-remote-station.json"
+          python3 -m json.tool "${RUNNER_TEMP}/m8h-remote-station.json"
+
+      - name: Upload redacted remote-station evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: m8h-remote-station-evidence
+          path: ${{ runner.temp }}/m8h-remote-station.json
+          if-no-files-found: error
+          retention-days: 30

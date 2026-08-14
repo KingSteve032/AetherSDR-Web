@@ -47,7 +47,10 @@ public sealed class LocalInstallationInstallerUbuntuMutationPrimitives :
     IInstallationInstallerUbuntuPlanInspector,
     IInstallationInstallerUbuntuMutationRollback
 {
+    private const string AptGetExecutable = "/usr/bin/apt-get";
     private static readonly TimeSpan ProcessTimeout = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan PackageInstallProcessTimeout =
+        TimeSpan.FromMinutes(5);
 
     private static readonly IReadOnlySet<
         InstallationInstallerUbuntuPrimitiveKind> ImplementedKinds =
@@ -724,7 +727,7 @@ public sealed class LocalInstallationInstallerUbuntuMutationPrimitives :
         process.StandardInput.Close();
         using CancellationTokenSource operation =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        operation.CancelAfter(ProcessTimeout);
+        operation.CancelAfter(ProcessTimeoutForExecutable(startInfo.FileName));
         Task<string> stdout =
             process.StandardOutput.ReadToEndAsync(operation.Token);
         Task<string> stderr =
@@ -750,6 +753,11 @@ public sealed class LocalInstallationInstallerUbuntuMutationPrimitives :
             throw;
         }
     }
+
+    internal static TimeSpan ProcessTimeoutForExecutable(string executable) =>
+        string.Equals(executable, AptGetExecutable, StringComparison.Ordinal)
+            ? PackageInstallProcessTimeout
+            : ProcessTimeout;
 
     private static async Task TerminateAsync(Process process)
     {

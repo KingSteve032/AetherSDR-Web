@@ -7,6 +7,19 @@ namespace AetherSDR.Web.Tests;
 public sealed class InstallationInstallerUbuntuMutationExecutorTests
 {
     [Fact]
+    public void PackageInstallGetsLongerBoundWithoutRelaxingOtherPrimitives()
+    {
+        Assert.Equal(
+            TimeSpan.FromMinutes(5),
+            LocalInstallationInstallerUbuntuMutationPrimitives
+                .ProcessTimeoutForExecutable("/usr/bin/apt-get"));
+        Assert.Equal(
+            TimeSpan.FromMinutes(2),
+            LocalInstallationInstallerUbuntuMutationPrimitives
+                .ProcessTimeoutForExecutable("/usr/bin/systemctl"));
+    }
+
+    [Fact]
     public async Task ExecutesExactOrderedActionsAfterReadOnlyPreparation()
     {
         FakePrimitives primitives = new();
@@ -371,7 +384,7 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
     }
 
     [Fact]
-    public void IdentityAndDataProtectionDirectoriesAreOwnerOnlyAndRoleOwned()
+    public void IdentityDataProtectionAndBackupDirectoriesAreOwnerOnlyAndRoleOwned()
     {
         InstallationInstallerUbuntuMutationRequest request = Request(
         [
@@ -397,6 +410,10 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
                 "/var/lib/aethersdr/aetherremote/station-engine/data-protection"),
             new(
                 6,
+                InstallationInstallerActionKind.EnsureDirectory,
+                "/var/backups/aethersdr"),
+            new(
+                7,
                 InstallationInstallerActionKind.InstallVerifiedRelease,
                 "2026.8.0/linux-x64")
         ]);
@@ -416,6 +433,10 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
             ["-d", "-m", "0700", "-o", "aetherremote", "-g", "aetherremote", "--",
                 "/var/lib/aethersdr/aetherremote/station-engine/data-protection"],
             operations[4].Arguments);
+        Assert.Equal(
+            ["-d", "-m", "0700", "-o", "aethersdr", "-g", "aethersdr", "--",
+                "/var/backups/aethersdr"],
+            operations[5].Arguments);
     }
 
     [Fact]
@@ -1312,6 +1333,59 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
     }
 
     [Fact]
+    public async Task InitialActivationCreatesCanonicalRelativePointer()
+    {
+        using TemporaryDirectory temporary = new();
+        string releases = Path.Combine(temporary.Path, "releases");
+        string target = Path.Combine(releases, "2026.8.0");
+        string current = Path.Combine(temporary.Path, "current");
+        Directory.CreateDirectory(target);
+        LocalInstallationInstallerUbuntuManagedPrimitiveHandler handler = new(
+            (_, _) => throw new InvalidOperationException(
+                "Pointer activation must not run a process."),
+            () => new HttpClientHandler(),
+            current);
+
+        InstallationInstallerUbuntuStepResult result =
+            await handler.ExecuteAsync(
+                Request(targetReleasePath: target),
+                InitialReleaseOperation());
+
+        Assert.Equal(
+            InstallationInstallerUbuntuStepOutcome.Applied,
+            result.Outcome);
+        Assert.Equal(
+            Path.Combine("releases", "2026.8.0"),
+            new DirectoryInfo(current).LinkTarget);
+    }
+
+    [Fact]
+    public async Task InitialInspectionRejectsAbsoluteEquivalentPointer()
+    {
+        using TemporaryDirectory temporary = new();
+        string releases = Path.Combine(temporary.Path, "releases");
+        string target = Path.Combine(releases, "2026.8.0");
+        string current = Path.Combine(temporary.Path, "current");
+        Directory.CreateDirectory(target);
+        Directory.CreateSymbolicLink(current, target);
+        LocalInstallationInstallerUbuntuManagedPrimitiveHandler handler = new(
+            (_, _) => throw new InvalidOperationException(
+                "Pointer inspection must not run a process."),
+            () => new HttpClientHandler(),
+            current);
+
+        InstallationInstallerUbuntuPrimitiveInspection inspection =
+            await handler.InspectAsync(
+                Request(targetReleasePath: target),
+                InitialReleaseOperation());
+
+        Assert.Equal(
+            InstallationInstallerUbuntuPrimitiveInspectionOutcome.Rejected,
+            inspection.Outcome);
+        Assert.Equal("ubuntu-current-pointer-preserved", inspection.Code);
+    }
+
+    [Fact]
     public async Task PointerRollbackPreservesMismatchedSymlink()
     {
         using TemporaryDirectory temporary = new();
@@ -1369,6 +1443,15 @@ public sealed class InstallationInstallerUbuntuMutationExecutorTests
         Assert.False(Directory.Exists(current));
         Assert.Null(new DirectoryInfo(current).LinkTarget);
     }
+
+    private static InstallationInstallerUbuntuPrimitiveOperation
+        InitialReleaseOperation() =>
+        new(
+            3,
+            InstallationInstallerUbuntuPrimitiveKind.ActivateInitialRelease,
+            "2026.8.0",
+            Executable: string.Empty,
+            Arguments: []);
 
     private static InstallationInstallerUbuntuPrimitiveOperation
         SetupIdentityOperation(

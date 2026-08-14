@@ -527,11 +527,10 @@ public sealed class VerifiedReleaseActivationHealthVerificationServiceTests
         await File.WriteAllTextAsync(
             script,
             "#!/bin/sh\n" +
-            "test \"$#\" -eq 4 || exit 10\n" +
-            "test \"$1\" = --user || exit 11\n" +
-            "test \"$2\" = is-active || exit 12\n" +
-            "test \"$3\" = --quiet || exit 13\n" +
-            "test \"$4\" = aethersdr-web.service || exit 14\n" +
+            "test \"$#\" -eq 3 || exit 10\n" +
+            "test \"$1\" = is-active || exit 11\n" +
+            "test \"$2\" = --quiet || exit 12\n" +
+            "test \"$3\" = aethersdr-web.service || exit 13\n" +
             "test -z \"${HOME+x}\" || exit 14\n" +
             "exit 0\n");
         File.SetUnixFileMode(

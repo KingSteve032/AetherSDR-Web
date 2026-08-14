@@ -105,9 +105,17 @@ public sealed class VerifiedReleaseExtractedPublicationServiceTests
             await fixture.Service.PublishAsync(fixture.Composition);
 
         Assert.True(report.Succeeded);
-        AssertTreeMatchesFixture(fixture, fixture.TargetPath);
+        AssertTreeMatchesFixture(
+            fixture,
+            fixture.TargetPath,
+            publishedTree: true);
         Assert.Equal(
-            UnixFileMode.UserRead | UnixFileMode.UserExecute,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupExecute |
+            UnixFileMode.OtherRead |
+            UnixFileMode.OtherExecute,
             File.GetUnixFileMode(fixture.TargetPath));
     }
 
@@ -439,7 +447,10 @@ public sealed class VerifiedReleaseExtractedPublicationServiceTests
         Assert.False(report.ReconciliationRequired);
         Assert.False(Directory.Exists(fixture.SourcePath));
         Assert.True(Directory.Exists(fixture.TargetPath));
-        AssertTreeMatchesFixture(fixture, fixture.TargetPath);
+        AssertTreeMatchesFixture(
+            fixture,
+            fixture.TargetPath,
+            publishedTree: true);
     }
 
     [Fact]
@@ -575,7 +586,8 @@ public sealed class VerifiedReleaseExtractedPublicationServiceTests
 
     private static void AssertTreeMatchesFixture(
         PublicationFixture fixture,
-        string root)
+        string root,
+        bool publishedTree = false)
     {
         string[] actual = Directory.GetFiles(root, "*", SearchOption.AllDirectories)
             .Select(path => Relative(root, path))
@@ -596,9 +608,20 @@ public sealed class VerifiedReleaseExtractedPublicationServiceTests
                     Path.DirectorySeparatorChar));
             Assert.Equal(fixture.Content(expected.RelativePath), File.ReadAllBytes(path));
             Assert.Equal(
-                expected.Executable
-                    ? UnixFileMode.UserRead | UnixFileMode.UserExecute
-                    : UnixFileMode.UserRead,
+                publishedTree
+                    ? expected.Executable
+                        ? UnixFileMode.UserRead |
+                          UnixFileMode.UserExecute |
+                          UnixFileMode.GroupRead |
+                          UnixFileMode.GroupExecute |
+                          UnixFileMode.OtherRead |
+                          UnixFileMode.OtherExecute
+                        : UnixFileMode.UserRead |
+                          UnixFileMode.GroupRead |
+                          UnixFileMode.OtherRead
+                    : expected.Executable
+                        ? UnixFileMode.UserRead | UnixFileMode.UserExecute
+                        : UnixFileMode.UserRead,
                 File.GetUnixFileMode(path));
         }
 
@@ -608,7 +631,14 @@ public sealed class VerifiedReleaseExtractedPublicationServiceTests
                      SearchOption.AllDirectories))
         {
             Assert.Equal(
-                UnixFileMode.UserRead | UnixFileMode.UserExecute,
+                publishedTree
+                    ? UnixFileMode.UserRead |
+                      UnixFileMode.UserExecute |
+                      UnixFileMode.GroupRead |
+                      UnixFileMode.GroupExecute |
+                      UnixFileMode.OtherRead |
+                      UnixFileMode.OtherExecute
+                    : UnixFileMode.UserRead | UnixFileMode.UserExecute,
                 File.GetUnixFileMode(directory));
         }
     }

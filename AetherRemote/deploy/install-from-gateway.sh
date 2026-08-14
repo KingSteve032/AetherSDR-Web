@@ -415,7 +415,7 @@ def validate_package(role):
     name = package.get("fileName", "")
     digest = str(package.get("sha256", "")).lower()
     length = package.get("length")
-    if not re.fullmatch(r"[A-Za-z0-9._-]{1,160}", name) or "/" in name or "\\" in name:
+    if not re.fullmatch(r"packages/[A-Za-z0-9._-]{1,160}", name) or "\\" in name:
         die("unsafe package file name")
     if not re.fullmatch(r"[0-9a-f]{64}", digest):
         die("invalid package digest")
@@ -496,7 +496,11 @@ with tarfile.open(archive, "r:gz") as tar:
             raise SystemExit("archive entry limit exceeded")
         path = PurePosixPath(member.name)
         parts = [part for part in path.parts if part not in ("", ".")]
-        if path.is_absolute() or not parts or any(part == ".." for part in parts):
+        if path.is_absolute() or any(part == ".." for part in parts):
+            raise SystemExit("unsafe archive path")
+        if not parts:
+            if member.isdir() and member.name in {".", "./"}:
+                continue
             raise SystemExit("unsafe archive path")
         if not (member.isfile() or member.isdir()):
             raise SystemExit("archive contains link, device, or unsupported entry")
@@ -509,6 +513,8 @@ with tarfile.open(archive, "r:gz") as tar:
     for member in members:
         path = PurePosixPath(member.name)
         parts = [part for part in path.parts if part not in ("", ".")]
+        if not parts and member.isdir():
+            continue
         target = destination.joinpath(*parts)
         resolved_parent = target.parent.resolve()
         if destination != resolved_parent and destination not in resolved_parent.parents:
@@ -751,7 +757,23 @@ systemctl enable \
   aetherremote-release-updater.service \
   aetherremote-station-engine.service \
   aetherremote-agent.service >/dev/null
+
+wait_release_updater_ready() {
+  local ready=false
+  for _ in $(seq 1 20); do
+    if systemctl is-active --quiet aetherremote-release-updater.service &&
+       [[ -S /run/aetherremote-release-updater/release.sock ]]; then
+      ready=true
+      break
+    fi
+    sleep 1
+  done
+  [[ "${ready}" == true ]] ||
+    fail "the fixed-purpose release updater did not become ready"
+}
+
 systemctl restart aetherremote-release-updater.service
+wait_release_updater_ready
 systemctl restart aetherremote-station-engine.service
 
 health_ok=false
@@ -806,6 +828,7 @@ curl \
   "${enrollment_url}" >/dev/null ||
   fail "the gateway rejected or could not complete the one-time station enrollment"
 
+wait_release_updater_ready
 systemctl restart aetherremote-agent.service
 sleep 2
 systemctl is-active --quiet aetherremote-station-engine.service ||

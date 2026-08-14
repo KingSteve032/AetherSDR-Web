@@ -222,7 +222,11 @@ public static class InstallationInstallerUbuntuPrimitivePlanner
             action.Target,
             "/var/lib/aethersdr",
             StringComparison.Ordinal);
-        string octalMode = secret
+        bool privateBackupRoot = string.Equals(
+            action.Target,
+            "/var/backups/aethersdr",
+            StringComparison.Ordinal);
+        string octalMode = secret || privateBackupRoot
             ? "0700"
             : sharedReleaseRoot
                 ? "0755"

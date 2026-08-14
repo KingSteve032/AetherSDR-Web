@@ -32,7 +32,8 @@ RestrictNamespaces=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
 LockPersonality=true
-MemoryDenyWriteExecute=true
+# The self-contained .NET updater JIT requires executable memory mappings.
+# Retain the remaining root-service sandbox while avoiding a startup crash.
 SystemCallArchitectures=native
 UMask=0077
 

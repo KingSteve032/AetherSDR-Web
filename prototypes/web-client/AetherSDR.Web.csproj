@@ -53,6 +53,10 @@
              Link="tools\SETUP-ONLY-ACCEPTANCE.md"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="deploy\uninstall-aethersdr.sh"
+             Link="tools\uninstall-aethersdr.sh"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
     <Content Include="deploy\aethersdr-release-updater.service"
              Link="tools\aethersdr-release-updater.service"
              CopyToOutputDirectory="PreserveNewest"

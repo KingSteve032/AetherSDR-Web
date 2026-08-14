@@ -224,7 +224,8 @@ internal sealed class VerifiedReleaseActivationMigrationPlan
 /// </summary>
 public sealed class VerifiedReleaseActivationMigrationPlanComposer
 {
-    private const int ExpectedSourceCount = 3;
+    private const int MinimumSourceCount = 2;
+    private const int MaximumSourceCount = 3;
     private const int MaximumMigrationIdentityLength = 96;
 
     public VerifiedReleaseActivationMigrationPlanComposer()
@@ -437,13 +438,13 @@ public sealed class VerifiedReleaseActivationMigrationPlanComposer
                                 stagingPath,
                                 SourceDirectoryName(source.Kind))))
                     .ToArray();
-            if (sources.Length != ExpectedSourceCount ||
+            if (sources.Length is < MinimumSourceCount or > MaximumSourceCount ||
                 sources.Select(source => source.Kind).Distinct().Count() !=
-                    ExpectedSourceCount ||
+                    sources.Length ||
                 sources.Select(source => source.SourcePath)
-                    .Distinct(PathComparer).Count() != ExpectedSourceCount ||
+                    .Distinct(PathComparer).Count() != sources.Length ||
                 sources.Select(source => source.StagedPath)
-                    .Distinct(PathComparer).Count() != ExpectedSourceCount ||
+                    .Distinct(PathComparer).Count() != sources.Length ||
                 sources.Any(source =>
                     !IsSameOrDescendant(
                         source.SourcePath,
@@ -536,8 +537,8 @@ public sealed class VerifiedReleaseActivationMigrationPlanComposer
         report.SetupRevision is > 0 &&
         !string.IsNullOrEmpty(report.InstalledReleaseIdentity) &&
         !string.IsNullOrEmpty(report.TargetReleaseIdentity) &&
-        report.SourceDirectoryCount == ExpectedSourceCount &&
-        report.DirectoryCount >= ExpectedSourceCount &&
+        report.SourceDirectoryCount is >= MinimumSourceCount and <= MaximumSourceCount &&
+        report.DirectoryCount >= report.SourceDirectoryCount &&
         report.FileCount >= 0 &&
         report.BackupBytes >= 0 &&
         report.SourceSnapshotStable &&
@@ -573,7 +574,7 @@ public sealed class VerifiedReleaseActivationMigrationPlanComposer
             report.BackupBytes != backup.BackupBytes ||
             backup.ManifestSha256.Length != 32 ||
             backup.CompletedAt == default ||
-            plan.Sources.Count != ExpectedSourceCount ||
+            plan.Sources.Count is < MinimumSourceCount or > MaximumSourceCount ||
             plan.ExistingBackupOverwriteAllowed ||
             !plan.AtomicPublicationRequired)
         {

@@ -188,7 +188,8 @@ internal sealed class VerifiedReleaseActivationConfigurationBackupPlan
 /// </summary>
 public sealed class VerifiedReleaseActivationConfigurationBackupPlanner
 {
-    private const int ExpectedSourceCount = 3;
+    private const int MinimumSourceCount = 2;
+    private const int MaximumSourceCount = 3;
     private readonly InstallationPaths m_paths;
 
     public VerifiedReleaseActivationConfigurationBackupPlanner(
@@ -321,7 +322,7 @@ public sealed class VerifiedReleaseActivationConfigurationBackupPlanner
                 publishedPath,
                 "backup-manifest.json");
 
-            VerifiedReleaseActivationConfigurationBackupSourcePlan[] sources =
+            List<VerifiedReleaseActivationConfigurationBackupSourcePlan> sources =
             [
                 new(
                     VerifiedReleaseActivationConfigurationBackupSourceKind
@@ -331,19 +332,22 @@ public sealed class VerifiedReleaseActivationConfigurationBackupPlanner
                 new(
                     VerifiedReleaseActivationConfigurationBackupSourceKind.State,
                     paths.StateDirectory,
-                    DirectChild(stagingPath, "state")),
-                new(
+                    DirectChild(stagingPath, "state"))
+            ];
+            if (!IsDescendant(paths.SecretDirectory, paths.StateDirectory))
+            {
+                sources.Add(new(
                     VerifiedReleaseActivationConfigurationBackupSourceKind.Secret,
                     paths.SecretDirectory,
-                    DirectChild(stagingPath, "secrets"))
-            ];
-            if (sources.Length != ExpectedSourceCount ||
+                    DirectChild(stagingPath, "secrets")));
+            }
+            if (sources.Count is < MinimumSourceCount or > MaximumSourceCount ||
                 sources.Select(source => source.Kind).Distinct().Count() !=
-                    ExpectedSourceCount ||
+                    sources.Count ||
                 sources.Select(source => source.SourcePath)
-                    .Distinct(PathComparer).Count() != ExpectedSourceCount ||
+                    .Distinct(PathComparer).Count() != sources.Count ||
                 sources.Select(source => source.StagedPath)
-                    .Distinct(PathComparer).Count() != ExpectedSourceCount)
+                    .Distinct(PathComparer).Count() != sources.Count)
             {
                 throw new InvalidOperationException(
                     "The backup source plan is incomplete or duplicated.");
@@ -435,15 +439,19 @@ public sealed class VerifiedReleaseActivationConfigurationBackupPlanner
             paths.BackupDirectory,
             paths.LogDirectory
         ];
+        if (roots.Any(IsFileSystemRoot))
+        {
+            return false;
+        }
         for (int left = 0; left < roots.Length; left++)
         {
-            if (IsFileSystemRoot(roots[left]))
-            {
-                return false;
-            }
             for (int right = left + 1; right < roots.Length; right++)
             {
-                if (PathsOverlap(roots[left], roots[right]))
+                bool supportedNestedSecret =
+                    ((left == 1 && right == 2) || (left == 2 && right == 1)) &&
+                    IsDescendant(paths.SecretDirectory, paths.StateDirectory);
+                if (PathsOverlap(roots[left], roots[right]) &&
+                    !supportedNestedSecret)
                 {
                     return false;
                 }
@@ -548,6 +556,16 @@ public sealed class VerifiedReleaseActivationConfigurationBackupPlanner
                 "The planned path escaped its parent directory.");
         }
         return result;
+    }
+
+    private static bool IsDescendant(string candidate, string parent)
+    {
+        string normalizedCandidate = CanonicalDirectory(candidate);
+        string normalizedParent = CanonicalDirectory(parent);
+        return !PathEquals(normalizedCandidate, normalizedParent) &&
+            normalizedCandidate.StartsWith(
+                normalizedParent + Path.DirectorySeparatorChar,
+                PathComparison);
     }
 
     private static bool IsFileSystemRoot(string path)

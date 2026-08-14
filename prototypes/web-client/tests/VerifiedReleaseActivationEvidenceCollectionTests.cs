@@ -152,6 +152,32 @@ public sealed class VerifiedReleaseActivationEvidenceCollectionTests
         Assert.False(evidence.OperatorApproved);
     }
 
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task ReadyConfigurationBackupAcceptsSupportedSourceRootCounts(
+        int sourceDirectoryCount)
+    {
+        Fixture fixture = new();
+        fixture.ConfigurationBackupReader = _ =>
+            new VerifiedReleaseActivationConfigurationBackupObservation(
+                ConfigurationBackupReady: true,
+                SourceDirectoryCount: sourceDirectoryCount,
+                DirectoryCount: sourceDirectoryCount + 2,
+                FileCount: 3,
+                BackupBytes: 4096,
+                CompletedAt: fixture.Now,
+                ReconciliationRequired: false);
+        fixture.RebuildCollector();
+
+        VerifiedReleaseActivationEvidenceCollectionReport report =
+            await fixture.CollectAsync();
+
+        Assert.True(report.Succeeded);
+        Assert.True(report.ConfigurationBackupReady);
+        Assert.True(report.Collection!.Evidence.ConfigurationBackupReady);
+    }
+
     [Fact]
     public async Task ExactServiceControlAndHealthObservationsCompleteBothFields()
     {
@@ -940,6 +966,19 @@ public sealed class VerifiedReleaseActivationEvidenceCollectionTests
         { get; set; }
         internal Func<
             VerifiedReleaseActivationPlan,
+            VerifiedReleaseActivationConfigurationBackupObservation>
+        ConfigurationBackupReader
+        { get; set; } = _ =>
+            new VerifiedReleaseActivationConfigurationBackupObservation(
+                ConfigurationBackupReady: false,
+                SourceDirectoryCount: 0,
+                DirectoryCount: 0,
+                FileCount: 0,
+                BackupBytes: 0,
+                CompletedAt: null,
+                ReconciliationRequired: false);
+        internal Func<
+            VerifiedReleaseActivationPlan,
             VerifiedReleaseActivationServiceControlObservation>
         ServiceControlReader
         { get; set; } = plan =>
@@ -990,13 +1029,15 @@ public sealed class VerifiedReleaseActivationEvidenceCollectionTests
         {
             Collector = new VerifiedReleaseActivationEvidenceCollector(
                 ReadStatusAsync,
-                () =>
+                _ =>
                 {
                     if (ThrowingSource == "leases")
                     {
                         throw new InvalidOperationException("lease source failed");
                     }
-                    return NullSource == "leases" ? null! : Leases;
+                    return new VerifiedReleaseActivationLeaseQuiescenceObservation(
+                        AdmissionClosed: false,
+                        NullSource == "leases" ? null! : Leases);
                 },
                 () =>
                 {
@@ -1016,9 +1057,10 @@ public sealed class VerifiedReleaseActivationEvidenceCollectionTests
                 },
                 Time,
                 SessionCapture,
-                HealthVerificationReader,
-                ServiceControlReader,
-                OperatorApprovalReader);
+                configurationBackupReader: ConfigurationBackupReader,
+                healthVerificationReader: HealthVerificationReader,
+                serviceControlReader: ServiceControlReader,
+                operatorApprovalReader: OperatorApprovalReader);
         }
 
         internal Task<VerifiedReleaseActivationEvidenceCollectionReport>

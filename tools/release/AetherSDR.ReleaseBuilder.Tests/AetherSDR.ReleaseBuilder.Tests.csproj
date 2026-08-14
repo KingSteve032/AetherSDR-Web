@@ -20,5 +20,6 @@
   <ItemGroup>
     <ProjectReference Include="..\AetherSDR.ReleaseBuilder\AetherSDR.ReleaseBuilder.csproj" />
     <ProjectReference Include="..\..\..\prototypes\web-client\AetherSDR.Web.csproj" />
+    <ProjectReference Include="..\..\..\AetherRemote\src\AetherRemote.Agent\AetherRemote.Agent.csproj" />
   </ItemGroup>
 </Project>

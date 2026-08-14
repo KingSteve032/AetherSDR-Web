@@ -20,6 +20,12 @@ const updaterUnit = await readFile(
 const agentUnit = await readFile(
   new URL("../../../AetherRemote/deploy/aetherremote-agent.service", import.meta.url),
   "utf8");
+const stationEngineUnit = await readFile(
+  new URL("../../../AetherRemote/deploy/aetherremote-station-engine.service", import.meta.url),
+  "utf8");
+const program = await readFile(
+  new URL("../Program.cs", import.meta.url),
+  "utf8");
 
 test("station bootstrap keeps enrollment code out of command arguments and history", () => {
   assert.doesNotMatch(installer, /--enrollment(?:-code)?/i);
@@ -65,12 +71,22 @@ test("managed proxies expose only a prefixed station broker route", () => {
   assert.doesNotMatch(nginx, /listen\s+5090/);
 });
 
+test("station receive engine uses the dedicated service-boundary host role", () => {
+  assert.match(
+    stationEngineUnit,
+    /^Environment=InstallationServiceHost__Role=StationEngine$/m);
+  assert.match(
+    program,
+    /if \(authenticationTopology\.Mode != AetherAuthenticationMode\.ServiceBoundary\)[\s\S]*AddScoped<AetherAuthenticationSessionService>/);
+});
+
 test("release updater is a hardened system service with no network family", () => {
   assert.match(updaterUnit, /^User=root$/m);
   assert.match(updaterUnit, /^Group=aetherremote$/m);
   assert.match(updaterUnit, /^NoNewPrivileges=true$/m);
   assert.match(updaterUnit, /^ProtectSystem=strict$/m);
   assert.match(updaterUnit, /^RestrictAddressFamilies=AF_UNIX$/m);
+  assert.doesNotMatch(updaterUnit, /^MemoryDenyWriteExecute=true$/m);
   assert.match(
     updaterUnit,
     /^ReadWritePaths=\/opt\/aetherremote \/var\/lib\/aetherremote \/etc\/systemd\/system$/m);
@@ -82,4 +98,17 @@ test("Agent depends on updater and may write only its private release staging pa
   assert.match(
     agentUnit,
     /^ReadWritePaths=\/var\/lib\/aetherremote\/release-staging$/m);
+});
+
+test("bootstrap waits for the fixed-purpose release updater before Agent startup", () => {
+  assert.match(installer, /wait_release_updater_ready\(\)/);
+  assert.match(
+    installer,
+    /systemctl is-active --quiet aetherremote-release-updater\.service/);
+  assert.match(
+    installer,
+    /\[\[ -S \/run\/aetherremote-release-updater\/release\.sock \]\]/);
+  assert.match(
+    installer,
+    /wait_release_updater_ready\n\s*systemctl restart aetherremote-agent\.service/);
 });

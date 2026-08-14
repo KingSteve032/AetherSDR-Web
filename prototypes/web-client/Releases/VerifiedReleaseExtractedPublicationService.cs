@@ -155,6 +155,19 @@ public sealed class VerifiedReleaseExtractedPublicationService
     private const UnixFileMode PrivateImmutableFileMode = UnixFileMode.UserRead;
     private const UnixFileMode PrivateImmutableExecutableFileMode =
         UnixFileMode.UserRead | UnixFileMode.UserExecute;
+    private const UnixFileMode PublishedImmutableDirectoryMode =
+        UnixFileMode.UserRead |
+        UnixFileMode.UserExecute |
+        UnixFileMode.GroupRead |
+        UnixFileMode.GroupExecute |
+        UnixFileMode.OtherRead |
+        UnixFileMode.OtherExecute;
+    private const UnixFileMode PublishedImmutableFileMode =
+        UnixFileMode.UserRead |
+        UnixFileMode.GroupRead |
+        UnixFileMode.OtherRead;
+    private const UnixFileMode PublishedImmutableExecutableFileMode =
+        PublishedImmutableDirectoryMode;
     private const UnixFileMode RequiredOwnerDirectoryModes =
         UnixFileMode.UserRead |
         UnixFileMode.UserWrite |
@@ -258,6 +271,7 @@ public sealed class VerifiedReleaseExtractedPublicationService
                 plan,
                 plan.SourcePath,
                 sourceTree: true,
+                publishedTree: false,
                 cancellationToken).ConfigureAwait(false);
         }
         catch (PublicationException exception)
@@ -392,6 +406,14 @@ public sealed class VerifiedReleaseExtractedPublicationService
                 plan,
                 plan.TargetPath,
                 sourceTree: false,
+                publishedTree: false,
+                CancellationToken.None).ConfigureAwait(false);
+            ExposePublishedServiceTree(plan);
+            await ValidateImmutableTreeAsync(
+                plan,
+                plan.TargetPath,
+                sourceTree: false,
+                publishedTree: true,
                 CancellationToken.None).ConfigureAwait(false);
             targetImmutable = true;
 
@@ -871,10 +893,11 @@ public sealed class VerifiedReleaseExtractedPublicationService
         VerifiedReleaseExtractedPublicationPlan plan,
         string rootPath,
         bool sourceTree,
+        bool publishedTree,
         CancellationToken cancellationToken)
     {
         DirectoryInfo root = new(rootPath);
-        ValidateImmutableDirectory(root);
+        ValidateImmutableDirectory(root, publishedTree);
 
         Dictionary<string, FileInfo> files = new(StringComparer.Ordinal);
         HashSet<string> directories = new(StringComparer.Ordinal);
@@ -884,7 +907,7 @@ public sealed class VerifiedReleaseExtractedPublicationService
         {
             cancellationToken.ThrowIfCancellationRequested();
             DirectoryInfo directory = pending.Pop();
-            ValidateImmutableDirectory(directory);
+            ValidateImmutableDirectory(directory, publishedTree);
             bool isRoot = PathEquals(directory.FullName, rootPath);
             FileSystemInfo[] entries = directory.GetFileSystemInfos();
             if (!isRoot && entries.Length == 0)
@@ -984,6 +1007,7 @@ public sealed class VerifiedReleaseExtractedPublicationService
             await ValidateImmutableFileAsync(
                 file,
                 expected,
+                publishedTree,
                 cancellationToken).ConfigureAwait(false);
         }
     }
@@ -992,9 +1016,13 @@ public sealed class VerifiedReleaseExtractedPublicationService
     private static async Task ValidateImmutableFileAsync(
         FileInfo file,
         VerifiedReleaseExtractedPublicationFilePlan expected,
+        bool publishedTree,
         CancellationToken cancellationToken)
     {
-        FileState before = ReadImmutableFileState(file, expected.Executable);
+        FileState before = ReadImmutableFileState(
+            file,
+            expected.Executable,
+            publishedTree);
         if (before.Length != expected.Length)
         {
             throw Failure(
@@ -1049,7 +1077,10 @@ public sealed class VerifiedReleaseExtractedPublicationService
                 "An immutable extracted release file digest no longer matches its verified publication plan.");
         }
 
-        FileState after = ReadImmutableFileState(file, expected.Executable);
+        FileState after = ReadImmutableFileState(
+            file,
+            expected.Executable,
+            publishedTree);
         if (after != before || stream.Length != before.Length)
         {
             throw Changed();
@@ -1059,12 +1090,17 @@ public sealed class VerifiedReleaseExtractedPublicationService
     [SupportedOSPlatform("linux")]
     private static FileState ReadImmutableFileState(
         FileInfo file,
-        bool executable)
+        bool executable,
+        bool publishedTree)
     {
         file.Refresh();
-        UnixFileMode expectedMode = executable
-            ? PrivateImmutableExecutableFileMode
-            : PrivateImmutableFileMode;
+        UnixFileMode expectedMode = publishedTree
+            ? executable
+                ? PublishedImmutableExecutableFileMode
+                : PublishedImmutableFileMode
+            : executable
+                ? PrivateImmutableExecutableFileMode
+                : PrivateImmutableFileMode;
         if (!file.Exists ||
             (file.Attributes &
                 (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0 ||
@@ -1082,18 +1118,72 @@ public sealed class VerifiedReleaseExtractedPublicationService
     }
 
     [SupportedOSPlatform("linux")]
-    private static void ValidateImmutableDirectory(DirectoryInfo directory)
+    private static void ValidateImmutableDirectory(
+        DirectoryInfo directory,
+        bool publishedTree)
     {
         directory.Refresh();
+        UnixFileMode expectedMode = publishedTree
+            ? PublishedImmutableDirectoryMode
+            : PrivateImmutableDirectoryMode;
         if (!directory.Exists ||
             (directory.Attributes & FileAttributes.ReparsePoint) != 0 ||
             directory.LinkTarget is not null ||
-            File.GetUnixFileMode(directory.FullName) !=
-                PrivateImmutableDirectoryMode)
+            File.GetUnixFileMode(directory.FullName) != expectedMode)
         {
             throw Failure(
                 VerifiedReleaseExtractedPublicationFailureCode.UnsafeSourceTree,
                 "The immutable extracted release tree contains an unsafe or writable directory.");
+        }
+    }
+
+    [SupportedOSPlatform("linux")]
+    private static void ExposePublishedServiceTree(
+        VerifiedReleaseExtractedPublicationPlan plan)
+    {
+        HashSet<string> directories = new(StringComparer.Ordinal)
+        {
+            plan.TargetPath
+        };
+        foreach (VerifiedReleaseExtractedPublicationFilePlan file in plan.Files)
+        {
+            FileInfo target = new(file.TargetPath);
+            target.Refresh();
+            if (!target.Exists ||
+                target.LinkTarget is not null ||
+                (target.Attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                throw new IOException(
+                    "A verified published release file became unsafe before service exposure.");
+            }
+            File.SetUnixFileMode(
+                file.TargetPath,
+                file.Executable
+                    ? PublishedImmutableExecutableFileMode
+                    : PublishedImmutableFileMode);
+
+            string? parent = Path.GetDirectoryName(file.TargetPath);
+            while (parent is not null && !PathEquals(parent, plan.TargetPath))
+            {
+                if (!directories.Add(parent))
+                {
+                    break;
+                }
+                parent = Path.GetDirectoryName(parent);
+            }
+        }
+        foreach (string path in directories)
+        {
+            DirectoryInfo directory = new(path);
+            directory.Refresh();
+            if (!directory.Exists ||
+                directory.LinkTarget is not null ||
+                (directory.Attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                throw new IOException(
+                    "A verified published release directory became unsafe before service exposure.");
+            }
+            File.SetUnixFileMode(path, PublishedImmutableDirectoryMode);
         }
     }
 

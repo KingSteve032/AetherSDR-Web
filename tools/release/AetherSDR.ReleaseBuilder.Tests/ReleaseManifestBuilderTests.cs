@@ -1,6 +1,8 @@
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using AetherRemote.Agent;
 using AetherSDR.Web.Releases;
 using AetherSDR.Web.Setup;
 using Xunit;
@@ -46,6 +48,42 @@ public sealed class ReleaseManifestBuilderTests
             InstallationUpdateChannel.Beta,
             pinnedIdentity: string.Empty,
             expectedChannel: "beta");
+    }
+
+    [Fact]
+    public void BuilderManifestAndPackagesPassStationUpdaterVerifier()
+    {
+        using Fixture fixture = new(
+            "linux-x64",
+            version: "8.2.0-beta.1",
+            channel: ReleaseBuilderChannel.Beta);
+        ReleaseManifestBuildReport report = fixture.Build();
+        Assert.True(report.Succeeded, report.Message);
+
+        MethodInfo verify = typeof(StationReleaseUpdateService).GetMethod(
+            "VerifyManifestAndPackages",
+            BindingFlags.Static | BindingFlags.NonPublic) ??
+            throw new InvalidOperationException(
+                "The station release verifier fixture boundary is unavailable.");
+        string agent = Path.Combine(
+            fixture.AssetDirectory,
+            "aetherremote-agent-linux-x64.tar.gz");
+        string engine = Path.Combine(
+            fixture.AssetDirectory,
+            "aethersdr-station-engine-linux-x64.tar.gz");
+
+        object? verified = verify.Invoke(
+            null,
+            [
+                File.ReadAllBytes(fixture.ManifestPath),
+                fixture.PublicKey.ToArray(),
+                report.ReleaseIdentity,
+                "linux-x64",
+                agent,
+                engine
+            ]);
+
+        Assert.NotNull(verified);
     }
 
     [Fact]

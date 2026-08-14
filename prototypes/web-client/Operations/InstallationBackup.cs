@@ -7,7 +7,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using AetherSDR.Web.Releases;
 using AetherSDR.Web.Setup;
-using Microsoft.Data.Sqlite;
 
 namespace AetherSDR.Web.Operations;
 
@@ -524,12 +523,12 @@ public sealed class InstallationBackupService
                 if (PathEquals(entry, m_paths.IdentityDatabasePath) &&
                     InstallationTopologyProfile.For(setup.Topology!.Value).GatewayRunsHere)
                 {
-                    content = await SnapshotIdentityDatabaseAsync(cancellationToken);
+                    content = await ReadStableIdentityDatabaseAsync(cancellationToken);
                 }
-                else if (PathEquals(entry, m_paths.IdentityDatabasePath + "-wal") ||
-                         PathEquals(entry, m_paths.IdentityDatabasePath + "-shm"))
+                else if (IsIdentityDatabaseSidecar(entry))
                 {
-                    continue;
+                    throw new InvalidDataException(
+                        "Encrypted backup requires an offline identity database without SQLite sidecar files.");
                 }
                 else
                 {
@@ -557,7 +556,7 @@ public sealed class InstallationBackupService
             files);
     }
 
-    private async Task<byte[]> SnapshotIdentityDatabaseAsync(
+    private async Task<byte[]> ReadStableIdentityDatabaseAsync(
         CancellationToken cancellationToken)
     {
         if (!IsSafeRegularFile(m_paths.IdentityDatabasePath))
@@ -565,49 +564,26 @@ public sealed class InstallationBackupService
             throw new InvalidDataException(
                 "The local identity database is not a safe regular file.");
         }
-        string tempRoot = Directory.Exists("/dev/shm") && OperatingSystem.IsLinux()
-            ? "/dev/shm"
-            : m_paths.BackupDirectory;
-        string snapshot = Path.Combine(
-            tempRoot,
-            $".aethersdr-identity-backup-{Guid.NewGuid():N}.db");
-        try
+        string[] sidecars =
+        [
+            m_paths.IdentityDatabasePath + "-wal",
+            m_paths.IdentityDatabasePath + "-shm",
+            m_paths.IdentityDatabasePath + "-journal"
+        ];
+        if (sidecars.Any(PathEntryExists))
         {
-            string sourceConnection = new SqliteConnectionStringBuilder
-            {
-                DataSource = m_paths.IdentityDatabasePath,
-                Mode = SqliteOpenMode.ReadOnly,
-                Cache = SqliteCacheMode.Private
-            }.ToString();
-            string destinationConnection = new SqliteConnectionStringBuilder
-            {
-                DataSource = snapshot,
-                Mode = SqliteOpenMode.ReadWriteCreate,
-                Cache = SqliteCacheMode.Private
-            }.ToString();
-            await using SqliteConnection source = new(sourceConnection);
-            await using SqliteConnection destination = new(destinationConnection);
-            await source.OpenAsync(cancellationToken);
-            await destination.OpenAsync(cancellationToken);
-            source.BackupDatabase(destination);
-            await destination.CloseAsync();
-            await source.CloseAsync();
-            if (OperatingSystem.IsLinux())
-            {
-                File.SetUnixFileMode(
-                    snapshot,
-                    UnixFileMode.UserRead | UnixFileMode.UserWrite);
-            }
-            return await ReadStableFileAsync(snapshot, cancellationToken);
+            throw new InvalidDataException(
+                "Encrypted backup requires an offline identity database without SQLite sidecar files.");
         }
-        finally
-        {
-            if (File.Exists(snapshot))
-            {
-                File.Delete(snapshot);
-            }
-        }
+        return await ReadStableFileAsync(
+            m_paths.IdentityDatabasePath,
+            cancellationToken);
     }
+
+    private bool IsIdentityDatabaseSidecar(string path) =>
+        PathEquals(path, m_paths.IdentityDatabasePath + "-wal") ||
+        PathEquals(path, m_paths.IdentityDatabasePath + "-shm") ||
+        PathEquals(path, m_paths.IdentityDatabasePath + "-journal");
 
     private async Task<InstallationBackupExactFile?> CaptureManagedProxyConfigurationAsync(
         CancellationToken cancellationToken)
@@ -623,12 +599,17 @@ public sealed class InstallationBackupService
             throw new InvalidDataException(
                 "Installer-owned managed proxy state is unsafe.");
         }
-        string expected = (await File.ReadAllTextAsync(stateMarker, cancellationToken)).Trim();
-        if (expected.Length != 64 || expected.Any(character =>
-                character is not (>= '0' and <= '9' or >= 'a' and <= 'f')))
+        byte[] markerBytes = await ReadStableFileAsync(
+            stateMarker,
+            cancellationToken);
+        string expected;
+        try
         {
-            throw new InvalidDataException(
-                "Installer-owned managed proxy state has an invalid digest marker.");
+            expected = ParseManagedMarkerDigest(markerBytes);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(markerBytes);
         }
         byte[] content = await ReadStableFileAsync(target, cancellationToken);
         string actual = Convert.ToHexStringLower(SHA256.HashData(content));
@@ -651,6 +632,44 @@ public sealed class InstallationBackupService
         return result;
     }
 
+    private static string ParseManagedMarkerDigest(byte[] markerBytes)
+    {
+        if (markerBytes.Length is < 64 or > 256)
+        {
+            throw new InvalidDataException(
+                "Installer-owned managed proxy state has an invalid digest marker.");
+        }
+        string marker;
+        try
+        {
+            marker = new UTF8Encoding(
+                encoderShouldEmitUTF8Identifier: false,
+                throwOnInvalidBytes: true).GetString(markerBytes);
+        }
+        catch (DecoderFallbackException exception)
+        {
+            throw new InvalidDataException(
+                "Installer-owned managed proxy state has an invalid digest marker.",
+                exception);
+        }
+        int newline = marker.IndexOf('\n');
+        string first = newline >= 0 ? marker[..newline] : marker;
+        const string Prefix = "sha256=";
+        if (!first.StartsWith(Prefix, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "Installer-owned managed proxy state has an invalid digest marker.");
+        }
+        string digest = first[Prefix.Length..];
+        if (digest.Length != 64 || digest.Any(character =>
+                character is not (>= '0' and <= '9' or >= 'a' and <= 'f')))
+        {
+            throw new InvalidDataException(
+                "Installer-owned managed proxy state has an invalid digest marker.");
+        }
+        return digest;
+    }
+
     private IEnumerable<(InstallationBackupRootRole Role, string Path)> GetProtectedRoots()
     {
         yield return (InstallationBackupRootRole.Configuration, m_paths.ConfigurationDirectory);
@@ -670,6 +689,14 @@ public sealed class InstallationBackupService
 
     private bool ShouldExclude(string path, string root)
     {
+        string releaseSupervisorRuntime = Path.Combine(
+            m_paths.StateDirectory,
+            ReleaseUpdateSupervisor.DirectoryName);
+        if (PathEquals(path, releaseSupervisorRuntime))
+        {
+            ValidateExcludedReleaseSupervisorRuntime(path);
+            return true;
+        }
         foreach (string excluded in new[]
         {
             m_paths.ReleaseDirectory,
@@ -684,6 +711,20 @@ public sealed class InstallationBackupService
             }
         }
         return false;
+    }
+
+    private static void ValidateExcludedReleaseSupervisorRuntime(string path)
+    {
+        DirectoryInfo directory = new(path);
+        directory.Refresh();
+        if (!directory.Exists || directory.LinkTarget is not null ||
+            (directory.Attributes & FileAttributes.ReparsePoint) != 0 ||
+            !Path.IsPathFullyQualified(path) ||
+            !string.Equals(Path.GetFullPath(path), path, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The transient release-updater runtime path is not a canonical directory.");
+        }
     }
 
     private static byte[] CompressPayload(InstallationBackupPayload payload)
@@ -1064,6 +1105,10 @@ public sealed class InstallationBackupService
                 "The restored installation setup state is empty.");
         }
         InstallationSetupStateValidator.Validate(state);
+        if (state.Paths == m_paths)
+        {
+            return;
+        }
         InstallationSetupState remapped = state with { Paths = m_paths };
         InstallationSetupStateValidator.Validate(remapped);
         byte[] serialized = JsonSerializer.SerializeToUtf8Bytes(remapped, JsonOptions);
@@ -1226,7 +1271,22 @@ public sealed class InstallationBackupService
 
     private static void ApplyCurrentPointer(RestorePointerTransaction transaction)
     {
-        Directory.CreateSymbolicLink(transaction.Staging, transaction.Target);
+        string parent = Path.GetDirectoryName(transaction.Current) ??
+            throw new InvalidOperationException(
+                "The current release pointer has no deployment parent.");
+        string linkTarget = Path.GetRelativePath(parent, transaction.Target);
+        if (string.IsNullOrEmpty(linkTarget) ||
+            linkTarget == "." ||
+            Path.IsPathRooted(linkTarget) ||
+            linkTarget == ".." ||
+            linkTarget.StartsWith(
+                ".." + Path.DirectorySeparatorChar,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The restored release cannot produce a canonical relative current link target.");
+        }
+        Directory.CreateSymbolicLink(transaction.Staging, linkTarget);
         DirectoryInfo existing = new(transaction.Current);
         if (existing.LinkTarget is not null)
         {
@@ -1240,8 +1300,9 @@ public sealed class InstallationBackupService
         Directory.Move(transaction.Staging, transaction.Current);
         string? active = new DirectoryInfo(transaction.Current).LinkTarget;
         if (active is null ||
+            !string.Equals(active, linkTarget, StringComparison.Ordinal) ||
             !string.Equals(
-                Path.GetFullPath(active, Path.GetDirectoryName(transaction.Current)!),
+                Path.GetFullPath(active, parent),
                 Path.GetFullPath(transaction.Target),
                 PathComparison))
         {

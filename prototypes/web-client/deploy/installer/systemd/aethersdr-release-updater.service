@@ -7,14 +7,14 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-User=aethersdr
+User=root
 Group=aethersdr
 WorkingDirectory=/opt/aethersdr/current/gateway-web
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=DOTNET_ENVIRONMENT=Production
 EnvironmentFile=-/etc/aethersdr/environment
 ExecStart=/opt/aethersdr/current/gateway-web/AetherSDR.Web --release-update-supervisor
-Restart=on-failure
+Restart=always
 RestartSec=3
 TimeoutStartSec=30
 TimeoutStopSec=30
@@ -26,7 +26,7 @@ PrivateTmp=true
 PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/aethersdr /var/backups/aethersdr /var/log/aethersdr /opt/aethersdr
+ReadWritePaths=/etc /var/lib /var/backups/aethersdr /var/log/aethersdr /opt/aethersdr
 ProtectClock=true
 ProtectControlGroups=true
 ProtectHostname=true
@@ -37,9 +37,11 @@ RestrictNamespaces=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
 LockPersonality=true
-CapabilityBoundingSet=
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER
 AmbientCapabilities=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
 UMask=0077
 
 [Install]

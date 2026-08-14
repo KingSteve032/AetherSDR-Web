@@ -1289,7 +1289,8 @@ public sealed class VerifiedReleaseActivationRollbackExecutionService
         !plan.ActivationPlan.RestartHost &&
         !plan.ServiceControlPlan.HostRestartRequired &&
         plan.ServiceControlPlan.HostRestartActions.Count == 0 &&
-        plan.RestoreSources.Count == 3 &&
+        plan.RestoreSources.Count == plan.ConfigurationBackup.Plan.Sources.Count &&
+        plan.RestoreSources.Count is >= 2 and <= 3 &&
         !plan.ReverseMigrationRunnerRequired;
 
     private static bool ValidateFailureTrigger(
@@ -1477,6 +1478,8 @@ public sealed class VerifiedReleaseActivationRollbackExecutionService
                 string destination = entry.Path == "."
                     ? source.RestoreStagingPath
                     : SafeDescendant(source.RestoreStagingPath, entry.Path);
+                new LinuxFileOwnership(entry.UserId, entry.GroupId)
+                    .ApplyAndVerify(destination);
                 File.SetUnixFileMode(destination, (UnixFileMode)entry.UnixMode);
                 tally.RestoreDirectoryCount++;
             }
@@ -1557,6 +1560,8 @@ public sealed class VerifiedReleaseActivationRollbackExecutionService
             throw new InvalidDataException(
                 "An immutable backup file digest changed while being restored.");
         }
+        new LinuxFileOwnership(entry.UserId, entry.GroupId)
+            .ApplyAndVerify(outputPath);
         File.SetUnixFileMode(outputPath, (UnixFileMode)entry.UnixMode);
     }
 
@@ -1581,6 +1586,8 @@ public sealed class VerifiedReleaseActivationRollbackExecutionService
                 !expected.TryGetValue(relative, out var directoryEntry) ||
                 directoryEntry.Kind != VerifiedReleaseActivationConfigurationBackupManifestEntryKind.Directory ||
                 File.GetUnixFileMode(directory.FullName) != (UnixFileMode)directoryEntry.UnixMode ||
+                LinuxFileOwnership.Read(directory.FullName) !=
+                    new LinuxFileOwnership(directoryEntry.UserId, directoryEntry.GroupId) ||
                 !observed.Add(relative))
             {
                 throw new InvalidDataException(
@@ -1606,6 +1613,8 @@ public sealed class VerifiedReleaseActivationRollbackExecutionService
                     fileEntry.Kind != VerifiedReleaseActivationConfigurationBackupManifestEntryKind.File ||
                     file.Length != fileEntry.Length ||
                     File.GetUnixFileMode(file.FullName) != (UnixFileMode)fileEntry.UnixMode ||
+                    LinuxFileOwnership.Read(file.FullName) !=
+                        new LinuxFileOwnership(fileEntry.UserId, fileEntry.GroupId) ||
                     !observed.Add(childRelative))
                 {
                     throw new InvalidDataException(
@@ -1653,6 +1662,22 @@ public sealed class VerifiedReleaseActivationRollbackExecutionService
                     tally.TopologyNoOpStartActionCount++;
                 }
                 continue;
+            }
+
+            if (!stopPhase)
+            {
+                tally.ServiceProcessInvocationCount++;
+                ServiceControlAttemptResult reset =
+                    await m_serviceRuntime.ResetUnitFailureAsync(
+                        bound.Action,
+                        UnitControlTimeout,
+                        cancellationToken);
+                if (!reset.Succeeded ||
+                    !reset.ProcessStarted ||
+                    !reset.OutcomeKnown)
+                {
+                    return false;
+                }
             }
 
             tally.ServiceProcessInvocationCount++;
@@ -1991,7 +2016,8 @@ public sealed class VerifiedReleaseActivationRollbackExecutionService
                 continue;
             }
             if (role == VerifiedReleaseActivationServiceRole.AetherRemoteAgent &&
-                !topology.AcceptsRemoteStations)
+                (!topology.AcceptsRemoteStations ||
+                 topology.Kind == InstallationTopologyKind.HybridGateway))
             {
                 result.Add(new RollbackBoundAction(action, TopologyNoOp: true));
                 continue;

@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using AetherSDR.Web.Operations;
 using AetherSDR.Web.Releases;
@@ -42,6 +43,235 @@ public sealed class InstallationBackupTests
     }
 
     [Fact]
+    public async Task BackupExcludesGroupWritableReleaseSupervisorIpcDirectory()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        using TemporaryDirectory temporary = new();
+        BackupFixture fixture = await BackupFixture.CreateAsync(
+            Path.Combine(temporary.Path, "source"));
+        string supervisor = Path.Combine(
+            fixture.Paths.StateDirectory,
+            ReleaseUpdateSupervisor.DirectoryName);
+        Directory.CreateDirectory(supervisor);
+        File.SetUnixFileMode(
+            supervisor,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite |
+            UnixFileMode.GroupExecute);
+        string socketFixture = Path.Combine(
+            supervisor,
+            ReleaseUpdateSupervisor.SocketFileName);
+        await File.WriteAllTextAsync(socketFixture, "ephemeral-ipc");
+        File.SetUnixFileMode(
+            socketFixture,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite);
+
+        (string path, InstallationBackupSummary summary) =
+            await fixture.Service.CreateAsync(Passphrase);
+
+        Assert.True(File.Exists(path));
+        Assert.True(summary.ProtectedFileCount >= 5);
+    }
+
+    [Fact]
+    public async Task BackupRejectsLinkedReleaseSupervisorRuntimePath()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        using TemporaryDirectory temporary = new();
+        BackupFixture fixture = await BackupFixture.CreateAsync(
+            Path.Combine(temporary.Path, "source"));
+        string linkedTarget = Path.Combine(temporary.Path, "linked-runtime");
+        Directory.CreateDirectory(linkedTarget);
+        string supervisor = Path.Combine(
+            fixture.Paths.StateDirectory,
+            ReleaseUpdateSupervisor.DirectoryName);
+        Directory.CreateSymbolicLink(supervisor, linkedTarget);
+
+        InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Service.CreateAsync(Passphrase));
+
+        Assert.Contains("transient release-updater runtime", exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task BackupStillRejectsUnrelatedGroupWritableStateDirectory()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        using TemporaryDirectory temporary = new();
+        BackupFixture fixture = await BackupFixture.CreateAsync(
+            Path.Combine(temporary.Path, "source"));
+        string unsafeDirectory = Path.Combine(
+            fixture.Paths.StateDirectory,
+            "unexpected-shared-state");
+        Directory.CreateDirectory(unsafeDirectory);
+        File.SetUnixFileMode(
+            unsafeDirectory,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite |
+            UnixFileMode.GroupExecute);
+
+        InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Service.CreateAsync(Passphrase));
+
+        Assert.Contains("shared-writable", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task BackupAcceptsInstallerManagedCaddyOwnershipMarkerFormat()
+    {
+        using TemporaryDirectory temporary = new();
+        BackupFixture fixture = await BackupFixture.CreateAsync(
+            Path.Combine(temporary.Path, "source"));
+        string proxyState = Path.Combine(
+            fixture.Paths.StateDirectory,
+            "installer-proxy");
+        string caddyDirectory = Path.Combine(
+            fixture.Paths.ConfigurationDirectory,
+            "managed-caddy");
+        Directory.CreateDirectory(proxyState);
+        Directory.CreateDirectory(caddyDirectory);
+        string caddyPath = Path.Combine(caddyDirectory, "Caddyfile");
+        const string CaddyContent = "https://radio.example.org { reverse_proxy 127.0.0.1:5080 }\n";
+        await File.WriteAllTextAsync(caddyPath, CaddyContent);
+        string digest = Convert.ToHexStringLower(
+            SHA256.HashData(Encoding.UTF8.GetBytes(CaddyContent)));
+        string markerPath = Path.Combine(proxyState, "managed-caddy.sha256");
+        await File.WriteAllTextAsync(
+            markerPath,
+            $"sha256={digest}\nplan=m8h-test-plan\n");
+        if (OperatingSystem.IsLinux())
+        {
+            File.SetUnixFileMode(
+                proxyState,
+                UnixFileMode.UserRead |
+                UnixFileMode.UserWrite |
+                UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead |
+                UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead |
+                UnixFileMode.OtherExecute);
+            File.SetUnixFileMode(
+                caddyDirectory,
+                UnixFileMode.UserRead |
+                UnixFileMode.UserWrite |
+                UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead |
+                UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead |
+                UnixFileMode.OtherExecute);
+            File.SetUnixFileMode(
+                caddyPath,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite |
+                UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+            File.SetUnixFileMode(
+                markerPath,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite |
+                UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+        }
+
+        (string path, InstallationBackupSummary summary) =
+            await fixture.Service.CreateAsync(Passphrase);
+
+        Assert.True(File.Exists(path));
+        Assert.True(summary.ProtectedFileCount >= 7);
+    }
+
+    [Fact]
+    public async Task BackupRejectsManagedCaddyMarkerWithWrongDigest()
+    {
+        using TemporaryDirectory temporary = new();
+        BackupFixture fixture = await BackupFixture.CreateAsync(
+            Path.Combine(temporary.Path, "source"));
+        string proxyState = Path.Combine(
+            fixture.Paths.StateDirectory,
+            "installer-proxy");
+        string caddyDirectory = Path.Combine(
+            fixture.Paths.ConfigurationDirectory,
+            "managed-caddy");
+        Directory.CreateDirectory(proxyState);
+        Directory.CreateDirectory(caddyDirectory);
+        string caddyPath = Path.Combine(caddyDirectory, "Caddyfile");
+        await File.WriteAllTextAsync(caddyPath, "managed caddy\n");
+        string markerPath = Path.Combine(proxyState, "managed-caddy.sha256");
+        await File.WriteAllTextAsync(
+            markerPath,
+            $"sha256={new string('0', 64)}\nplan=m8h-test-plan\n");
+
+        InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Service.CreateAsync(Passphrase));
+
+        Assert.Contains(
+            "does not match installer-owned state",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("-wal")]
+    [InlineData("-shm")]
+    [InlineData("-journal")]
+    public async Task BackupRejectsIdentityDatabaseSidecars(string suffix)
+    {
+        using TemporaryDirectory temporary = new();
+        BackupFixture fixture = await BackupFixture.CreateAsync(
+            Path.Combine(temporary.Path, "source"));
+        await File.WriteAllTextAsync(
+            fixture.Paths.IdentityDatabasePath + suffix,
+            "stale-sqlite-sidecar");
+
+        InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Service.CreateAsync(Passphrase));
+
+        Assert.Contains(
+            "offline identity database without SQLite sidecar files",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task BackupRejectsDanglingIdentitySidecarLink()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        using TemporaryDirectory temporary = new();
+        BackupFixture fixture = await BackupFixture.CreateAsync(
+            Path.Combine(temporary.Path, "source"));
+        string sidecar = fixture.Paths.IdentityDatabasePath + "-wal";
+        File.CreateSymbolicLink(
+            sidecar,
+            Path.Combine(temporary.Path, "missing-sidecar-target"));
+
+        InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Service.CreateAsync(Passphrase));
+
+        Assert.Contains(
+            "offline identity database without SQLite sidecar files",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task TamperedEncryptedBackupFailsAuthentication()
     {
         using TemporaryDirectory temporary = new();
@@ -64,11 +294,30 @@ public sealed class InstallationBackupTests
     }
 
     [Fact]
+    public async Task SameHostRestorePreservesExactSetupStateBytes()
+    {
+        using TemporaryDirectory temporary = new();
+        BackupFixture fixture = await BackupFixture.CreateAsync(
+            Path.Combine(temporary.Path, "source"));
+        byte[] setupBefore = await File.ReadAllBytesAsync(
+            fixture.Paths.SetupStatePath);
+        (string backupPath, _) = await fixture.Service.CreateAsync(Passphrase);
+
+        await fixture.Service.RestoreAsync(backupPath, Passphrase);
+
+        Assert.Equal(
+            setupBefore,
+            await File.ReadAllBytesAsync(fixture.Paths.SetupStatePath));
+    }
+
+    [Fact]
     public async Task RestoreRemapsPathsAndRecoversProtectedAuthority()
     {
         using TemporaryDirectory temporary = new();
         BackupFixture source = await BackupFixture.CreateAsync(
             Path.Combine(temporary.Path, "source"));
+        byte[] sourceIdentityBytes =
+            await File.ReadAllBytesAsync(source.Paths.IdentityDatabasePath);
         (string backupPath, InstallationBackupSummary backup) =
             await source.Service.CreateAsync(Passphrase);
 
@@ -114,6 +363,9 @@ public sealed class InstallationBackupTests
             "STATION-CREDENTIAL-SECRET",
             await File.ReadAllTextAsync(
                 Path.Combine(targetPaths.SecretDirectory, "station-credential")));
+        Assert.Equal(
+            sourceIdentityBytes,
+            await File.ReadAllBytesAsync(targetPaths.IdentityDatabasePath));
         Assert.False(File.Exists(
             Path.Combine(targetPaths.StateDirectory, "stale-state.txt")));
         Assert.False(File.Exists(
@@ -123,6 +375,9 @@ public sealed class InstallationBackupTests
         Assert.Equal(backup.SetupRevision, restoredSetup.Revision);
         string? linkTarget = new DirectoryInfo(current).LinkTarget;
         Assert.NotNull(linkTarget);
+        Assert.Equal(
+            Path.Combine("releases", ReleaseIdentity),
+            linkTarget);
         Assert.Equal(
             Path.GetFullPath(Path.Combine(targetPaths.ReleaseDirectory, ReleaseIdentity)),
             Path.GetFullPath(linkTarget!, targetRoot));

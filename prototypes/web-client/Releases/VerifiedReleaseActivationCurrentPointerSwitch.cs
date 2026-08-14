@@ -1132,12 +1132,16 @@ public sealed class VerifiedReleaseActivationCurrentPointerSwitchService
             Stack<DirectoryInfo> pending = new();
             pending.Push(target);
             int directoryCount = 0;
+            int maximumDirectoryCount = activation.UsesExtractedRoleTree
+                ? VerifiedReleaseArchiveExtractionService
+                    .MaximumExtractedDirectoryCount + 1
+                : MaximumDirectoryCount;
             while (pending.Count > 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 DirectoryInfo directory = pending.Pop();
                 if (!ValidateImmutableDirectory(directory) ||
-                    ++directoryCount > MaximumDirectoryCount)
+                    ++directoryCount > maximumDirectoryCount)
                 {
                     return false;
                 }
@@ -1270,8 +1274,17 @@ public sealed class VerifiedReleaseActivationCurrentPointerSwitchService
             : 0;
         UnixFileMode? requiredMode = executable switch
         {
-            true => UnixFileMode.UserRead | UnixFileMode.UserExecute,
-            false => UnixFileMode.UserRead,
+            true =>
+                UnixFileMode.UserRead |
+                UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead |
+                UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead |
+                UnixFileMode.OtherExecute,
+            false =>
+                UnixFileMode.UserRead |
+                UnixFileMode.GroupRead |
+                UnixFileMode.OtherRead,
             null => null
         };
         if (!file.Exists ||

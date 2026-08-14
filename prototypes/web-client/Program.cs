@@ -741,11 +741,14 @@ if (installationServiceHostRole == InstallationServiceHostRole.Gateway &&
 }
 builder.Services.AddSingleton(authenticationTopology);
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddScoped<AetherExternalAuthenticationService>();
-builder.Services.AddScoped<AetherAuthenticationSessionService>();
+if (authenticationTopology.Mode != AetherAuthenticationMode.ServiceBoundary)
+{
+    builder.Services.AddScoped<AetherExternalAuthenticationService>();
+    builder.Services.AddScoped<AetherAuthenticationSessionService>();
+    builder.Services.AddScoped<AetherOpenIdConnectEvents>();
+    builder.Services.AddScoped<AetherCookieAuthenticationEvents>();
+}
 builder.Services.AddScoped<AetherAdministratorAuthorityService>();
-builder.Services.AddScoped<AetherOpenIdConnectEvents>();
-builder.Services.AddScoped<AetherCookieAuthenticationEvents>();
 RadioSettings radioSettings =
     builder.Configuration.GetSection(RadioSettings.SectionName).Get<RadioSettings>() ??
     new RadioSettings();
@@ -1238,7 +1241,17 @@ if (releaseUpdateCommandLine.Command ==
     }
     ReleaseUpdateSupervisor supervisor =
         app.Services.GetRequiredService<ReleaseUpdateSupervisor>();
-    await supervisor.RunAsync();
+    RemoteStationCatalogService remoteStationCatalog =
+        app.Services.GetRequiredService<RemoteStationCatalogService>();
+    await remoteStationCatalog.StartAsync(CancellationToken.None);
+    try
+    {
+        await supervisor.RunAsync();
+    }
+    finally
+    {
+        await remoteStationCatalog.StopAsync(CancellationToken.None);
+    }
     return;
 }
 if (releaseUpdateCommandLine.Command is

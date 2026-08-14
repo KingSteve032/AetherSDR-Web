@@ -385,6 +385,11 @@ internal interface IVerifiedReleaseActivationServiceControlRuntime
         VerifiedReleaseActivationServiceControlAction action,
         TimeSpan timeout,
         CancellationToken cancellationToken);
+
+    Task<ServiceControlAttemptResult> ResetUnitFailureAsync(
+        VerifiedReleaseActivationServiceControlAction action,
+        TimeSpan timeout,
+        CancellationToken cancellationToken);
 }
 
 internal sealed class LinuxVerifiedReleaseActivationServiceControlRuntime :
@@ -412,21 +417,44 @@ internal sealed class LinuxVerifiedReleaseActivationServiceControlRuntime :
         m_systemctlPath = Path.GetFullPath(systemctlPath);
     }
 
-    public async Task<ServiceControlAttemptResult> ControlUnitAsync(
+    public Task<ServiceControlAttemptResult> ControlUnitAsync(
         VerifiedReleaseActivationServiceControlAction action,
+        TimeSpan timeout,
+        CancellationToken cancellationToken) =>
+        ExecuteSystemctlAsync(
+            action,
+            action.Kind == VerifiedReleaseActivationServiceControlActionKind.Stop
+                ? "stop"
+                : "start",
+            timeout,
+            cancellationToken);
+
+    public Task<ServiceControlAttemptResult> ResetUnitFailureAsync(
+        VerifiedReleaseActivationServiceControlAction action,
+        TimeSpan timeout,
+        CancellationToken cancellationToken) =>
+        ExecuteSystemctlAsync(
+            action,
+            "reset-failed",
+            timeout,
+            cancellationToken);
+
+    private async Task<ServiceControlAttemptResult> ExecuteSystemctlAsync(
+        VerifiedReleaseActivationServiceControlAction action,
+        string operation,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(action);
         cancellationToken.ThrowIfCancellationRequested();
-        if (!ValidateAction(action) || timeout <= TimeSpan.Zero)
+        if (!ValidateAction(action) ||
+            operation is not ("start" or "stop" or "reset-failed") ||
+            timeout <= TimeSpan.Zero)
         {
             return ServiceControlAttemptResult.NotStarted(
                 "The planned service-control action is invalid.");
         }
 
-        bool userUnit = action.ServiceRole ==
-            VerifiedReleaseActivationServiceRole.GatewayWeb;
         ProcessStartInfo startInfo = new()
         {
             FileName = m_systemctlPath,
@@ -435,16 +463,9 @@ internal sealed class LinuxVerifiedReleaseActivationServiceControlRuntime :
             RedirectStandardError = true,
             CreateNoWindow = true
         };
-        if (userUnit)
-        {
-            startInfo.ArgumentList.Add("--user");
-        }
-        startInfo.ArgumentList.Add(
-            action.Kind == VerifiedReleaseActivationServiceControlActionKind.Stop
-                ? "stop"
-                : "start");
+        startInfo.ArgumentList.Add(operation);
         startInfo.ArgumentList.Add(action.UnitIdentity);
-        ConfigureProcessEnvironment(startInfo, userUnit);
+        ConfigureProcessEnvironment(startInfo);
 
         using Process process = new() { StartInfo = startInfo };
         try
@@ -463,20 +484,20 @@ internal sealed class LinuxVerifiedReleaseActivationServiceControlRuntime :
                 "The service-control process is unavailable.");
         }
 
-        using CancellationTokenSource operation =
+        using CancellationTokenSource operationTimeout =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        operation.CancelAfter(timeout);
+        operationTimeout.CancelAfter(timeout);
         Task<string> stdout = ReadBoundedAsync(
             process.StandardOutput,
             MaximumProcessOutputCharacters,
-            operation.Token);
+            operationTimeout.Token);
         Task<string> stderr = ReadBoundedAsync(
             process.StandardError,
             MaximumProcessOutputCharacters,
-            operation.Token);
+            operationTimeout.Token);
         try
         {
-            await process.WaitForExitAsync(operation.Token);
+            await process.WaitForExitAsync(operationTimeout.Token);
             string output = await stdout;
             string error = await stderr;
             if (output.Length != 0 || error.Length != 0)
@@ -543,47 +564,11 @@ internal sealed class LinuxVerifiedReleaseActivationServiceControlRuntime :
             _ => false
         };
 
-    private static void ConfigureProcessEnvironment(
-        ProcessStartInfo startInfo,
-        bool userUnit)
+    private static void ConfigureProcessEnvironment(ProcessStartInfo startInfo)
     {
         startInfo.Environment.Clear();
         startInfo.Environment["LANG"] = "C";
         startInfo.Environment["LC_ALL"] = "C";
-        if (!userUnit)
-        {
-            return;
-        }
-
-        string xdgRuntimeDirectory =
-            Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR") ?? string.Empty;
-        if (!IsCanonicalUserRuntimeDirectory(xdgRuntimeDirectory))
-        {
-            return;
-        }
-        string expectedBusAddress = $"unix:path={xdgRuntimeDirectory}/bus";
-        string busAddress =
-            Environment.GetEnvironmentVariable("DBUS_SESSION_BUS_ADDRESS") ??
-            string.Empty;
-        if (!string.Equals(
-                busAddress,
-                expectedBusAddress,
-                StringComparison.Ordinal))
-        {
-            return;
-        }
-        startInfo.Environment["XDG_RUNTIME_DIR"] = xdgRuntimeDirectory;
-        startInfo.Environment["DBUS_SESSION_BUS_ADDRESS"] = busAddress;
-    }
-
-    private static bool IsCanonicalUserRuntimeDirectory(string value)
-    {
-        const string prefix = "/run/user/";
-        return value.StartsWith(prefix, StringComparison.Ordinal) &&
-            value.Length > prefix.Length &&
-            value[prefix.Length..].All(character =>
-                character is >= '0' and <= '9') &&
-            string.Equals(Path.GetFullPath(value), value, StringComparison.Ordinal);
     }
 
     private static async Task<string> ReadBoundedAsync(
@@ -1715,7 +1700,8 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
                 continue;
             }
             if (role == VerifiedReleaseActivationServiceRole.AetherRemoteAgent &&
-                !topology.AcceptsRemoteStations)
+                (!topology.AcceptsRemoteStations ||
+                 topology.Kind == InstallationTopologyKind.HybridGateway))
             {
                 result.Add(
                     new ServiceControlBoundAction(

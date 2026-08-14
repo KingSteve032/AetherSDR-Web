@@ -856,12 +856,27 @@ This makes completion delivery idempotent across Agent or socket failure.
 The Agent-to-root-updater local protocol is owner-scoped Unix IPC with fixed
 messages only. Requests use `type:"local.release.update"`, exact correlation,
 exact release identity, and one action from `apply`, `rollback`, `confirm`, or
-`acknowledge`. `apply` consumes only the fixed private staging directory for the
-correlation; the message cannot provide its path. `confirm` recovers the durable
-successful or rollback completion after Agent restart. `acknowledge` marks that
-completion durably acknowledged after the broker ACK; a repeated acknowledgement
-is idempotent. A subsequent startup removes acknowledged completion evidence.
-The root updater exposes no network transport or arbitrary command surface.
+`acknowledge`. Before `apply`, the Agent independently requires all four canonical
+manifest package roles to bind their exact package identity and
+`packages/<fixed-role-stem>-<architecture>.tar.gz` path, plus the signed length and
+SHA-256; it does not accept a basename-only or alternate package path. The root
+updater re-verifies that same four-role identity/path contract against the manifest
+before trusting the fixed staged Agent/station-engine bytes. Archive extraction accepts
+only the deterministic GNU-tar `.`/`./` root prefix emitted by the reviewed package
+builder plus bounded safe relative entries; traversal, repeated/embedded dot segments,
+links, devices, and extraction-root escape fail closed. Fixed directory-link changes
+stage one exact symlink entry and atomically replace it with Linux `rename(2)`, then
+re-read the link target before continuing. On the restarted Agent, the durable
+bootstrap release pair is not treated as active-state authority: in-memory release
+identity/version are derived from the fixed root-owned Agent and station-engine links,
+which must identify the same real release under `/opt/aetherremote/releases` before a
+`confirm` request is sent. `apply` consumes only
+the fixed private staging directory for the correlation; the message
+cannot provide its path. `confirm` recovers the durable successful or rollback
+completion after Agent restart. `acknowledge` marks that completion durably
+acknowledged after the broker ACK; a repeated acknowledgement is idempotent. A
+subsequent startup removes acknowledged completion evidence. The root updater
+exposes no network transport or arbitrary command surface.
 
 None of these messages grant radio command capability, browser TX authority,
 TX lease ownership, watchdog arming, keying, or unkeying.
@@ -924,6 +939,68 @@ authority, or arbitrary network-target selection.
 The Setup Center does not import these normal-runtime services. Its existing
 non-mutating preflight response gains `postInstallOperationalChecks`, a text-only
 list of the fixed checks an administrator must perform after installation.
+
+## M8H packaged-release acceptance contracts
+
+M8H does not add a radio wire protocol. It tightens the installed release and
+local updater contracts exercised around the existing signed manifest protocols.
+
+Activation configuration-backup manifest schema `3` extends every authenticated
+file/directory entry with the original Linux UID and GID. This metadata is valid
+only for same-host activation rollback. The privileged fixed-purpose updater
+reapplies and re-reads that ownership before a restored source is admitted.
+Replacement-host backup/restore remains M8G schema 1 and deliberately maps logical
+service owners instead of copying numeric IDs.
+
+The physical activation-backup source count is two or three. Configuration and
+state are always separate sources. When the configured secret directory is a
+validated descendant of the state directory, its bytes and ownership are covered
+by the state source and no overlapping secret root is created. A secret directory
+outside state remains a third source. Migration and rollback plans must preserve
+that exact source inventory.
+
+The local release supervisor control endpoint remains AF_UNIX-only. On the
+standalone host the updater service runs as root with primary group `aethersdr`;
+its directory is mode `0770` and socket mode `0660`. The gateway/updater request
+schema remains the existing fixed release-transaction schema and gains no path,
+URL, executable, shell, service-name, radio, or TX field. The privileged process
+controls installed system units rather than a user service manager. A successful
+activation keeps the same supervisor process alive so the exact in-memory rollback
+authority remains usable. If a later `prepare` arrives while that completed
+transaction is still rollbackable, the supervisor returns one
+`transactionAlreadyActive` reload-boundary report, exits without executing the new
+prepare, and systemd `Restart=always` reloads the updater from the current immutable
+release. The client waits until status shows the recovered completed transaction
+with no reconstructed rollback authority, then retries that unchanged prepare once.
+Completed rollback exits after its response; reconciliation and host-restart states
+do not trigger this reload. During rollback, after the exact installed `current`
+pointer is restored and before each fixed local unit start, the updater runs only
+`/usr/bin/systemctl reset-failed <exact-fixed-unit>`. This clears failure/start-limit
+state inherited from the rejected target without accepting a free-form unit or
+command; nonzero, output-bearing, timed-out, or otherwise unknown reset outcomes
+remain reconciliation. In supervisor mode only the existing receive-only
+`RemoteStationCatalogService` background observer is started, so Hybrid health can
+read fresh loopback broker/station state without starting the web host or any radio
+or TX hosted-service surface.
+
+Persistent verified release bundles use one canonical on-disk shape for both
+release installation and AetherRemote publication:
+
+```text
+<release-download-root>/<releaseIdentity>-<architecture>/
+  release-manifest.json
+  packages/
+    <four signed package archives>
+```
+
+AetherRemote bootstrap therefore resolves `release-manifest.json`; it never
+constructs a second architecture-suffixed manifest name inside that directory.
+
+The M8H acceptance-only release identities/signatures are CI fixtures and are not
+production release authority. Their deliberate failure variants modify only the
+packaged `appsettings.json` of the component whose post-switch health must fail.
+No acceptance message or artifact grants a radio command, TX lease, watchdog arm,
+key/unkey operation, arbitrary remote command, or shell transport.
 
 ## Spectrum binary frame
 

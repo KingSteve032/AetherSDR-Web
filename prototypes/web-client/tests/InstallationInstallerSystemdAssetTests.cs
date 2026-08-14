@@ -60,6 +60,35 @@ public sealed class InstallationInstallerSystemdAssetTests
     }
 
     [Fact]
+    public void ReleaseUpdaterIsRootFixedPurposeWithOnlyRollbackCapabilities()
+    {
+        string path = Path.Combine(
+            FindRepositoryRoot(),
+            "prototypes",
+            "web-client",
+            "deploy",
+            "installer",
+            "systemd",
+            "aethersdr-release-updater.service");
+        string content = File.ReadAllText(path);
+
+        Assert.Contains("User=root", content, StringComparison.Ordinal);
+        Assert.Contains("Group=aethersdr", content, StringComparison.Ordinal);
+        Assert.Contains(
+            "CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER",
+            content,
+            StringComparison.Ordinal);
+        Assert.Contains("AmbientCapabilities=\n", content, StringComparison.Ordinal);
+        Assert.Contains("NoNewPrivileges=true", content, StringComparison.Ordinal);
+        Assert.Contains("Restart=always", content, StringComparison.Ordinal);
+        Assert.Contains("RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6", content, StringComparison.Ordinal);
+        Assert.Contains("IPAddressDeny=any", content, StringComparison.Ordinal);
+        Assert.Contains("IPAddressAllow=localhost", content, StringComparison.Ordinal);
+        Assert.DoesNotContain("/bin/sh", content, StringComparison.Ordinal);
+        Assert.DoesNotContain("bash", content, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void WebAndStationUnitsUseWritableOwnerOnlyDataProtectionPaths()
     {
         string directory = Path.Combine(

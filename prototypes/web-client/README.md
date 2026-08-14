@@ -1433,9 +1433,9 @@ inactive role tree. `VerifiedReleaseActivationPlanComposer` now has a second typ
 for `VerifiedReleaseExtractedPublicationReport`. It retains every immutable extracted
 file, digest, owner-executable bit, and directory count in the activation token, while the
 four service package plans bind to the fixed role roots rather than the old compressed
-archives. The atomic pointer switch validates the entire role tree and exact owner modes
-before `current` can move; the legacy archive-publication input remains available only for
-compatibility with the earlier tests and transaction tokens.
+archives. The atomic pointer switch validates the entire role tree and exact non-writable
+0444/0555 published modes before `current` can move; the legacy archive-publication input
+remains available only for compatibility with the earlier tests and transaction tokens.
 
 `ReleaseUpdateTransactionCoordinator` carries the existing internal authority tokens
 through one exact prepare/activate/rollback state machine. Preparation performs signed
@@ -2549,11 +2549,24 @@ Admin may request a station update only to the gateway's current verified signed
 release and only after fresh administrator reauthentication. The remote protocol
 contains station ID/correlation and exact release identity only—no URL, shell,
 executable, service name, path, or arbitrary command. The Agent downloads and
-verifies the manifest and packages independently, stages them under its fixed
-private root, and asks the root-owned fixed-purpose updater to apply only that
-identity. The updater has no network address family, re-verifies the signed
-staging bundle, switches fixed release symlinks and signed units, restarts the
-station engine, and retains rollback state until the new Agent confirms startup.
+verifies the manifest and packages independently. Every one of the four signed
+roles must use the exact ReleaseBuilder package identity and canonical
+`packages/<fixed-role-stem>-<architecture>.tar.gz` path with matching signed length
+and SHA-256; alternate or basename-only paths fail closed. The Agent stages only
+the accepted Agent/station-engine bytes under its fixed private root and asks the
+root-owned fixed-purpose updater to apply only that identity. The updater has no
+network address family and independently re-verifies the same four canonical
+package identities/paths plus signed lengths and hashes before trusting the staged
+bytes. Its extractor accepts only the release packager's deterministic GNU-tar
+`.`/`./` root prefix plus safe relative entries; traversal, repeated/embedded dot
+segments, links, devices, and extraction-root escape remain rejected. Fixed Agent,
+station-engine, and updater directory links are staged separately and atomically
+replaced with Linux `rename(2)`, then re-read to prove the exact target. It then
+switches signed units, restarts the station engine, and retains rollback state until
+the new Agent confirms startup. The durable bootstrap configuration is not rewritten
+for each release; on restart, the Agent derives its in-memory release identity and
+station-engine version from the fixed root-owned Agent and station-engine links and
+requires both links to identify the same real immutable release before confirming.
 
 Completion is crash-safe across the Agent restart. The root updater persists an
 exact correlation/release completion for either successful startup or automatic
@@ -2599,8 +2612,10 @@ TX-policy state, station credentials, signing/trust state, durable audit, and
 installer-owned managed proxy state. It records current/rollback release
 identities rather than embedding release packages. Restore requires those exact
 signed releases to be installed first and uses a durable prepared/committed
-journal plus atomic root/pointer replacement. Replacement-host restore remaps the
-validated installation paths and logical service ownership.
+journal plus atomic root/pointer replacement. A same-host restore preserves the setup
+document's exact bytes when its validated saved paths already match; only a
+replacement-host restore remaps the validated installation paths and logical service
+ownership.
 
 External DNS, externally managed proxy/TLS private material, provider-side
 Entra/OIDC registration and provider secret lifecycle, and signed release package
@@ -2629,6 +2644,75 @@ CI runs `tools/security/validate-nuget-vulnerabilities.sh` to reject vulnerable
 direct or transitive NuGet packages. Supported server/browser/device/proxy/topology
 targets are documented in `docs/SUPPORT-MATRIX.md`, and versioned M8G release
 notes are under `docs/releases/`.
+
+### Packaged standalone release acceptance
+
+M8H adds `.github/workflows/standalone-release-acceptance.yml` so release acceptance
+runs the packaged product rather than a source checkout. Acceptance-only P-256
+signing authority is generated inside the package job, never uploaded, and signs
+four disposable identities: previous, target, gateway-failure, and
+station-Agent-failure. Fresh native Ubuntu Server 24.04 x64 and arm64 jobs use
+the packaged gateway to complete protected setup, receive-only installation,
+signed update, manual rollback, automatic rollback after a deliberately broken
+post-switch startup, encrypted backup/restore, and conservative uninstall.
+
+The standalone updater is the root fixed-purpose process required by that
+installed transaction. Its AF_UNIX control socket is group-private to
+`aethersdr`; it controls system units, not a user service manager, and activation
+backup schema 3 authenticates same-host UID/GID ownership so rollback restores
+mixed `root`/`aethersdr`/`aetherremote` trees exactly. After a successful
+activation it deliberately stays alive so the exact in-memory manual rollback
+remains usable. Starting a later update relinquishes that rollback window through
+one bounded prepare/reload handshake: the supervisor exits before executing the new
+prepare, systemd reloads it from `current`, and the client retries only after status
+shows the recovered terminal transaction without reconstructed rollback authority.
+Completed rollback still reloads immediately. After rollback restores the installed
+`current` pointer, each local restored service start is preceded by exact
+`/usr/bin/systemctl reset-failed <fixed-unit>` so a rejected target's systemd
+failure/start-limit state cannot block the restored binary. The reset accepts no
+free-form unit or command and an unknown reset outcome remains reconciliation. In
+supervisor mode the only manually started background observer is the receive-only
+remote-station catalog required for fresh Hybrid broker-link health; the normal
+web/radio/TX hosted-service set is not started. Encrypted operational backup excludes
+the fixed `release-update-supervisor` child of installation state because its 0770
+runtime directory and 0660 control socket are transient IPC, not durable authority.
+That exclusion requires the exact path to be a real canonical non-link directory;
+other shared-writable state remains a hard backup failure. Installer-owned Caddy
+configuration is backed up only when its stable reviewed marker begins with the exact
+`sha256=<digest>` for the configuration bytes; the following `plan=<id>` ownership
+metadata is retained. Because production create/restore first proves every fixed
+service inactive, the local identity SQLite database is captured as stable exact bytes;
+any remaining `-wal`, `-shm`, or `-journal` sidecar fails the offline backup closed.
+Same-host restore also leaves the validated setup document byte-for-byte unchanged;
+path remapping is reserved for a replacement host whose resolved `InstallationPaths`
+differ. The normal Linux nested secret path is covered by the state physical root rather than
+an overlapping atomic source. Replacement-host restore still uses M8G logical-owner
+mapping.
+
+The x64 packaged acceptance also provisions a Hybrid gateway plus a clean Ubuntu
+systemd station container through the exact Admin-generated bootstrap command and
+one-time code. A local synthetic discovery advertisement exercises only station
+inventory. The gateway advances through its locally owned service transaction while
+its station-owned remote Agent is a topology no-op backed by fresh broker-link
+health. The station must appear in Admin, update to the exact gateway-signed target,
+restart with active release metadata reconciled from its root-owned fixed links,
+reconnect, and roll itself back when a later verified Agent package contains a
+deliberately invalid-format `AetherRemote.Agent` executable that cannot start under
+systemd. The harness never opens `/ws/radio`, sends a FLEX command, acquires a TX
+lease, or keys/unkeys.
+
+The installed gateway carries `tools/uninstall-aethersdr.sh`. Run it only after
+entering an offline maintenance window. It verifies packaged systemd units and any
+installer-owned Caddy/internal-CA markers before removing integration/current
+pointer state. It deliberately retains durable configuration, identity/MFA, Data
+Protection keys, policies, station credentials, trust/signing state, audit,
+encrypted backups, immutable releases, service users, and firewall policy.
+
+The native CI evidence is not a substitute for physical acceptance. External
+Caddy/Nginx, Entra/OIDC, real browser/device/VPN recovery, and packaged radio
+hardware soak remain operator-owned against the exact production-signed candidate
+asset digests. See `docs/STANDALONE-RELEASE-ACCEPTANCE.md`; an unrun checklist row
+is pending evidence, not a pass.
 
 ## Network placement
 

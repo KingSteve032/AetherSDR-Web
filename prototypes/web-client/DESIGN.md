@@ -1058,8 +1058,12 @@ and rehashed before any service or live-root mutation.
 The executor supports only gateway-owned personal, local-station, and hybrid topology
 contracts already reviewed by service control and health verification. It directly
 stops local target units, atomically displaces and replaces each live root from its
-same-parent staging tree, atomically returns `current` to the installed release, starts
-local installed units, and verifies installed unit/loopback/canonical-host plus optional
+same-parent staging tree, and atomically returns `current` to the installed release.
+Before each restored local unit is started, rollback invokes only absolute
+`/usr/bin/systemctl reset-failed <exact-fixed-unit>` to clear failure/start-limit state
+left by the rejected target; the same fixed role/unit validation, cleared environment,
+output bound, timeout, and unknown-outcome reconciliation rules apply. It then starts
+the installed units and verifies installed unit/loopback/canonical-host plus optional
 exact remote-agent broker-link health. Reverse migration is never used.
 
 A process outcome, directory rename, pointer rename, health result, setup/status drift,
@@ -1274,9 +1278,10 @@ SHA-256 values are checked before rename.
 
 Publication performs no copy and reopens no archive. It temporarily makes only the
 transaction root 0700, uses one `Directory.Move` into the direct inactive release path,
-then sets the published root back to 0500 and validates the complete target tree with the
-same exact mappings. Status must change only by adding the target identity to the release
-inventory; setup and active `current` remain unchanged.
+revalidates the target in its private verification modes, then exposes and revalidates
+the published tree as non-writable 0444 data and 0555 directories/executables. Status
+must change only by adding the target identity to the release inventory; setup and active
+`current` remain unchanged.
 
 Rename outcomes are explicit. Source-present/target-absent after an exception is a clean
 failure only if the source root can be re-frozen. Source-absent/target-present is accepted
@@ -1294,8 +1299,8 @@ The thirty-fourth M8B increment composes those callerless boundaries into the op
 transaction while preserving their token identities. Extracted activation adaptation
 retains the full immutable file/directory inventory and binds each service role to its
 fixed published role root. The current-pointer executor therefore proves every file,
-digest, path, directory count, and 0400/0500 owner mode before switching, rather than
-validating only the earlier five compressed bundle files.
+digest, path, directory count, and exact 0444/0555 published mode before switching,
+rather than validating only the earlier five compressed bundle files.
 
 One `ReleaseUpdateTransactionCoordinator` owns a serialized exact transaction. Prepare
 performs preflight, installation-plan composition, verified staging, extraction, inactive
@@ -2067,10 +2072,12 @@ wire request carries only the station identity, random correlation, and canonica
 release identity. The Agent derives same-gateway URLs, independently re-verifies
 the pinned release key, signed manifest, architecture, TX-disabled declaration,
 and exact Agent/station-engine packages, then stages only beneath a fixed private
-root. The root updater accepts only fixed local `apply`, `rollback`, `confirm`,
-and `acknowledge` actions over a private Unix socket; it has no network address
-family and accepts no arbitrary path, URL, executable, service identity, shell,
-or command payload.
+root. The root updater re-verifies the same canonical four-role package identities
+and `packages/<fixed-role-stem>-<architecture>.tar.gz` declarations before trusting
+the staged Agent/station-engine bytes. It accepts only fixed local `apply`,
+`rollback`, `confirm`, and `acknowledge` actions over a private Unix socket; it has
+no network address family and accepts no arbitrary path, URL, executable, service
+identity, shell, or command payload.
 
 Activation is two phase and crash safe. Before switching, the updater records the
 previous and target releases plus a bounded confirmation deadline. It switches
@@ -2113,8 +2120,9 @@ The backup payload is bounded, schema-validated, compressed, and authenticated
 with AES-256-GCM. Its key is derived from a locally entered passphrase using
 PBKDF2-HMAC-SHA256 with a random salt. Restore requires the recorded immutable
 release identities to be installed first, reconstructs files only beneath fixed
-validated target roots, remaps the validated setup `InstallationPaths` object for
-a replacement host, and maps logical `root`/`aethersdr`/`aetherremote` ownership
+validated target roots, preserves the setup document byte-for-byte when its saved
+`InstallationPaths` already equal the same-host target, remaps only a replacement
+host's validated path object, and maps logical `root`/`aethersdr`/`aetherremote` ownership
 to the destination host rather than copying numeric UIDs/GIDs. A root-external
 durable journal records `prepared` then `committed`: pre-commit interruption is
 rolled back, while post-commit recovery can only finish cleanup and never revert
@@ -2147,6 +2155,101 @@ CI performs a direct-and-transitive NuGet vulnerability query and fails closed i
 NuGet reports an advisory. Operator procedures and the support matrix live in
 `docs/OPERATIONS.md` and `docs/SUPPORT-MATRIX.md`; versioned M8G notes live under
 `docs/releases/`.
+
+## M8H packaged standalone acceptance
+
+M8H adds a separate packaged-release workflow rather than treating source-level
+unit tests as release evidence. The workflow constructs acceptance-only signed
+previous/target/failure releases and runs the packaged gateway on fresh native
+Ubuntu 24.04 x64 and arm64 hosts. Setup, protected local administrator creation,
+receive-only installation, signed update, explicit rollback, automatic rollback
+from a post-switch startup failure, encrypted backup/restore, and supported
+uninstall are all driven through existing product boundaries. Durable identity,
+Data Protection, setup, and installer-configuration authority is hashed across the
+transaction so preservation is evidence rather than an inferred property.
+
+The packaged rehearsal exposed and closes several cross-milestone composition
+mismatches. Standalone release activation controls the installed **system** units,
+not a user service manager. The fixed-purpose updater runs as root with the
+`aethersdr` group, exposes only a group-private AF_UNIX control socket, carries no
+ambient capability, bounds itself to the three Linux capabilities needed to
+read/restore authenticated ownership and mode metadata, and denies INET traffic
+except localhost for the fixed post-switch health probe. `/etc` and `/var/lib` are
+writable mounts only because crash-safe rollback must perform same-parent atomic
+renames of completed-setup-derived `/etc/aethersdr` and `/var/lib/aethersdr` roots;
+the transaction plan accepts no arbitrary path or command field. A successful
+activation keeps the supervisor alive so the exact in-memory manual-rollback tokens
+remain available. A later `prepare` first receives one bounded reload-boundary
+response; only then does the supervisor exit, systemd `Restart=always` reloads the
+fixed-purpose process through the now-authoritative `current` path, and the client
+retries the unchanged prepare after observing the recovered terminal transaction
+without rollback authority. Completed automatic/manual rollback still exits after
+its response. Reconciliation/host-restart states deliberately do not self-reload.
+The supervisor command starts only `RemoteStationCatalogService` as a receive-only
+loopback observer so Hybrid health can obtain fresh broker-link evidence; it does
+not start the web host or the radio/TX hosted-service set. The encrypted operational
+backup excludes that same fixed `release-update-supervisor` state child because its
+0770 directory and 0660 socket are transient IPC rather than durable authority; the
+exclusion is admitted only when the exact path is a real canonical non-link directory,
+and unrelated shared-writable state still fails closed. Installer-managed Caddy
+configuration is admitted only when its reviewed ownership marker is stable and its
+first `sha256=<digest>` line exactly matches the configuration bytes; the marker's
+following `plan=<id>` metadata is preserved rather than misread as part of the digest.
+The production backup console already proves every fixed service is inactive before
+capture, so the identity SQLite database is preserved as stable exact bytes rather
+than normalized through a logical database copy. Any residual `-wal`, `-shm`, or
+`-journal` sidecar makes that offline proof insufficient and fails backup closed.
+Activation-backup manifest
+schema 3 records same-host UID/GID ownership; rollback reapplies and verifies it.
+The supported Linux layout treats nested `/var/lib/aethersdr/secrets` as part of
+its state physical root instead of attempting overlapping atomic root swaps, while
+a separately configured secret root remains a third source. AetherRemote bootstrap
+reads the same canonical `release-manifest.json` persistent-bundle layout used by
+the signed release downloader.
+
+The packaged gateway also carries one conservative uninstall tool. It requires an
+offline maintenance window, validates installed systemd/Caddy/internal-CA
+integration against packaged bytes or installer ownership markers before deleting
+anything, removes only proven integration/current-pointer state, and preserves
+configuration, identity/MFA, Data Protection, policies, station credentials,
+trust/signing state, audit history, encrypted backups, immutable releases, service
+users, and firewall policy.
+
+A separate x64 clean-station job installs a HybridGateway and a clean Ubuntu
+systemd station container. Both the station Agent verifier and root updater validate
+the same canonical ReleaseBuilder package contract as the gateway verifier: all four
+roles must bind to one exact package identity and
+`packages/<fixed-role-stem>-<architecture>.tar.gz` path, with signed length and
+SHA-256, before the Agent or station-engine archive is accepted. The root updater's
+archive extractor accepts the deterministic GNU-tar `.`/`./` root prefix emitted by
+the release packager while still rejecting traversal, repeated/embedded dot segments,
+links, devices, and extraction-root escape. Fixed Agent, station-engine, and updater
+directory links are each staged as a new symbolic-link entry and atomically replaced
+with Linux `rename(2)`; the updater verifies the resulting exact link target, so an
+apply or rollback never relies on `File.Move` treating a directory symlink as a file.
+Because bootstrap configuration is durable and intentionally not rewritten by an
+update, each restarted Agent derives its in-memory active release identity and
+station-engine version from the fixed root-owned Agent and engine symlinks, requires
+them to identify the same real immutable release directory, and then confirms that
+exact active identity to the root updater. A cross-component builder/verifier regression
+plus packaged acceptance keeps that contract from drifting. The job obtains the
+Admin-generated bootstrap command and
+one-time enrollment code, supplies a synthetic discovery advertisement only to the
+station's local UDP discovery boundary, verifies Admin inventory, advances the
+gateway through its local service transaction, performs the exact station-owned
+signed update, and proves local station rollback when a later signed Agent package
+contains a deliberately invalid-format `AetherRemote.Agent` executable that passes
+signed-package verification but cannot cross the real systemd startup boundary. The
+Hybrid gateway treats its independently managed remote
+Agent restart declaration as a topology no-op while still requiring a fresh exact
+broker link for health. It never opens a radio control session or adds a command/TX
+surface.
+
+`docs/STANDALONE-RELEASE-ACCEPTANCE.md` defines the evidence split. Native packaged
+CI is safe to automate; external Caddy/Nginx, Entra/OIDC, real device/VPN recovery,
+and physical multi-client/radio soak remain operator-owned against the exact
+production-signed candidate digests. Unrun operator evidence is pending, never an
+implicit pass.
 
 ## Browser rendering
 

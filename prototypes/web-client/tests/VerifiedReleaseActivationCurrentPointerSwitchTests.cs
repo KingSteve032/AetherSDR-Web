@@ -1112,6 +1112,12 @@ public sealed class VerifiedReleaseActivationCurrentPointerSwitchTests
             TimeSpan timeout,
             CancellationToken cancellationToken) =>
             Task.FromResult(ServiceControlAttemptResult.Success());
+
+        public Task<ServiceControlAttemptResult> ResetUnitFailureAsync(
+            VerifiedReleaseActivationServiceControlAction action,
+            TimeSpan timeout,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(ServiceControlAttemptResult.Success());
     }
 
     private sealed class ManualTimeProvider(DateTimeOffset now) : TimeProvider
