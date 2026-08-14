@@ -42,6 +42,99 @@ public sealed class InstallationBackupTests
     }
 
     [Fact]
+    public async Task BackupExcludesGroupWritableReleaseSupervisorIpcDirectory()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        using TemporaryDirectory temporary = new();
+        BackupFixture fixture = await BackupFixture.CreateAsync(
+            Path.Combine(temporary.Path, "source"));
+        string supervisor = Path.Combine(
+            fixture.Paths.StateDirectory,
+            ReleaseUpdateSupervisor.DirectoryName);
+        Directory.CreateDirectory(supervisor);
+        File.SetUnixFileMode(
+            supervisor,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite |
+            UnixFileMode.GroupExecute);
+        string socketFixture = Path.Combine(
+            supervisor,
+            ReleaseUpdateSupervisor.SocketFileName);
+        await File.WriteAllTextAsync(socketFixture, "ephemeral-ipc");
+        File.SetUnixFileMode(
+            socketFixture,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite);
+
+        (string path, InstallationBackupSummary summary) =
+            await fixture.Service.CreateAsync(Passphrase);
+
+        Assert.True(File.Exists(path));
+        Assert.True(summary.ProtectedFileCount >= 5);
+    }
+
+    [Fact]
+    public async Task BackupRejectsLinkedReleaseSupervisorRuntimePath()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        using TemporaryDirectory temporary = new();
+        BackupFixture fixture = await BackupFixture.CreateAsync(
+            Path.Combine(temporary.Path, "source"));
+        string linkedTarget = Path.Combine(temporary.Path, "linked-runtime");
+        Directory.CreateDirectory(linkedTarget);
+        string supervisor = Path.Combine(
+            fixture.Paths.StateDirectory,
+            ReleaseUpdateSupervisor.DirectoryName);
+        Directory.CreateSymbolicLink(supervisor, linkedTarget);
+
+        InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Service.CreateAsync(Passphrase));
+
+        Assert.Contains("transient release-updater runtime", exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task BackupStillRejectsUnrelatedGroupWritableStateDirectory()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        using TemporaryDirectory temporary = new();
+        BackupFixture fixture = await BackupFixture.CreateAsync(
+            Path.Combine(temporary.Path, "source"));
+        string unsafeDirectory = Path.Combine(
+            fixture.Paths.StateDirectory,
+            "unexpected-shared-state");
+        Directory.CreateDirectory(unsafeDirectory);
+        File.SetUnixFileMode(
+            unsafeDirectory,
+            UnixFileMode.UserRead |
+            UnixFileMode.UserWrite |
+            UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead |
+            UnixFileMode.GroupWrite |
+            UnixFileMode.GroupExecute);
+
+        InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Service.CreateAsync(Passphrase));
+
+        Assert.Contains("shared-writable", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task TamperedEncryptedBackupFailsAuthentication()
     {
         using TemporaryDirectory temporary = new();

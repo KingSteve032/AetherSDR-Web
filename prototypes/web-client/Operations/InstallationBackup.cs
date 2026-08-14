@@ -670,6 +670,14 @@ public sealed class InstallationBackupService
 
     private bool ShouldExclude(string path, string root)
     {
+        string releaseSupervisorRuntime = Path.Combine(
+            m_paths.StateDirectory,
+            ReleaseUpdateSupervisor.DirectoryName);
+        if (PathEquals(path, releaseSupervisorRuntime))
+        {
+            ValidateExcludedReleaseSupervisorRuntime(path);
+            return true;
+        }
         foreach (string excluded in new[]
         {
             m_paths.ReleaseDirectory,
@@ -684,6 +692,20 @@ public sealed class InstallationBackupService
             }
         }
         return false;
+    }
+
+    private static void ValidateExcludedReleaseSupervisorRuntime(string path)
+    {
+        DirectoryInfo directory = new(path);
+        directory.Refresh();
+        if (!directory.Exists || directory.LinkTarget is not null ||
+            (directory.Attributes & FileAttributes.ReparsePoint) != 0 ||
+            !Path.IsPathFullyQualified(path) ||
+            !string.Equals(Path.GetFullPath(path), path, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The transient release-updater runtime path is not a canonical directory.");
+        }
     }
 
     private static byte[] CompressPayload(InstallationBackupPayload payload)

@@ -20,6 +20,7 @@ const rollbackExecution = read("prototypes/web-client/Releases/VerifiedReleaseAc
 const serviceControl = read("prototypes/web-client/Releases/VerifiedReleaseActivationServiceControlExecution.cs");
 const stationInstaller = read("AetherRemote/deploy/install-from-gateway.sh");
 const stationReleaseUpdate = read("AetherRemote/src/AetherRemote.Agent/StationReleaseUpdateService.cs");
+const installationBackup = read("prototypes/web-client/Operations/InstallationBackup.cs");
 const program = read("prototypes/web-client/Program.cs");
 
 test("M8H native acceptance runs packaged artifacts on both supported Ubuntu architectures", () => {
@@ -137,6 +138,14 @@ test("station updater requires canonical ReleaseBuilder package declarations", (
   assert.doesNotMatch(stationReleaseUpdate, /SafeFileNamePattern/);
 });
 
+test("encrypted backup excludes only the validated transient release-updater IPC directory", () => {
+  assert.match(installationBackup, /ReleaseUpdateSupervisor\.DirectoryName/);
+  assert.match(installationBackup, /ValidateExcludedReleaseSupervisorRuntime/);
+  assert.match(installationBackup, /directory\.LinkTarget is not null/);
+  assert.match(installationBackup, /FileAttributes\.ReparsePoint/);
+  assert.match(installationBackup, /m_paths\.ReleaseDownloadDirectory/);
+});
+
 test("release updater starts only the remote station catalog observer needed for Hybrid health", () => {
   assert.match(program, /ReleaseUpdateConsoleCommandKind\.TransactionSupervisor/);
   assert.match(program, /GetRequiredService<RemoteStationCatalogService>\(\)/);
@@ -164,6 +173,9 @@ test("remote acceptance captures bounded station service startup diagnostics", (
   assert.match(remote, /systemctl", "status", service/);
   assert.match(remote, /journalctl", "-u", service/);
   assert.match(remote, /redact_interactive_diagnostics/);
+  assert.match(remote, /def station_service_diagnostics\(/);
+  assert.ok((remote.match(/station_service_diagnostics\(common\)/g) ?? []).length >= 3);
+  assert.match(remote, /station signed update did not succeed:[\s\S]{0,500}station_service_diagnostics\(common\)/);
 });
 
 test("remote acceptance waits boundedly for discovered radio inventory after station connect", () => {
@@ -173,6 +185,17 @@ test("remote acceptance waits boundedly for discovered radio inventory after sta
   assert.match(remote, /radio\.get\("serial"\) == serial/);
   assert.match(remote, /station = poll_station_radio\(/);
   assert.match(remote, /socket\.SO_BROADCAST/);
+});
+
+test("remote acceptance preflights exact signed release publication from the station network boundary", () => {
+  assert.match(remote, /def station_release_publication_preflight\(/);
+  assert.match(remote, /https:\/\/aethersdr\.test\/\.well-known\/aethersdr/);
+  assert.match(remote, /"--max-filesize", "1048576"/);
+  assert.match(remote, /"--range", "0-0"/);
+  assert.match(remote, /"--write-out", "%\{http_code\}"/);
+  assert.match(remote, /\.strip\(\) != "206"/);
+  assert.match(remote, /\/aetherremote\/releases\/\{identity\}\/linux-x64\/manifest/);
+  assert.ok((remote.match(/station_release_publication_preflight\(common,/g) ?? []).length >= 2);
 });
 
 test("remote acceptance uses guided enrollment and station-owned signed updates", () => {

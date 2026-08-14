@@ -235,6 +235,31 @@ def prepare_systemd_container(common) -> None:
     die("Ubuntu station container did not reach a systemd running/degraded state")
 
 
+def station_service_diagnostics(common) -> str:
+    diagnostic_parts: list[str] = []
+    for service in (
+        "aetherremote-station-engine.service",
+        "aetherremote-agent.service",
+        "aetherremote-release-updater.service",
+    ):
+        status = common.run([
+            "/usr/bin/docker", "exec", "m8h-station",
+            "systemctl", "status", service,
+            "--no-pager", "--lines=30",
+        ], check=False)
+        journal = common.run([
+            "/usr/bin/docker", "exec", "m8h-station",
+            "journalctl", "-u", service,
+            "--no-pager", "-n", "60",
+        ], check=False)
+        diagnostic_parts.append(
+            f"{service}:\n{status.stdout or ''}\n{journal.stdout or ''}")
+    return common.redact_interactive_diagnostics(
+        "\n".join(diagnostic_parts),
+        [],
+    )
+
+
 def station_install(common, command: str, enrollment_code: str) -> None:
     ca = Path("/usr/local/share/ca-certificates/aethersdr-caddy-local.crt")
     if not ca.is_file():
@@ -272,26 +297,8 @@ def station_install(common, command: str, enrollment_code: str) -> None:
             timeout=300,
         )
     except SystemExit as exception:
-        diagnostic_parts: list[str] = []
-        for service in (
-            "aetherremote-station-engine.service",
-            "aetherremote-agent.service",
-            "aetherremote-release-updater.service",
-        ):
-            status = common.run([
-                "/usr/bin/docker", "exec", "m8h-station",
-                "systemctl", "status", service,
-                "--no-pager", "--lines=30",
-            ], check=False)
-            journal = common.run([
-                "/usr/bin/docker", "exec", "m8h-station",
-                "journalctl", "-u", service,
-                "--no-pager", "-n", "40",
-            ], check=False)
-            diagnostic_parts.append(
-                f"{service}:\n{status.stdout or ''}\n{journal.stdout or ''}")
         diagnostic = common.redact_interactive_diagnostics(
-            "\n".join(diagnostic_parts),
+            station_service_diagnostics(common),
             prompt_responses,
         )
         die(f"{exception}\nstation service diagnostics:\n{diagnostic}")
@@ -344,6 +351,67 @@ def poll_station_radio(
         f"the bounded window: state={last_state!r} release={last_release!r} "
         f"radioCount={last_radio_count}"
     )
+
+
+def station_release_publication_preflight(common, identity: str) -> None:
+    docker = "/usr/bin/docker"
+    bootstrap_result = common.run(
+        [
+            docker, "exec", "m8h-station",
+            "curl", "--fail", "--silent", "--show-error",
+            "--max-time", "15",
+            "https://aethersdr.test/.well-known/aethersdr",
+        ],
+        check=False,
+    )
+    if bootstrap_result.returncode != 0:
+        die(
+            "station could not read the gateway bootstrap over its installed HTTPS trust: "
+            f"exit={bootstrap_result.returncode}"
+        )
+    try:
+        document = json.loads(bootstrap_result.stdout or "")
+    except json.JSONDecodeError:
+        die("station HTTPS preflight received malformed gateway bootstrap JSON")
+    if not isinstance(document, dict) or document.get("releaseIdentity") != identity:
+        die(
+            "station HTTPS preflight did not observe the exact active release: "
+            f"observed={document.get('releaseIdentity') if isinstance(document, dict) else None!r}"
+        )
+    architectures = document.get("architectures") or []
+    matches = [
+        item for item in architectures
+        if isinstance(item, dict) and item.get("architecture") == "linux-x64"
+    ]
+    if len(matches) != 1:
+        die("station HTTPS preflight did not observe one linux-x64 release publication")
+    selected = matches[0]
+    expected = {
+        "manifestUrl": f"/aetherremote/releases/{identity}/linux-x64/manifest",
+        "agentPackageUrl": f"/aetherremote/releases/{identity}/linux-x64/agent",
+        "stationEnginePackageUrl":
+            f"/aetherremote/releases/{identity}/linux-x64/station-engine",
+    }
+    for field, path in expected.items():
+        url = selected.get(field)
+        if url != "https://aethersdr.test" + path:
+            die(f"station HTTPS preflight observed a noncanonical {field}")
+        probe = common.run(
+            [
+                docker, "exec", "m8h-station",
+                "curl", "--fail", "--silent", "--show-error",
+                "--max-time", "15", "--max-filesize", "1048576",
+                "--range", "0-0", "--output", "/dev/null",
+                "--write-out", "%{http_code}", url,
+            ],
+            check=False,
+        )
+        if probe.returncode != 0 or (probe.stdout or "").strip() != "206":
+            die(
+                "station HTTPS preflight could not read the exact one-byte signed "
+                f"release asset {field}: exit={probe.returncode} "
+                f"status={(probe.stdout or '').strip()!r}"
+            )
 
 
 def broker_release_update(identity: str) -> dict:
@@ -524,9 +592,14 @@ def main() -> int:
                 update_env,
             )
 
+            station_release_publication_preflight(common, common.TARGET_ID)
             station_target = broker_release_update(common.TARGET_ID)
             if not station_target.get("succeeded") or station_target.get("rolledBack"):
-                die(f"station signed update did not succeed: {station_target}")
+                die(
+                    f"station signed update did not succeed: {station_target}\n"
+                    "--- station service diagnostics ---\n"
+                    f"{station_service_diagnostics(common)}"
+                )
             station = poll_station(admin, common.TARGET_ID)
             if station.get("stationEngineVersion") != common.TARGET_VERSION:
                 die("station engine version did not advance with the signed station release")
@@ -543,9 +616,14 @@ def main() -> int:
                 die("gateway could not host the remote Agent failure acceptance release")
             common.wait_health()
 
+            station_release_publication_preflight(common, STATION_FAILURE_ID)
             station_failure = broker_release_update(STATION_FAILURE_ID)
             if station_failure.get("succeeded") or not station_failure.get("rolledBack"):
-                die(f"station failure did not roll back locally: {station_failure}")
+                die(
+                    f"station failure did not roll back locally: {station_failure}\n"
+                    "--- station service diagnostics ---\n"
+                    f"{station_service_diagnostics(common)}"
+                )
             if station_failure.get("activeReleaseIdentity") != common.TARGET_ID:
                 die("station local rollback did not restore its previous target release")
             poll_station(admin, common.TARGET_ID)

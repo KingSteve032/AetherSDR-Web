@@ -2184,9 +2184,12 @@ without rollback authority. Completed automatic/manual rollback still exits afte
 its response. Reconciliation/host-restart states deliberately do not self-reload.
 The supervisor command starts only `RemoteStationCatalogService` as a receive-only
 loopback observer so Hybrid health can obtain fresh broker-link evidence; it does
-not start the web host or the radio/TX hosted-service set. Activation-backup manifest
-schema 3 records same-host UID/GID ownership; rollback
-reapplies and verifies it.
+not start the web host or the radio/TX hosted-service set. The encrypted operational
+backup excludes that same fixed `release-update-supervisor` state child because its
+0770 directory and 0660 socket are transient IPC rather than durable authority; the
+exclusion is admitted only when the exact path is a real canonical non-link directory,
+and unrelated shared-writable state still fails closed. Activation-backup manifest
+schema 3 records same-host UID/GID ownership; rollback reapplies and verifies it.
 The supported Linux layout treats nested `/var/lib/aethersdr/secrets` as part of
 its state physical root instead of attempting overlapping atomic root swaps, while
 a separately configured secret root remains a third source. AetherRemote bootstrap

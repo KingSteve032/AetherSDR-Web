@@ -2662,9 +2662,13 @@ failure/start-limit state cannot block the restored binary. The reset accepts no
 free-form unit or command and an unknown reset outcome remains reconciliation. In
 supervisor mode the only manually started background observer is the receive-only
 remote-station catalog required for fresh Hybrid broker-link health; the normal
-web/radio/TX hosted-service set is not started. The normal Linux nested secret path
-is covered by the state physical root rather than an overlapping atomic source.
-Replacement-host restore still uses M8G logical-owner mapping.
+web/radio/TX hosted-service set is not started. Encrypted operational backup excludes
+the fixed `release-update-supervisor` child of installation state because its 0770
+runtime directory and 0660 control socket are transient IPC, not durable authority.
+That exclusion requires the exact path to be a real canonical non-link directory;
+other shared-writable state remains a hard backup failure. The normal Linux nested
+secret path is covered by the state physical root rather than an overlapping atomic
+source. Replacement-host restore still uses M8G logical-owner mapping.
 
 The x64 packaged acceptance also provisions a Hybrid gateway plus a clean Ubuntu
 systemd station container through the exact Admin-generated bootstrap command and

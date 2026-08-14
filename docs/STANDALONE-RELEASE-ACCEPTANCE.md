@@ -34,7 +34,8 @@ The x64 and arm64 jobs exercise only packaged product binaries and must prove:
   and automatically restores the previous release;
 - byte-stable identity, Data Protection, setup, and installer-configuration
   authority through update and both rollback paths;
-- encrypted backup created by the packaged gateway, destructive replacement of
+- encrypted backup created by the packaged gateway while excluding only the
+  validated transient release-updater IPC directory, destructive replacement of
   durable roots, restore through the packaged gateway, and authority-hash
   equality afterward; and
 - supported uninstall that removes only proven installer integration while
