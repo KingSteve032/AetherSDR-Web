@@ -79,6 +79,7 @@ test("packaged installer harness follows the exact installer console JSON contra
 test("M8H deliberate failures corrupt only packaged startup configuration", () => {
   assert.match(assets, /appsettings\.json/);
   assert.match(assets, /M8H deliberately invalid startup JSON/);
+  assert.match(assets, /aetherremote-agent-\$\{runtime\}\.tar\.gz/);
   assert.doesNotMatch(assets, /AetherSDR\.Web.*printf|station.*xmit|radio.*command/i);
 });
 
@@ -119,6 +120,7 @@ test("release updater readiness requires a protocol handshake after restart", ()
   assert.match(standalone, /def wait_release_updater_ready\(/);
   assert.match(standalone, /--release-transaction-status/);
   assert.match(standalone, /failureCode.*executionDisabled/);
+  assert.ok((standalone.match(/wait_release_updater_ready\(/g) ?? []).length >= 4);
   assert.doesNotMatch(standalone, /while time\.monotonic\(\) < deadline and not socket\.exists\(\)/);
 });
 
@@ -145,12 +147,15 @@ test("remote acceptance waits boundedly for discovered radio inventory after sta
 });
 
 test("remote acceptance uses guided enrollment and station-owned signed updates", () => {
+  assert.match(remote, /M8H_SETUP_TOPOLOGY.*hybridGateway/);
+  assert.match(remote, /write_update_dropin\(public_key, STATION_ID\)/);
   assert.match(remote, /\/api\/admin\/stations\/bootstrap/);
   assert.match(remote, /\/api\/admin\/stations\/enrollment-codes/);
   assert.match(remote, /M8H-REMOTE-1/);
+  assert.match(remote, /gateway_target = common\.activate\(/);
+  assert.match(remote, /gateway_station_failure = common\.activate\(/);
   assert.match(remote, /broker_release_update\(common\.TARGET_ID\)/);
   assert.match(remote, /broker_release_update\(STATION_FAILURE_ID\)/);
   assert.match(remote, /stationFailedUpdateRolledBack/);
-  assert.doesNotMatch(remote, /common\.activate\(/);
   assert.doesNotMatch(remote, /\/api\/radio|\/ws\/radio/);
 });

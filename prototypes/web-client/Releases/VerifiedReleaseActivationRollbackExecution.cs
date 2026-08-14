@@ -2000,7 +2000,8 @@ public sealed class VerifiedReleaseActivationRollbackExecutionService
                 continue;
             }
             if (role == VerifiedReleaseActivationServiceRole.AetherRemoteAgent &&
-                !topology.AcceptsRemoteStations)
+                (!topology.AcceptsRemoteStations ||
+                 topology.Kind == InstallationTopologyKind.HybridGateway))
             {
                 result.Add(new RollbackBoundAction(action, TopologyNoOp: true));
                 continue;

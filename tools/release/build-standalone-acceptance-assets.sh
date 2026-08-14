@@ -285,13 +285,13 @@ for runtime in linux-x64 linux-arm64; do
   mkdir -p -- "${station_failure_assets}"
   for package in "${target_assets}"/*.tar.gz; do
     case "$(basename -- "${package}")" in
-      aethersdr-station-engine-*) cp -- "${package}" "${station_failure_assets}/" ;;
+      aetherremote-agent-*) cp -- "${package}" "${station_failure_assets}/" ;;
       *) link_or_copy "${package}" "${station_failure_assets}/$(basename -- "${package}")" ;;
     esac
   done
   repack_invalid_startup \
-    "${station_failure_assets}/aethersdr-station-engine-${runtime}.tar.gz" \
-    "station-${runtime}"
+    "${station_failure_assets}/aetherremote-agent-${runtime}.tar.gz" \
+    "station-agent-${runtime}"
   sign_manifest \
     "${station_failure_version}" \
     "${runtime}" \

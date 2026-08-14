@@ -309,7 +309,13 @@ def load_environment_file(path: Path) -> dict[str, str]:
     return values
 
 
-def update_environment(base: dict[str, str], public_key: Path) -> dict[str, str]:
+def update_environment(
+    base: dict[str, str],
+    public_key: Path,
+    expected_station_id: str = "",
+) -> dict[str, str]:
+    if expected_station_id and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", expected_station_id):
+        die("release update station identity is not canonical")
     env = base.copy()
     env.update(load_environment_file(Path("/etc/aethersdr/environment")))
     env.update(
@@ -329,6 +335,11 @@ def update_environment(base: dict[str, str], public_key: Path) -> dict[str, str]
             "ReleaseActivationOperatorApproval__AuthorityEnabled": "true",
         }
     )
+    if expected_station_id:
+        env["ReleaseActivationHealthVerification__ExpectedStationId"] = (
+            expected_station_id
+        )
+        env["ReleaseActivationRollback__ExpectedStationId"] = expected_station_id
     return env
 
 
@@ -360,27 +371,37 @@ def stage_runtime_bundle(source: Path, identity: str) -> Path:
     return target
 
 
-def write_update_dropin(public_key: Path) -> None:
+def write_update_dropin(public_key: Path, expected_station_id: str = "") -> None:
+    if expected_station_id and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", expected_station_id):
+        die("release updater station identity is not canonical")
     dropin = Path("/etc/systemd/system/aethersdr-release-updater.service.d")
     dropin.mkdir(parents=True, exist_ok=True)
     dropin.chmod(0o755)
-    content = "\n".join(
-        [
-            "[Service]",
-            "Environment=ReleaseManifestTrust__VerificationEnabled=true",
-            f"Environment=ReleaseManifestTrust__Keys__0__KeyId={KEY_ID}",
-            "Environment=ReleaseManifestTrust__Keys__0__Algorithm=EcdsaP256Sha256",
-            f"Environment=ReleaseManifestTrust__Keys__0__PublicKeyPath={public_key}",
-            "Environment=ReleaseUpdateTransaction__ExecutionEnabled=true",
-            "Environment=ReleaseUpdateTransaction__LeaseDrainSeconds=1",
-            "Environment=ReleaseActivationServiceControl__ExecutionEnabled=true",
-            "Environment=ReleaseActivationCurrentPointerSwitch__ExecutionEnabled=true",
-            "Environment=ReleaseActivationHealthVerification__ExecutionEnabled=true",
-            "Environment=ReleaseActivationRollback__ExecutionEnabled=true",
-            "Environment=ReleaseActivationOperatorApproval__AuthorityEnabled=true",
-            "",
-        ]
-    )
+    lines = [
+        "[Service]",
+        "Environment=ReleaseManifestTrust__VerificationEnabled=true",
+        f"Environment=ReleaseManifestTrust__Keys__0__KeyId={KEY_ID}",
+        "Environment=ReleaseManifestTrust__Keys__0__Algorithm=EcdsaP256Sha256",
+        f"Environment=ReleaseManifestTrust__Keys__0__PublicKeyPath={public_key}",
+        "Environment=ReleaseUpdateTransaction__ExecutionEnabled=true",
+        "Environment=ReleaseUpdateTransaction__LeaseDrainSeconds=1",
+        "Environment=ReleaseActivationServiceControl__ExecutionEnabled=true",
+        "Environment=ReleaseActivationCurrentPointerSwitch__ExecutionEnabled=true",
+        "Environment=ReleaseActivationHealthVerification__ExecutionEnabled=true",
+        "Environment=ReleaseActivationRollback__ExecutionEnabled=true",
+        "Environment=ReleaseActivationOperatorApproval__AuthorityEnabled=true",
+    ]
+    if expected_station_id:
+        lines.append(
+            "Environment=ReleaseActivationHealthVerification__ExpectedStationId=" +
+            expected_station_id
+        )
+        lines.append(
+            "Environment=ReleaseActivationRollback__ExpectedStationId=" +
+            expected_station_id
+        )
+    lines.append("")
+    content = "\n".join(lines)
     target = dropin / "m8h-acceptance.conf"
     target.write_text(content, encoding="utf-8")
     target.chmod(0o644)
@@ -733,6 +754,10 @@ def main() -> int:
         assert_release_dirs(PREVIOUS_ID, TARGET_ID)
         assert_authority(authority, "successful update")
         wait_health()
+        wait_release_updater_ready(
+            Path("/opt/aethersdr/current/gateway-web/AetherSDR.Web"),
+            update_env,
+        )
 
         manual_rollback(
             Path("/opt/aethersdr/current/gateway-web/AetherSDR.Web"),
@@ -744,6 +769,10 @@ def main() -> int:
         assert_release_dirs(PREVIOUS_ID, TARGET_ID)
         assert_authority(authority, "manual rollback")
         wait_health()
+        wait_release_updater_ready(
+            Path("/opt/aethersdr/current/gateway-web/AetherSDR.Web"),
+            update_env,
+        )
 
         failure = activate(
             Path("/opt/aethersdr/current/gateway-web/AetherSDR.Web"),

@@ -291,19 +291,32 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionTests
     }
 
     [Fact]
-    public async Task HybridRemoteAgentActionFailsBeforeAnyProcess()
+    public async Task HybridGatewayKeepsStationOwnedRemoteAgentAsTopologyNoOp()
     {
         Fixture fixture = new(topology: InstallationTopologyKind.HybridGateway);
 
         VerifiedReleaseActivationServiceControlExecutionReport report =
             await fixture.ExecutePreAsync();
 
-        AssertFailure(
-            report,
-            VerifiedReleaseActivationServiceControlExecutionFailureCode
-                .RemoteServiceControlUnavailable);
-        Assert.Empty(fixture.Runtime.Actions);
+        Assert.True(report.Succeeded);
+        Assert.Equal(4, report.PlannedActionCount);
+        Assert.Equal(3, report.ExecutedActionCount);
+        Assert.Equal(1, report.TopologyNoOpActionCount);
         Assert.False(report.ReconciliationRequired);
+        Assert.Collection(
+            fixture.Runtime.Actions,
+            action => AssertAction(
+                action,
+                VerifiedReleaseActivationServiceControlActionKind.Stop,
+                VerifiedReleaseActivationServiceRole.GatewayWeb),
+            action => AssertAction(
+                action,
+                VerifiedReleaseActivationServiceControlActionKind.Stop,
+                VerifiedReleaseActivationServiceRole.Broker),
+            action => AssertAction(
+                action,
+                VerifiedReleaseActivationServiceControlActionKind.Stop,
+                VerifiedReleaseActivationServiceRole.StationEngine));
     }
 
     [Fact]

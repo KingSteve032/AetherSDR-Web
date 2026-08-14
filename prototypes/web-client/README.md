@@ -2636,7 +2636,7 @@ M8H adds `.github/workflows/standalone-release-acceptance.yml` so release accept
 runs the packaged product rather than a source checkout. Acceptance-only P-256
 signing authority is generated inside the package job, never uploaded, and signs
 four disposable identities: previous, target, gateway-failure, and
-station-engine-failure. Fresh native Ubuntu Server 24.04 x64 and arm64 jobs use
+station-Agent-failure. Fresh native Ubuntu Server 24.04 x64 and arm64 jobs use
 the packaged gateway to complete protected setup, receive-only installation,
 signed update, manual rollback, automatic rollback after a deliberately broken
 post-switch startup, encrypted backup/restore, and conservative uninstall.
@@ -2651,13 +2651,15 @@ pointer state and systemd `Restart=always` reloads it from `current`. The normal
 secret path is covered by the state physical root rather than an overlapping
 atomic source. Replacement-host restore still uses M8G logical-owner mapping.
 
-The x64 packaged acceptance also provisions a clean Ubuntu systemd station
-container through the exact Admin-generated bootstrap command and one-time code.
-A local synthetic discovery advertisement exercises only station inventory. The
-station must appear in Admin, update to the exact gateway-signed target, reconnect,
-and roll itself back when a later signed station-engine target fails local health.
-The harness never opens `/ws/radio`, sends a FLEX command, acquires a TX lease, or
-keys/unkeys.
+The x64 packaged acceptance also provisions a Hybrid gateway plus a clean Ubuntu
+systemd station container through the exact Admin-generated bootstrap command and
+one-time code. A local synthetic discovery advertisement exercises only station
+inventory. The gateway advances through its locally owned service transaction while
+its station-owned remote Agent is a topology no-op backed by fresh broker-link
+health. The station must appear in Admin, update to the exact gateway-signed target,
+reconnect, and roll itself back when a later signed Agent target cannot complete
+startup. The harness never opens `/ws/radio`, sends a FLEX command, acquires a TX
+lease, or keys/unkeys.
 
 The installed gateway carries `tools/uninstall-aethersdr.sh`. Run it only after
 entering an offline maintenance window. It verifies packaged systemd units and any

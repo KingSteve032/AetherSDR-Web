@@ -43,14 +43,14 @@ The x64 and arm64 jobs exercise only packaged product binaries and must prove:
 The x64 remote-station job additionally uses a clean Ubuntu 24.04 systemd
 container and must prove:
 
-- a RemoteStationGateway is installed from the package;
+- a HybridGateway is installed from the package so locally owned gateway services and an independently station-owned remote Agent are exercised together;
 - Admin creates a guided bootstrap command and one-time enrollment code;
 - the station downloads its Agent/station-engine packages from its own gateway;
 - the one-time code is entered only at the station terminal;
 - a synthetic **receive-only discovery advertisement** is visible through Admin;
-- the station updates to the gateway's exact signed target and reconnects; and
-- a later signed release with a deliberately broken station-engine package fails
-  local health and rolls the station back without gateway shell/command authority.
+- the gateway advances locally, the station updates to that exact signed target and reconnects; and
+- a later signed release with a deliberately broken Agent package cannot complete
+  station startup and rolls the station back without gateway shell/command authority.
 
 Synthetic FLEX discovery is inventory-only. The acceptance jobs never open a
 radio control session, acquire a TX lease, key/unkey, send a FLEX command, or emit

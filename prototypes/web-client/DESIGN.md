@@ -2190,13 +2190,16 @@ configuration, identity/MFA, Data Protection, policies, station credentials,
 trust/signing state, audit history, encrypted backups, immutable releases, service
 users, and firewall policy.
 
-A separate x64 clean-station job installs a RemoteStationGateway and a clean Ubuntu
+A separate x64 clean-station job installs a HybridGateway and a clean Ubuntu
 systemd station container, obtains the Admin-generated bootstrap command and
 one-time enrollment code, supplies a synthetic discovery advertisement only to the
-station's local UDP discovery boundary, verifies Admin inventory, performs an
-exact signed station update, and proves local station rollback when a later signed
-station-engine package fails health. It never opens a radio control session or
-adds a command/TX surface.
+station's local UDP discovery boundary, verifies Admin inventory, advances the
+gateway through its local service transaction, performs the exact station-owned
+signed update, and proves local station rollback when a later signed Agent package
+cannot complete startup. The Hybrid gateway treats its independently managed remote
+Agent restart declaration as a topology no-op while still requiring a fresh exact
+broker link for health. It never opens a radio control session or adds a command/TX
+surface.
 
 `docs/STANDALONE-RELEASE-ACCEPTANCE.md` defines the evidence split. Native packaged
 CI is safe to automate; external Caddy/Nginx, Entra/OIDC, real device/VPN recovery,

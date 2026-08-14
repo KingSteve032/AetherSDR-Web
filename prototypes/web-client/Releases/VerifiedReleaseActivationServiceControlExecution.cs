@@ -1673,7 +1673,8 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionService
                 continue;
             }
             if (role == VerifiedReleaseActivationServiceRole.AetherRemoteAgent &&
-                !topology.AcceptsRemoteStations)
+                (!topology.AcceptsRemoteStations ||
+                 topology.Kind == InstallationTopologyKind.HybridGateway))
             {
                 result.Add(
                     new ServiceControlBoundAction(

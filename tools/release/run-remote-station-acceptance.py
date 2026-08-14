@@ -423,7 +423,7 @@ def main() -> int:
             "-inkey", str(key), "-in", str(cert), "-passout", f"pass:{pfx_password}",
         ])
         setup_env = os.environ.copy()
-        setup_env["M8H_SETUP_TOPOLOGY"] = "remoteStationGateway"
+        setup_env["M8H_SETUP_TOPOLOGY"] = "hybridGateway"
         setup_env["M8H_ACCEPTANCE_CREDENTIAL_FILE"] = str(credential_file)
         common.run(
             [sys.executable, str(setup_helper), str(gateway), str(pfx), pfx_password, common.PUBLIC_URL],
@@ -469,6 +469,7 @@ def main() -> int:
         if not (seeded_previous_bundle / "release-manifest.json").is_file():
             die("seeded previous bootstrap bundle is unavailable")
         configure_web_trust(common, public_key)
+        common.write_update_dropin(public_key, STATION_ID)
 
         admin = AdminClient(credentials)
         admin.login()
@@ -502,12 +503,45 @@ def main() -> int:
             if not any(radio.get("serial") == "M8H-REMOTE-1" for radio in radios):
                 die("remote station did not publish the synthetically discovered FLEX radio")
 
+            update_env = common.update_environment(
+                os.environ.copy(),
+                public_key,
+                STATION_ID,
+            )
+            gateway_target = common.activate(
+                Path("/opt/aethersdr/current/gateway-web/AetherSDR.Web"),
+                target_bundle,
+                common.PREVIOUS_ID,
+                common.PREVIOUS_VERSION,
+                common.TARGET_ID,
+                update_env,
+            )
+            if not gateway_target["final"].get("activationCompleted"):
+                die("remote-capable gateway did not advance to the target signed release")
+            common.wait_health()
+            common.wait_release_updater_ready(
+                Path("/opt/aethersdr/current/gateway-web/AetherSDR.Web"),
+                update_env,
+            )
+
             station_target = broker_release_update(common.TARGET_ID)
             if not station_target.get("succeeded") or station_target.get("rolledBack"):
                 die(f"station signed update did not succeed: {station_target}")
             station = poll_station(admin, common.TARGET_ID)
             if station.get("stationEngineVersion") != common.TARGET_VERSION:
                 die("station engine version did not advance with the signed station release")
+
+            gateway_station_failure = common.activate(
+                Path("/opt/aethersdr/current/gateway-web/AetherSDR.Web"),
+                station_failure_bundle,
+                common.TARGET_ID,
+                common.TARGET_VERSION,
+                STATION_FAILURE_ID,
+                update_env,
+            )
+            if not gateway_station_failure["final"].get("activationCompleted"):
+                die("gateway could not host the remote Agent failure acceptance release")
+            common.wait_health()
 
             station_failure = broker_release_update(STATION_FAILURE_ID)
             if station_failure.get("succeeded") or not station_failure.get("rolledBack"):
@@ -518,7 +552,7 @@ def main() -> int:
 
             print(json.dumps({
                 "schemaVersion": 1,
-                "gatewayTopology": "remoteStationGateway",
+                "gatewayTopology": "hybridGateway",
                 "stationIdRedacted": True,
                 "guidedBootstrap": True,
                 "oneTimeEnrollment": True,
