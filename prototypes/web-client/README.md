@@ -2557,8 +2557,11 @@ the accepted Agent/station-engine bytes under its fixed private root and asks th
 root-owned fixed-purpose updater to apply only that identity. The updater has no
 network address family and independently re-verifies the same four canonical
 package identities/paths plus signed lengths and hashes before trusting the staged
-bytes. It then switches fixed release symlinks and signed units, restarts the station
-engine, and retains rollback state until the new Agent confirms startup.
+bytes. Its extractor accepts only the release packager's deterministic GNU-tar
+`.`/`./` root prefix plus safe relative entries; traversal, repeated/embedded dot
+segments, links, devices, and extraction-root escape remain rejected. It then switches
+fixed release symlinks and signed units, restarts the station engine, and retains
+rollback state until the new Agent confirms startup.
 
 Completion is crash-safe across the Agent restart. The root updater persists an
 exact correlation/release completion for either successful startup or automatic
@@ -2667,9 +2670,12 @@ web/radio/TX hosted-service set is not started. Encrypted operational backup exc
 the fixed `release-update-supervisor` child of installation state because its 0770
 runtime directory and 0660 control socket are transient IPC, not durable authority.
 That exclusion requires the exact path to be a real canonical non-link directory;
-other shared-writable state remains a hard backup failure. The normal Linux nested
-secret path is covered by the state physical root rather than an overlapping atomic
-source. Replacement-host restore still uses M8G logical-owner mapping.
+other shared-writable state remains a hard backup failure. Installer-owned Caddy
+configuration is backed up only when its stable reviewed marker begins with the exact
+`sha256=<digest>` for the configuration bytes; the following `plan=<id>` ownership
+metadata is retained. The normal Linux nested secret path is covered by the state
+physical root rather than an overlapping atomic source. Replacement-host restore still
+uses M8G logical-owner mapping.
 
 The x64 packaged acceptance also provisions a Hybrid gateway plus a clean Ubuntu
 systemd station container through the exact Admin-generated bootstrap command and

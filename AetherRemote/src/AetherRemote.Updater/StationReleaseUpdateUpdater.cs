@@ -758,13 +758,12 @@ internal sealed partial class StationReleaseUpdateUpdater(
                 throw new InvalidDataException(
                     "The station release archive contains a link, device, or unsupported entry.");
             }
-            string relative = entry.Name.Replace('\\', '/');
-            if (relative.Length is < 1 or > 512 ||
-                relative.StartsWith("/", StringComparison.Ordinal) ||
-                relative.Split('/').Any(part => part is ".." or ""))
+            string relative = NormalizeArchiveEntryName(
+                entry.Name,
+                entry.EntryType == TarEntryType.Directory);
+            if (relative.Length == 0)
             {
-                throw new InvalidDataException(
-                    "The station release archive contains an unsafe path.");
+                continue;
             }
             string target = Path.GetFullPath(Path.Combine(root, relative));
             if (!target.StartsWith(
@@ -1027,6 +1026,39 @@ internal sealed partial class StationReleaseUpdateUpdater(
                 "The updater staging directory escaped its fixed root.");
         }
         return path;
+    }
+
+    internal static string NormalizeArchiveEntryName(
+        string entryName,
+        bool isDirectory)
+    {
+        string normalized = entryName.Replace('\\', '/');
+        if (normalized.Length is < 1 or > 512 ||
+            normalized.StartsWith("/", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The station release archive contains an unsafe path.");
+        }
+        if (isDirectory && normalized is "." or "./")
+        {
+            return string.Empty;
+        }
+        if (normalized.StartsWith("./", StringComparison.Ordinal))
+        {
+            normalized = normalized[2..];
+        }
+        if (isDirectory && normalized.EndsWith("/", StringComparison.Ordinal))
+        {
+            normalized = normalized[..^1];
+        }
+        if (normalized.Length == 0 ||
+            normalized.Split('/').Any(part =>
+                part.Length == 0 || part is "." or ".."))
+        {
+            throw new InvalidDataException(
+                "The station release archive contains an unsafe path.");
+        }
+        return normalized;
     }
 
     private static string ExactStagingFile(string root, string fileName)

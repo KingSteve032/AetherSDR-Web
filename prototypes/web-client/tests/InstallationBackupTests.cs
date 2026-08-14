@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using AetherSDR.Web.Operations;
 using AetherSDR.Web.Releases;
@@ -132,6 +133,96 @@ public sealed class InstallationBackupTests
             () => fixture.Service.CreateAsync(Passphrase));
 
         Assert.Contains("shared-writable", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task BackupAcceptsInstallerManagedCaddyOwnershipMarkerFormat()
+    {
+        using TemporaryDirectory temporary = new();
+        BackupFixture fixture = await BackupFixture.CreateAsync(
+            Path.Combine(temporary.Path, "source"));
+        string proxyState = Path.Combine(
+            fixture.Paths.StateDirectory,
+            "installer-proxy");
+        string caddyDirectory = Path.Combine(
+            fixture.Paths.ConfigurationDirectory,
+            "managed-caddy");
+        Directory.CreateDirectory(proxyState);
+        Directory.CreateDirectory(caddyDirectory);
+        string caddyPath = Path.Combine(caddyDirectory, "Caddyfile");
+        const string CaddyContent = "https://radio.example.org { reverse_proxy 127.0.0.1:5080 }\n";
+        await File.WriteAllTextAsync(caddyPath, CaddyContent);
+        string digest = Convert.ToHexStringLower(
+            SHA256.HashData(Encoding.UTF8.GetBytes(CaddyContent)));
+        string markerPath = Path.Combine(proxyState, "managed-caddy.sha256");
+        await File.WriteAllTextAsync(
+            markerPath,
+            $"sha256={digest}\nplan=m8h-test-plan\n");
+        if (OperatingSystem.IsLinux())
+        {
+            File.SetUnixFileMode(
+                proxyState,
+                UnixFileMode.UserRead |
+                UnixFileMode.UserWrite |
+                UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead |
+                UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead |
+                UnixFileMode.OtherExecute);
+            File.SetUnixFileMode(
+                caddyDirectory,
+                UnixFileMode.UserRead |
+                UnixFileMode.UserWrite |
+                UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead |
+                UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead |
+                UnixFileMode.OtherExecute);
+            File.SetUnixFileMode(
+                caddyPath,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite |
+                UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+            File.SetUnixFileMode(
+                markerPath,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite |
+                UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+        }
+
+        (string path, InstallationBackupSummary summary) =
+            await fixture.Service.CreateAsync(Passphrase);
+
+        Assert.True(File.Exists(path));
+        Assert.True(summary.ProtectedFileCount >= 7);
+    }
+
+    [Fact]
+    public async Task BackupRejectsManagedCaddyMarkerWithWrongDigest()
+    {
+        using TemporaryDirectory temporary = new();
+        BackupFixture fixture = await BackupFixture.CreateAsync(
+            Path.Combine(temporary.Path, "source"));
+        string proxyState = Path.Combine(
+            fixture.Paths.StateDirectory,
+            "installer-proxy");
+        string caddyDirectory = Path.Combine(
+            fixture.Paths.ConfigurationDirectory,
+            "managed-caddy");
+        Directory.CreateDirectory(proxyState);
+        Directory.CreateDirectory(caddyDirectory);
+        string caddyPath = Path.Combine(caddyDirectory, "Caddyfile");
+        await File.WriteAllTextAsync(caddyPath, "managed caddy\n");
+        string markerPath = Path.Combine(proxyState, "managed-caddy.sha256");
+        await File.WriteAllTextAsync(
+            markerPath,
+            $"sha256={new string('0', 64)}\nplan=m8h-test-plan\n");
+
+        InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Service.CreateAsync(Passphrase));
+
+        Assert.Contains(
+            "does not match installer-owned state",
+            exception.Message,
+            StringComparison.Ordinal);
     }
 
     [Fact]

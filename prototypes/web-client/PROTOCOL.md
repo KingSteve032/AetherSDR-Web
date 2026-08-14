@@ -861,7 +861,10 @@ manifest package roles to bind their exact package identity and
 `packages/<fixed-role-stem>-<architecture>.tar.gz` path, plus the signed length and
 SHA-256; it does not accept a basename-only or alternate package path. The root
 updater re-verifies that same four-role identity/path contract against the manifest
-before trusting the fixed staged Agent/station-engine bytes. `apply` consumes only
+before trusting the fixed staged Agent/station-engine bytes. Archive extraction accepts
+only the deterministic GNU-tar `.`/`./` root prefix emitted by the reviewed package
+builder plus bounded safe relative entries; traversal, repeated/embedded dot segments,
+links, devices, and extraction-root escape fail closed. `apply` consumes only
 the fixed private staging directory for the correlation; the message
 cannot provide its path. `confirm` recovers the durable successful or rollback
 completion after Agent restart. `acknowledge` marks that completion durably

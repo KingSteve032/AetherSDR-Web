@@ -12,6 +12,7 @@ const standalone = read("tools/release/run-standalone-release-acceptance.py");
 const remote = read("tools/release/run-remote-station-acceptance.py");
 const setup = read("tools/release/standalone_acceptance_setup.py");
 const assets = read("tools/release/build-standalone-acceptance-assets.sh");
+const packageBuilder = read("tools/release/build-github-release-assets.sh");
 const uninstall = read("prototypes/web-client/deploy/uninstall-aethersdr.sh");
 const bootstrap = read("prototypes/web-client/Radio/AetherRemoteBootstrap.cs");
 const installerConsole = read("prototypes/web-client/Setup/InstallationInstallerConsole.cs");
@@ -144,6 +145,21 @@ test("station Agent and root updater require canonical ReleaseBuilder package de
   }
   assert.match(stationRootUpdater, /Architecture\.X64 => \("linuxX64", "linux-x64"\)/);
   assert.match(stationRootUpdater, /Architecture\.Arm64 => \("linuxArm64", "linux-arm64"\)/);
+});
+
+test("station root updater accepts only the deterministic GNU-tar dot prefix", () => {
+  assert.match(packageBuilder, /--directory="\$\{source_directory\}" \. \|/);
+  assert.match(stationRootUpdater, /NormalizeArchiveEntryName\(/);
+  assert.match(stationRootUpdater, /normalized is "\." or "\.\/"/);
+  assert.match(stationRootUpdater, /normalized\.StartsWith\("\.\/"/);
+  assert.match(stationRootUpdater, /part\.Length == 0 \|\| part is "\." or "\.\."/);
+});
+
+test("encrypted backup consumes the installer-owned managed Caddy marker contract", () => {
+  assert.match(installationBackup, /ParseManagedMarkerDigest\(/);
+  assert.match(installationBackup, /const string Prefix = "sha256="/);
+  assert.match(installationBackup, /marker\.IndexOf\('\\n'\)/);
+  assert.match(installationBackup, /ReadStableFileAsync\([\s\S]{0,120}stateMarker/);
 });
 
 test("encrypted backup excludes only the validated transient release-updater IPC directory", () => {

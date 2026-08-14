@@ -22,5 +22,6 @@
     <ProjectReference Include="..\..\src\AetherRemote.Agent\AetherRemote.Agent.csproj" />
     <ProjectReference Include="..\..\src\AetherRemote.Broker\AetherRemote.Broker.csproj" />
     <ProjectReference Include="..\..\src\AetherRemote.Protocol\AetherRemote.Protocol.csproj" />
+    <ProjectReference Include="..\..\src\AetherRemote.Updater\AetherRemote.Updater.csproj" Aliases="updater" />
   </ItemGroup>
 </Project>

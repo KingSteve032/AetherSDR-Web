@@ -2190,7 +2190,11 @@ not start the web host or the radio/TX hosted-service set. The encrypted operati
 backup excludes that same fixed `release-update-supervisor` state child because its
 0770 directory and 0660 socket are transient IPC rather than durable authority; the
 exclusion is admitted only when the exact path is a real canonical non-link directory,
-and unrelated shared-writable state still fails closed. Activation-backup manifest
+and unrelated shared-writable state still fails closed. Installer-managed Caddy
+configuration is admitted only when its reviewed ownership marker is stable and its
+first `sha256=<digest>` line exactly matches the configuration bytes; the marker's
+following `plan=<id>` metadata is preserved rather than misread as part of the digest.
+Activation-backup manifest
 schema 3 records same-host UID/GID ownership; rollback reapplies and verifies it.
 The supported Linux layout treats nested `/var/lib/aethersdr/secrets` as part of
 its state physical root instead of attempting overlapping atomic root swaps, while
@@ -2211,9 +2215,12 @@ systemd station container. Both the station Agent verifier and root updater vali
 the same canonical ReleaseBuilder package contract as the gateway verifier: all four
 roles must bind to one exact package identity and
 `packages/<fixed-role-stem>-<architecture>.tar.gz` path, with signed length and
-SHA-256, before the Agent or station-engine archive is accepted. A cross-component
-builder/verifier regression plus packaged acceptance keeps that contract from
-drifting. The job obtains the Admin-generated bootstrap command and
+SHA-256, before the Agent or station-engine archive is accepted. The root updater's
+archive extractor accepts the deterministic GNU-tar `.`/`./` root prefix emitted by
+the release packager while still rejecting traversal, repeated/embedded dot segments,
+links, devices, and extraction-root escape. A cross-component builder/verifier regression
+plus packaged acceptance keeps that contract from drifting. The job obtains the
+Admin-generated bootstrap command and
 one-time enrollment code, supplies a synthetic discovery advertisement only to the
 station's local UDP discovery boundary, verifies Admin inventory, advances the
 gateway through its local service transaction, performs the exact station-owned

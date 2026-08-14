@@ -623,12 +623,17 @@ public sealed class InstallationBackupService
             throw new InvalidDataException(
                 "Installer-owned managed proxy state is unsafe.");
         }
-        string expected = (await File.ReadAllTextAsync(stateMarker, cancellationToken)).Trim();
-        if (expected.Length != 64 || expected.Any(character =>
-                character is not (>= '0' and <= '9' or >= 'a' and <= 'f')))
+        byte[] markerBytes = await ReadStableFileAsync(
+            stateMarker,
+            cancellationToken);
+        string expected;
+        try
         {
-            throw new InvalidDataException(
-                "Installer-owned managed proxy state has an invalid digest marker.");
+            expected = ParseManagedMarkerDigest(markerBytes);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(markerBytes);
         }
         byte[] content = await ReadStableFileAsync(target, cancellationToken);
         string actual = Convert.ToHexStringLower(SHA256.HashData(content));
@@ -649,6 +654,44 @@ public sealed class InstallationBackupService
             Convert.ToBase64String(content));
         CryptographicOperations.ZeroMemory(content);
         return result;
+    }
+
+    private static string ParseManagedMarkerDigest(byte[] markerBytes)
+    {
+        if (markerBytes.Length is < 64 or > 256)
+        {
+            throw new InvalidDataException(
+                "Installer-owned managed proxy state has an invalid digest marker.");
+        }
+        string marker;
+        try
+        {
+            marker = new UTF8Encoding(
+                encoderShouldEmitUTF8Identifier: false,
+                throwOnInvalidBytes: true).GetString(markerBytes);
+        }
+        catch (DecoderFallbackException exception)
+        {
+            throw new InvalidDataException(
+                "Installer-owned managed proxy state has an invalid digest marker.",
+                exception);
+        }
+        int newline = marker.IndexOf('\n');
+        string first = newline >= 0 ? marker[..newline] : marker;
+        const string Prefix = "sha256=";
+        if (!first.StartsWith(Prefix, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "Installer-owned managed proxy state has an invalid digest marker.");
+        }
+        string digest = first[Prefix.Length..];
+        if (digest.Length != 64 || digest.Any(character =>
+                character is not (>= '0' and <= '9' or >= 'a' and <= 'f')))
+        {
+            throw new InvalidDataException(
+                "Installer-owned managed proxy state has an invalid digest marker.");
+        }
+        return digest;
     }
 
     private IEnumerable<(InstallationBackupRootRole Role, string Path)> GetProtectedRoots()
