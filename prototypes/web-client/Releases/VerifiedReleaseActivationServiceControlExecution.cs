@@ -385,6 +385,11 @@ internal interface IVerifiedReleaseActivationServiceControlRuntime
         VerifiedReleaseActivationServiceControlAction action,
         TimeSpan timeout,
         CancellationToken cancellationToken);
+
+    Task<ServiceControlAttemptResult> ResetUnitFailureAsync(
+        VerifiedReleaseActivationServiceControlAction action,
+        TimeSpan timeout,
+        CancellationToken cancellationToken);
 }
 
 internal sealed class LinuxVerifiedReleaseActivationServiceControlRuntime :
@@ -412,14 +417,39 @@ internal sealed class LinuxVerifiedReleaseActivationServiceControlRuntime :
         m_systemctlPath = Path.GetFullPath(systemctlPath);
     }
 
-    public async Task<ServiceControlAttemptResult> ControlUnitAsync(
+    public Task<ServiceControlAttemptResult> ControlUnitAsync(
         VerifiedReleaseActivationServiceControlAction action,
+        TimeSpan timeout,
+        CancellationToken cancellationToken) =>
+        ExecuteSystemctlAsync(
+            action,
+            action.Kind == VerifiedReleaseActivationServiceControlActionKind.Stop
+                ? "stop"
+                : "start",
+            timeout,
+            cancellationToken);
+
+    public Task<ServiceControlAttemptResult> ResetUnitFailureAsync(
+        VerifiedReleaseActivationServiceControlAction action,
+        TimeSpan timeout,
+        CancellationToken cancellationToken) =>
+        ExecuteSystemctlAsync(
+            action,
+            "reset-failed",
+            timeout,
+            cancellationToken);
+
+    private async Task<ServiceControlAttemptResult> ExecuteSystemctlAsync(
+        VerifiedReleaseActivationServiceControlAction action,
+        string operation,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(action);
         cancellationToken.ThrowIfCancellationRequested();
-        if (!ValidateAction(action) || timeout <= TimeSpan.Zero)
+        if (!ValidateAction(action) ||
+            operation is not ("start" or "stop" or "reset-failed") ||
+            timeout <= TimeSpan.Zero)
         {
             return ServiceControlAttemptResult.NotStarted(
                 "The planned service-control action is invalid.");
@@ -433,10 +463,7 @@ internal sealed class LinuxVerifiedReleaseActivationServiceControlRuntime :
             RedirectStandardError = true,
             CreateNoWindow = true
         };
-        startInfo.ArgumentList.Add(
-            action.Kind == VerifiedReleaseActivationServiceControlActionKind.Stop
-                ? "stop"
-                : "start");
+        startInfo.ArgumentList.Add(operation);
         startInfo.ArgumentList.Add(action.UnitIdentity);
         ConfigureProcessEnvironment(startInfo);
 
@@ -457,20 +484,20 @@ internal sealed class LinuxVerifiedReleaseActivationServiceControlRuntime :
                 "The service-control process is unavailable.");
         }
 
-        using CancellationTokenSource operation =
+        using CancellationTokenSource operationTimeout =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        operation.CancelAfter(timeout);
+        operationTimeout.CancelAfter(timeout);
         Task<string> stdout = ReadBoundedAsync(
             process.StandardOutput,
             MaximumProcessOutputCharacters,
-            operation.Token);
+            operationTimeout.Token);
         Task<string> stderr = ReadBoundedAsync(
             process.StandardError,
             MaximumProcessOutputCharacters,
-            operation.Token);
+            operationTimeout.Token);
         try
         {
-            await process.WaitForExitAsync(operation.Token);
+            await process.WaitForExitAsync(operationTimeout.Token);
             string output = await stdout;
             string error = await stderr;
             if (output.Length != 0 || error.Length != 0)

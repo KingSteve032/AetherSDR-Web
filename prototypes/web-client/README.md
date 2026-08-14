@@ -2549,11 +2549,15 @@ Admin may request a station update only to the gateway's current verified signed
 release and only after fresh administrator reauthentication. The remote protocol
 contains station ID/correlation and exact release identity only—no URL, shell,
 executable, service name, path, or arbitrary command. The Agent downloads and
-verifies the manifest and packages independently, stages them under its fixed
-private root, and asks the root-owned fixed-purpose updater to apply only that
-identity. The updater has no network address family, re-verifies the signed
-staging bundle, switches fixed release symlinks and signed units, restarts the
-station engine, and retains rollback state until the new Agent confirms startup.
+verifies the manifest and packages independently. Every one of the four signed
+roles must use the exact ReleaseBuilder package identity and canonical
+`packages/<fixed-role-stem>-<architecture>.tar.gz` path with matching signed length
+and SHA-256; alternate or basename-only paths fail closed. The Agent stages only
+the accepted Agent/station-engine bytes under its fixed private root and asks the
+root-owned fixed-purpose updater to apply only that identity. The updater has no
+network address family, re-verifies the signed staging bundle, switches fixed
+release symlinks and signed units, restarts the station engine, and retains
+rollback state until the new Agent confirms startup.
 
 Completion is crash-safe across the Agent restart. The root updater persists an
 exact correlation/release completion for either successful startup or automatic
@@ -2651,12 +2655,16 @@ remains usable. Starting a later update relinquishes that rollback window throug
 one bounded prepare/reload handshake: the supervisor exits before executing the new
 prepare, systemd reloads it from `current`, and the client retries only after status
 shows the recovered terminal transaction without reconstructed rollback authority.
-Completed rollback still reloads immediately. In supervisor mode the only manually
-started background observer is the receive-only remote-station catalog required for
-fresh Hybrid broker-link health; the normal web/radio/TX hosted-service set is not
-started. The normal Linux nested secret path is covered by the state physical root
-rather than an overlapping atomic source. Replacement-host restore still uses M8G
-logical-owner mapping.
+Completed rollback still reloads immediately. After rollback restores the installed
+`current` pointer, each local restored service start is preceded by exact
+`/usr/bin/systemctl reset-failed <fixed-unit>` so a rejected target's systemd
+failure/start-limit state cannot block the restored binary. The reset accepts no
+free-form unit or command and an unknown reset outcome remains reconciliation. In
+supervisor mode the only manually started background observer is the receive-only
+remote-station catalog required for fresh Hybrid broker-link health; the normal
+web/radio/TX hosted-service set is not started. The normal Linux nested secret path
+is covered by the state physical root rather than an overlapping atomic source.
+Replacement-host restore still uses M8G logical-owner mapping.
 
 The x64 packaged acceptance also provisions a Hybrid gateway plus a clean Ubuntu
 systemd station container through the exact Admin-generated bootstrap command and

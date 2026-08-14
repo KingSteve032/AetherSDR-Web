@@ -1058,8 +1058,12 @@ and rehashed before any service or live-root mutation.
 The executor supports only gateway-owned personal, local-station, and hybrid topology
 contracts already reviewed by service control and health verification. It directly
 stops local target units, atomically displaces and replaces each live root from its
-same-parent staging tree, atomically returns `current` to the installed release, starts
-local installed units, and verifies installed unit/loopback/canonical-host plus optional
+same-parent staging tree, and atomically returns `current` to the installed release.
+Before each restored local unit is started, rollback invokes only absolute
+`/usr/bin/systemctl reset-failed <exact-fixed-unit>` to clear failure/start-limit state
+left by the rejected target; the same fixed role/unit validation, cleared environment,
+output bound, timeout, and unknown-outcome reconciliation rules apply. It then starts
+the installed units and verifies installed unit/loopback/canonical-host plus optional
 exact remote-agent broker-link health. Reverse migration is never used.
 
 A process outcome, directory rename, pointer rename, health result, setup/status drift,
@@ -2198,7 +2202,12 @@ trust/signing state, audit history, encrypted backups, immutable releases, servi
 users, and firewall policy.
 
 A separate x64 clean-station job installs a HybridGateway and a clean Ubuntu
-systemd station container, obtains the Admin-generated bootstrap command and
+systemd station container. The station-side signed updater validates the same canonical
+ReleaseBuilder package contract as the gateway verifier: all four roles must bind to
+one exact package identity and `packages/<fixed-role-stem>-<architecture>.tar.gz`
+path, with signed length and SHA-256, before the Agent or station-engine archive is
+accepted. A cross-component builder/verifier regression test keeps that contract from
+drifting. The job obtains the Admin-generated bootstrap command and
 one-time enrollment code, supplies a synthetic discovery advertisement only to the
 station's local UDP discovery boundary, verifies Admin inventory, advances the
 gateway through its local service transaction, performs the exact station-owned

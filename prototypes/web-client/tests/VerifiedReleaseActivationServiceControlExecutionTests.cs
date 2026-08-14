@@ -518,6 +518,32 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionTests
     }
 
     [Fact]
+    public async Task DirectRuntimeResetFailedUsesExactFixedUnitArgumentVector()
+    {
+        string script = CreateControlScript(
+            "test \"$#\" -eq 2 || exit 10\n" +
+            "test \"$1\" = reset-failed || exit 11\n" +
+            "test \"$2\" = aethersdr-web.service || exit 12\n" +
+            "test -z \"${HOME+x}\" || exit 13\n");
+        LinuxVerifiedReleaseActivationServiceControlRuntime runtime = new(script);
+        VerifiedReleaseActivationServiceControlAction action = new(
+            1,
+            VerifiedReleaseActivationServiceControlActionKind.Start,
+            VerifiedReleaseActivationServiceRole.GatewayWeb,
+            VerifiedReleaseActivationServiceControlPlanComposer
+                .GatewayWebUnitIdentity);
+
+        ServiceControlAttemptResult result = await runtime.ResetUnitFailureAsync(
+            action,
+            TimeSpan.FromSeconds(2),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Reason);
+        Assert.True(result.ProcessStarted);
+        Assert.True(result.OutcomeKnown);
+    }
+
+    [Fact]
     public async Task DirectRuntimeTimeoutReturnsUnknownOutcome()
     {
         string script = CreateControlScript(
@@ -903,5 +929,11 @@ public sealed class VerifiedReleaseActivationServiceControlExecutionTests
                         "fixture unknown outcome")
                     : ServiceControlAttemptResult.Success());
         }
+
+        public Task<ServiceControlAttemptResult> ResetUnitFailureAsync(
+            VerifiedReleaseActivationServiceControlAction action,
+            TimeSpan timeout,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(ServiceControlAttemptResult.Success());
     }
 }

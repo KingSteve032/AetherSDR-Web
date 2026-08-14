@@ -109,6 +109,12 @@ public sealed class VerifiedReleaseActivationRollbackExecutionTests
         Assert.True(report.RollbackPerformed);
         Assert.False(report.ReconciliationRequired);
         Assert.Equal(6, fixture.ServiceRuntime.Actions.Count);
+        Assert.Equal(3, fixture.ServiceRuntime.ResetActions.Count);
+        Assert.All(
+            fixture.ServiceRuntime.ResetActions,
+            action => Assert.Equal(
+                VerifiedReleaseActivationServiceControlActionKind.Start,
+                action.Kind));
         Assert.Equal(3, fixture.HealthRuntime.UnitChecks.Count);
         Assert.Equal(3, fixture.HealthRuntime.HttpChecks.Count);
     }
@@ -184,6 +190,12 @@ public sealed class VerifiedReleaseActivationRollbackExecutionTests
             Assert.False(Directory.Exists(source.DisplacedLivePath));
         });
         Assert.Equal(6, fixture.ServiceRuntime.Actions.Count);
+        Assert.Equal(3, fixture.ServiceRuntime.ResetActions.Count);
+        Assert.All(
+            fixture.ServiceRuntime.ResetActions,
+            action => Assert.Equal(
+                VerifiedReleaseActivationServiceControlActionKind.Start,
+                action.Kind));
         Assert.Equal(3, fixture.HealthRuntime.UnitChecks.Count);
         Assert.Equal(3, fixture.HealthRuntime.HttpChecks.Count);
 
@@ -437,6 +449,31 @@ public sealed class VerifiedReleaseActivationRollbackExecutionTests
         Assert.Equal(fixture.Plan.ActivationPlan.InstalledCurrentLinkTarget,
             fixture.ReadCurrentLink());
         Assert.Empty(fixture.HealthRuntime.HttpChecks);
+    }
+
+    [Fact]
+    public async Task UnknownResetFailedOutcomeKeepsRollbackInReconciliation()
+    {
+        using Fixture fixture = await Fixture.CreateAsync();
+        fixture.ServiceRuntime.ResetResult =
+            ServiceControlAttemptResult.Unknown("reset-failed outcome unknown");
+
+        VerifiedReleaseActivationRollbackExecutionReport report =
+            await fixture.ExecuteHealthFailureAsync();
+
+        Assert.False(report.Succeeded);
+        Assert.Equal(
+            VerifiedReleaseActivationRollbackExecutionFailureCode
+                .InstalledServiceStartFailed,
+            report.FailureCode);
+        Assert.True(report.CurrentPointerChanged);
+        Assert.True(report.ConfigurationRestored);
+        Assert.False(report.ServicesRestored);
+        Assert.True(report.RollbackPerformed);
+        Assert.True(report.ReconciliationRequired);
+        Assert.Single(fixture.ServiceRuntime.ResetActions);
+        Assert.Equal(3, fixture.ServiceRuntime.Actions.Count);
+        Assert.Empty(fixture.HealthRuntime.UnitChecks);
     }
 
     [Fact]
@@ -1028,7 +1065,11 @@ public sealed class VerifiedReleaseActivationRollbackExecutionTests
         IVerifiedReleaseActivationServiceControlRuntime
     {
         internal List<VerifiedReleaseActivationServiceControlAction> Actions { get; } = [];
+        internal List<VerifiedReleaseActivationServiceControlAction> ResetActions
+        { get; } = [];
         internal ServiceControlAttemptResult Result { get; set; } =
+            ServiceControlAttemptResult.Success();
+        internal ServiceControlAttemptResult ResetResult { get; set; } =
             ServiceControlAttemptResult.Success();
 
         public Task<ServiceControlAttemptResult> ControlUnitAsync(
@@ -1038,6 +1079,15 @@ public sealed class VerifiedReleaseActivationRollbackExecutionTests
         {
             Actions.Add(action);
             return Task.FromResult(Result);
+        }
+
+        public Task<ServiceControlAttemptResult> ResetUnitFailureAsync(
+            VerifiedReleaseActivationServiceControlAction action,
+            TimeSpan timeout,
+            CancellationToken cancellationToken)
+        {
+            ResetActions.Add(action);
+            return Task.FromResult(ResetResult);
         }
     }
 

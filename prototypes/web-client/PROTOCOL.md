@@ -856,12 +856,16 @@ This makes completion delivery idempotent across Agent or socket failure.
 The Agent-to-root-updater local protocol is owner-scoped Unix IPC with fixed
 messages only. Requests use `type:"local.release.update"`, exact correlation,
 exact release identity, and one action from `apply`, `rollback`, `confirm`, or
-`acknowledge`. `apply` consumes only the fixed private staging directory for the
-correlation; the message cannot provide its path. `confirm` recovers the durable
-successful or rollback completion after Agent restart. `acknowledge` marks that
-completion durably acknowledged after the broker ACK; a repeated acknowledgement
-is idempotent. A subsequent startup removes acknowledged completion evidence.
-The root updater exposes no network transport or arbitrary command surface.
+`acknowledge`. Before `apply`, the Agent independently requires all four canonical
+manifest package roles to bind their exact package identity and
+`packages/<fixed-role-stem>-<architecture>.tar.gz` path, plus the signed length and
+SHA-256; it does not accept a basename-only or alternate package path. `apply`
+consumes only the fixed private staging directory for the correlation; the message
+cannot provide its path. `confirm` recovers the durable successful or rollback
+completion after Agent restart. `acknowledge` marks that completion durably
+acknowledged after the broker ACK; a repeated acknowledgement is idempotent. A
+subsequent startup removes acknowledged completion evidence. The root updater
+exposes no network transport or arbitrary command surface.
 
 None of these messages grant radio command capability, browser TX authority,
 TX lease ownership, watchdog arming, keying, or unkeying.
@@ -958,7 +962,12 @@ prepare, and systemd `Restart=always` reloads the updater from the current immut
 release. The client waits until status shows the recovered completed transaction
 with no reconstructed rollback authority, then retries that unchanged prepare once.
 Completed rollback exits after its response; reconciliation and host-restart states
-do not trigger this reload. In supervisor mode only the existing receive-only
+do not trigger this reload. During rollback, after the exact installed `current`
+pointer is restored and before each fixed local unit start, the updater runs only
+`/usr/bin/systemctl reset-failed <exact-fixed-unit>`. This clears failure/start-limit
+state inherited from the rejected target without accepting a free-form unit or
+command; nonzero, output-bearing, timed-out, or otherwise unknown reset outcomes
+remain reconciliation. In supervisor mode only the existing receive-only
 `RemoteStationCatalogService` background observer is started, so Hybrid health can
 read fresh loopback broker/station state without starting the web host or any radio
 or TX hosted-service surface.

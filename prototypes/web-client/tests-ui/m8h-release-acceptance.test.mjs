@@ -16,7 +16,10 @@ const uninstall = read("prototypes/web-client/deploy/uninstall-aethersdr.sh");
 const bootstrap = read("prototypes/web-client/Radio/AetherRemoteBootstrap.cs");
 const installerConsole = read("prototypes/web-client/Setup/InstallationInstallerConsole.cs");
 const pointerSwitch = read("prototypes/web-client/Releases/VerifiedReleaseActivationCurrentPointerSwitch.cs");
+const rollbackExecution = read("prototypes/web-client/Releases/VerifiedReleaseActivationRollbackExecution.cs");
+const serviceControl = read("prototypes/web-client/Releases/VerifiedReleaseActivationServiceControlExecution.cs");
 const stationInstaller = read("AetherRemote/deploy/install-from-gateway.sh");
+const stationReleaseUpdate = read("AetherRemote/src/AetherRemote.Agent/StationReleaseUpdateService.cs");
 const program = read("prototypes/web-client/Program.cs");
 
 test("M8H native acceptance runs packaged artifacts on both supported Ubuntu architectures", () => {
@@ -115,6 +118,23 @@ test("pointer switch revalidates extracted releases with the extracted-tree dire
   assert.match(pointerSwitch, /activation\.UsesExtractedRoleTree/);
   assert.match(pointerSwitch, /MaximumExtractedDirectoryCount \+ 1/);
   assert.match(pointerSwitch, /: MaximumDirectoryCount/);
+});
+
+test("rollback clears only exact fixed-unit systemd failure state before restored starts", () => {
+  assert.match(serviceControl, /ResetUnitFailureAsync/);
+  assert.match(serviceControl, /"reset-failed"/);
+  assert.match(rollbackExecution, /ResetUnitFailureAsync\(/);
+  assert.match(rollbackExecution, /if \(!reset\.Succeeded \|\|/);
+  assert.doesNotMatch(serviceControl, /\/bin\/sh|bash -c|UseShellExecute = true/);
+});
+
+test("station updater requires canonical ReleaseBuilder package declarations", () => {
+  assert.match(stationReleaseUpdate, /ExpectedPackageDeclaration\(/);
+  assert.match(stationReleaseUpdate, /"gateway-web"/);
+  assert.match(stationReleaseUpdate, /packages\/aethersdr-gateway-\{architecture\}\.tar\.gz/);
+  assert.match(stationReleaseUpdate, /packages\/aetherremote-agent-\{architecture\}\.tar\.gz/);
+  assert.match(stationReleaseUpdate, /packages\/aethersdr-station-engine-\{architecture\}\.tar\.gz/);
+  assert.doesNotMatch(stationReleaseUpdate, /SafeFileNamePattern/);
 });
 
 test("release updater starts only the remote station catalog observer needed for Hybrid health", () => {

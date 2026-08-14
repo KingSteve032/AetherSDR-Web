@@ -30,7 +30,8 @@ The x64 and arm64 jobs exercise only packaged product binaries and must prove:
 - exact signed update with the previous immutable release retained;
 - freshly approved manual rollback;
 - a deliberately broken signed gateway target that switches, fails service
-  startup/health, and automatically restores the previous release;
+  startup/health, clears only exact fixed-unit systemd failed/start-limit state,
+  and automatically restores the previous release;
 - byte-stable identity, Data Protection, setup, and installer-configuration
   authority through update and both rollback paths;
 - encrypted backup created by the packaged gateway, destructive replacement of
@@ -49,7 +50,9 @@ container and must prove:
 - the one-time code is entered only at the station terminal;
 - a synthetic **receive-only discovery advertisement** is visible through Admin;
 - the gateway advances locally while the dedicated updater's receive-only remote-station catalog observer proves the exact station reconnects after the broker restart;
-- the station updates to that exact signed target and reconnects; and
+- the station independently accepts that target only when its signed package
+  identities, canonical `packages/...` paths, lengths, and hashes match the
+  ReleaseBuilder contract, then updates and reconnects; and
 - a later signed release with a deliberately broken Agent package cannot complete
   station startup and rolls the station back without gateway shell/command authority.
 

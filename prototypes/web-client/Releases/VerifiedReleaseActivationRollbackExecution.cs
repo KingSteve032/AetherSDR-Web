@@ -1664,6 +1664,22 @@ public sealed class VerifiedReleaseActivationRollbackExecutionService
                 continue;
             }
 
+            if (!stopPhase)
+            {
+                tally.ServiceProcessInvocationCount++;
+                ServiceControlAttemptResult reset =
+                    await m_serviceRuntime.ResetUnitFailureAsync(
+                        bound.Action,
+                        UnitControlTimeout,
+                        cancellationToken);
+                if (!reset.Succeeded ||
+                    !reset.ProcessStarted ||
+                    !reset.OutcomeKnown)
+                {
+                    return false;
+                }
+            }
+
             tally.ServiceProcessInvocationCount++;
             ServiceControlAttemptResult result = await m_serviceRuntime.ControlUnitAsync(
                 bound.Action,

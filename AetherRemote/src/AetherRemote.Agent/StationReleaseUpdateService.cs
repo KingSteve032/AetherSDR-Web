@@ -498,11 +498,25 @@ public sealed partial class StationReleaseUpdateService
         Dictionary<string, SignedPackage> roles = new(StringComparer.Ordinal);
         foreach (JsonElement package in packages.EnumerateArray())
         {
+            string packageIdentity = RequiredString(
+                package,
+                "packageIdentity",
+                96);
             string role = RequiredString(package, "role", 64);
             string fileName = RequiredString(package, "fileName", 160);
             string sha256 = RequiredString(package, "sha256", 64).ToLowerInvariant();
             long length = RequiredInt64(package, "length");
-            if (!SafeFileNamePattern().IsMatch(fileName) ||
+            (string ExpectedIdentity, string ExpectedFileName)? expected =
+                ExpectedPackageDeclaration(role, architecture);
+            if (expected is null ||
+                !string.Equals(
+                    packageIdentity,
+                    expected.Value.ExpectedIdentity,
+                    StringComparison.Ordinal) ||
+                !string.Equals(
+                    fileName,
+                    expected.Value.ExpectedFileName,
+                    StringComparison.Ordinal) ||
                 !Sha256Pattern().IsMatch(sha256) ||
                 length is <= 0 or > MaximumPackageBytes ||
                 !roles.TryAdd(
@@ -881,6 +895,25 @@ public sealed partial class StationReleaseUpdateService
         }
     }
 
+    private static (string ExpectedIdentity, string ExpectedFileName)?
+        ExpectedPackageDeclaration(string role, string architecture) =>
+        role switch
+        {
+            "gatewayWeb" => (
+                "gateway-web",
+                $"packages/aethersdr-gateway-{architecture}.tar.gz"),
+            "broker" => (
+                "broker",
+                $"packages/aethersdr-broker-{architecture}.tar.gz"),
+            "aetherRemoteAgent" => (
+                "aetherremote-agent",
+                $"packages/aetherremote-agent-{architecture}.tar.gz"),
+            "stationEngine" => (
+                "station-engine",
+                $"packages/aethersdr-station-engine-{architecture}.tar.gz"),
+            _ => null
+        };
+
     private static SignedPackage RequireRole(
         IReadOnlyDictionary<string, SignedPackage> packages,
         string role) =>
@@ -952,9 +985,6 @@ public sealed partial class StationReleaseUpdateService
         {
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
         };
-
-    [GeneratedRegex("^[A-Za-z0-9._-]{1,160}$", RegexOptions.CultureInvariant)]
-    private static partial Regex SafeFileNamePattern();
 
     [GeneratedRegex("^[0-9a-f]{64}$", RegexOptions.CultureInvariant)]
     private static partial Regex Sha256Pattern();
