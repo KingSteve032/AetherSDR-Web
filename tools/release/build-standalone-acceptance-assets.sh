@@ -214,17 +214,9 @@ sign_manifest() {
     --release-summary "Ephemeral acceptance-only signed release; never publish."
 }
 
-repack_invalid_startup() {
-  local archive="$1"
-  local label="$2"
-  local root="${work}/broken-${label}"
-  mkdir -p -- "${root}"
-  tar -xzf "${archive}" -C "${root}"
-  [[ -f "${root}/appsettings.json" && ! -L "${root}/appsettings.json" ]] || {
-    echo "Packaged appsettings.json is unavailable for failure injection." >&2
-    exit 2
-  }
-  printf '%s\n' '{"M8H deliberately invalid startup JSON"' >"${root}/appsettings.json"
+repack_tree() {
+  local root="$1"
+  local archive="$2"
   LC_ALL=C TZ=UTC tar \
     --sort=name \
     --format=gnu \
@@ -238,6 +230,35 @@ repack_invalid_startup() {
     gzip -n -9 >"${archive}.new"
   chmod 0644 -- "${archive}.new"
   mv -- "${archive}.new" "${archive}"
+}
+
+repack_invalid_gateway_startup() {
+  local archive="$1"
+  local label="$2"
+  local root="${work}/broken-${label}"
+  mkdir -p -- "${root}"
+  tar -xzf "${archive}" -C "${root}"
+  [[ -f "${root}/appsettings.json" && ! -L "${root}/appsettings.json" ]] || {
+    echo "Packaged appsettings.json is unavailable for failure injection." >&2
+    exit 2
+  }
+  printf '%s\n' '{"M8H deliberately invalid startup JSON"' >"${root}/appsettings.json"
+  repack_tree "${root}" "${archive}"
+}
+
+repack_invalid_agent_startup() {
+  local archive="$1"
+  local label="$2"
+  local root="${work}/broken-${label}"
+  mkdir -p -- "${root}"
+  tar -xzf "${archive}" -C "${root}"
+  [[ -f "${root}/AetherRemote.Agent" && ! -L "${root}/AetherRemote.Agent" ]] || {
+    echo "Packaged AetherRemote.Agent is unavailable for failure injection." >&2
+    exit 2
+  }
+  printf '%s\n' 'M8H deliberately invalid Agent executable format' >"${root}/AetherRemote.Agent"
+  chmod 0755 -- "${root}/AetherRemote.Agent"
+  repack_tree "${root}" "${archive}"
 }
 
 for runtime in linux-x64 linux-arm64; do
@@ -271,7 +292,7 @@ for runtime in linux-x64 linux-arm64; do
       *) link_or_copy "${package}" "${failure_assets}/$(basename -- "${package}")" ;;
     esac
   done
-  repack_invalid_startup \
+  repack_invalid_gateway_startup \
     "${failure_assets}/aethersdr-gateway-${runtime}.tar.gz" \
     "gateway-${runtime}"
   sign_manifest "${failure_version}" "${runtime}" "${failure_assets}" "${previous_version}"
@@ -289,7 +310,7 @@ for runtime in linux-x64 linux-arm64; do
       *) link_or_copy "${package}" "${station_failure_assets}/$(basename -- "${package}")" ;;
     esac
   done
-  repack_invalid_startup \
+  repack_invalid_agent_startup \
     "${station_failure_assets}/aetherremote-agent-${runtime}.tar.gz" \
     "station-agent-${runtime}"
   sign_manifest \

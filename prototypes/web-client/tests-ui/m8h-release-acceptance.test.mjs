@@ -85,9 +85,13 @@ test("packaged installer harness follows the exact installer console JSON contra
   assert.match(standalone, /values\[key\] = decode_environment_file_value\(value\)/);
 });
 
-test("M8H deliberate failures corrupt only packaged startup configuration", () => {
+test("M8H deliberate failures reach the packaged gateway and Agent startup boundaries", () => {
+  assert.match(assets, /repack_invalid_gateway_startup\(/);
   assert.match(assets, /appsettings\.json/);
   assert.match(assets, /M8H deliberately invalid startup JSON/);
+  assert.match(assets, /repack_invalid_agent_startup\(/);
+  assert.match(assets, /M8H deliberately invalid Agent executable format/);
+  assert.match(assets, /chmod 0755 -- "\$\{root\}\/AetherRemote\.Agent"/);
   assert.match(assets, /aetherremote-agent-\$\{runtime\}\.tar\.gz/);
   assert.doesNotMatch(assets, /AetherSDR\.Web.*printf|station.*xmit|radio.*command/i);
 });

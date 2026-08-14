@@ -2238,7 +2238,9 @@ one-time enrollment code, supplies a synthetic discovery advertisement only to t
 station's local UDP discovery boundary, verifies Admin inventory, advances the
 gateway through its local service transaction, performs the exact station-owned
 signed update, and proves local station rollback when a later signed Agent package
-cannot complete startup. The Hybrid gateway treats its independently managed remote
+contains a deliberately invalid-format `AetherRemote.Agent` executable that passes
+signed-package verification but cannot cross the real systemd startup boundary. The
+Hybrid gateway treats its independently managed remote
 Agent restart declaration as a topology no-op while still requiring a fresh exact
 broker link for health. It never opens a radio control session or adds a command/TX
 surface.

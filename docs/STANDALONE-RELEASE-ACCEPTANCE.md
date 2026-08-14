@@ -62,8 +62,10 @@ container and must prove:
   `rename(2)` replacement, and the restarted Agent derives the exact active release
   identity/version from matching root-owned Agent/engine links before confirmation,
   then the station updates and reconnects; and
-- a later signed release with a deliberately broken Agent package cannot complete
-  station startup and rolls the station back without gateway shell/command authority.
+- a later signed release whose verified Agent package contains a deliberately
+  invalid-format `AetherRemote.Agent` executable reaches the real systemd startup
+  boundary, cannot complete station startup, and rolls the station back without
+  gateway shell/command authority.
 
 Synthetic FLEX discovery is inventory-only. The acceptance jobs never open a
 radio control session, acquire a TX lease, key/unkey, send a FLEX command, or emit

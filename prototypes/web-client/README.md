@@ -2696,8 +2696,9 @@ inventory. The gateway advances through its locally owned service transaction wh
 its station-owned remote Agent is a topology no-op backed by fresh broker-link
 health. The station must appear in Admin, update to the exact gateway-signed target,
 restart with active release metadata reconciled from its root-owned fixed links,
-reconnect, and roll itself back when a later signed Agent target cannot complete
-startup. The harness never opens `/ws/radio`, sends a FLEX command, acquires a TX
+reconnect, and roll itself back when a later verified Agent package contains a
+deliberately invalid-format `AetherRemote.Agent` executable that cannot start under
+systemd. The harness never opens `/ws/radio`, sends a FLEX command, acquires a TX
 lease, or keys/unkeys.
 
 The installed gateway carries `tools/uninstall-aethersdr.sh`. Run it only after
