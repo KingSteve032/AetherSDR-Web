@@ -7,6 +7,19 @@ namespace AetherSDR.Web.Tests;
 public sealed class InstallationInstallerUbuntuMutationExecutorTests
 {
     [Fact]
+    public void PackageInstallGetsLongerBoundWithoutRelaxingOtherPrimitives()
+    {
+        Assert.Equal(
+            TimeSpan.FromMinutes(5),
+            LocalInstallationInstallerUbuntuMutationPrimitives
+                .ProcessTimeoutForExecutable("/usr/bin/apt-get"));
+        Assert.Equal(
+            TimeSpan.FromMinutes(2),
+            LocalInstallationInstallerUbuntuMutationPrimitives
+                .ProcessTimeoutForExecutable("/usr/bin/systemctl"));
+    }
+
+    [Fact]
     public async Task ExecutesExactOrderedActionsAfterReadOnlyPreparation()
     {
         FakePrimitives primitives = new();
