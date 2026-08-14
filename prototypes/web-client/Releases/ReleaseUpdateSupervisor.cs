@@ -207,11 +207,27 @@ public sealed class ReleaseUpdateSupervisor
         }
         return operation switch
         {
+            ReleaseUpdateSupervisorProtocol.Prepare =>
+                IsPrepareReloadBoundary(report),
             ReleaseUpdateSupervisorProtocol.Activate =>
-                report.ActivationCompleted || report.RollbackPerformed,
+                report.RollbackPerformed,
             ReleaseUpdateSupervisorProtocol.Rollback => report.RollbackPerformed,
             _ => false
         };
+    }
+
+    internal static bool IsPrepareReloadBoundary(
+        ReleaseUpdateTransactionReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        return !report.Succeeded &&
+            report.FailureCode ==
+                ReleaseUpdateTransactionFailureCode.TransactionAlreadyActive &&
+            report.Phase == ReleaseUpdateTransactionPhase.Completed &&
+            report.ActivationCompleted &&
+            report.RollbackReady &&
+            !report.RestartPending &&
+            !report.ReconciliationRequired;
     }
 
     [SupportedOSPlatform("linux")]
@@ -234,7 +250,7 @@ public sealed class ReleaseUpdateSupervisor
                 when request.Install is not null &&
                      string.IsNullOrEmpty(request.TransactionId) &&
                      string.IsNullOrEmpty(request.SubjectBinding) =>
-                m_coordinator.PrepareOfflineAsync(
+                PrepareOfflineAsync(
                     request.Install,
                     cancellationToken),
             ReleaseUpdateSupervisorProtocol.Activate
@@ -252,6 +268,31 @@ public sealed class ReleaseUpdateSupervisor
             _ => throw new InvalidDataException(
                 "The release updater request shape is invalid.")
         };
+    }
+
+    [SupportedOSPlatform("linux")]
+    private Task<ReleaseUpdateTransactionReport> PrepareOfflineAsync(
+        ReleaseUpdateInstallRequest request,
+        CancellationToken cancellationToken)
+    {
+        ReleaseUpdateTransactionReport current = m_coordinator.Status();
+        if (current.Succeeded &&
+            current.Phase == ReleaseUpdateTransactionPhase.Completed &&
+            current.ActivationCompleted &&
+            current.RollbackReady &&
+            !current.RestartPending &&
+            !current.ReconciliationRequired)
+        {
+            return Task.FromResult(current with
+            {
+                Succeeded = false,
+                FailureCode =
+                    ReleaseUpdateTransactionFailureCode.TransactionAlreadyActive,
+                Message =
+                    "The prior successful activation remains exactly rollbackable in memory. The updater will reload through current before a new prepare relinquishes that rollback window; retry this unchanged prepare after reload."
+            });
+        }
+        return m_coordinator.PrepareOfflineAsync(request, cancellationToken);
     }
 
     private static VerifiedReleaseActivationOperatorAuthenticationEvidence
@@ -407,21 +448,65 @@ public sealed class ReleaseUpdateSupervisorClient
                 ReauthenticatedAt: null),
             cancellationToken);
 
-    public Task<ReleaseUpdateTransactionReport> PrepareOfflineAsync(
+    public async Task<ReleaseUpdateTransactionReport> PrepareOfflineAsync(
         ReleaseUpdateInstallRequest request,
-        CancellationToken cancellationToken = default) =>
-        SendAsync(
-            new ReleaseUpdateSupervisorRequest(
-                ReleaseUpdateSupervisorProtocol.Version,
-                ReleaseUpdateSupervisorProtocol.Prepare,
-                request,
-                TransactionId: string.Empty,
-                SubjectBinding: string.Empty,
-                Authenticated: false,
-                AdministratorAuthorized: false,
-                AuthenticatedAt: null,
-                ReauthenticatedAt: null),
-            cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        ReleaseUpdateSupervisorRequest supervisorRequest = new(
+            ReleaseUpdateSupervisorProtocol.Version,
+            ReleaseUpdateSupervisorProtocol.Prepare,
+            request,
+            TransactionId: string.Empty,
+            SubjectBinding: string.Empty,
+            Authenticated: false,
+            AdministratorAuthorized: false,
+            AuthenticatedAt: null,
+            ReauthenticatedAt: null);
+        ReleaseUpdateTransactionReport first =
+            await SendAsync(supervisorRequest, cancellationToken);
+        if (!ReleaseUpdateSupervisor.IsPrepareReloadBoundary(first))
+        {
+            return first;
+        }
+
+        using CancellationTokenSource reloadTimeout =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        reloadTimeout.CancelAfter(TimeSpan.FromSeconds(20));
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(
+                    TimeSpan.FromMilliseconds(250),
+                    reloadTimeout.Token);
+                ReleaseUpdateTransactionReport status =
+                    await StatusAsync(reloadTimeout.Token);
+                if (status.ReconciliationRequired || status.RestartPending)
+                {
+                    return status;
+                }
+                if (status.Succeeded &&
+                    status.Phase == ReleaseUpdateTransactionPhase.Completed &&
+                    status.ActivationCompleted &&
+                    !status.RollbackReady)
+                {
+                    return await SendAsync(
+                        supervisorRequest,
+                        cancellationToken);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+            when (!cancellationToken.IsCancellationRequested)
+        {
+            return ReleaseUpdateTransactionReport.Create(
+                null,
+                succeeded: false,
+                ReleaseUpdateTransactionFailureCode.ReconciliationRequired,
+                "The updater did not complete its bounded current-release reload before the unchanged prepare could be retried; local reconciliation is required.",
+                reconciliationRequired: true);
+        }
+    }
 
     internal Task<ReleaseUpdateTransactionReport> ApproveAndActivateAsync(
         string transactionId,

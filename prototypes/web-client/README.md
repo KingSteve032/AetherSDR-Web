@@ -2645,11 +2645,18 @@ The standalone updater is the root fixed-purpose process required by that
 installed transaction. Its AF_UNIX control socket is group-private to
 `aethersdr`; it controls system units, not a user service manager, and activation
 backup schema 3 authenticates same-host UID/GID ownership so rollback restores
-mixed `root`/`aethersdr`/`aetherremote` trees exactly. After a terminal activation
-or rollback response, it exits only for an authoritative non-reconciliation
-pointer state and systemd `Restart=always` reloads it from `current`. The normal Linux nested
-secret path is covered by the state physical root rather than an overlapping
-atomic source. Replacement-host restore still uses M8G logical-owner mapping.
+mixed `root`/`aethersdr`/`aetherremote` trees exactly. After a successful
+activation it deliberately stays alive so the exact in-memory manual rollback
+remains usable. Starting a later update relinquishes that rollback window through
+one bounded prepare/reload handshake: the supervisor exits before executing the new
+prepare, systemd reloads it from `current`, and the client retries only after status
+shows the recovered terminal transaction without reconstructed rollback authority.
+Completed rollback still reloads immediately. In supervisor mode the only manually
+started background observer is the receive-only remote-station catalog required for
+fresh Hybrid broker-link health; the normal web/radio/TX hosted-service set is not
+started. The normal Linux nested secret path is covered by the state physical root
+rather than an overlapping atomic source. Replacement-host restore still uses M8G
+logical-owner mapping.
 
 The x64 packaged acceptance also provisions a Hybrid gateway plus a clean Ubuntu
 systemd station container through the exact Admin-generated bootstrap command and

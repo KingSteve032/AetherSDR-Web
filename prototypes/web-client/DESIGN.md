@@ -2170,11 +2170,18 @@ read/restore authenticated ownership and mode metadata, and denies INET traffic
 except localhost for the fixed post-switch health probe. `/etc` and `/var/lib` are
 writable mounts only because crash-safe rollback must perform same-parent atomic
 renames of completed-setup-derived `/etc/aethersdr` and `/var/lib/aethersdr` roots;
-the transaction plan accepts no arbitrary path or command field. After a terminal
-activation or rollback response has been durably returned, the supervisor exits;
-`Restart=always` reloads the fixed-purpose process through the now-authoritative
-`current` path. Reconciliation/host-restart states deliberately do not self-reload.
-Activation-backup manifest schema 3 records same-host UID/GID ownership; rollback
+the transaction plan accepts no arbitrary path or command field. A successful
+activation keeps the supervisor alive so the exact in-memory manual-rollback tokens
+remain available. A later `prepare` first receives one bounded reload-boundary
+response; only then does the supervisor exit, systemd `Restart=always` reloads the
+fixed-purpose process through the now-authoritative `current` path, and the client
+retries the unchanged prepare after observing the recovered terminal transaction
+without rollback authority. Completed automatic/manual rollback still exits after
+its response. Reconciliation/host-restart states deliberately do not self-reload.
+The supervisor command starts only `RemoteStationCatalogService` as a receive-only
+loopback observer so Hybrid health can obtain fresh broker-link evidence; it does
+not start the web host or the radio/TX hosted-service set. Activation-backup manifest
+schema 3 records same-host UID/GID ownership; rollback
 reapplies and verifies it.
 The supported Linux layout treats nested `/var/lib/aethersdr/secrets` as part of
 its state physical root instead of attempting overlapping atomic root swaps, while

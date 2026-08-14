@@ -48,7 +48,8 @@ container and must prove:
 - the station downloads its Agent/station-engine packages from its own gateway;
 - the one-time code is entered only at the station terminal;
 - a synthetic **receive-only discovery advertisement** is visible through Admin;
-- the gateway advances locally, the station updates to that exact signed target and reconnects; and
+- the gateway advances locally while the dedicated updater's receive-only remote-station catalog observer proves the exact station reconnects after the broker restart;
+- the station updates to that exact signed target and reconnects; and
 - a later signed release with a deliberately broken Agent package cannot complete
   station startup and rolls the station back without gateway shell/command authority.
 

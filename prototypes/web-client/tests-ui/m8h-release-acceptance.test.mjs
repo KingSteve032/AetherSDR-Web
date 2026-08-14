@@ -17,6 +17,7 @@ const bootstrap = read("prototypes/web-client/Radio/AetherRemoteBootstrap.cs");
 const installerConsole = read("prototypes/web-client/Setup/InstallationInstallerConsole.cs");
 const pointerSwitch = read("prototypes/web-client/Releases/VerifiedReleaseActivationCurrentPointerSwitch.cs");
 const stationInstaller = read("AetherRemote/deploy/install-from-gateway.sh");
+const program = read("prototypes/web-client/Program.cs");
 
 test("M8H native acceptance runs packaged artifacts on both supported Ubuntu architectures", () => {
   assert.match(workflow, /runner: ubuntu-24\.04\n/);
@@ -114,6 +115,14 @@ test("pointer switch revalidates extracted releases with the extracted-tree dire
   assert.match(pointerSwitch, /activation\.UsesExtractedRoleTree/);
   assert.match(pointerSwitch, /MaximumExtractedDirectoryCount \+ 1/);
   assert.match(pointerSwitch, /: MaximumDirectoryCount/);
+});
+
+test("release updater starts only the remote station catalog observer needed for Hybrid health", () => {
+  assert.match(program, /ReleaseUpdateConsoleCommandKind\.TransactionSupervisor/);
+  assert.match(program, /GetRequiredService<RemoteStationCatalogService>\(\)/);
+  assert.match(program, /remoteStationCatalog\.StartAsync\(CancellationToken\.None\)/);
+  assert.match(program, /remoteStationCatalog\.StopAsync\(CancellationToken\.None\)/);
+  assert.doesNotMatch(program, /TransactionSupervisor[\s\S]{0,800}app\.RunAsync\(/);
 });
 
 test("release updater readiness requires a protocol handshake after restart", () => {

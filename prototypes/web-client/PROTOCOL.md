@@ -949,10 +949,19 @@ standalone host the updater service runs as root with primary group `aethersdr`;
 its directory is mode `0770` and socket mode `0660`. The gateway/updater request
 schema remains the existing fixed release-transaction schema and gains no path,
 URL, executable, shell, service-name, radio, or TX field. The privileged process
-controls installed system units rather than a user service manager. After it has
-written a terminal activation/rollback response, it exits only when the resulting
-pointer state is authoritative and not reconciliation/restart-pending; systemd
-`Restart=always` then reloads the updater from the current immutable release.
+controls installed system units rather than a user service manager. A successful
+activation keeps the same supervisor process alive so the exact in-memory rollback
+authority remains usable. If a later `prepare` arrives while that completed
+transaction is still rollbackable, the supervisor returns one
+`transactionAlreadyActive` reload-boundary report, exits without executing the new
+prepare, and systemd `Restart=always` reloads the updater from the current immutable
+release. The client waits until status shows the recovered completed transaction
+with no reconstructed rollback authority, then retries that unchanged prepare once.
+Completed rollback exits after its response; reconciliation and host-restart states
+do not trigger this reload. In supervisor mode only the existing receive-only
+`RemoteStationCatalogService` background observer is started, so Hybrid health can
+read fresh loopback broker/station state without starting the web host or any radio
+or TX hosted-service surface.
 
 Persistent verified release bundles use one canonical on-disk shape for both
 release installation and AetherRemote publication:

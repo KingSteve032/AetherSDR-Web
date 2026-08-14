@@ -1241,7 +1241,17 @@ if (releaseUpdateCommandLine.Command ==
     }
     ReleaseUpdateSupervisor supervisor =
         app.Services.GetRequiredService<ReleaseUpdateSupervisor>();
-    await supervisor.RunAsync();
+    RemoteStationCatalogService remoteStationCatalog =
+        app.Services.GetRequiredService<RemoteStationCatalogService>();
+    await remoteStationCatalog.StartAsync(CancellationToken.None);
+    try
+    {
+        await supervisor.RunAsync();
+    }
+    finally
+    {
+        await remoteStationCatalog.StopAsync(CancellationToken.None);
+    }
     return;
 }
 if (releaseUpdateCommandLine.Command is
