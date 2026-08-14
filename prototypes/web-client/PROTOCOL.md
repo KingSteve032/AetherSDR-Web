@@ -859,8 +859,10 @@ exact release identity, and one action from `apply`, `rollback`, `confirm`, or
 `acknowledge`. Before `apply`, the Agent independently requires all four canonical
 manifest package roles to bind their exact package identity and
 `packages/<fixed-role-stem>-<architecture>.tar.gz` path, plus the signed length and
-SHA-256; it does not accept a basename-only or alternate package path. `apply`
-consumes only the fixed private staging directory for the correlation; the message
+SHA-256; it does not accept a basename-only or alternate package path. The root
+updater re-verifies that same four-role identity/path contract against the manifest
+before trusting the fixed staged Agent/station-engine bytes. `apply` consumes only
+the fixed private staging directory for the correlation; the message
 cannot provide its path. `confirm` recovers the durable successful or rollback
 completion after Agent restart. `acknowledge` marks that completion durably
 acknowledged after the broker ACK; a repeated acknowledgement is idempotent. A

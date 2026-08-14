@@ -2555,9 +2555,10 @@ roles must use the exact ReleaseBuilder package identity and canonical
 and SHA-256; alternate or basename-only paths fail closed. The Agent stages only
 the accepted Agent/station-engine bytes under its fixed private root and asks the
 root-owned fixed-purpose updater to apply only that identity. The updater has no
-network address family, re-verifies the signed staging bundle, switches fixed
-release symlinks and signed units, restarts the station engine, and retains
-rollback state until the new Agent confirms startup.
+network address family and independently re-verifies the same four canonical
+package identities/paths plus signed lengths and hashes before trusting the staged
+bytes. It then switches fixed release symlinks and signed units, restarts the station
+engine, and retains rollback state until the new Agent confirms startup.
 
 Completion is crash-safe across the Agent restart. The root updater persists an
 exact correlation/release completion for either successful startup or automatic

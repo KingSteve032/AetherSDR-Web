@@ -20,6 +20,7 @@ const rollbackExecution = read("prototypes/web-client/Releases/VerifiedReleaseAc
 const serviceControl = read("prototypes/web-client/Releases/VerifiedReleaseActivationServiceControlExecution.cs");
 const stationInstaller = read("AetherRemote/deploy/install-from-gateway.sh");
 const stationReleaseUpdate = read("AetherRemote/src/AetherRemote.Agent/StationReleaseUpdateService.cs");
+const stationRootUpdater = read("AetherRemote/src/AetherRemote.Updater/StationReleaseUpdateUpdater.cs");
 const installationBackup = read("prototypes/web-client/Operations/InstallationBackup.cs");
 const program = read("prototypes/web-client/Program.cs");
 
@@ -104,8 +105,10 @@ test("AetherRemote bootstrap consumes the canonical verified persistent bundle m
   assert.doesNotMatch(stationInstaller, /or "\/" in name/);
 });
 
-test("runtime update bundles are staged outside protected home paths", () => {
-  assert.match(standalone, /\/var\/lib\/aethersdr\/m8h-release-inputs/);
+test("runtime update bundles are staged outside protected durable state", () => {
+  assert.match(standalone, /\/var\/lib\/aethersdr-m8h-release-inputs/);
+  assert.doesNotMatch(standalone, /\/var\/lib\/aethersdr\/m8h-release-inputs/);
+  assert.match(standalone, /root\.chmod\(0o700\)/);
   assert.match(standalone, /\/etc\/aethersdr\/release-trust/);
   assert.match(remote, /target_bundle = seed_bootstrap_bundle\(target_bundle, common\.TARGET_ID\)/);
   assert.match(remote, /station_failure_bundle = seed_bootstrap_bundle/);
@@ -129,13 +132,18 @@ test("rollback clears only exact fixed-unit systemd failure state before restore
   assert.doesNotMatch(serviceControl, /\/bin\/sh|bash -c|UseShellExecute = true/);
 });
 
-test("station updater requires canonical ReleaseBuilder package declarations", () => {
-  assert.match(stationReleaseUpdate, /ExpectedPackageDeclaration\(/);
-  assert.match(stationReleaseUpdate, /"gateway-web"/);
-  assert.match(stationReleaseUpdate, /packages\/aethersdr-gateway-\{architecture\}\.tar\.gz/);
-  assert.match(stationReleaseUpdate, /packages\/aetherremote-agent-\{architecture\}\.tar\.gz/);
-  assert.match(stationReleaseUpdate, /packages\/aethersdr-station-engine-\{architecture\}\.tar\.gz/);
-  assert.doesNotMatch(stationReleaseUpdate, /SafeFileNamePattern/);
+test("station Agent and root updater require canonical ReleaseBuilder package declarations", () => {
+  for (const source of [stationReleaseUpdate, stationRootUpdater]) {
+    assert.match(source, /ExpectedPackageDeclaration\(/);
+    assert.match(source, /"gateway-web"/);
+    assert.match(source, /packages\/aethersdr-gateway-\{architecture\}\.tar\.gz/);
+    assert.match(source, /packages\/aetherremote-agent-\{architecture\}\.tar\.gz/);
+    assert.match(source, /packages\/aethersdr-station-engine-\{architecture\}\.tar\.gz/);
+    assert.match(source, /packageIdentity/);
+    assert.doesNotMatch(source, /SafeFileNamePattern/);
+  }
+  assert.match(stationRootUpdater, /Architecture\.X64 => \("linuxX64", "linux-x64"\)/);
+  assert.match(stationRootUpdater, /Architecture\.Arm64 => \("linuxArm64", "linux-arm64"\)/);
 });
 
 test("encrypted backup excludes only the validated transient release-updater IPC directory", () => {

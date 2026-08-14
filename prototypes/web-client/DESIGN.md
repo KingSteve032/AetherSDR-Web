@@ -2072,10 +2072,12 @@ wire request carries only the station identity, random correlation, and canonica
 release identity. The Agent derives same-gateway URLs, independently re-verifies
 the pinned release key, signed manifest, architecture, TX-disabled declaration,
 and exact Agent/station-engine packages, then stages only beneath a fixed private
-root. The root updater accepts only fixed local `apply`, `rollback`, `confirm`,
-and `acknowledge` actions over a private Unix socket; it has no network address
-family and accepts no arbitrary path, URL, executable, service identity, shell,
-or command payload.
+root. The root updater re-verifies the same canonical four-role package identities
+and `packages/<fixed-role-stem>-<architecture>.tar.gz` declarations before trusting
+the staged Agent/station-engine bytes. It accepts only fixed local `apply`,
+`rollback`, `confirm`, and `acknowledge` actions over a private Unix socket; it has
+no network address family and accepts no arbitrary path, URL, executable, service
+identity, shell, or command payload.
 
 Activation is two phase and crash safe. Before switching, the updater records the
 previous and target releases plus a bounded confirmation deadline. It switches
@@ -2205,11 +2207,12 @@ trust/signing state, audit history, encrypted backups, immutable releases, servi
 users, and firewall policy.
 
 A separate x64 clean-station job installs a HybridGateway and a clean Ubuntu
-systemd station container. The station-side signed updater validates the same canonical
-ReleaseBuilder package contract as the gateway verifier: all four roles must bind to
-one exact package identity and `packages/<fixed-role-stem>-<architecture>.tar.gz`
-path, with signed length and SHA-256, before the Agent or station-engine archive is
-accepted. A cross-component builder/verifier regression test keeps that contract from
+systemd station container. Both the station Agent verifier and root updater validate
+the same canonical ReleaseBuilder package contract as the gateway verifier: all four
+roles must bind to one exact package identity and
+`packages/<fixed-role-stem>-<architecture>.tar.gz` path, with signed length and
+SHA-256, before the Agent or station-engine archive is accepted. A cross-component
+builder/verifier regression plus packaged acceptance keeps that contract from
 drifting. The job obtains the Admin-generated bootstrap command and
 one-time enrollment code, supplies a synthetic discovery advertisement only to the
 station's local UDP discovery boundary, verifies Admin inventory, advances the

@@ -356,8 +356,9 @@ def install_runtime_release_trust(public_key_source: Path) -> Path:
 
 
 def stage_runtime_bundle(source: Path, identity: str) -> Path:
-    root = Path("/var/lib/aethersdr/m8h-release-inputs")
+    root = Path("/var/lib/aethersdr-m8h-release-inputs")
     root.mkdir(parents=True, exist_ok=True)
+    root.chmod(0o700)
     target = root / identity
     if target.exists():
         shutil.rmtree(target)

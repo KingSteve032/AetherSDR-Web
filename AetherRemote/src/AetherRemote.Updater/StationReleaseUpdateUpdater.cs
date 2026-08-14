@@ -602,20 +602,21 @@ internal sealed partial class StationReleaseUpdateUpdater(
         string releaseIdentity = RequiredString(payload, "releaseIdentity", 96);
         string version = RequiredString(payload, "version", 96);
         string architecture = RequiredString(payload, "architecture", 32);
-        string expectedArchitecture = RuntimeInformation.ProcessArchitecture switch
-        {
-            Architecture.X64 => "linuxX64",
-            Architecture.Arm64 => "linuxArm64",
-            _ => throw new PlatformNotSupportedException(
-                "The root updater supports x64 and arm64 only.")
-        };
+        (string ManifestArchitecture, string PackageArchitecture) expectedArchitecture =
+            RuntimeInformation.ProcessArchitecture switch
+            {
+                Architecture.X64 => ("linuxX64", "linux-x64"),
+                Architecture.Arm64 => ("linuxArm64", "linux-arm64"),
+                _ => throw new PlatformNotSupportedException(
+                    "The root updater supports x64 and arm64 only.")
+            };
         if (!string.Equals(
                 releaseIdentity,
                 expectedReleaseIdentity,
                 StringComparison.Ordinal) ||
             !string.Equals(
                 architecture,
-                expectedArchitecture,
+                expectedArchitecture.ManifestArchitecture,
                 StringComparison.Ordinal))
         {
             throw new InvalidDataException(
@@ -683,11 +684,27 @@ internal sealed partial class StationReleaseUpdateUpdater(
         Dictionary<string, SignedPackage> roles = new(StringComparer.Ordinal);
         foreach (JsonElement package in packages.EnumerateArray())
         {
+            string packageIdentity = RequiredString(
+                package,
+                "packageIdentity",
+                96);
             string role = RequiredString(package, "role", 64);
             string fileName = RequiredString(package, "fileName", 160);
             string digest = RequiredString(package, "sha256", 64).ToLowerInvariant();
             long length = RequiredInt64(package, "length");
-            if (!SafeFileNamePattern().IsMatch(fileName) ||
+            (string ExpectedIdentity, string ExpectedFileName)? expected =
+                ExpectedPackageDeclaration(
+                    role,
+                    expectedArchitecture.PackageArchitecture);
+            if (expected is null ||
+                !string.Equals(
+                    packageIdentity,
+                    expected.Value.ExpectedIdentity,
+                    StringComparison.Ordinal) ||
+                !string.Equals(
+                    fileName,
+                    expected.Value.ExpectedFileName,
+                    StringComparison.Ordinal) ||
                 !Sha256Pattern().IsMatch(digest) ||
                 length is <= 0 or > MaximumPackageBytes ||
                 !roles.TryAdd(role, new SignedPackage(fileName, digest, length)))
@@ -1577,8 +1594,24 @@ internal sealed partial class StationReleaseUpdateUpdater(
     [GeneratedRegex("^[A-Za-z0-9._-]{1,96}$", RegexOptions.CultureInvariant)]
     private static partial Regex ReleaseIdentityPattern();
 
-    [GeneratedRegex("^[A-Za-z0-9._-]{1,160}$", RegexOptions.CultureInvariant)]
-    private static partial Regex SafeFileNamePattern();
+    private static (string ExpectedIdentity, string ExpectedFileName)?
+        ExpectedPackageDeclaration(string role, string architecture) =>
+        role switch
+        {
+            "gatewayWeb" => (
+                "gateway-web",
+                $"packages/aethersdr-gateway-{architecture}.tar.gz"),
+            "broker" => (
+                "broker",
+                $"packages/aethersdr-broker-{architecture}.tar.gz"),
+            "aetherRemoteAgent" => (
+                "aetherremote-agent",
+                $"packages/aetherremote-agent-{architecture}.tar.gz"),
+            "stationEngine" => (
+                "station-engine",
+                $"packages/aethersdr-station-engine-{architecture}.tar.gz"),
+            _ => null
+        };
 
     [GeneratedRegex("^[0-9a-f]{64}$", RegexOptions.CultureInvariant)]
     private static partial Regex Sha256Pattern();

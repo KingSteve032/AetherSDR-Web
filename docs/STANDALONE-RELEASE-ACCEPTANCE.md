@@ -51,9 +51,10 @@ container and must prove:
 - the one-time code is entered only at the station terminal;
 - a synthetic **receive-only discovery advertisement** is visible through Admin;
 - the gateway advances locally while the dedicated updater's receive-only remote-station catalog observer proves the exact station reconnects after the broker restart;
-- the station independently accepts that target only when its signed package
-  identities, canonical `packages/...` paths, lengths, and hashes match the
-  ReleaseBuilder contract, then updates and reconnects; and
+- both the station Agent verifier and fixed-purpose root updater independently
+  accept that target only when its signed package identities, canonical
+  `packages/...` paths, lengths, and hashes match the ReleaseBuilder contract,
+  then the station updates and reconnects; and
 - a later signed release with a deliberately broken Agent package cannot complete
   station startup and rolls the station back without gateway shell/command authority.
 
