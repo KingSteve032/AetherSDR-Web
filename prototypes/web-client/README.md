@@ -2563,7 +2563,10 @@ segments, links, devices, and extraction-root escape remain rejected. Fixed Agen
 station-engine, and updater directory links are staged separately and atomically
 replaced with Linux `rename(2)`, then re-read to prove the exact target. It then
 switches signed units, restarts the station engine, and retains rollback state until
-the new Agent confirms startup.
+the new Agent confirms startup. The durable bootstrap configuration is not rewritten
+for each release; on restart, the Agent derives its in-memory release identity and
+station-engine version from the fixed root-owned Agent and station-engine links and
+requires both links to identify the same real immutable release before confirming.
 
 Completion is crash-safe across the Agent restart. The root updater persists an
 exact correlation/release completion for either successful startup or automatic
@@ -2609,8 +2612,10 @@ TX-policy state, station credentials, signing/trust state, durable audit, and
 installer-owned managed proxy state. It records current/rollback release
 identities rather than embedding release packages. Restore requires those exact
 signed releases to be installed first and uses a durable prepared/committed
-journal plus atomic root/pointer replacement. Replacement-host restore remaps the
-validated installation paths and logical service ownership.
+journal plus atomic root/pointer replacement. A same-host restore preserves the setup
+document's exact bytes when its validated saved paths already match; only a
+replacement-host restore remaps the validated installation paths and logical service
+ownership.
 
 External DNS, externally managed proxy/TLS private material, provider-side
 Entra/OIDC registration and provider secret lifecycle, and signed release package
@@ -2678,7 +2683,9 @@ configuration is backed up only when its stable reviewed marker begins with the 
 metadata is retained. Because production create/restore first proves every fixed
 service inactive, the local identity SQLite database is captured as stable exact bytes;
 any remaining `-wal`, `-shm`, or `-journal` sidecar fails the offline backup closed.
-The normal Linux nested secret path is covered by the state physical root rather than
+Same-host restore also leaves the validated setup document byte-for-byte unchanged;
+path remapping is reserved for a replacement host whose resolved `InstallationPaths`
+differ. The normal Linux nested secret path is covered by the state physical root rather than
 an overlapping atomic source. Replacement-host restore still uses M8G logical-owner
 mapping.
 
@@ -2688,6 +2695,7 @@ one-time code. A local synthetic discovery advertisement exercises only station
 inventory. The gateway advances through its locally owned service transaction while
 its station-owned remote Agent is a topology no-op backed by fresh broker-link
 health. The station must appear in Admin, update to the exact gateway-signed target,
+restart with active release metadata reconciled from its root-owned fixed links,
 reconnect, and roll itself back when a later signed Agent target cannot complete
 startup. The harness never opens `/ws/radio`, sends a FLEX command, acquires a TX
 lease, or keys/unkeys.

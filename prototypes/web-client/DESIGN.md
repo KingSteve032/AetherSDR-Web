@@ -2120,8 +2120,9 @@ The backup payload is bounded, schema-validated, compressed, and authenticated
 with AES-256-GCM. Its key is derived from a locally entered passphrase using
 PBKDF2-HMAC-SHA256 with a random salt. Restore requires the recorded immutable
 release identities to be installed first, reconstructs files only beneath fixed
-validated target roots, remaps the validated setup `InstallationPaths` object for
-a replacement host, and maps logical `root`/`aethersdr`/`aetherremote` ownership
+validated target roots, preserves the setup document byte-for-byte when its saved
+`InstallationPaths` already equal the same-host target, remaps only a replacement
+host's validated path object, and maps logical `root`/`aethersdr`/`aetherremote` ownership
 to the destination host rather than copying numeric UIDs/GIDs. A root-external
 durable journal records `prepared` then `committed`: pre-commit interruption is
 rolled back, while post-commit recovery can only finish cleanup and never revert
@@ -2226,7 +2227,11 @@ links, devices, and extraction-root escape. Fixed Agent, station-engine, and upd
 directory links are each staged as a new symbolic-link entry and atomically replaced
 with Linux `rename(2)`; the updater verifies the resulting exact link target, so an
 apply or rollback never relies on `File.Move` treating a directory symlink as a file.
-A cross-component builder/verifier regression
+Because bootstrap configuration is durable and intentionally not rewritten by an
+update, each restarted Agent derives its in-memory active release identity and
+station-engine version from the fixed root-owned Agent and engine symlinks, requires
+them to identify the same real immutable release directory, and then confirms that
+exact active identity to the root updater. A cross-component builder/verifier regression
 plus packaged acceptance keeps that contract from drifting. The job obtains the
 Admin-generated bootstrap command and
 one-time enrollment code, supplies a synthetic discovery advertisement only to the

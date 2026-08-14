@@ -1105,6 +1105,10 @@ public sealed class InstallationBackupService
                 "The restored installation setup state is empty.");
         }
         InstallationSetupStateValidator.Validate(state);
+        if (state.Paths == m_paths)
+        {
+            return;
+        }
         InstallationSetupState remapped = state with { Paths = m_paths };
         InstallationSetupStateValidator.Validate(remapped);
         byte[] serialized = JsonSerializer.SerializeToUtf8Bytes(remapped, JsonOptions);

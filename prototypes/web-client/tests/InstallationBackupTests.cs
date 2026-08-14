@@ -294,6 +294,23 @@ public sealed class InstallationBackupTests
     }
 
     [Fact]
+    public async Task SameHostRestorePreservesExactSetupStateBytes()
+    {
+        using TemporaryDirectory temporary = new();
+        BackupFixture fixture = await BackupFixture.CreateAsync(
+            Path.Combine(temporary.Path, "source"));
+        byte[] setupBefore = await File.ReadAllBytesAsync(
+            fixture.Paths.SetupStatePath);
+        (string backupPath, _) = await fixture.Service.CreateAsync(Passphrase);
+
+        await fixture.Service.RestoreAsync(backupPath, Passphrase);
+
+        Assert.Equal(
+            setupBefore,
+            await File.ReadAllBytesAsync(fixture.Paths.SetupStatePath));
+    }
+
+    [Fact]
     public async Task RestoreRemapsPathsAndRecoversProtectedAuthority()
     {
         using TemporaryDirectory temporary = new();

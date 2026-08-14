@@ -21,6 +21,8 @@ const rollbackExecution = read("prototypes/web-client/Releases/VerifiedReleaseAc
 const serviceControl = read("prototypes/web-client/Releases/VerifiedReleaseActivationServiceControlExecution.cs");
 const stationInstaller = read("AetherRemote/deploy/install-from-gateway.sh");
 const stationReleaseUpdate = read("AetherRemote/src/AetherRemote.Agent/StationReleaseUpdateService.cs");
+const stationAgentSettings = read("AetherRemote/src/AetherRemote.Agent/AgentSettings.cs");
+const stationAgentProgram = read("AetherRemote/src/AetherRemote.Agent/Program.cs");
 const stationRootUpdater = read("AetherRemote/src/AetherRemote.Updater/StationReleaseUpdateUpdater.cs");
 const installationBackup = read("prototypes/web-client/Operations/InstallationBackup.cs");
 const program = read("prototypes/web-client/Program.cs");
@@ -155,6 +157,16 @@ test("station root updater accepts only the deterministic GNU-tar dot prefix", (
   assert.match(stationRootUpdater, /part\.Length == 0 \|\| part is "\." or "\.\."/);
 });
 
+test("station Agent derives active release metadata from fixed root-owned release links", () => {
+  assert.match(stationAgentProgram, /AgentRunningReleaseMetadata\.Reconcile\(agentSettings\)/);
+  assert.match(stationAgentSettings, /DefaultReleaseRoot = "\/opt\/aetherremote\/releases"/);
+  assert.match(stationAgentSettings, /DefaultAgentLink = "\/opt\/aetherremote\/agent"/);
+  assert.match(stationAgentSettings, /DefaultEngineLink = "\/opt\/aetherremote\/station-engine"/);
+  assert.match(stationAgentSettings, /Agent and station-engine release links do not identify the same active release/);
+  assert.match(stationAgentSettings, /settings\.ReleaseIdentity = identity/);
+  assert.match(stationAgentSettings, /settings\.StationEngineVersion = version/);
+});
+
 test("station root updater atomically replaces fixed directory symlink entries", () => {
   assert.match(stationRootUpdater, /DllImport\("libc", EntryPoint = "rename"/);
   assert.match(stationRootUpdater, /Rename\(temporary, link\)/);
@@ -176,6 +188,11 @@ test("encrypted backup preserves exact offline identity bytes and rejects SQLite
   assert.match(installationBackup, /IdentityDatabasePath \+ "-journal"/);
   assert.match(installationBackup, /offline identity database without SQLite sidecar files/);
   assert.doesNotMatch(installationBackup, /BackupDatabase\(/);
+});
+
+test("same-host encrypted restore preserves exact setup bytes while replacement-host restore remaps paths", () => {
+  assert.match(installationBackup, /if \(state\.Paths == m_paths\)/);
+  assert.match(installationBackup, /InstallationSetupState remapped = state with \{ Paths = m_paths \}/);
 });
 
 test("encrypted backup excludes only the validated transient release-updater IPC directory", () => {

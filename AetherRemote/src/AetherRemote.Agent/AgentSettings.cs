@@ -31,6 +31,99 @@ public sealed class AgentSettings
     public ConfiguredRadioSettings[] ConfiguredRadios { get; set; } = [];
 }
 
+internal static class AgentRunningReleaseMetadata
+{
+    private const string DefaultReleaseRoot = "/opt/aetherremote/releases";
+    private const string DefaultAgentLink = "/opt/aetherremote/agent";
+    private const string DefaultEngineLink = "/opt/aetherremote/station-engine";
+    private const string ReleasePrefix = "aethersdr-";
+
+    internal static void Reconcile(
+        AgentSettings settings,
+        string agentLink = DefaultAgentLink,
+        string engineLink = DefaultEngineLink,
+        string releaseRoot = DefaultReleaseRoot)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        if (!settings.ReleaseUpdateEnabled || !OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        string canonicalRoot = Path.TrimEndingDirectorySeparator(
+            Path.GetFullPath(releaseRoot));
+        string identity = ReadReleaseIdentity(
+            agentLink,
+            canonicalRoot,
+            "agent");
+        string engineIdentity = ReadReleaseIdentity(
+            engineLink,
+            canonicalRoot,
+            "station-engine");
+        if (!string.Equals(identity, engineIdentity, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Agent and station-engine release links do not identify the same active release.");
+        }
+        if (!identity.StartsWith(ReleasePrefix, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The active Agent release identity is not canonical.");
+        }
+        string version = identity[ReleasePrefix.Length..];
+        if (!StationProtocolValidator.IsIdentifier(identity, 96) ||
+            !StationProtocolValidator.IsText(version, 64))
+        {
+            throw new InvalidOperationException(
+                "The active Agent release metadata is invalid.");
+        }
+
+        settings.ReleaseIdentity = identity;
+        settings.StationEngineVersion = version;
+    }
+
+    private static string ReadReleaseIdentity(
+        string linkPath,
+        string releaseRoot,
+        string component)
+    {
+        DirectoryInfo link = new(Path.GetFullPath(linkPath));
+        link.Refresh();
+        string? linkTarget = link.LinkTarget;
+        if (string.IsNullOrEmpty(linkTarget) ||
+            !Path.IsPathFullyQualified(linkTarget))
+        {
+            throw new InvalidOperationException(
+                $"The active {component} release link is unavailable or non-canonical.");
+        }
+        string target = Path.TrimEndingDirectorySeparator(
+            Path.GetFullPath(linkTarget));
+        if (!Directory.Exists(target))
+        {
+            throw new InvalidOperationException(
+                $"The active {component} release target is unavailable.");
+        }
+        if (!string.Equals(
+                Path.GetFileName(target),
+                component,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"The active {component} release link has an unexpected target shape.");
+        }
+        string releaseDirectory = Path.GetDirectoryName(target) ??
+            throw new InvalidOperationException(
+                $"The active {component} release target has no release directory.");
+        string? parent = Path.GetDirectoryName(releaseDirectory);
+        if (!string.Equals(parent, releaseRoot, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"The active {component} release link escaped the fixed release root.");
+        }
+        return Path.GetFileName(releaseDirectory);
+    }
+}
+
 public static class AgentBrokerEndpointValidator
 {
     public const string DirectStationPath = "/station/v1";

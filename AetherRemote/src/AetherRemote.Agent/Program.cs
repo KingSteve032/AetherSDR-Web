@@ -25,6 +25,7 @@ AgentSettings agentSettings =
         .GetSection(AgentSettings.SectionName)
         .Get<AgentSettings>() ??
     new AgentSettings();
+AgentRunningReleaseMetadata.Reconcile(agentSettings);
 ValidateSettings(agentSettings);
 
 builder.Services.AddSingleton(Options.Create(agentSettings));

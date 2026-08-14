@@ -37,8 +37,9 @@ The x64 and arm64 jobs exercise only packaged product binaries and must prove:
 - encrypted backup created by the packaged gateway while excluding only the
   validated transient release-updater IPC directory, consuming the installer-owned
   Caddy `sha256=<digest>`/`plan=<id>` marker contract, preserving exact offline
-  identity-database bytes with no SQLite sidecars, destructive replacement of durable
-  roots, restore through the packaged gateway, and authority-hash equality afterward;
+  identity-database bytes with no SQLite sidecars and exact same-host setup bytes,
+  destructive replacement of durable roots, restore through the packaged gateway,
+  and authority-hash equality afterward;
   and
 - supported uninstall that removes only proven installer integration while
   retaining durable data, encrypted backups, immutable releases, service users,
@@ -57,8 +58,10 @@ container and must prove:
   accept that target only when its signed package identities, canonical
   `packages/...` paths, lengths, and hashes match the ReleaseBuilder contract, the
   root updater accepts only the packager's deterministic GNU-tar `.`/`./` prefix plus
-  safe bounded relative entries, and fixed directory links switch through atomic
-  Linux `rename(2)` replacement, then the station updates and reconnects; and
+  safe bounded relative entries, fixed directory links switch through atomic Linux
+  `rename(2)` replacement, and the restarted Agent derives the exact active release
+  identity/version from matching root-owned Agent/engine links before confirmation,
+  then the station updates and reconnects; and
 - a later signed release with a deliberately broken Agent package cannot complete
   station startup and rolls the station back without gateway shell/command authority.
 

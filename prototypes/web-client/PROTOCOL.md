@@ -866,7 +866,11 @@ only the deterministic GNU-tar `.`/`./` root prefix emitted by the reviewed pack
 builder plus bounded safe relative entries; traversal, repeated/embedded dot segments,
 links, devices, and extraction-root escape fail closed. Fixed directory-link changes
 stage one exact symlink entry and atomically replace it with Linux `rename(2)`, then
-re-read the link target before continuing. `apply` consumes only
+re-read the link target before continuing. On the restarted Agent, the durable
+bootstrap release pair is not treated as active-state authority: in-memory release
+identity/version are derived from the fixed root-owned Agent and station-engine links,
+which must identify the same real release under `/opt/aetherremote/releases` before a
+`confirm` request is sent. `apply` consumes only
 the fixed private staging directory for the correlation; the message
 cannot provide its path. `confirm` recovers the durable successful or rollback
 completion after Agent restart. `acknowledge` marks that completion durably
