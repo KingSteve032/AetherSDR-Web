@@ -2194,6 +2194,10 @@ and unrelated shared-writable state still fails closed. Installer-managed Caddy
 configuration is admitted only when its reviewed ownership marker is stable and its
 first `sha256=<digest>` line exactly matches the configuration bytes; the marker's
 following `plan=<id>` metadata is preserved rather than misread as part of the digest.
+The production backup console already proves every fixed service is inactive before
+capture, so the identity SQLite database is preserved as stable exact bytes rather
+than normalized through a logical database copy. Any residual `-wal`, `-shm`, or
+`-journal` sidecar makes that offline proof insufficient and fails backup closed.
 Activation-backup manifest
 schema 3 records same-host UID/GID ownership; rollback reapplies and verifies it.
 The supported Linux layout treats nested `/var/lib/aethersdr/secrets` as part of
@@ -2218,7 +2222,11 @@ roles must bind to one exact package identity and
 SHA-256, before the Agent or station-engine archive is accepted. The root updater's
 archive extractor accepts the deterministic GNU-tar `.`/`./` root prefix emitted by
 the release packager while still rejecting traversal, repeated/embedded dot segments,
-links, devices, and extraction-root escape. A cross-component builder/verifier regression
+links, devices, and extraction-root escape. Fixed Agent, station-engine, and updater
+directory links are each staged as a new symbolic-link entry and atomically replaced
+with Linux `rename(2)`; the updater verifies the resulting exact link target, so an
+apply or rollback never relies on `File.Move` treating a directory symlink as a file.
+A cross-component builder/verifier regression
 plus packaged acceptance keeps that contract from drifting. The job obtains the
 Admin-generated bootstrap command and
 one-time enrollment code, supplies a synthetic discovery advertisement only to the

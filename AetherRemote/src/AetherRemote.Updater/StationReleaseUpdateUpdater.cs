@@ -16,6 +16,9 @@ internal sealed partial class StationReleaseUpdateUpdater(
     ILogger<StationReleaseUpdateUpdater> logger,
     IHostApplicationLifetime applicationLifetime) : BackgroundService
 {
+    [DllImport("libc", EntryPoint = "rename", SetLastError = true)]
+    private static extern int Rename(string oldPath, string newPath);
+
     internal const string RuntimeDirectory = "/run/aetherremote-release-updater";
     internal const string SocketPath =
         "/run/aetherremote-release-updater/release.sock";
@@ -938,7 +941,7 @@ internal sealed partial class StationReleaseUpdateUpdater(
         File.Move(temporary, target, overwrite: true);
     }
 
-    private static void ReplaceDirectorySymlink(string link, string target)
+    internal static void ReplaceDirectorySymlink(string link, string target)
     {
         if (!Directory.Exists(target))
         {
@@ -948,7 +951,20 @@ internal sealed partial class StationReleaseUpdateUpdater(
         string temporary = link + ".aetherremote-new";
         RemoveExpectedTemporaryLink(temporary);
         Directory.CreateSymbolicLink(temporary, target);
-        File.Move(temporary, link, overwrite: true);
+        if (Rename(temporary, link) != 0)
+        {
+            int error = Marshal.GetLastPInvokeError();
+            throw new IOException(
+                $"Atomic station release-link rename failed with errno {error}.",
+                error);
+        }
+        DirectoryInfo replaced = new(link);
+        replaced.Refresh();
+        if (!string.Equals(replaced.LinkTarget, target, StringComparison.Ordinal))
+        {
+            throw new IOException(
+                "The station release link does not match its atomic replacement target.");
+        }
     }
 
     private static void RemoveExpectedTemporaryLink(string path)

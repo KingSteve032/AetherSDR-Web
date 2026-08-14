@@ -35,10 +35,11 @@ The x64 and arm64 jobs exercise only packaged product binaries and must prove:
 - byte-stable identity, Data Protection, setup, and installer-configuration
   authority through update and both rollback paths;
 - encrypted backup created by the packaged gateway while excluding only the
-  validated transient release-updater IPC directory and consuming the installer-owned
-  Caddy `sha256=<digest>`/`plan=<id>` marker contract, destructive replacement of
-  durable roots, restore through the packaged gateway, and authority-hash equality
-  afterward; and
+  validated transient release-updater IPC directory, consuming the installer-owned
+  Caddy `sha256=<digest>`/`plan=<id>` marker contract, preserving exact offline
+  identity-database bytes with no SQLite sidecars, destructive replacement of durable
+  roots, restore through the packaged gateway, and authority-hash equality afterward;
+  and
 - supported uninstall that removes only proven installer integration while
   retaining durable data, encrypted backups, immutable releases, service users,
   and firewall policy.
@@ -54,9 +55,10 @@ container and must prove:
 - the gateway advances locally while the dedicated updater's receive-only remote-station catalog observer proves the exact station reconnects after the broker restart;
 - both the station Agent verifier and fixed-purpose root updater independently
   accept that target only when its signed package identities, canonical
-  `packages/...` paths, lengths, and hashes match the ReleaseBuilder contract and
-  the root updater accepts only the packager's deterministic GNU-tar `.`/`./` prefix
-  plus safe bounded relative entries, then the station updates and reconnects; and
+  `packages/...` paths, lengths, and hashes match the ReleaseBuilder contract, the
+  root updater accepts only the packager's deterministic GNU-tar `.`/`./` prefix plus
+  safe bounded relative entries, and fixed directory links switch through atomic
+  Linux `rename(2)` replacement, then the station updates and reconnects; and
 - a later signed release with a deliberately broken Agent package cannot complete
   station startup and rolls the station back without gateway shell/command authority.
 

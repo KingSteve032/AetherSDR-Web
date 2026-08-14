@@ -155,11 +155,27 @@ test("station root updater accepts only the deterministic GNU-tar dot prefix", (
   assert.match(stationRootUpdater, /part\.Length == 0 \|\| part is "\." or "\.\."/);
 });
 
+test("station root updater atomically replaces fixed directory symlink entries", () => {
+  assert.match(stationRootUpdater, /DllImport\("libc", EntryPoint = "rename"/);
+  assert.match(stationRootUpdater, /Rename\(temporary, link\)/);
+  assert.match(stationRootUpdater, /replaced\.LinkTarget/);
+  assert.doesNotMatch(stationRootUpdater, /File\.Move\(temporary, link/);
+});
+
 test("encrypted backup consumes the installer-owned managed Caddy marker contract", () => {
   assert.match(installationBackup, /ParseManagedMarkerDigest\(/);
   assert.match(installationBackup, /const string Prefix = "sha256="/);
   assert.match(installationBackup, /marker\.IndexOf\('\\n'\)/);
   assert.match(installationBackup, /ReadStableFileAsync\([\s\S]{0,120}stateMarker/);
+});
+
+test("encrypted backup preserves exact offline identity bytes and rejects SQLite sidecars", () => {
+  assert.match(installationBackup, /ReadStableIdentityDatabaseAsync\(/);
+  assert.match(installationBackup, /IdentityDatabasePath \+ "-wal"/);
+  assert.match(installationBackup, /IdentityDatabasePath \+ "-shm"/);
+  assert.match(installationBackup, /IdentityDatabasePath \+ "-journal"/);
+  assert.match(installationBackup, /offline identity database without SQLite sidecar files/);
+  assert.doesNotMatch(installationBackup, /BackupDatabase\(/);
 });
 
 test("encrypted backup excludes only the validated transient release-updater IPC directory", () => {

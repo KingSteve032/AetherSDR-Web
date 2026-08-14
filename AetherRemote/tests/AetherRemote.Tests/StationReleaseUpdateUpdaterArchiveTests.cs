@@ -25,6 +25,36 @@ public sealed class StationReleaseUpdateUpdaterArchiveTests
         Assert.Equal(expected, normalized);
     }
 
+    [Fact]
+    public void DirectorySymlinkReplacementAtomicallyReplacesExistingLinkEntry()
+    {
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            $"aetherremote-updater-link-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            string previous = Path.Combine(root, "previous");
+            string target = Path.Combine(root, "target");
+            string link = Path.Combine(root, "active");
+            Directory.CreateDirectory(previous);
+            Directory.CreateDirectory(target);
+            Directory.CreateSymbolicLink(link, previous);
+
+            updater::StationReleaseUpdateUpdater.ReplaceDirectorySymlink(link, target);
+
+            DirectoryInfo replaced = new(link);
+            replaced.Refresh();
+            Assert.Equal(target, replaced.LinkTarget);
+            Assert.False(Directory.Exists(link + ".aetherremote-new"));
+            Assert.False(File.Exists(link + ".aetherremote-new"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Theory]
     [InlineData("../escape", false)]
     [InlineData("./../escape", false)]

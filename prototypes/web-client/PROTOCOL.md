@@ -864,7 +864,9 @@ updater re-verifies that same four-role identity/path contract against the manif
 before trusting the fixed staged Agent/station-engine bytes. Archive extraction accepts
 only the deterministic GNU-tar `.`/`./` root prefix emitted by the reviewed package
 builder plus bounded safe relative entries; traversal, repeated/embedded dot segments,
-links, devices, and extraction-root escape fail closed. `apply` consumes only
+links, devices, and extraction-root escape fail closed. Fixed directory-link changes
+stage one exact symlink entry and atomically replace it with Linux `rename(2)`, then
+re-read the link target before continuing. `apply` consumes only
 the fixed private staging directory for the correlation; the message
 cannot provide its path. `confirm` recovers the durable successful or rollback
 completion after Agent restart. `acknowledge` marks that completion durably

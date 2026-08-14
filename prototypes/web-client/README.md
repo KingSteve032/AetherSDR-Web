@@ -2559,9 +2559,11 @@ network address family and independently re-verifies the same four canonical
 package identities/paths plus signed lengths and hashes before trusting the staged
 bytes. Its extractor accepts only the release packager's deterministic GNU-tar
 `.`/`./` root prefix plus safe relative entries; traversal, repeated/embedded dot
-segments, links, devices, and extraction-root escape remain rejected. It then switches
-fixed release symlinks and signed units, restarts the station engine, and retains
-rollback state until the new Agent confirms startup.
+segments, links, devices, and extraction-root escape remain rejected. Fixed Agent,
+station-engine, and updater directory links are staged separately and atomically
+replaced with Linux `rename(2)`, then re-read to prove the exact target. It then
+switches signed units, restarts the station engine, and retains rollback state until
+the new Agent confirms startup.
 
 Completion is crash-safe across the Agent restart. The root updater persists an
 exact correlation/release completion for either successful startup or automatic
@@ -2673,9 +2675,12 @@ That exclusion requires the exact path to be a real canonical non-link directory
 other shared-writable state remains a hard backup failure. Installer-owned Caddy
 configuration is backed up only when its stable reviewed marker begins with the exact
 `sha256=<digest>` for the configuration bytes; the following `plan=<id>` ownership
-metadata is retained. The normal Linux nested secret path is covered by the state
-physical root rather than an overlapping atomic source. Replacement-host restore still
-uses M8G logical-owner mapping.
+metadata is retained. Because production create/restore first proves every fixed
+service inactive, the local identity SQLite database is captured as stable exact bytes;
+any remaining `-wal`, `-shm`, or `-journal` sidecar fails the offline backup closed.
+The normal Linux nested secret path is covered by the state physical root rather than
+an overlapping atomic source. Replacement-host restore still uses M8G logical-owner
+mapping.
 
 The x64 packaged acceptance also provisions a Hybrid gateway plus a clean Ubuntu
 systemd station container through the exact Admin-generated bootstrap command and

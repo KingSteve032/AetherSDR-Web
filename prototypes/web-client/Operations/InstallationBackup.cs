@@ -7,7 +7,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using AetherSDR.Web.Releases;
 using AetherSDR.Web.Setup;
-using Microsoft.Data.Sqlite;
 
 namespace AetherSDR.Web.Operations;
 
@@ -524,12 +523,12 @@ public sealed class InstallationBackupService
                 if (PathEquals(entry, m_paths.IdentityDatabasePath) &&
                     InstallationTopologyProfile.For(setup.Topology!.Value).GatewayRunsHere)
                 {
-                    content = await SnapshotIdentityDatabaseAsync(cancellationToken);
+                    content = await ReadStableIdentityDatabaseAsync(cancellationToken);
                 }
-                else if (PathEquals(entry, m_paths.IdentityDatabasePath + "-wal") ||
-                         PathEquals(entry, m_paths.IdentityDatabasePath + "-shm"))
+                else if (IsIdentityDatabaseSidecar(entry))
                 {
-                    continue;
+                    throw new InvalidDataException(
+                        "Encrypted backup requires an offline identity database without SQLite sidecar files.");
                 }
                 else
                 {
@@ -557,7 +556,7 @@ public sealed class InstallationBackupService
             files);
     }
 
-    private async Task<byte[]> SnapshotIdentityDatabaseAsync(
+    private async Task<byte[]> ReadStableIdentityDatabaseAsync(
         CancellationToken cancellationToken)
     {
         if (!IsSafeRegularFile(m_paths.IdentityDatabasePath))
@@ -565,49 +564,26 @@ public sealed class InstallationBackupService
             throw new InvalidDataException(
                 "The local identity database is not a safe regular file.");
         }
-        string tempRoot = Directory.Exists("/dev/shm") && OperatingSystem.IsLinux()
-            ? "/dev/shm"
-            : m_paths.BackupDirectory;
-        string snapshot = Path.Combine(
-            tempRoot,
-            $".aethersdr-identity-backup-{Guid.NewGuid():N}.db");
-        try
+        string[] sidecars =
+        [
+            m_paths.IdentityDatabasePath + "-wal",
+            m_paths.IdentityDatabasePath + "-shm",
+            m_paths.IdentityDatabasePath + "-journal"
+        ];
+        if (sidecars.Any(PathEntryExists))
         {
-            string sourceConnection = new SqliteConnectionStringBuilder
-            {
-                DataSource = m_paths.IdentityDatabasePath,
-                Mode = SqliteOpenMode.ReadOnly,
-                Cache = SqliteCacheMode.Private
-            }.ToString();
-            string destinationConnection = new SqliteConnectionStringBuilder
-            {
-                DataSource = snapshot,
-                Mode = SqliteOpenMode.ReadWriteCreate,
-                Cache = SqliteCacheMode.Private
-            }.ToString();
-            await using SqliteConnection source = new(sourceConnection);
-            await using SqliteConnection destination = new(destinationConnection);
-            await source.OpenAsync(cancellationToken);
-            await destination.OpenAsync(cancellationToken);
-            source.BackupDatabase(destination);
-            await destination.CloseAsync();
-            await source.CloseAsync();
-            if (OperatingSystem.IsLinux())
-            {
-                File.SetUnixFileMode(
-                    snapshot,
-                    UnixFileMode.UserRead | UnixFileMode.UserWrite);
-            }
-            return await ReadStableFileAsync(snapshot, cancellationToken);
+            throw new InvalidDataException(
+                "Encrypted backup requires an offline identity database without SQLite sidecar files.");
         }
-        finally
-        {
-            if (File.Exists(snapshot))
-            {
-                File.Delete(snapshot);
-            }
-        }
+        return await ReadStableFileAsync(
+            m_paths.IdentityDatabasePath,
+            cancellationToken);
     }
+
+    private bool IsIdentityDatabaseSidecar(string path) =>
+        PathEquals(path, m_paths.IdentityDatabasePath + "-wal") ||
+        PathEquals(path, m_paths.IdentityDatabasePath + "-shm") ||
+        PathEquals(path, m_paths.IdentityDatabasePath + "-journal");
 
     private async Task<InstallationBackupExactFile?> CaptureManagedProxyConfigurationAsync(
         CancellationToken cancellationToken)

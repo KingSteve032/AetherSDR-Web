@@ -225,6 +225,52 @@ public sealed class InstallationBackupTests
             StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("-wal")]
+    [InlineData("-shm")]
+    [InlineData("-journal")]
+    public async Task BackupRejectsIdentityDatabaseSidecars(string suffix)
+    {
+        using TemporaryDirectory temporary = new();
+        BackupFixture fixture = await BackupFixture.CreateAsync(
+            Path.Combine(temporary.Path, "source"));
+        await File.WriteAllTextAsync(
+            fixture.Paths.IdentityDatabasePath + suffix,
+            "stale-sqlite-sidecar");
+
+        InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Service.CreateAsync(Passphrase));
+
+        Assert.Contains(
+            "offline identity database without SQLite sidecar files",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task BackupRejectsDanglingIdentitySidecarLink()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        using TemporaryDirectory temporary = new();
+        BackupFixture fixture = await BackupFixture.CreateAsync(
+            Path.Combine(temporary.Path, "source"));
+        string sidecar = fixture.Paths.IdentityDatabasePath + "-wal";
+        File.CreateSymbolicLink(
+            sidecar,
+            Path.Combine(temporary.Path, "missing-sidecar-target"));
+
+        InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Service.CreateAsync(Passphrase));
+
+        Assert.Contains(
+            "offline identity database without SQLite sidecar files",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task TamperedEncryptedBackupFailsAuthentication()
     {
@@ -253,6 +299,8 @@ public sealed class InstallationBackupTests
         using TemporaryDirectory temporary = new();
         BackupFixture source = await BackupFixture.CreateAsync(
             Path.Combine(temporary.Path, "source"));
+        byte[] sourceIdentityBytes =
+            await File.ReadAllBytesAsync(source.Paths.IdentityDatabasePath);
         (string backupPath, InstallationBackupSummary backup) =
             await source.Service.CreateAsync(Passphrase);
 
@@ -298,6 +346,9 @@ public sealed class InstallationBackupTests
             "STATION-CREDENTIAL-SECRET",
             await File.ReadAllTextAsync(
                 Path.Combine(targetPaths.SecretDirectory, "station-credential")));
+        Assert.Equal(
+            sourceIdentityBytes,
+            await File.ReadAllBytesAsync(targetPaths.IdentityDatabasePath));
         Assert.False(File.Exists(
             Path.Combine(targetPaths.StateDirectory, "stale-state.txt")));
         Assert.False(File.Exists(
