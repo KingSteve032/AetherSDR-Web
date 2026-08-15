@@ -115,6 +115,37 @@ public sealed class InstallationSetupFoundationTests
     }
 
     [Fact]
+    public void UbuntuInstallerPathPolicyAcceptsOnlyCanonicalLinuxSystemLayout()
+    {
+        InstallationPaths canonical = InstallationPaths.Resolve(
+            "/unused-content-root",
+            InstallationPathLayout.LinuxSystem);
+
+        InstallationInstallerUbuntuPathPolicy
+            .RequireCanonicalLinuxSystemPaths(canonical);
+
+        InstallationPaths noncanonical = canonical with
+        {
+            ConfigurationDirectory = "/home/devspace/aethersdr-rc/setup-state/config",
+            StateDirectory = "/home/devspace/aethersdr-rc/setup-state/state",
+            SecretDirectory = "/home/devspace/aethersdr-rc/setup-state/secrets",
+            ReleaseDirectory = "/home/devspace/aethersdr-rc/setup-state/releases",
+            BackupDirectory = "/home/devspace/aethersdr-rc/setup-state/backups",
+            LogDirectory = "/home/devspace/aethersdr-rc/setup-state/logs"
+        };
+
+        InvalidOperationException exception =
+            Assert.Throws<InvalidOperationException>(() =>
+                InstallationInstallerUbuntuPathPolicy
+                    .RequireCanonicalLinuxSystemPaths(noncanonical));
+
+        Assert.Contains(
+            "canonical Linux system installation paths",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void InstallationPathsRejectRelativeOrDuplicateOverrides()
     {
         Assert.Throws<InvalidOperationException>(

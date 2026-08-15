@@ -492,6 +492,27 @@ if (installationInstallerCommandLine.Command !=
         builder.Environment.ContentRootPath,
         installerPathLayout,
         installerPathSettings);
+    if (installerPathLayout == InstallationPathLayout.LinuxSystem)
+    {
+        try
+        {
+            InstallationInstallerUbuntuPathPolicy
+                .RequireCanonicalLinuxSystemPaths(installerPaths);
+        }
+        catch (InvalidOperationException)
+        {
+            await Console.Out.WriteLineAsync(
+                JsonSerializer.Serialize(
+                    new
+                    {
+                        outcome = "rejected",
+                        code = "noncanonical-installation-paths",
+                        mutationAttempted = false
+                    }));
+            Environment.ExitCode = 2;
+            return;
+        }
+    }
     InstallationInstallerExecutionSettings installerExecutionSettings =
         builder.Configuration
             .GetSection(InstallationInstallerExecutionSettings.SectionName)
