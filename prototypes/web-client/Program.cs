@@ -5988,6 +5988,14 @@ app.MapGet(
     .AllowAnonymous();
 
 app.MapGet(
+        "/login.js",
+        (IWebHostEnvironment environment) =>
+            Results.File(
+                Path.Combine(environment.WebRootPath, "login.js"),
+                "text/javascript"))
+    .AllowAnonymous();
+
+app.MapGet(
     "/admin-controls.js",
     (IWebHostEnvironment environment) =>
         Results.File(

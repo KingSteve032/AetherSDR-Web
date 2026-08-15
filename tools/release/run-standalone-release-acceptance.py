@@ -23,6 +23,7 @@ import sys
 import tarfile
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -451,6 +452,27 @@ def wait_health() -> None:
     die("installed gateway did not become healthy through its managed TLS proxy")
 
 
+def verify_anonymous_login_surface() -> None:
+    context = ssl.create_default_context()
+    login_script_url = PUBLIC_URL + "/login.js"
+    with urllib.request.urlopen(login_script_url, context=context, timeout=3) as response:
+        content_type = response.headers.get_content_type()
+        body = response.read().decode("utf-8")
+        if (
+            response.status != 200
+            or response.geturl() != login_script_url
+            or content_type not in {"text/javascript", "application/javascript"}
+            or "/api/auth/options" not in body
+        ):
+            die("target release does not expose the required anonymous login script directly")
+
+    protected_url = PUBLIC_URL + "/styles.css"
+    with urllib.request.urlopen(protected_url, context=context, timeout=3) as response:
+        parsed = urllib.parse.urlparse(response.geturl())
+        if parsed.path != "/login":
+            die("target release exposed an authenticated application asset anonymously")
+
+
 def stop_units() -> None:
     for unit in PRODUCT_UNITS:
         run(["/usr/bin/systemctl", "stop", unit], check=False)
@@ -755,6 +777,7 @@ def main() -> int:
         assert_release_dirs(PREVIOUS_ID, TARGET_ID)
         assert_authority(authority, "successful update")
         wait_health()
+        verify_anonymous_login_surface()
         wait_release_updater_ready(
             Path("/opt/aethersdr/current/gateway-web/AetherSDR.Web"),
             update_env,
