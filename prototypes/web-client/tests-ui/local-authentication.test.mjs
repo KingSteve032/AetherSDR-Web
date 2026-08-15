@@ -20,6 +20,9 @@ const loginHtml = await readFile(
 const loginScript = await readFile(
   new URL("../wwwroot/login.js", import.meta.url),
   "utf8");
+const program = await readFile(
+  new URL("../Program.cs", import.meta.url),
+  "utf8");
 
 test("local credential endpoints are bounded antiforgery and rate-limit boundaries", () => {
   assert.match(adapter, /MaximumRequestBodyBytes = 4096/);
@@ -92,6 +95,30 @@ test("local and combined modes retain the hardened canonical cookie", () => {
     composition,
     /authenticationTopology\.LocalAccountsEnabled \|\| provider is null[\s\S]{0,180}CookieAuthenticationDefaults\.AuthenticationScheme/);
   assert.match(composition, /if \(provider is null\)[\s\S]{0,80}return;/);
+});
+
+test("anonymous login shell exposes only its required public assets", () => {
+  assert.match(
+    program,
+    /MapGet\(\s*"\/login\.js"[\s\S]{0,260}\.AllowAnonymous\(\)/);
+  assert.match(
+    program,
+    /MapGet\(\s*"\/portal\.css"[\s\S]{0,260}\.AllowAnonymous\(\)/);
+  assert.match(
+    program,
+    /MapGet\(\s*"\/assets\/logo\.png"[\s\S]{0,360}\.AllowAnonymous\(\)/);
+  assert.match(
+    program,
+    /MapGet\(\s*"\/styles\.css"[\s\S]{0,260}\.RequireAuthorization\(AetherPolicies\.Observe\)/);
+  assert.match(
+    program,
+    /MapGet\(\s*"\/radio-select\.js"[\s\S]{0,260}\.RequireAuthorization\(AetherPolicies\.Observe\)/);
+  assert.match(
+    program,
+    /MapGet\(\s*"\/radios"[\s\S]{0,360}\.RequireAuthorization\(AetherPolicies\.Observe\)/);
+  assert.match(
+    program,
+    /MapGet\(\s*"\/admin"[\s\S]{0,360}\.RequireAuthorization\(AetherPolicies\.Admin\)/);
 });
 
 test("browser sign-in keeps credentials and MFA authority in memory only", () => {

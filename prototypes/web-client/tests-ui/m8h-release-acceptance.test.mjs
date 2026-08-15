@@ -85,6 +85,18 @@ test("packaged installer harness follows the exact installer console JSON contra
   assert.match(standalone, /values\[key\] = decode_environment_file_value\(value\)/);
 });
 
+test("M8H target acceptance proves anonymous login assets without exposing protected assets", () => {
+  assert.match(standalone, /def verify_anonymous_login_surface\(\)/);
+  assert.match(standalone, /PUBLIC_URL \+ "\/login\.js"/);
+  assert.match(standalone, /response\.geturl\(\) != login_script_url/);
+  assert.match(standalone, /"\/api\/auth\/options" not in body/);
+  assert.match(standalone, /PUBLIC_URL \+ "\/styles\.css"/);
+  assert.match(standalone, /parsed\.path != "\/login"/);
+  assert.match(
+    standalone,
+    /assert_authority\(authority, "successful update"\)[\s\S]{0,180}wait_health\(\)[\s\S]{0,120}verify_anonymous_login_surface\(\)/);
+});
+
 test("M8H deliberate failures reach the packaged gateway and Agent startup boundaries", () => {
   assert.match(assets, /repack_invalid_gateway_startup\(/);
   assert.match(assets, /appsettings\.json/);
