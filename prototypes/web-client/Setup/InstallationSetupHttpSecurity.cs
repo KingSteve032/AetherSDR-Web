@@ -400,7 +400,10 @@ public sealed class InstallationSetupHttpSecurityPolicy
         bool pageRead =
             request.Operation == InstallationSetupHttpOperation.PageRead;
         bool originPresent = !string.IsNullOrWhiteSpace(request.Origin);
-        if ((!pageRead || originPresent) &&
+        bool originRequired = request.Operation is
+            InstallationSetupHttpOperation.BootstrapClaim or
+            InstallationSetupHttpOperation.SessionMutation;
+        if ((originRequired || originPresent) &&
             !OriginMatches(request.Origin))
         {
             rejections.Add(

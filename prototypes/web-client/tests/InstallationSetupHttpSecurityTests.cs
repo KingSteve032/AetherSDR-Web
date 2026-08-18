@@ -215,12 +215,12 @@ public sealed class InstallationSetupHttpSecurityTests
     }
 
     [Fact]
-    public void SessionReadRequiresExactOriginFetchMetadataAndCookie()
+    public void SessionReadAllowsBrowserOmittedOriginButRequiresSameOriginMetadataAndCookie()
     {
         InstallationSetupHttpSecurityPolicy policy = new(CanonicalUrl);
         InstallationSetupHttpRequest allowed = CreateRequest(
             InstallationSetupHttpOperation.SessionRead);
-        InstallationSetupHttpRequest denied = new(
+        InstallationSetupHttpRequest missingCookie = new(
             allowed.Operation,
             allowed.Method,
             allowed.Scheme,
@@ -234,20 +234,40 @@ public sealed class InstallationSetupHttpSecurityTests
             sessionCookiePresent: false,
             allowed.CsrfCookie,
             allowed.CsrfHeader);
+        InstallationSetupHttpRequest foreignOrigin = new(
+            allowed.Operation,
+            allowed.Method,
+            allowed.Scheme,
+            allowed.Host,
+            "https://attacker.example",
+            allowed.SecFetchSite,
+            allowed.SecFetchMode,
+            allowed.ContentType,
+            allowed.ContentLength,
+            allowed.HasQueryString,
+            allowed.SessionCookiePresent,
+            allowed.CsrfCookie,
+            allowed.CsrfHeader);
 
         InstallationSetupHttpSecurityDecision allowedDecision =
             policy.Evaluate(allowed);
-        InstallationSetupHttpSecurityDecision deniedDecision =
-            policy.Evaluate(denied);
+        InstallationSetupHttpSecurityDecision missingCookieDecision =
+            policy.Evaluate(missingCookie);
+        InstallationSetupHttpSecurityDecision foreignOriginDecision =
+            policy.Evaluate(foreignOrigin);
 
         Assert.True(allowedDecision.Allowed);
         Assert.Equal(
             "installation-setup-session-read",
             allowedDecision.RateLimit.PolicyName);
-        Assert.False(deniedDecision.Allowed);
+        Assert.False(missingCookieDecision.Allowed);
         Assert.Contains(
             InstallationSetupHttpRejectionCode.SessionCookieRequired,
-            deniedDecision.Rejections);
+            missingCookieDecision.Rejections);
+        Assert.False(foreignOriginDecision.Allowed);
+        Assert.Contains(
+            InstallationSetupHttpRejectionCode.CanonicalOriginRequired,
+            foreignOriginDecision.Rejections);
     }
 
     [Fact]
@@ -456,7 +476,7 @@ public sealed class InstallationSetupHttpSecurityTests
                 "GET",
                 "https",
                 "radio.example.org",
-                CanonicalUrl,
+                origin: null,
                 "same-origin",
                 "cors",
                 contentType: null,

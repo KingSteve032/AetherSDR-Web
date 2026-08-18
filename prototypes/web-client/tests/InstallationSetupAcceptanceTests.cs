@@ -287,6 +287,71 @@ public sealed class InstallationSetupAcceptanceTests
     }
 
     [Fact]
+    public async Task ProductionInstallerPlanRejectsNoncanonicalLinuxPathsBeforeStateRead()
+    {
+        using TemporaryDirectory temporary = new();
+        InstallationPaths paths = CreateInstallationPaths(temporary.Path);
+        string root = FindRepositoryRoot();
+        string assemblyPath = Path.Combine(
+            root,
+            "prototypes",
+            "web-client",
+            "bin",
+            "Release",
+            "net10.0",
+            "AetherSDR.Web.dll");
+        ProcessStartInfo startInfo = new("dotnet")
+        {
+            WorkingDirectory = Path.Combine(root, "prototypes", "web-client"),
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        startInfo.ArgumentList.Add(assemblyPath);
+        startInfo.ArgumentList.Add("--installation-installer-plan");
+        startInfo.ArgumentList.Add("--installation-architecture");
+        startInfo.ArgumentList.Add("linux-x64");
+        startInfo.ArgumentList.Add("--installation-reverse-proxy");
+        startInfo.ArgumentList.Add("lan-internal-certificate");
+        startInfo.ArgumentList.Add("--installation-release");
+        startInfo.ArgumentList.Add("aethersdr-8.8.0-rc.2");
+        startInfo.ArgumentList.Add("--installation-firewall");
+        startInfo.ArgumentList.Add("guidance");
+        startInfo.ArgumentList.Add("--installation-authentication");
+        startInfo.ArgumentList.Add("local");
+        startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "Production";
+        startInfo.Environment["DOTNET_ENVIRONMENT"] = "Production";
+        startInfo.Environment["InstallationPaths__ConfigurationDirectory"] =
+            paths.ConfigurationDirectory;
+        startInfo.Environment["InstallationPaths__StateDirectory"] =
+            paths.StateDirectory;
+        startInfo.Environment["InstallationPaths__SecretDirectory"] =
+            paths.SecretDirectory;
+        startInfo.Environment["InstallationPaths__ReleaseDirectory"] =
+            paths.ReleaseDirectory;
+        startInfo.Environment["InstallationPaths__BackupDirectory"] =
+            paths.BackupDirectory;
+        startInfo.Environment["InstallationPaths__LogDirectory"] =
+            paths.LogDirectory;
+
+        using Process process = Process.Start(startInfo) ??
+            throw new InvalidOperationException("Installer plan process did not start.");
+        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(8));
+        string output = await process.StandardOutput.ReadToEndAsync();
+        string error = await process.StandardError.ReadToEndAsync();
+
+        Assert.Equal(2, process.ExitCode);
+        Assert.Contains("\"outcome\":\"rejected\"", output, StringComparison.Ordinal);
+        Assert.Contains(
+            "\"code\":\"noncanonical-installation-paths\"",
+            output,
+            StringComparison.Ordinal);
+        Assert.Contains("\"mutationAttempted\":false", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Unhandled exception", error, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(paths.SetupStatePath));
+    }
+
+    [Fact]
     public void CleanHostAcceptanceToolIsTlsStrictAndReadOnly()
     {
         string root = FindRepositoryRoot();
