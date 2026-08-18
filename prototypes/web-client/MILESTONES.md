@@ -4776,6 +4776,16 @@ clean-host acceptance remains pending and is not claimed by this checkpoint.
   packaged release rather than a source checkout.
 - Retain the previous immutable release and all credentials, policies, and audit
   state through both successful and automatically rolled-back updates.
+- Production-signed RC4 operator acceptance is tracked in
+  `docs/evidence/M8H-RC4-operator-acceptance.md` against commit
+  `039e5a7d09d79ee74947a316a0d58ff85aea59f0` / tag
+  `aethersdr-8.8.0-rc.4`. Exact-candidate CI, standalone release acceptance,
+  draft signing, Existing Caddy, and the packaged Existing Nginx fragment have
+  passed. Encrypted backup/replacement-host restore and selected recovery/browser
+  behavior have passed functionally but retain explicitly documented metadata
+  gaps. Entra/OIDC, the remaining required browser/device/direct-LAN rows, and
+  the operator-run physical-radio/multi-client soak remain pending; none is
+  inferred from synthetic or automated evidence.
 
 Acceptance criteria:
 
