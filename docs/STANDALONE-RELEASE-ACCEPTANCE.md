@@ -121,8 +121,8 @@ Against the installed production candidate, complete the supported matrix in
 
 ### Packaged radio/hardware soak
 
-This section is intentionally operator-run. Follow `prototypes/web-client/HIL.md`
-and do not run it from CI.
+This section is intentionally operator-run. Follow
+`prototypes/web-client/tx-hil/README.md` and do not run it from CI.
 
 - [ ] One-hour multi-client receive soak on the installed production candidate.
 - [ ] At least two simultaneous supported browser clients where radio licensing
